@@ -14,6 +14,10 @@
 
 </div>
 
+<p align="center">
+  <img src="assets/screenshots/animation.gif" width="700" alt="Демонстрация Steam Commander">
+</p>
+
 ## Screenshots
 
 <p align="center">
