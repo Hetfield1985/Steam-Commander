@@ -10,6 +10,8 @@
 ![PowerShell](https://img.shields.io/badge/PowerShell-5.1-5391FE)
 ![License](https://img.shields.io/badge/license-MIT-green)
 [![Downloads](https://img.shields.io/github/downloads/Hetfield1985/Steam-Commander/total)](https://github.com/Hetfield1985/Steam-Commander/releases)
+---
+[![Download](https://img.shields.io/badge/Download-Steam%20Commander.exe-blue?style=for-the-badge)](https://github.com/Hetfield1985/Steam-Commander/releases/latest)
 
 [English](README.md) · **Русский**
 
