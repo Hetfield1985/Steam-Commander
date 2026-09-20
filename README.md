@@ -19,6 +19,7 @@
   <a href="https://donatty.com/vitalibabinok"><img src="https://img.shields.io/badge/Donatty-Donate-orange?style=for-the-badge" alt="Donatty"></a>
   <a href="https://destream.net/live/VitaliBabinok"><img src="https://img.shields.io/badge/DeStream-Donate-blueviolet?style=for-the-badge" alt="DeStream"></a>
   <a href="https://boosty.to/babinok/donate"><img src="https://img.shields.io/badge/Boosty-Support-f15f2c?style=for-the-badge" alt="Boosty"></a>
+  <a href="#support"><img src="https://img.shields.io/badge/USDT-ERC20%20%7C%20TRC20%20%7C%20BEP20-26A17B?style=for-the-badge" alt="USDT"></a>
 </p>
 
 <p align="center">
@@ -50,8 +51,8 @@
 <p align="center">
   <img src="assets/screenshots/settings.png" width="500" alt="Settings">
 </p>
----
 
+---
 
 ## What it does
 
@@ -203,3 +204,33 @@ Use at your own risk: the program edits Steam's `shortcuts.vdf`. Create a backup
 ## License
 
 [MIT](LICENSE)
+
+## Support
+
+If Steam Commander is useful to you, you can support its development:
+
+- [Donatty](https://donatty.com/vitalibabinok)
+- [DeStream](https://destream.net/live/VitaliBabinok)
+- [Boosty](https://boosty.to/babinok/donate)
+
+**USDT** (minimum 5 USDT):
+
+- ERC-20 network:
+
+  ```
+  0x2503cdb205ac6e41222e114d77b0dcc48ed83686
+  ```
+
+- TRC-20 network:
+
+  ```
+  TSE4BZQC6h9qES2QsgJjcfyDbGYNDATSv4
+  ```
+
+- BEP-20 network:
+
+  ```
+  0x2503cdb205ac6e41222e114d77b0dcc48ed83686
+  ```
+
+Send USDT only via the network shown next to the address. Transfers below 5 USDT or via a different network will be lost.
