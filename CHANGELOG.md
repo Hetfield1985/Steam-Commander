@@ -4,6 +4,12 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [1.0.1] - 2026-09-20
+
+### Fixed
+- Covers from a previously opened game card could be applied to a game without a Steam App ID.
+- A game whose executable sits in a common subfolder (for example `bin`) was wrongly reported as already in the Steam library.
+
 ## [1.0.0] - 2026-09-20
 
 First public release.
