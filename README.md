@@ -4,7 +4,7 @@
 
 # Steam Commander
 
-**Convenient, fast or automatic way to add non-Steam games to your Steam library — with auto-detected exe and launch options, covers from multiple sources (localized where available), and a two-panel mode for moving game folders with Steam paths updated automatically.**
+**Convenient, fast and automatic way to add non-Steam games to your Steam library — with auto-detected exe and launch options, covers from multiple sources (localized where available), and a two-panel mode for moving game folders with Steam paths updated automatically.**
 
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D4)
 ![PowerShell](https://img.shields.io/badge/PowerShell-5.1-5391FE)
