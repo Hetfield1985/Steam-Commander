@@ -305,7 +305,7 @@ $global:dirD = ""
 # Единая версия приложения — используется в заголовке главного окна, в
 # подписи внизу окна настроек и в User-Agent HTTP-запросов. Меняйте только
 # здесь при выпуске новой версии.
-$global:appVersion = "1.0.0"
+$global:appVersion = "1.0.1"
 $global:appTitle = "Steam Commander"
 
 # ===================== ЛОКАЛИЗАЦИЯ =====================
@@ -3737,7 +3737,10 @@ function Show-ExeSelectionDialog ($exeList, $rootPath, $gameName) {
 }
 
 # ===================== ПОИСК/РЕДАКТИРОВАНИЕ СУЩЕСТВУЮЩЕГО ЯРЛЫКА =====================
-function Find-SteamShortcutRecord ($gameName, $gamePath = $null) {
+# $exePath (необязательный) — точное совпадение по пути к exe. Нужен проверке
+# дубликатов при добавлении: там $gamePath — это папка exe (например ...\bin), а не
+# корень игры, и сравнение по имени последней папки давало ложные "игра уже есть".
+function Find-SteamShortcutRecord ($gameName, $gamePath = $null, $exePath = $null) {
     $steamPath = Get-ConfiguredSteamInstallPath
     $userDataPath = Get-ConfiguredSteamUserDataPath
     if (-not (Test-Path $userDataPath)) { return $null }
@@ -3784,6 +3787,11 @@ function Find-SteamShortcutRecord ($gameName, $gamePath = $null) {
 
                 if (-not [string]::IsNullOrEmpty($targetNameKey) -and
                     (Get-NormalizedGameKey $appName) -eq $targetNameKey) {
+                    return $record
+                }
+
+                if (-not [string]::IsNullOrEmpty($exePath) -and -not [string]::IsNullOrEmpty($cleanExe) -and
+                    [string]::Equals($cleanExe, ([string]$exePath).Trim('"'), [System.StringComparison]::OrdinalIgnoreCase)) {
                     return $record
                 }
 
@@ -3974,7 +3982,12 @@ function Save-ExistingShortcutCoversToGrid ($shortcutRecord) {
 }
 
 function Add-ShortcutToSteam ($gameName, $exePath, $startDir, $launchOptions = "") {
-    $existingShortcut = Find-SteamShortcutRecord $gameName $startDir
+    # БАГ-ФИКС: раньше здесь передавался $startDir. Из карточки игры это папка
+    # выбранного exe (например "...\Baldurs Gate 3\bin"), и проверка по имени
+    # последней папки принимала за дубликат ЛЮБОЙ ярлык, чей exe лежит в папке с
+    # таким же общим именем (bin, Win64, Binaries...). Дубликат — это ярлык с тем
+    # же названием или с тем же exe.
+    $existingShortcut = Find-SteamShortcutRecord $gameName $null $exePath
     if ($existingShortcut -ne $null) {
         $global:lastShortcutError = (T 'sc_exists' @($gameName))
         return $null
@@ -4175,6 +4188,19 @@ function Remove-TemporaryCovers {
             Remove-Item -LiteralPath $global:tempCovers -Recurse -Force -ErrorAction SilentlyContinue
         }
     } catch {}
+}
+
+# Удаляет только четыре временных файла обложек текущей карточки (капсула,
+# hero, header, logo). Нужна карточке игры: Add-кнопка решает, есть ли что
+# копировать в grid, по НАЛИЧИЮ этих файлов в TEMP (Test-CoversValid), а не по
+# тому, что показано в слотах. Без очистки при открытии карточки файлы от
+# предыдущей игры (пропущенной, отменённой или оборвавшейся на ошибке)
+# оставались лежать, и игра без App ID (например, фанатская, которой нет в
+# Steam) получала чужие обложки, хотя в слотах было "NO COVER".
+function Clear-TempCoverFiles {
+    foreach ($f in @('temp_p.jpg','temp_hero.jpg','temp_header.jpg','temp_logo.png')) {
+        try { Remove-Item -LiteralPath (Join-Path $global:tempCovers $f) -Force -ErrorAction SilentlyContinue } catch {}
+    }
 }
 # ===================== ТОЧНОЕ РАЗРЕШЕНИЕ ССЫЛОК НА ОБЛОЖКИ =====================
 # БАГ-ФИКС: с 2025-2026 годов часть изданий на Steam раздаёт обложки НЕ по
@@ -10025,6 +10051,10 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     }
 
     $dlg.Add_Shown({
+        # Каждая карточка начинает с чистых временных обложек (см. Clear-TempCoverFiles).
+        # В режиме редактирования Copy-ExistingShortcutCoversToTemp ниже всё равно
+        # перезапишет их обложками существующего ярлыка.
+        Clear-TempCoverFiles
         $status.Text=if($editorState.SearchSource -eq 'Steam'){(T 'st_resolving_steam')}else{(T 'st_resolving_sgdb')}
         # Анимацию включаем сразу при открытии карточки: определение App ID —
         # тоже часть пути к миниатюрам, и до конца этого пути слот показывает
