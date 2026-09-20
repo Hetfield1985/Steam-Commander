@@ -107,7 +107,7 @@ See [Building](#building).
 
 1. Launch Steam Commander and open **Settings**. Check the Steam folder and pick the Steam **profile** (`userdata`) you want to work with.
 2. *(Optional but highly recommended)* Paste your SteamGridDB API key. A status message under the field tells you whether the key is valid, revoked, or the service is unavailable.
-3. Choose a game folder for panel **C** and, if you want to move games between drives, another one for panel **D**.
+3. Choose a game folder for left panel and, if you want to move games between drives, another one for right panel.
 4. Tick the games you want and press **Add selected games to library**, or open a single game card with double-click / Enter.
 5. Check the title, executable and artwork, then save.
 
