@@ -28,7 +28,7 @@ Steam Commander is a Windows Forms desktop tool written in PowerShell. You point
 ## Features
 
 **Library view**
-- Two independent panels (**C** and **D**), each pointed at any folder.
+- Two independent panels, each pointed at any folder.
 - Search by folder name, sorting, and folder size calculation.
 - Free-space indicator per drive and a marker for games that are already in your Steam library.
 - Columns for size, date and the in-library flag; click a header to sort.
