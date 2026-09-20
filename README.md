@@ -86,7 +86,7 @@ Steam Commander is a Windows Forms desktop tool written in PowerShell. You point
 - Steam installed and started at least once (so a `userdata` profile exists).
 - **Administrator rights** — the program asks for them and exits without.
 - Internet access for game search and artwork (see [Privacy and network](#privacy-and-network)).
-- Optional: a free [SteamGridDB API key](https://www.steamgriddb.com/profile/preferences) for the SteamGridDB source.
+- Optional (but highly recommended): a free [SteamGridDB API key](https://www.steamgriddb.com/profile/preferences) for the SteamGridDB source.
 
 ## Installation
 
