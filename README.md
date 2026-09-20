@@ -16,10 +16,21 @@
 
 ## Screenshots
 
-![Main window](assets/screenshots/main.png)
-![Add game](assets/screenshots/game_card.png)
-![Add game](assets/screenshots/custom_covers.png)
-![Add game](assets/screenshots/settings.png)
+<p align="center">
+  <img src="assets/screenshots/main.png" width="700" alt="Main window">
+</p>
+
+<p align="center">
+  <img src="assets/screenshots/game_card.png" width="700" alt="Game card">
+</p>
+
+<p align="center">
+  <img src="assets/screenshots/custom_covers.png" width="700" alt="Custom covers">
+</p>
+
+<p align="center">
+  <img src="assets/screenshots/settings.png" width="500" alt="Settings">
+</p>
 ---
 
 
