@@ -18,7 +18,6 @@
 
 ![Main window](assets/screenshots/main_rus.png)
 ![Add game](assets/screenshots/game_card_rus.png)
-![Add game](assets/screenshots/custom_covers_rus.png)
 ![Add game](assets/screenshots/settings_rus.png)
 ---
 
