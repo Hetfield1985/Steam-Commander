@@ -10,6 +10,7 @@ and the project follows [Semantic Versioning](https://semver.org/).
 - Covers from a previously opened game card could be applied to a game without a Steam App ID.
 - A game whose executable sits in a common subfolder (for example `bin`) was wrongly reported as already in the Steam library.
 
+
 ## [1.0.0] - 2026-09-20
 
 First public release.
