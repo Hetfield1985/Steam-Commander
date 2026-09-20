@@ -1,0 +1,17 @@
+# Build output
+dist/
+*.exe
+*.rar
+*.zip
+
+# Runtime data (created next to the exe / in %APPDATA%)
+backups/
+config.ini
+steam_applist_cache.tsv
+
+# Editors / OS
+.vs/
+.vscode/
+*.log
+Thumbs.db
+desktop.ini
