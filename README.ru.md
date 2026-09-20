@@ -19,6 +19,7 @@
   <a href="https://donatty.com/vitalibabinok"><img src="https://img.shields.io/badge/Donatty-Donate-orange?style=for-the-badge" alt="Donatty"></a>
   <a href="https://destream.net/live/VitaliBabinok"><img src="https://img.shields.io/badge/DeStream-Donate-blueviolet?style=for-the-badge" alt="DeStream"></a>
   <a href="https://boosty.to/babinok/donate"><img src="https://img.shields.io/badge/Boosty-Support-f15f2c?style=for-the-badge" alt="Boosty"></a>
+  <a href="#поддержать-проект"><img src="https://img.shields.io/badge/USDT-ERC20%20%7C%20TRC20%20%7C%20BEP20-26A17B?style=for-the-badge" alt="USDT"></a>
 </p>
 
 <p align="center">
@@ -33,7 +34,7 @@
   <img src="assets/screenshots/animation.gif" width="700" alt="Демонстрация Steam Commander">
 </p>
 
-## Screenshots
+## Скриншоты
 
 <p align="center">
   <img src="assets/screenshots/main_rus.png" width="700" alt="Главное окно">
@@ -50,6 +51,7 @@
 <p align="center">
   <img src="assets/screenshots/settings_rus.png" width="500" alt="Настройки">
 </p>
+
 ---
 
 ## Что это
@@ -202,3 +204,33 @@ Steam Commander — неофициальный общественный инст
 ## Лицензия
 
 [MIT](LICENSE)
+
+## Поддержать проект
+
+Если Steam Commander оказался полезным, вы можете поддержать разработку:
+
+- [Donatty](https://donatty.com/vitalibabinok)
+- [DeStream](https://destream.net/live/VitaliBabinok)
+- [Boosty](https://boosty.to/babinok/donate)
+
+**USDT** (минимум 5 USDT):
+
+- Сеть ERC-20:
+
+  ```
+  0x2503cdb205ac6e41222e114d77b0dcc48ed83686
+  ```
+
+- Сеть TRC-20:
+
+  ```
+  TSE4BZQC6h9qES2QsgJjcfyDbGYNDATSv4
+  ```
+
+- Сеть BEP-20:
+
+  ```
+  0x2503cdb205ac6e41222e114d77b0dcc48ed83686
+  ```
+
+Отправляйте USDT только по той сети, которая указана рядом с адресом. Переводы меньше 5 USDT и через другую сеть будут потеряны.
