@@ -10,6 +10,11 @@
 ![PowerShell](https://img.shields.io/badge/PowerShell-5.1-5391FE)
 ![License](https://img.shields.io/badge/license-MIT-green)
 [![Downloads](https://img.shields.io/github/downloads/Hetfield1985/Steam-Commander/total)](https://github.com/Hetfield1985/Steam-Commander/releases)
+<p align="center">
+  <a href="https://donatty.com/vitalibabinok"><img src="https://img.shields.io/badge/Donatty-Donate-orange?style=for-the-badge" alt="Donatty"></a>
+  <a href="https://destream.net/live/VitaliBabinok"><img src="https://img.shields.io/badge/DeStream-Donate-blueviolet?style=for-the-badge" alt="DeStream"></a>
+  <a href="https://boosty.to/babinok/donate"><img src="https://img.shields.io/badge/Boosty-Support-f15f2c?style=for-the-badge" alt="Boosty"></a>
+</p>
 ---
 [![Download](https://img.shields.io/badge/Download-Steam%20Commander.exe-blue?style=for-the-badge)](https://github.com/Hetfield1985/Steam-Commander/releases/latest)
 
