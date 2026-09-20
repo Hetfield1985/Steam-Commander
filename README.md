@@ -18,7 +18,7 @@
 
 ![Main window](assets/screenshots/main.png)
 ![Add game](assets/screenshots/game_card.png)
-![Add game](assets/screenshots/Custom_covers.png)
+![Add game](assets/screenshots/custom_covers.png)
 ![Add game](assets/screenshots/settings.png)
 ---
 
