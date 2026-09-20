@@ -16,10 +16,21 @@
 
 ## Screenshots
 
-![Main window](assets/screenshots/main_rus.png)
-![Add game](assets/screenshots/game_card_rus.png)
-![Add game](assets/screenshots/custom_covers_rus.png)
-![Add game](assets/screenshots/settings_rus.png)
+<p align="center">
+  <img src="assets/screenshots/main_rus.png" width="700" alt="Главное окно">
+</p>
+
+<p align="center">
+  <img src="assets/screenshots/game_card_rus.png" width="700" alt="Карточка игры">
+</p>
+
+<p align="center">
+  <img src="assets/screenshots/custom_covers_rus.png" width="700" alt="Свои обложки">
+</p>
+
+<p align="center">
+  <img src="assets/screenshots/settings_rus.png" width="500" alt="Настройки">
+</p>
 ---
 
 ## Что это
