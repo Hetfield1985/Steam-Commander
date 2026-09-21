@@ -305,7 +305,7 @@ $global:dirD = ""
 # Единая версия приложения — используется в заголовке главного окна, в
 # подписи внизу окна настроек и в User-Agent HTTP-запросов. Меняйте только
 # здесь при выпуске новой версии.
-$global:appVersion = "1.0.1"
+$global:appVersion = "1.1.0"
 $global:appTitle = "Steam Commander"
 
 # ===================== ЛОКАЛИЗАЦИЯ =====================
@@ -387,13 +387,15 @@ $script:I18n = @{
         set_steam_folder = 'Папка Steam'
         set_profile = 'Профиль'
         set_profile_hint = 'Выберите userdata-профиль, с которым будет работать программа.'
+        set_exe_filter = 'Фильтр EXE'
+        set_offer_launchers = 'Предлагать лаунчеры'
         set_api_key = 'API-ключ'
         key_valid = 'API-ключ действителен.'
         key_invalid_default = 'API-ключ недействителен или не прошёл проверку.'
         key_empty = 'API-ключ не введён.'
         key_checking = 'Проверяю ключ…'
-        key_hint_default = 'Нужен для загрузки обложек игр. Бесплатный ключ можно получить на steamgriddb.com/profile/preferences.'
-        key_new_key = ' Новый ключ: steamgriddb.com/profile/preferences.'
+        key_hint_default = 'Нужен для загрузки дополнительных обложек игр. Бесплатный ключ можно получить на steamgriddb.com/profile/preferences/api.'
+        key_new_key = ' Новый ключ: steamgriddb.com/profile/preferences/api.'
         sg_401 = 'Ключ недействителен или отозван (401).'
         sg_403 = 'Доступ запрещён (403): ключ отозван или запрос заблокирован сервисом.'
         sg_429 = 'Слишком много запросов к SteamGridDB (429). Повторите проверку позже.'
@@ -404,6 +406,37 @@ $script:I18n = @{
         sg_tls = 'Ошибка защищённого соединения (TLS) с SteamGridDB.'
         sg_connect = 'Не удалось подключиться к SteamGridDB (соединение прервано или нет интернета).'
         sg_noresp = 'Нет ответа от SteamGridDB: {0}'
+        sw_section = 'Steam Web API (локальная база игр)'
+        sw_key_hint = 'Нужен для более точного поиска названий игр. Скачивает названия и App ID в локальную базу (не обязателен). Бесплатный ключ можно получить на steamcommunity.com/dev/apikey.'
+        sw_key_new_key = ' Получить/сменить ключ: steamcommunity.com/dev/apikey.'
+        sw_key_403 = 'Ключ отклонён Steam (403 Forbidden).'
+        sw_key_server = 'Steam временно недоступен (ошибка {0}).'
+        sw_key_other = 'Неожиданный ответ Steam (код {0}).'
+        sw_key_dns = 'Не удаётся найти сервер api.steampowered.com (проблема с DNS или интернетом).'
+        sw_key_timeout = 'Steam не ответил за 10 секунд.'
+        sw_key_tls = 'Ошибка защищённого соединения (TLS) со Steam.'
+        sw_key_connect = 'Не удалось подключиться к Steam (соединение прервано или нет интернета).'
+        sw_key_noresp = 'Нет ответа от Steam: {0}'
+        sw_open_db_btn = 'База игр Steam / поиск...'
+        sw_db_dialog_title = 'Локальная база игр Steam'
+        sw_db_status_none = 'Локальная база ещё не создана.'
+        sw_db_status_known = 'Локальная база: {0} игр, обновлена {1}.'
+        sw_db_update_btn = 'Обновить локальную базу'
+        sw_db_updating = 'Скачиваю список игр Steam (идёт постранично, может занять до минуты)...'
+        sw_db_update_fail = 'Не удалось обновить базу: {0}'
+        sw_db_update_fail_page = 'Не удалось получить список игр Steam на странице {0} ({1}).'
+        sw_db_update_empty = 'Steam вернул пустой ответ на странице {0} (проверьте ключ).'
+        sw_db_update_done_title = 'Локальная база обновлена'
+        sw_db_update_done_msg = 'Готово. Игр в базе: {0}.'
+        sw_db_need_key = 'Сначала введите и сохраните действительный Steam Web API ключ в настройках.'
+        sw_db_btn_short = 'Обновить'
+        sw_db_state_updating = 'Обновляю…'
+        sw_db_state_nokey = 'Введите ключ Steam Web API.'
+        sw_db_state_fail = 'Не удалось обновить.'
+        sw_search_label = 'Поиск по локальной базе:'
+        sw_search_btn = 'Найти'
+        sw_search_none = 'Ничего не найдено (или база ещё не обновлена).'
+        sw_search_capped = 'Показаны первые 30 совпадений (точные и начинающиеся с запроса — вверху):'
         set_backup_section = 'Резервные копии shortcuts.vdf'
         set_backup_current = 'Текущая папка: {0}'
         set_create_backup = 'Создать бэкап'
@@ -650,13 +683,15 @@ $script:I18n = @{
         set_steam_folder = 'Steam folder'
         set_profile = 'Profile'
         set_profile_hint = 'Choose the userdata profile the program will work with.'
+        set_exe_filter = 'EXE filter'
+        set_offer_launchers = 'Suggest launchers'
         set_api_key = 'API key'
         key_valid = 'API key is valid.'
         key_invalid_default = 'API key is invalid or failed the check.'
         key_empty = 'No API key entered.'
         key_checking = 'Checking key…'
-        key_hint_default = 'Needed to download game covers. You can get a free key at steamgriddb.com/profile/preferences.'
-        key_new_key = ' New key: steamgriddb.com/profile/preferences.'
+        key_hint_default = 'Needed to download additional game covers. You can get a free key at steamgriddb.com/profile/preferences/api.'
+        key_new_key = ' New key: steamgriddb.com/profile/preferences/api.'
         sg_401 = 'The key is invalid or has been revoked (401).'
         sg_403 = 'Access denied (403): the key was revoked or the request was blocked by the service.'
         sg_429 = 'Too many requests to SteamGridDB (429). Try the check again later.'
@@ -667,6 +702,37 @@ $script:I18n = @{
         sg_tls = 'Secure connection (TLS) error with SteamGridDB.'
         sg_connect = 'Could not connect to SteamGridDB (connection dropped or no internet).'
         sg_noresp = 'No response from SteamGridDB: {0}'
+        sw_section = 'Steam Web API (local game database)'
+        sw_key_hint = 'Needed for more accurate game name searches. Downloads names and App IDs into the local database (optional). A free key can be obtained at steamcommunity.com/dev/apikey.'
+        sw_key_new_key = ' Get/change key: steamcommunity.com/dev/apikey.'
+        sw_key_403 = 'The key was rejected by Steam (403 Forbidden).'
+        sw_key_server = 'Steam is temporarily unavailable (error {0}).'
+        sw_key_other = 'Unexpected Steam response (code {0}).'
+        sw_key_dns = 'Cannot find the api.steampowered.com server (DNS or internet problem).'
+        sw_key_timeout = 'Steam did not respond within 10 seconds.'
+        sw_key_tls = 'Secure connection (TLS) error with Steam.'
+        sw_key_connect = 'Could not connect to Steam (connection dropped or no internet).'
+        sw_key_noresp = 'No response from Steam: {0}'
+        sw_open_db_btn = 'Steam apps database / search...'
+        sw_db_dialog_title = 'Local Steam apps database'
+        sw_db_status_none = 'The local database has not been created yet.'
+        sw_db_status_known = 'Local database: {0} apps, updated {1}.'
+        sw_db_update_btn = 'Update local database'
+        sw_db_updating = 'Downloading the Steam app list (paginated, may take up to a minute)...'
+        sw_db_update_fail = 'Failed to update the database: {0}'
+        sw_db_update_fail_page = 'Failed to get the Steam app list on page {0} ({1}).'
+        sw_db_update_empty = 'Steam returned an empty response on page {0} (check the key).'
+        sw_db_update_done_title = 'Local database updated'
+        sw_db_update_done_msg = 'Done. Apps in the database: {0}.'
+        sw_db_need_key = 'Enter and save a valid Steam Web API key in settings first.'
+        sw_db_btn_short = 'Update'
+        sw_db_state_updating = 'Updating…'
+        sw_db_state_nokey = 'Enter a Steam Web API key.'
+        sw_db_state_fail = 'Update failed.'
+        sw_search_label = 'Search the local database:'
+        sw_search_btn = 'Search'
+        sw_search_none = 'Nothing found (or the database has not been updated yet).'
+        sw_search_capped = 'Showing the first 30 matches (exact and prefix matches first):'
         set_backup_section = 'shortcuts.vdf backups'
         set_backup_current = 'Current folder: {0}'
         set_create_backup = 'Create backup'
@@ -913,13 +979,47 @@ $script:I18n = @{
         set_steam_folder = 'Steam 文件夹'
         set_profile = '配置文件'
         set_profile_hint = '选择程序要使用的 userdata 配置文件。'
+        set_exe_filter = 'EXE 筛选'
+        set_offer_launchers = '提供游戏启动器'
         set_api_key = 'API 密钥'
+        sw_section = 'Steam Web API（本地游戏数据库）'
+        sw_key_hint = '用于更准确地搜索游戏名称。将名称和 App ID 下载到本地数据库（可选）。可在 steamcommunity.com/dev/apikey 免费获取密钥。'
+        sw_key_new_key = ' 获取/更换密钥：steamcommunity.com/dev/apikey。'
+        sw_key_403 = 'Steam 拒绝了该密钥（403 Forbidden）。'
+        sw_key_server = 'Steam 暂时不可用（错误 {0}）。'
+        sw_key_other = 'Steam 返回了意外响应（代码 {0}）。'
+        sw_key_dns = '无法找到 api.steampowered.com 服务器（DNS 或网络问题）。'
+        sw_key_timeout = 'Steam 在 10 秒内没有响应。'
+        sw_key_tls = '与 Steam 的安全连接（TLS）出错。'
+        sw_key_connect = '无法连接到 Steam（连接中断或没有网络）。'
+        sw_key_noresp = 'Steam 无响应：{0}'
+        sw_open_db_btn = 'Steam 游戏数据库 / 搜索…'
+        sw_db_dialog_title = 'Steam 本地游戏数据库'
+        sw_db_status_none = '本地数据库尚未创建。'
+        sw_db_status_known = '本地数据库：{0} 个游戏，更新于 {1}。'
+        sw_db_update_btn = '更新本地数据库'
+        sw_db_updating = '正在下载 Steam 游戏列表（分页下载，可能需要一分钟）…'
+        sw_db_update_fail = '无法更新数据库：{0}'
+        sw_db_update_fail_page = '无法获取第 {0} 页的 Steam 游戏列表（{1}）。'
+        sw_db_update_empty = 'Steam 在第 {0} 页返回了空响应（请检查密钥）。'
+        sw_db_update_done_title = '本地数据库已更新'
+        sw_db_update_done_msg = '完成。数据库中的游戏数：{0}。'
+        sw_db_need_key = '请先在设置中输入并保存有效的 Steam Web API 密钥。'
+        sw_db_btn_short = '更新'
+        sw_db_state_updating = '正在更新…'
+        sw_db_state_nokey = '请输入 Steam Web API 密钥。'
+        sw_db_state_fail = '更新失败。'
+        sw_search_label = '搜索本地数据库：'
+        sw_search_btn = '搜索'
+        sw_search_none = '未找到任何结果（或数据库尚未更新）。'
+        sw_search_capped = '显示前 30 个匹配项（精确匹配和以查询开头的结果优先）：'
+
         key_valid = 'API 密钥有效。'
         key_invalid_default = 'API 密钥无效或验证失败。'
         key_empty = '未输入 API 密钥。'
         key_checking = '正在验证密钥…'
-        key_hint_default = '用于下载游戏封面。可在 steamgriddb.com/profile/preferences 免费获取密钥。'
-        key_new_key = ' 获取新密钥：steamgriddb.com/profile/preferences。'
+        key_hint_default = '用于下载额外游戏封面。可在 steamgriddb.com/profile/preferences/api 免费获取密钥。'
+        key_new_key = ' 获取新密钥：steamgriddb.com/profile/preferences/api。'
         sg_401 = '密钥无效或已被吊销（401）。'
         sg_403 = '访问被拒绝（403）：密钥已被吊销，或请求被该服务拦截。'
         sg_429 = '向 SteamGridDB 发送的请求过多（429）。请稍后重新验证。'
@@ -1176,13 +1276,47 @@ $script:I18n = @{
         set_steam_folder = 'Carpeta de Steam'
         set_profile = 'Perfil'
         set_profile_hint = 'Elige el perfil de userdata con el que trabajará el programa.'
+        set_exe_filter = 'Filtro EXE'
+        set_offer_launchers = 'Sugerir lanzadores'
         set_api_key = 'Clave de API'
+        sw_section = 'Steam Web API (base de datos local de juegos)'
+        sw_key_hint = 'Necesaria para buscar nombres de juegos con mayor precisión. Descarga nombres y App ID a la base de datos local (opcional). Puedes obtener una clave gratuita en steamcommunity.com/dev/apikey.'
+        sw_key_new_key = ' Obtener/cambiar clave: steamcommunity.com/dev/apikey.'
+        sw_key_403 = 'Steam rechazó la clave (403 Forbidden).'
+        sw_key_server = 'Steam no está disponible temporalmente (error {0}).'
+        sw_key_other = 'Respuesta inesperada de Steam (código {0}).'
+        sw_key_dns = 'No se encuentra el servidor api.steampowered.com (problema de DNS o de internet).'
+        sw_key_timeout = 'Steam no respondió en 10 segundos.'
+        sw_key_tls = 'Error de conexión segura (TLS) con Steam.'
+        sw_key_connect = 'No se pudo conectar con Steam (conexión interrumpida o sin internet).'
+        sw_key_noresp = 'Sin respuesta de Steam: {0}'
+        sw_open_db_btn = 'Base de datos de juegos de Steam / buscar…'
+        sw_db_dialog_title = 'Base de datos local de juegos de Steam'
+        sw_db_status_none = 'La base de datos local aún no se ha creado.'
+        sw_db_status_known = 'Base de datos local: {0} juegos, actualizada {1}.'
+        sw_db_update_btn = 'Actualizar base de datos local'
+        sw_db_updating = 'Descargando la lista de juegos de Steam (por páginas; puede tardar hasta un minuto)…'
+        sw_db_update_fail = 'No se pudo actualizar la base de datos: {0}'
+        sw_db_update_fail_page = 'No se pudo obtener la lista de juegos de Steam en la página {0} ({1}).'
+        sw_db_update_empty = 'Steam devolvió una respuesta vacía en la página {0} (comprueba la clave).'
+        sw_db_update_done_title = 'Base de datos local actualizada'
+        sw_db_update_done_msg = 'Listo. Juegos en la base de datos: {0}.'
+        sw_db_need_key = 'Primero introduce y guarda una clave válida de Steam Web API en Ajustes.'
+        sw_db_btn_short = 'Actualizar'
+        sw_db_state_updating = 'Actualizando…'
+        sw_db_state_nokey = 'Introduce una clave de Steam Web API.'
+        sw_db_state_fail = 'No se pudo actualizar.'
+        sw_search_label = 'Buscar en la base de datos local:'
+        sw_search_btn = 'Buscar'
+        sw_search_none = 'No se encontraron resultados (o la base de datos aún no se ha actualizado).'
+        sw_search_capped = 'Se muestran las primeras 30 coincidencias (las coincidencias exactas y las que empiezan por la consulta aparecen primero):'
+
         key_valid = 'La clave de API es válida.'
         key_invalid_default = 'La clave de API no es válida o no superó la comprobación.'
         key_empty = 'No se ha introducido ninguna clave de API.'
         key_checking = 'Comprobando la clave…'
-        key_hint_default = 'Necesaria para descargar portadas de juegos. Puedes obtener una clave gratuita en steamgriddb.com/profile/preferences.'
-        key_new_key = ' Nueva clave: steamgriddb.com/profile/preferences.'
+        key_hint_default = 'Necesaria para descargar portadas adicionales de juegos. Puedes obtener una clave gratuita en steamgriddb.com/profile/preferences/api.'
+        key_new_key = ' Nueva clave: steamgriddb.com/profile/preferences/api.'
         sg_401 = 'La clave no es válida o ha sido revocada (401).'
         sg_403 = 'Acceso denegado (403): la clave fue revocada o el servicio bloqueó la solicitud.'
         sg_429 = 'Demasiadas solicitudes a SteamGridDB (429). Vuelve a intentar la comprobación más tarde.'
@@ -1439,13 +1573,47 @@ $script:I18n = @{
         set_steam_folder = 'Pasta da Steam'
         set_profile = 'Perfil'
         set_profile_hint = 'Escolha o perfil de userdata com o qual o programa vai trabalhar.'
+        set_exe_filter = 'Filtro EXE'
+        set_offer_launchers = 'Sugerir launchers'
         set_api_key = 'Chave de API'
+        sw_section = 'Steam Web API (banco de dados local de jogos)'
+        sw_key_hint = 'Necessária para pesquisar nomes de jogos com mais precisão. Baixa nomes e App IDs para o banco de dados local (opcional). Uma chave gratuita pode ser obtida em steamcommunity.com/dev/apikey.'
+        sw_key_new_key = ' Obter/trocar chave: steamcommunity.com/dev/apikey.'
+        sw_key_403 = 'A chave foi rejeitada pela Steam (403 Forbidden).'
+        sw_key_server = 'A Steam está temporariamente indisponível (erro {0}).'
+        sw_key_other = 'Resposta inesperada da Steam (código {0}).'
+        sw_key_dns = 'Não foi possível encontrar o servidor api.steampowered.com (problema de DNS ou internet).'
+        sw_key_timeout = 'A Steam não respondeu em 10 segundos.'
+        sw_key_tls = 'Erro de conexão segura (TLS) com a Steam.'
+        sw_key_connect = 'Não foi possível conectar à Steam (conexão interrompida ou sem internet).'
+        sw_key_noresp = 'Sem resposta da Steam: {0}'
+        sw_open_db_btn = 'Banco de dados de jogos da Steam / pesquisar…'
+        sw_db_dialog_title = 'Banco de dados local de jogos da Steam'
+        sw_db_status_none = 'O banco de dados local ainda não foi criado.'
+        sw_db_status_known = 'Banco de dados local: {0} jogos, atualizado em {1}.'
+        sw_db_update_btn = 'Atualizar banco de dados local'
+        sw_db_updating = 'Baixando a lista de jogos da Steam (por páginas; pode levar até um minuto)…'
+        sw_db_update_fail = 'Não foi possível atualizar o banco de dados: {0}'
+        sw_db_update_fail_page = 'Não foi possível obter a lista de jogos da Steam na página {0} ({1}).'
+        sw_db_update_empty = 'A Steam retornou uma resposta vazia na página {0} (verifique a chave).'
+        sw_db_update_done_title = 'Banco de dados local atualizado'
+        sw_db_update_done_msg = 'Pronto. Jogos no banco de dados: {0}.'
+        sw_db_need_key = 'Primeiro informe e salve uma chave válida da Steam Web API em Configurações.'
+        sw_db_btn_short = 'Atualizar'
+        sw_db_state_updating = 'Atualizando…'
+        sw_db_state_nokey = 'Informe uma chave da Steam Web API.'
+        sw_db_state_fail = 'Não foi possível atualizar.'
+        sw_search_label = 'Pesquisar no banco de dados local:'
+        sw_search_btn = 'Pesquisar'
+        sw_search_none = 'Nenhum resultado encontrado (ou o banco de dados ainda não foi atualizado).'
+        sw_search_capped = 'Mostrando as primeiras 30 correspondências (as correspondências exatas e que começam com a consulta aparecem primeiro):'
+
         key_valid = 'A chave de API é válida.'
         key_invalid_default = 'A chave de API é inválida ou não passou na verificação.'
         key_empty = 'Nenhuma chave de API informada.'
         key_checking = 'Verificando a chave…'
-        key_hint_default = 'Necessária para baixar capas de jogos. Você pode obter uma chave gratuita em steamgriddb.com/profile/preferences.'
-        key_new_key = ' Nova chave: steamgriddb.com/profile/preferences.'
+        key_hint_default = 'Necessária para baixar capas adicionais de jogos. Você pode obter uma chave gratuita em steamgriddb.com/profile/preferences/api.'
+        key_new_key = ' Nova chave: steamgriddb.com/profile/preferences/api.'
         sg_401 = 'A chave é inválida ou foi revogada (401).'
         sg_403 = 'Acesso negado (403): a chave foi revogada ou a solicitação foi bloqueada pelo serviço.'
         sg_429 = 'Solicitações demais ao SteamGridDB (429). Tente a verificação novamente mais tarde.'
@@ -1702,13 +1870,47 @@ $script:I18n = @{
         set_steam_folder = 'Steam-Ordner'
         set_profile = 'Profil'
         set_profile_hint = 'Wähle das userdata-Profil aus, mit dem das Programm arbeiten soll.'
+        set_exe_filter = 'EXE-Filter'
+        set_offer_launchers = 'Launcher vorschlagen'
         set_api_key = 'API-Schlüssel'
+        sw_section = 'Steam Web API (lokale Spieldatenbank)'
+        sw_key_hint = 'Wird für eine genauere Suche nach Spielnamen benötigt. Lädt Namen und App-IDs in die lokale Datenbank herunter (optional). Einen kostenlosen Schlüssel gibt es unter steamcommunity.com/dev/apikey.'
+        sw_key_new_key = ' Schlüssel abrufen/ändern: steamcommunity.com/dev/apikey.'
+        sw_key_403 = 'Der Schlüssel wurde von Steam abgelehnt (403 Forbidden).'
+        sw_key_server = 'Steam ist vorübergehend nicht verfügbar (Fehler {0}).'
+        sw_key_other = 'Unerwartete Antwort von Steam (Code {0}).'
+        sw_key_dns = 'Der Server api.steampowered.com wurde nicht gefunden (DNS- oder Internetproblem).'
+        sw_key_timeout = 'Steam hat innerhalb von 10 Sekunden nicht geantwortet.'
+        sw_key_tls = 'Fehler bei der sicheren Verbindung (TLS) zu Steam.'
+        sw_key_connect = 'Verbindung zu Steam nicht möglich (Verbindung unterbrochen oder kein Internet).'
+        sw_key_noresp = 'Keine Antwort von Steam: {0}'
+        sw_open_db_btn = 'Steam-Spieldatenbank / suchen…'
+        sw_db_dialog_title = 'Lokale Steam-Spieldatenbank'
+        sw_db_status_none = 'Die lokale Datenbank wurde noch nicht erstellt.'
+        sw_db_status_known = 'Lokale Datenbank: {0} Spiele, aktualisiert {1}.'
+        sw_db_update_btn = 'Lokale Datenbank aktualisieren'
+        sw_db_updating = 'Steam-Spieleliste wird heruntergeladen (seitenweise; kann bis zu einer Minute dauern)…'
+        sw_db_update_fail = 'Datenbank konnte nicht aktualisiert werden: {0}'
+        sw_db_update_fail_page = 'Steam-Spieleliste auf Seite {0} konnte nicht abgerufen werden ({1}).'
+        sw_db_update_empty = 'Steam hat auf Seite {0} eine leere Antwort zurückgegeben (Schlüssel prüfen).'
+        sw_db_update_done_title = 'Lokale Datenbank aktualisiert'
+        sw_db_update_done_msg = 'Fertig. Spiele in der Datenbank: {0}.'
+        sw_db_need_key = 'Gib zuerst in den Einstellungen einen gültigen Steam-Web-API-Schlüssel ein und speichere ihn.'
+        sw_db_btn_short = 'Aktualisieren'
+        sw_db_state_updating = 'Wird aktualisiert…'
+        sw_db_state_nokey = 'Steam-Web-API-Schlüssel eingeben.'
+        sw_db_state_fail = 'Aktualisierung fehlgeschlagen.'
+        sw_search_label = 'Lokale Datenbank durchsuchen:'
+        sw_search_btn = 'Suchen'
+        sw_search_none = 'Keine Ergebnisse gefunden (oder die Datenbank wurde noch nicht aktualisiert).'
+        sw_search_capped = 'Die ersten 30 Treffer werden angezeigt (exakte und mit der Suche beginnende Treffer zuerst):'
+
         key_valid = 'Der API-Schlüssel ist gültig.'
         key_invalid_default = 'Der API-Schlüssel ist ungültig oder hat die Prüfung nicht bestanden.'
         key_empty = 'Kein API-Schlüssel eingegeben.'
         key_checking = 'Schlüssel wird geprüft…'
-        key_hint_default = 'Wird zum Herunterladen von Spiele-Covern benötigt. Einen kostenlosen Schlüssel gibt es unter steamgriddb.com/profile/preferences.'
-        key_new_key = ' Neuer Schlüssel: steamgriddb.com/profile/preferences.'
+        key_hint_default = 'Wird zum Herunterladen zusätzlicher Spiele-Cover benötigt. Einen kostenlosen Schlüssel gibt es unter steamgriddb.com/profile/preferences/api.'
+        key_new_key = ' Neuer Schlüssel: steamgriddb.com/profile/preferences/api.'
         sg_401 = 'Der Schlüssel ist ungültig oder wurde widerrufen (401).'
         sg_403 = 'Zugriff verweigert (403): Der Schlüssel wurde widerrufen oder die Anfrage wurde vom Dienst blockiert.'
         sg_429 = 'Zu viele Anfragen an SteamGridDB (429). Versuche die Prüfung später erneut.'
@@ -1928,7 +2130,7 @@ function T ([string]$Key, [object[]]$FormatArgs = @()) {
 # содержать только один Steam Commander.exe.
 $global:appDataDir = Join-Path ([Environment]::GetFolderPath('ApplicationData')) "Steam Commander"
 $global:coverSourcesDir = Join-Path $global:appDataDir "cover_sources"
-# API-ключ SteamGridDB (бесплатный, получается на steamgriddb.com/profile/preferences)
+# API-ключ SteamGridDB (бесплатный, получается на steamgriddb.com/profile/preferences/api)
 # — используется как резервный источник обложек, когда у официального CDN
 # Steam нет нужных картинок (совсем новые/непопулярные издания, только hero
 # без капсулы и т.п.). Хранится в config.ini рядом с остальными настройками.
@@ -1936,6 +2138,18 @@ $global:steamGridDbApiKey = ""
 # Состояние последней проверки ключа SteamGridDB. До успешной проверки
 # SGDB-поиск считается недоступным.
 $global:steamGridDbApiKeyValid = $false
+# Если включено, игровые лаунчеры разрешены среди автоматически найденных EXE.
+# По умолчанию выключено: лаунчеры отбрасываются из списка кандидатов.
+$global:suggestGameLaunchers = $false
+
+# Публичный ключ Steam Web API (steamcommunity.com/dev/apikey) — отдельный от
+# ключа SteamGridDB. Используется только для скачивания полного списка
+# приложений Steam (IStoreService/GetAppList) в локальную базу для поиска.
+# Хранится в config.ini рядом с остальными настройками, база — рядом с ним
+# же, в %AppData%\Steam Commander, там же, где все прочие метаданные программы.
+$global:steamApiKey = ""
+$global:steamApiKeyValid = $false
+$global:steamAppsDbFile = Join-Path $global:appDataDir "steam_apps_db.json"
 
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     $osLang = ''; try { $osLang = [System.Globalization.CultureInfo]::CurrentUICulture.TwoLetterISOLanguageName } catch {}
@@ -2475,6 +2689,8 @@ function Load-Configuration {
                 # SteamGridDB закономерно отвечал 401 Unauthorized даже с
                 # правильно введённым и сохранённым ключом.
                 if ($line.StartsWith("steamGridDbApiKey=")) { $global:steamGridDbApiKey = $line.Substring(18).Trim() }
+                if ($line.StartsWith("suggestGameLaunchers=")) { $global:suggestGameLaunchers = ([string]$line.Substring(21).Trim()).ToLowerInvariant() -eq "true" }
+                if ($line.StartsWith("steamApiKey=")) { $global:steamApiKey = $line.Substring(12).Trim() }
                 if ($line.StartsWith("backupFolderPath=")) { $global:backupFolderPath = $line.Substring(17).Trim() }
                 if ($line.StartsWith("language=")) { $global:language = $line.Substring(9).Trim() }
             }
@@ -2512,78 +2728,816 @@ function New-SgdbKeyCheckResult($valid, [string]$kind, [string]$severity, [int]$
     return $res
 }
 
+# Сама сетевая проверка ключа SteamGridDB вынесена в самодостаточный
+# scriptblock: он не обращается ни к функциям, ни к переменным программы и
+# возвращает только простые данные — поэтому его можно выполнять и напрямую
+# (проверка после ввода ключа в «Настройках»), и в фоновом runspace (проверка
+# при запуске, чтобы не задерживать открытие программы на время сетевого
+# таймаута). $maxAttempts > 1 — повторить запрос при сетевом сбое/5xx/429;
+# 401/403 — окончательный ответ, повторять не нужно.
+$script:SgdbKeyRawCheck = {
+    param($apiKey, [int]$maxAttempts = 1)
+    try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch {}
+
+    $r = @{ Ok = $false; StatusCode = 0; WebStatus = ''; RawMsg = '' }
+    for ($attempt = 1; $attempt -le [Math]::Max(1, $maxAttempts); $attempt++) {
+        $r = @{ Ok = $false; StatusCode = 0; WebStatus = ''; RawMsg = '' }
+        try {
+            $headers = @{ Authorization = "Bearer $(([string]$apiKey).Trim())" }
+            $url = 'https://www.steamgriddb.com/api/v2/search/autocomplete/__steam_commander_key_check__'
+            $resp = Invoke-RestMethod -Uri $url -Headers $headers -TimeoutSec 10 -ErrorAction Stop
+            # ВАЖНО: SteamGridDB на этот эндпоинт может вернуть HTTP 200 с телом
+            # {"success": false, ...} даже для неверного/испорченного ключа — то есть
+            # исключения не будет. Раньше тело ответа полностью отбрасывалось
+            # (Out-Null), и ключ засчитывался валидным просто потому, что сервер не
+            # ответил кодом ошибки. Поэтому дополнительно проверяем поле success.
+            if ($resp -and ($resp.PSObject.Properties.Name -contains 'success') -and -not [bool]$resp.success) {
+                $r.StatusCode = 401
+                $r.WebStatus = 'ProtocolError'
+                $r.RawMsg = 'success:false'
+            } else {
+                $r.Ok = $true
+                break
+            }
+        } catch {
+            $ex = $_.Exception
+            try { $r.StatusCode = [int]$ex.Response.StatusCode.value__ } catch {}
+            try { $r.WebStatus = [string]$ex.Status } catch {}
+            try { $r.RawMsg = [string]$ex.Message } catch {}
+        }
+        if (-not ($r.StatusCode -eq 0 -or $r.StatusCode -ge 500 -or $r.StatusCode -eq 429)) { break }
+    }
+    return $r
+}
+
+# Превращает "сырой" результат запроса в объект проверки (Valid/Kind/Severity/Message).
+function ConvertTo-SgdbKeyCheckResult($raw) {
+    if ($raw.Ok) { return (New-SgdbKeyCheckResult $true 'valid' 'ok' 200 'key_valid') }
+
+    $statusCode = 0; try { $statusCode = [int]$raw.StatusCode } catch {}
+    $webStatus = [string]$raw.WebStatus
+    $rawMsg = [string]$raw.RawMsg
+
+    if ($statusCode -eq 401) { return (New-SgdbKeyCheckResult $false 'invalid' 'error' 401 'sg_401') }
+    if ($statusCode -eq 403) { return (New-SgdbKeyCheckResult $false 'forbidden' 'error' 403 'sg_403') }
+    if ($statusCode -eq 429) { return (New-SgdbKeyCheckResult $false 'ratelimit' 'warn' 429 'sg_429') }
+    if ($statusCode -ge 500) { return (New-SgdbKeyCheckResult $false 'server' 'warn' $statusCode 'sg_server' @($statusCode)) }
+    if ($statusCode -gt 0)   { return (New-SgdbKeyCheckResult $false 'other' 'error' $statusCode 'sg_other' @($statusCode)) }
+
+    # Ответа от сервера нет вовсе — уточняем причину по типу сетевой ошибки.
+    $msgArgs = @()
+    if ($webStatus -match 'NameResolutionFailure') {
+        $msg = 'sg_dns'
+    } elseif ($webStatus -eq 'Timeout') {
+        $msg = 'sg_timeout'
+    } elseif ($webStatus -match 'SecureChannelFailure|TrustFailure' -or $rawMsg -match 'SSL/TLS') {
+        $msg = 'sg_tls'
+    } elseif ($webStatus -match 'ConnectFailure|ConnectionClosed|SendFailure|ReceiveFailure') {
+        $msg = 'sg_connect'
+    } else {
+        if ($rawMsg.Length -gt 100) { $rawMsg = $rawMsg.Substring(0, 100) + '…' }
+        $msg = 'sg_noresp'; $msgArgs = @($rawMsg)
+    }
+    return (New-SgdbKeyCheckResult $false 'network' 'warn' 0 $msg $msgArgs)
+}
+
+# Синхронная проверка (для «Настроек»: пользователь ввёл ключ и ждёт ответа).
 function Get-SgdbKeyCheckResult([string]$apiKey) {
     if ([string]::IsNullOrWhiteSpace($apiKey)) {
         return (New-SgdbKeyCheckResult $false 'empty' 'none' 0 'key_empty')
     }
-    # Эта проверка выполняется при запуске, раньше остальных сетевых вызовов,
-    # поэтому TLS 1.2 включаем здесь явно (в Windows PowerShell 5.1 он по
-    # умолчанию бывает выключен).
+    $raw = & $script:SgdbKeyRawCheck $apiKey 1
+    return (ConvertTo-SgdbKeyCheckResult $raw)
+}
+
+
+# ------------------- Steam Web API ключ (для локальной базы игр) -------------------
+# Отдельная от SteamGridDB проверка: свой ключ, свой статус, своя причина
+# отказа — используется только для скачивания списка приложений Steam.
+function Get-SteamApiKeyCheckResult([string]$apiKey) {
+    if ([string]::IsNullOrWhiteSpace($apiKey)) {
+        return (New-SgdbKeyCheckResult $false 'empty' 'none' 0 'key_empty')
+    }
+    $raw = & $script:SteamKeyRawCheck $apiKey
+    return (ConvertTo-SteamKeyCheckResult $raw)
+}
+
+# Как и у SteamGridDB — самодостаточный scriptblock, пригодный для фонового runspace.
+$script:SteamKeyRawCheck = {
+    param($apiKey)
     try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch {}
 
+    $r = @{ Ok = $false; NoData = $false; StatusCode = 0; WebStatus = ''; RawMsg = '' }
     try {
-        $headers = @{ Authorization = "Bearer $($apiKey.Trim())" }
-        $url = 'https://www.steamgriddb.com/api/v2/search/autocomplete/__steam_commander_key_check__'
-        Invoke-RestMethod -Uri $url -Headers $headers -TimeoutSec 10 -ErrorAction Stop | Out-Null
-        return (New-SgdbKeyCheckResult $true 'valid' 'ok' 200 'key_valid')
+        # Известный публичный SteamID64 (Gabe Newell) — используется ТОЛЬКО чтобы
+        # проверить, принимает ли Steam ключ (запрос требует авторизации ключом).
+        $url = "https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/?key=$(([string]$apiKey).Trim())&steamids=76561197960435530"
+        $resp = Invoke-RestMethod -Uri $url -TimeoutSec 10 -ErrorAction Stop
+        if ($resp -and $resp.response) { $r.Ok = $true } else { $r.NoData = $true }
     } catch {
         $ex = $_.Exception
-        $statusCode = 0
-        try { $statusCode = [int]$ex.Response.StatusCode.value__ } catch {}
-        $webStatus = ''
-        try { $webStatus = [string]$ex.Status } catch {}
-        $rawMsg = ''
-        try { $rawMsg = [string]$ex.Message } catch {}
-
-        if ($statusCode -eq 401) { return (New-SgdbKeyCheckResult $false 'invalid' 'error' 401 'sg_401') }
-        if ($statusCode -eq 403) { return (New-SgdbKeyCheckResult $false 'forbidden' 'error' 403 'sg_403') }
-        if ($statusCode -eq 429) { return (New-SgdbKeyCheckResult $false 'ratelimit' 'warn' 429 'sg_429') }
-        if ($statusCode -ge 500) { return (New-SgdbKeyCheckResult $false 'server' 'warn' $statusCode 'sg_server' @($statusCode)) }
-        if ($statusCode -gt 0)   { return (New-SgdbKeyCheckResult $false 'other' 'error' $statusCode 'sg_other' @($statusCode)) }
-
-        # Ответа от сервера нет вовсе — уточняем причину по типу сетевой ошибки.
-        $msgArgs = @()
-        if ($webStatus -match 'NameResolutionFailure') {
-            $msg = 'sg_dns'
-        } elseif ($webStatus -eq 'Timeout') {
-            $msg = 'sg_timeout'
-        } elseif ($webStatus -match 'SecureChannelFailure|TrustFailure' -or $rawMsg -match 'SSL/TLS') {
-            $msg = 'sg_tls'
-        } elseif ($webStatus -match 'ConnectFailure|ConnectionClosed|SendFailure|ReceiveFailure') {
-            $msg = 'sg_connect'
-        } else {
-            if ($rawMsg.Length -gt 100) { $rawMsg = $rawMsg.Substring(0, 100) + '…' }
-            $msg = 'sg_noresp'; $msgArgs = @($rawMsg)
-        }
-        return (New-SgdbKeyCheckResult $false 'network' 'warn' 0 $msg $msgArgs)
+        try { $r.StatusCode = [int]$ex.Response.StatusCode.value__ } catch {}
+        try { $r.WebStatus = [string]$ex.Status } catch {}
+        try { $r.RawMsg = [string]$ex.Message } catch {}
     }
+    return $r
 }
 
-# При запуске сразу проверяем сохранённый ключ SteamGridDB. Это важно для карточек
-# игр: они создаются раньше, чем пользователь вообще может открыть «Настройки»,
-# поэтому состояние переключателя SGDB должно быть известно уже при старте.
-# Если ключ пустой, недействительный или API недоступен — SGDB считается
-# недоступным. При успешном HTTP-ответе флаг становится true.
-function Initialize-SteamGridDbApiKeyValidation {
-    $apiKey = [string]$global:steamGridDbApiKey
-    $global:steamGridDbApiKeyValid = $false
-    $global:steamGridDbApiKeyCheck = $null
+function ConvertTo-SteamKeyCheckResult($raw) {
+    if ($raw.Ok) { return (New-SgdbKeyCheckResult $true 'valid' 'ok' 200 'key_valid') }
+    if ($raw.NoData) { return (New-SgdbKeyCheckResult $false 'other' 'warn' 0 'key_invalid_default') }
 
-    if ([string]::IsNullOrWhiteSpace($apiKey)) {
+    $statusCode = 0; try { $statusCode = [int]$raw.StatusCode } catch {}
+    $webStatus = [string]$raw.WebStatus
+    $rawMsg = [string]$raw.RawMsg
+
+    if ($statusCode -eq 403) { return (New-SgdbKeyCheckResult $false 'forbidden' 'error' 403 'sw_key_403') }
+    if ($statusCode -ge 500) { return (New-SgdbKeyCheckResult $false 'server' 'warn' $statusCode 'sw_key_server' @($statusCode)) }
+    if ($statusCode -gt 0)   { return (New-SgdbKeyCheckResult $false 'other' 'error' $statusCode 'sw_key_other' @($statusCode)) }
+
+    $msgArgs = @()
+    if ($webStatus -match 'NameResolutionFailure') {
+        $msg = 'sw_key_dns'
+    } elseif ($webStatus -eq 'Timeout') {
+        $msg = 'sw_key_timeout'
+    } elseif ($webStatus -match 'SecureChannelFailure|TrustFailure' -or $rawMsg -match 'SSL/TLS') {
+        $msg = 'sw_key_tls'
+    } elseif ($webStatus -match 'ConnectFailure|ConnectionClosed|SendFailure|ReceiveFailure') {
+        $msg = 'sw_key_connect'
+    } else {
+        if ($rawMsg.Length -gt 100) { $rawMsg = $rawMsg.Substring(0, 100) + '…' }
+        $msg = 'sw_key_noresp'; $msgArgs = @($rawMsg)
+    }
+    return (New-SgdbKeyCheckResult $false 'network' 'warn' 0 $msg $msgArgs)
+}
+
+function Test-SteamApiKey([string]$apiKey) {
+    $check = Get-SteamApiKeyCheckResult $apiKey
+    $global:steamApiKeyValid = [bool]$check.Valid
+    $global:steamApiKeyCheck = $check
+    return $check
+}
+
+# ------------------- Проверка ключей при запуске — в фоне -------------------
+# Раньше при запуске оба ключа (SteamGridDB и Steam Web API) проверялись
+# синхронно, прямо в UI-потоке, и если сервис не отвечал, программа "висела"
+# до 10 секунд (таймаут запроса) на каждый ключ, прежде чем показать окно.
+# Теперь запросы уходят в фоновые runspace'ы, окно открывается сразу, а
+# результат подхватывается в момент, когда он реально нужен: при открытии
+# «Настроек» (там при необходимости ждём) и в карточке игры (там кнопка SGDB
+# просто включится сама, как только проверка закончится).
+$script:startupJobs = @{ Sgdb = $null; Steam = $null; Db = $null }
+# Итог последнего обновления базы игр (@{Ok; Count} или @{Ok=$false; Error}).
+$script:lastDbRefreshResult = $null
+
+function Start-StartupBackgroundJob([string]$name, $scriptBlock, [object[]]$argList) {
+    try {
+        $ps = [System.Management.Automation.PowerShell]::Create()
+        [void]$ps.AddScript($scriptBlock)
+        foreach ($a in $argList) { [void]$ps.AddArgument($a) }
+        $script:startupJobs[$name] = [PSCustomObject]@{ Ps = $ps; Async = $ps.BeginInvoke() }
+        return $true
+    } catch {
+        $script:startupJobs[$name] = $null
         return $false
     }
-
-    # Любая неудача = SGDB выключен, но причина (401, сервис недоступен, TLS и
-    # т.д.) теперь запоминается и показывается в «Настройках» под полем ключа.
-    $check = Get-SgdbKeyCheckResult $apiKey
-    $global:steamGridDbApiKeyCheck = $check
-    $global:steamGridDbApiKeyValid = [bool]$check.Valid
-    return [bool]$check.Valid
 }
 
-# Проверка выполняется один раз при старте программы, сразу после чтения config.ini.
-# Поэтому карточка игры получает правильное состояние кнопки SGDB без захода в настройки.
-Initialize-SteamGridDbApiKeyValidation | Out-Null
+function Get-StartupJobResult($job) {
+    $res = $null
+    try {
+        $out = @($job.Ps.EndInvoke($job.Async))
+        if ($out.Count -gt 0) { $res = $out[0].psobject.BaseObject }
+    } catch {}
+    try { $job.Ps.Dispose() } catch {}
+    return $res
+}
+
+function Test-StartupKeyChecksPending {
+    return (($null -ne $script:startupJobs['Sgdb']) -or ($null -ne $script:startupJobs['Steam']))
+}
+
+# Забирает результаты фоновых проверок ключей. Без -Wait ничего не ждёт и
+# просто подбирает то, что уже готово; с -Wait дожидается (прокачивая
+# сообщения окна), но не дольше ~25 секунд.
+function Complete-StartupKeyChecks ([switch]$Wait) {
+    foreach ($name in @('Sgdb', 'Steam')) {
+        $job = $script:startupJobs[$name]
+        if ($null -eq $job) { continue }
+        if (-not $job.Async.IsCompleted) {
+            if (-not $Wait) { continue }
+            $deadline = (Get-Date).AddSeconds(25)
+            while (-not $job.Async.IsCompleted -and (Get-Date) -lt $deadline) {
+                [System.Windows.Forms.Application]::DoEvents()
+                Start-Sleep -Milliseconds 30
+            }
+            if (-not $job.Async.IsCompleted) { try { $job.Ps.Stop() } catch {} }
+        }
+        $script:startupJobs[$name] = $null
+        $raw = Get-StartupJobResult $job
+        if ($null -eq $raw) { $raw = @{ Ok = $false; StatusCode = 0; WebStatus = 'Timeout'; RawMsg = '' } }
+        if ($name -eq 'Sgdb') {
+            $check = ConvertTo-SgdbKeyCheckResult $raw
+            $global:steamGridDbApiKeyCheck = $check
+            $global:steamGridDbApiKeyValid = [bool]$check.Valid
+        } else {
+            $check = ConvertTo-SteamKeyCheckResult $raw
+            $global:steamApiKeyCheck = $check
+            $global:steamApiKeyValid = [bool]$check.Valid
+        }
+    }
+
+    # Фоновое обновление базы игр закончилось — освобождаем runspace.
+    $dbJob = $script:startupJobs['Db']
+    if ($null -ne $dbJob -and $dbJob.Async.IsCompleted) {
+        $script:startupJobs['Db'] = $null
+        $script:lastDbRefreshResult = Get-StartupJobResult $dbJob
+    }
+}
+
+# При закрытии программы не даём фоновой загрузке базы держать процесс.
+function Stop-StartupBackgroundJobs {
+    foreach ($name in @('Sgdb', 'Steam', 'Db')) {
+        $job = $script:startupJobs[$name]
+        if ($null -eq $job) { continue }
+        try { if (-not $job.Async.IsCompleted) { [void]$job.Ps.BeginStop($null, $null) } } catch {}
+    }
+}
+
+function Start-StartupKeyChecks {
+    $global:steamGridDbApiKeyValid = $false
+    $global:steamGridDbApiKeyCheck = $null
+    $global:steamApiKeyValid = $false
+    $global:steamApiKeyCheck = $null
+
+    $sgdbKey = [string]$global:steamGridDbApiKey
+    if (-not [string]::IsNullOrWhiteSpace($sgdbKey)) {
+        # Два захода: на сетевом сбое/таймауте вторая попытка идёт уже в фоне и
+        # ничего не задерживает.
+        if (-not (Start-StartupBackgroundJob 'Sgdb' $script:SgdbKeyRawCheck @($sgdbKey, 2))) {
+            $check = Get-SgdbKeyCheckResult $sgdbKey
+            $global:steamGridDbApiKeyCheck = $check
+            $global:steamGridDbApiKeyValid = [bool]$check.Valid
+        }
+    }
+    $steamKey = [string]$global:steamApiKey
+    if (-not [string]::IsNullOrWhiteSpace($steamKey)) {
+        if (-not (Start-StartupBackgroundJob 'Steam' $script:SteamKeyRawCheck @($steamKey))) {
+            $check = Get-SteamApiKeyCheckResult $steamKey
+            $global:steamApiKeyCheck = $check
+            $global:steamApiKeyValid = [bool]$check.Valid
+        }
+    }
+}
+Start-StartupKeyChecks
+
+# ------------------- Локальная база App ID <-> название -------------------
+# Используется ТОЛЬКО для поиска игры по названию в карточке (см.
+# Get-SteamStoreNameCandidates / Find-SteamAppInfo). Отдельного окна и кнопки
+# в «Настройках» нет: если задан Steam Web API ключ, а базы ещё нет или она
+# старше 7 дней, она тихо обновляется в фоне при запуске программы.
+#
+# Метод ISteamApps/GetAppList/v2 объявлен Valve устаревшим (не справляется с
+# текущим объёмом каталога Steam) и у части пользователей отвечает 404.
+# Официально рекомендованная замена — IStoreService/GetAppList/v1: требует
+# ключ и отдаёт список порциями (постранично, через last_appid), поэтому тут
+# цикл пагинации. Файл базы хранится рядом с config.ini, в %AppData%\Steam Commander.
+$script:LocalSteamAppsDbRefreshDays = 7
+
+# Самодостаточный scriptblock для фонового runspace: скачивает весь список,
+# пишет JSON во временный файл и подменяет им рабочий (поиск никогда не
+# увидит наполовину записанный файл).
+$script:LocalSteamAppsDbRefresh = {
+    param($apiKey, $dbPath, $progressPath)
+    try {
+        # Прогресс обновления передаём в окно настроек через небольшой
+        # служебный файл: фоновый PowerShell-runspace имеет собственное
+        # состояние и не может напрямую менять элементы WinForms.
+        try {
+            if (-not [string]::IsNullOrWhiteSpace([string]$progressPath)) {
+                [System.IO.File]::WriteAllText([string]$progressPath, '0')
+            }
+        } catch {}
+        try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch {}
+        $ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+        $baseUrl = 'https://api.steampowered.com/IStoreService/GetAppList/v1/'
+        $ids = New-Object System.Collections.Generic.List[int]
+        $names = New-Object System.Collections.Generic.List[string]
+        $lastAppId = 0
+        $haveMore = $true
+        $page = 0
+        # У Steam API нет общего количества страниц, поэтому процент строится
+        # по ожидаемому размеру каталога. Берём размер уже существующей базы,
+        # но не меньше 250 тыс. записей. Если каталог окажется больше оценки,
+        # прогресс остановится на 95% и завершится 100% только после записи базы.
+        $estimatedTotal = 250000
+        try {
+            if (Test-Path -LiteralPath $dbPath) {
+                $head = [System.IO.File]::ReadAllText([string]$dbPath)
+                $mCount = [regex]::Match($head, '"Count"\s*:\s*(\d+)')
+                if ($mCount.Success) {
+                    $oldCount = 0
+                    if ([int]::TryParse($mCount.Groups[1].Value, [ref]$oldCount) -and $oldCount -gt $estimatedTotal) {
+                        $estimatedTotal = $oldCount
+                    }
+                }
+            }
+        } catch {}
+        $estimatedPages = [math]::Max(1, [int][math]::Ceiling($estimatedTotal / 50000.0))
+
+        while ($haveMore) {
+            $page++
+            if ($page -gt 60) { throw 'too many pages' }
+            $url = "$baseUrl`?key=$(([string]$apiKey).Trim())&max_results=50000&include_games=1&include_dlc=1&include_software=1&include_videos=0&include_hardware=0&last_appid=$lastAppId"
+            $data = Invoke-RestMethod -Uri $url -UserAgent $ua -TimeoutSec 90 -ErrorAction Stop
+            $resp = $data.response
+            if (-not $resp -or -not $resp.apps) {
+                if ($page -eq 1) { throw 'empty response' }
+                break
+            }
+            foreach ($app in $resp.apps) {
+                $ids.Add([int]$app.appid)
+                $names.Add([string]$app.name)
+            }
+
+            # Показываем максимум 95% до фактического завершения скачивания.
+            # Если страниц окажется больше ожидаемого числа, процент просто
+            # остаётся на 95%, а не прыгает обратно.
+            try {
+                if (-not [string]::IsNullOrWhiteSpace([string]$progressPath)) {
+                    $pct = [int][math]::Floor(($page / [double]$estimatedPages) * 95)
+                    if ($pct -lt 1) { $pct = 1 }
+                    if ($pct -gt 95) { $pct = 95 }
+                    [System.IO.File]::WriteAllText([string]$progressPath, [string]$pct)
+                }
+            } catch {}
+
+            $haveMore = [bool]$resp.have_more_results
+            $lastAppId = $resp.last_appid
+        }
+        # Защита от "обновления" рабочей базы мусором.
+        if ($ids.Count -lt 1000) { throw "suspiciously small list: $($ids.Count)" }
+
+        $sb = New-Object System.Text.StringBuilder ($ids.Count * 40)
+        [void]$sb.Append('{"UpdatedAt":"').Append((Get-Date).ToString('yyyy-MM-dd HH:mm:ss')).Append('","Count":').Append($ids.Count).Append(',"Apps":[')
+        $first = $true
+        for ($i = 0; $i -lt $ids.Count; $i++) {
+            $n = $names[$i]
+            if ([string]::IsNullOrWhiteSpace($n)) { continue }
+            $n = $n.Replace('\', '\\').Replace('"', '\"')
+            if ($n -match '[\x00-\x1f]') {
+                $n = [regex]::Replace($n, '[\x00-\x1f]', { param($m) ('\u{0:x4}' -f [int][char]$m.Value) })
+            }
+            if ($first) { $first = $false } else { [void]$sb.Append(',') }
+            [void]$sb.Append('{"appid":').Append($ids[$i]).Append(',"name":"').Append($n).Append('"}')
+        }
+        [void]$sb.Append(']}')
+
+        $tmp = $dbPath + '.tmp'
+        [System.IO.File]::WriteAllText($tmp, $sb.ToString(), (New-Object System.Text.UTF8Encoding($false)))
+        $moved = $false
+        for ($t = 1; $t -le 6 -and -not $moved; $t++) {
+            try { Move-Item -LiteralPath $tmp -Destination $dbPath -Force -ErrorAction Stop; $moved = $true }
+            catch { Start-Sleep -Milliseconds 500 }
+        }
+        if (-not $moved) { throw 'cannot replace database file' }
+
+        # Сразу подгружаем свежую базу в индекс поиска (тип общий для всего процесса).
+        try { [void][SteamAppsIndex]::EnsureLoaded($dbPath) } catch {}
+        try {
+            if (-not [string]::IsNullOrWhiteSpace([string]$progressPath)) {
+                [System.IO.File]::WriteAllText([string]$progressPath, '100')
+            }
+        } catch {}
+        return @{ Ok = $true; Count = $ids.Count }
+    } catch {
+        return @{ Ok = $false; Error = [string]$_.Exception.Message }
+    } finally {
+        # Файл прогресса удаляется после того, как результат уже сформирован.
+        # При успехе UI успевает увидеть 100%; при ошибке старый процент не
+        # останется после завершения операции.
+        try {
+            if (-not [string]::IsNullOrWhiteSpace([string]$progressPath)) {
+                if (Test-Path -LiteralPath $progressPath) { Remove-Item -LiteralPath $progressPath -Force -ErrorAction SilentlyContinue }
+            }
+        } catch {}
+    }
+}
+
+# Запускает фоновое обновление базы. Без -Force — только если базы нет или она
+# старше $script:LocalSteamAppsDbRefreshDays дней. Если обновление уже идёт,
+# второе не запускается (возвращается $true — можно просто дождаться первого).
+function Start-LocalSteamAppsDbRefresh([string]$apiKey, [switch]$Force) {
+    if ([string]::IsNullOrWhiteSpace($apiKey)) { return $false }
+
+    $existing = $script:startupJobs['Db']
+    if ($null -ne $existing) {
+        if (-not $existing.Async.IsCompleted) { return $true }
+        try { Complete-StartupKeyChecks } catch {}
+    }
+
+    $dbPath = [string]$global:steamAppsDbFile
+    if (-not $Force) {
+        try {
+            if (Test-Path -LiteralPath $dbPath) {
+                $age = (Get-Date) - (Get-Item -LiteralPath $dbPath).LastWriteTime
+                if ($age.TotalDays -lt $script:LocalSteamAppsDbRefreshDays) { return $false }
+            }
+        } catch {}
+    }
+    $script:lastDbRefreshResult = $null
+    $progressPath = $dbPath + '.progress'
+    try {
+        [System.IO.File]::WriteAllText($progressPath, '0')
+    } catch {}
+    return (Start-StartupBackgroundJob 'Db' $script:LocalSteamAppsDbRefresh @($apiKey, $dbPath, $progressPath))
+}
+
+# Автообновление при запуске программы.
+function Start-LocalSteamAppsDbAutoUpdate {
+    [void](Start-LocalSteamAppsDbRefresh ([string]$global:steamApiKey))
+}
+
+
+# Индекс локальной базы держится в памяти (один раз разобранный C#-кодом),
+# а не перечитывается и не разбирается заново на КАЖДОМ поиске. Раньше
+# Search-LocalSteamAppsDatabase на каждый вызов читал весь JSON-файл
+# (десятки МБ) через ConvertFrom-Json и гонял по ~250 тыс. записей три
+# отдельных Where-Object с -like — на каждую введённую в поле "Название"
+# букву. Это и давало многосекундные "фризы" карточки игры.
+# Теперь: файл разбирается один раз (в фоне при старте программы, см.
+# BeginLoad ниже), а поиск — один проход по массивам в памяти (~десятки мс)
+# с ранжированием: точное совпадение -> название начинается с запроса ->
+# слово начинается с запроса -> все слова запроса -> подстрока. Записи
+# вроде "... Soundtrack" / "... Demo" / "... Playtest" уходят вниз списка.
+if (-not ('SteamAppsIndex' -as [type])) {
+    try {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Text;
+using System.Text.RegularExpressions;
+using System.Threading;
+
+public class SteamAppHit
+{
+    public int AppId;
+    public string Name;
+    // 0 - точное совпадение, 1 - название начинается с запроса,
+    // 2 - какое-то слово начинается с запроса, 3 - все слова запроса есть,
+    // 4 - запрос встречается внутри названия.
+    public int Tier;
+    public bool Junk;
+}
+
+public static class SteamAppsIndex
+{
+    private static readonly object Sync = new object();
+    private static readonly object LoadLock = new object();
+    private static readonly Dictionary<string, bool> JunkWords = BuildJunkWords();
+
+    private static int[] _ids = new int[0];
+    private static string[] _names = new string[0];
+    private static string[] _norm = new string[0];
+    private static bool[] _junk = new bool[0];
+    private static string _path = "";
+    private static DateTime _stamp = DateTime.MinValue;
+    private static long _size = -1;
+    private static string _updatedAt = "";
+    private static Thread _loader = null;
+
+    private static Dictionary<string, bool> BuildJunkWords()
+    {
+        Dictionary<string, bool> d = new Dictionary<string, bool>();
+        string[] words = new string[] {
+            "soundtrack", "ost", "demo", "playtest", "dlc", "artbook", "wallpaper", "wallpapers",
+            "sdk", "dedicated", "trailer", "beta", "upgrade", "bonus"
+        };
+        foreach (string w in words) { d[w] = true; }
+        return d;
+    }
+
+    public static int Count { get { return _ids.Length; } }
+    public static string UpdatedAt { get { return _updatedAt; } }
+
+    // Нижний регистр, только буквы/цифры, любые разделители -> один пробел.
+    public static string Normalize(string s)
+    {
+        if (string.IsNullOrEmpty(s)) return "";
+        StringBuilder sb = new StringBuilder(s.Length);
+        bool pendingSpace = false;
+        for (int i = 0; i < s.Length; i++)
+        {
+            char c = s[i];
+            if (char.IsLetterOrDigit(c))
+            {
+                if (pendingSpace && sb.Length > 0) sb.Append(' ');
+                pendingSpace = false;
+                sb.Append(char.ToLowerInvariant(c));
+            }
+            else
+            {
+                pendingSpace = true;
+            }
+        }
+        return sb.ToString();
+    }
+
+    private static bool IsJunkName(string norm)
+    {
+        int start = 0;
+        int len = norm.Length;
+        while (start < len)
+        {
+            int end = norm.IndexOf(' ', start);
+            if (end < 0) end = len;
+            if (end > start)
+            {
+                if (JunkWords.ContainsKey(norm.Substring(start, end - start))) return true;
+            }
+            start = end + 1;
+        }
+        return false;
+    }
+
+    private static bool IsAllDigits(string t)
+    {
+        if (string.IsNullOrEmpty(t)) return false;
+        for (int i = 0; i < t.Length; i++)
+        {
+            if (!char.IsDigit(t[i])) return false;
+        }
+        return true;
+    }
+
+    // Есть ли в нормализованном названии слово, начинающееся с token
+    // (при whole == true — слово, равное token целиком).
+    private static bool HasWord(string s, string token, bool whole)
+    {
+        int from = 0;
+        while (from <= s.Length - token.Length)
+        {
+            int idx = s.IndexOf(token, from, StringComparison.Ordinal);
+            if (idx < 0) return false;
+            bool startOk = (idx == 0) || (s[idx - 1] == ' ');
+            if (startOk)
+            {
+                if (!whole) return true;
+                int end = idx + token.Length;
+                if (end == s.Length || s[end] == ' ') return true;
+            }
+            from = idx + 1;
+        }
+        return false;
+    }
+
+    // Запускает разбор файла в фоне и сразу возвращает управление.
+    public static void BeginLoad(string path)
+    {
+        lock (Sync)
+        {
+            if (_loader != null && _loader.IsAlive) return;
+            Thread t = new Thread(delegate() { try { EnsureLoaded(path); } catch { } });
+            t.IsBackground = true;
+            _loader = t;
+            t.Start();
+        }
+    }
+
+    // Гарантирует, что в памяти актуальная версия файла (перечитывает только
+    // если файл изменился). Если фоновая загрузка ещё идёт — дожидается её.
+    public static bool EnsureLoaded(string path)
+    {
+        lock (LoadLock)
+        {
+            FileInfo fi = new FileInfo(path);
+            if (!fi.Exists)
+            {
+                lock (Sync)
+                {
+                    _ids = new int[0]; _names = new string[0]; _norm = new string[0]; _junk = new bool[0];
+                    _stamp = DateTime.MinValue; _size = -1; _updatedAt = ""; _path = path;
+                }
+                return false;
+            }
+            if (_stamp == fi.LastWriteTimeUtc && _size == fi.Length &&
+                string.Equals(_path, path, StringComparison.OrdinalIgnoreCase))
+            {
+                return _ids.Length > 0;
+            }
+            Reload(path, fi);
+            return _ids.Length > 0;
+        }
+    }
+
+    private static void Reload(string path, FileInfo fi)
+    {
+        string text = File.ReadAllText(path, Encoding.UTF8);
+
+        string updated = "";
+        int appsPos = text.IndexOf("\"Apps\"", StringComparison.Ordinal);
+        string head = text.Substring(0, appsPos > 0 ? appsPos : Math.Min(text.Length, 512));
+        Match mu = Regex.Match(head, "\"UpdatedAt\"\\s*:\\s*\"([^\"]*)\"");
+        if (mu.Success) updated = mu.Groups[1].Value;
+
+        List<int> ids = new List<int>(300000);
+        List<string> names = new List<string>(300000);
+        List<string> norms = new List<string>(300000);
+        List<bool> junk = new List<bool>(300000);
+
+        Regex rx = new Regex(
+            "\"appid\"\\s*:\\s*(\\d+)\\s*,\\s*\"name\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"",
+            RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
+        Match m = rx.Match(text);
+        while (m.Success)
+        {
+            int id;
+            if (int.TryParse(m.Groups[1].Value, out id))
+            {
+                string name = m.Groups[2].Value;
+                if (name.IndexOf('\\') >= 0)
+                {
+                    try { name = Regex.Unescape(name); } catch { }
+                }
+                string norm = Normalize(name);
+                if (norm.Length > 0)
+                {
+                    ids.Add(id);
+                    names.Add(name);
+                    norms.Add(norm);
+                    junk.Add(IsJunkName(norm));
+                }
+            }
+            m = m.NextMatch();
+        }
+
+        lock (Sync)
+        {
+            _ids = ids.ToArray();
+            _names = names.ToArray();
+            _norm = norms.ToArray();
+            _junk = junk.ToArray();
+            _updatedAt = updated;
+            _path = path;
+            _stamp = fi.LastWriteTimeUtc;
+            _size = fi.Length;
+        }
+    }
+
+    // Поиск по частичному названию. Результат уже отсортирован по релевантности.
+    public static SteamAppHit[] Search(string query, int limit)
+    {
+        string qs = Normalize(query);
+        if (qs.Length == 0 || limit <= 0) return new SteamAppHit[0];
+        string qc = qs.Replace(" ", "");
+        string[] qt = qs.Split(' ');
+
+        bool ignoreJunk = false;
+        bool[] qWhole = new bool[qt.Length];
+        for (int q = 0; q < qt.Length; q++)
+        {
+            if (JunkWords.ContainsKey(qt[q])) ignoreJunk = true;
+            // Числовое слово запроса ("4" в "DiRT 4") должно совпасть с целым
+            // словом, а не с кусочком вроде "C4", "24" или "2014".
+            qWhole[q] = IsAllDigits(qt[q]);
+        }
+
+        int[] ids; string[] names; string[] norms; bool[] junk;
+        lock (Sync) { ids = _ids; names = _names; norms = _norm; junk = _junk; }
+
+        List<long> keys = new List<long>(2048);
+        string spaceQs = " " + qs;
+        int n = norms.Length;
+        for (int i = 0; i < n; i++)
+        {
+            string s = norms[i];
+            if (s.Length < qc.Length) continue;
+
+            int tier;
+            if (s.Length == qs.Length && string.Equals(s, qs, StringComparison.Ordinal)) tier = 0;
+            else if (s.StartsWith(qs, StringComparison.Ordinal)) tier = 1;
+            else if (s.IndexOf(spaceQs, StringComparison.Ordinal) >= 0) tier = 2;
+            else
+            {
+                bool allTokens = qt.Length > 1;
+                if (allTokens)
+                {
+                    for (int j = 0; j < qt.Length; j++)
+                    {
+                        if (!HasWord(s, qt[j], qWhole[j])) { allTokens = false; break; }
+                    }
+                }
+                if (allTokens) tier = 3;
+                else
+                {
+                    string c = (s.IndexOf(' ') >= 0) ? s.Replace(" ", "") : s;
+                    if (c.StartsWith(qc, StringComparison.Ordinal)) tier = 1;
+                    else if (qc.Length >= 3 && c.IndexOf(qc, StringComparison.Ordinal) >= 0) tier = 4;
+                    else continue;
+                }
+            }
+
+            int rankTier = tier + ((junk[i] && !ignoreJunk) ? 8 : 0);
+            long key = ((long)rankTier << 40) + ((long)Math.Min(s.Length, 1023) << 30) + (long)i;
+            keys.Add(key);
+        }
+
+        long[] arr = keys.ToArray();
+        Array.Sort(arr);
+        int take = Math.Min(limit, arr.Length);
+        SteamAppHit[] result = new SteamAppHit[take];
+        for (int k = 0; k < take; k++)
+        {
+            int idx = (int)(arr[k] & 0x3FFFFFFFL);
+            int rt = (int)(arr[k] >> 40);
+            SteamAppHit h = new SteamAppHit();
+            h.AppId = ids[idx];
+            h.Name = names[idx];
+            h.Junk = rt >= 8;
+            h.Tier = h.Junk ? rt - 8 : rt;
+            result[k] = h;
+        }
+        return result;
+    }
+
+    // Точное совпадение названия (без учёта регистра и знаков препинания —
+    // как Get-NormalizedGameKey). "Чистые" записи идут раньше soundtrack/demo.
+    public static SteamAppHit[] FindExact(string query, int max)
+    {
+        string qs = Normalize(query);
+        if (qs.Length == 0 || max <= 0) return new SteamAppHit[0];
+        string qc = qs.Replace(" ", "");
+
+        int[] ids; string[] names; string[] norms; bool[] junk;
+        lock (Sync) { ids = _ids; names = _names; norms = _norm; junk = _junk; }
+
+        List<SteamAppHit> clean = new List<SteamAppHit>();
+        List<SteamAppHit> dirty = new List<SteamAppHit>();
+        int n = norms.Length;
+        for (int i = 0; i < n; i++)
+        {
+            string s = norms[i];
+            if (s.Length < qc.Length) continue;
+            bool eq;
+            if (s.Length == qc.Length) eq = string.Equals(s, qc, StringComparison.Ordinal);
+            else eq = (s.IndexOf(' ') >= 0) && string.Equals(s.Replace(" ", ""), qc, StringComparison.Ordinal);
+            if (!eq) continue;
+
+            SteamAppHit h = new SteamAppHit();
+            h.AppId = ids[i];
+            h.Name = names[i];
+            h.Tier = 0;
+            h.Junk = junk[i];
+            if (h.Junk) dirty.Add(h); else clean.Add(h);
+        }
+
+        clean.AddRange(dirty);
+        if (clean.Count > max) clean.RemoveRange(max, clean.Count - max);
+        return clean.ToArray();
+    }
+}
+'@
+    } catch {}
+}
+
+function Load-LocalSteamAppsDatabase {
+    # Возвращает только сведения о базе (Count/UpdatedAt) — сами записи
+    # держит индекс в памяти, см. Search-LocalSteamAppsDatabase.
+    if (-not (Test-Path $global:steamAppsDbFile)) { return $null }
+    try {
+        if ([SteamAppsIndex]::EnsureLoaded([string]$global:steamAppsDbFile)) {
+            return [pscustomobject]@{
+                Count     = [SteamAppsIndex]::Count
+                UpdatedAt = [SteamAppsIndex]::UpdatedAt
+            }
+        }
+    } catch {}
+    return $null
+}
+
+function Search-LocalSteamAppsDatabase([string]$term, [int]$limit = 30) {
+    if ([string]::IsNullOrWhiteSpace($term)) { return @() }
+    $hits = $null
+    try {
+        if (-not [SteamAppsIndex]::EnsureLoaded([string]$global:steamAppsDbFile)) { return @() }
+        $hits = [SteamAppsIndex]::Search($term, $limit)
+    } catch { return @() }
+
+    $out = New-Object System.Collections.Generic.List[object]
+    foreach ($h in $hits) {
+        $out.Add([pscustomobject]@{ appid = $h.AppId; name = $h.Name; Tier = $h.Tier; Junk = $h.Junk })
+    }
+    return $out.ToArray()
+}
+
+# Разбираем файл базы заранее, в фоне, чтобы первый поиск в карточке не ждал.
+try { [SteamAppsIndex]::BeginLoad([string]$global:steamAppsDbFile) } catch {}
+
+# Если базы нет или она устарела — обновляем её тихо, в фоне.
+Start-LocalSteamAppsDbAutoUpdate
+
 
 if ([string]::IsNullOrWhiteSpace([string]$global:steamInstallPath)) {
     $global:steamInstallPath = Get-DefaultSteamInstallPath
@@ -3326,6 +4280,8 @@ function Save-Configuration {
             "steamInstallPath=$($global:steamInstallPath)",
             "steamUserId=$($global:steamUserId)",
             "steamGridDbApiKey=$($global:steamGridDbApiKey)",
+            "suggestGameLaunchers=$($global:suggestGameLaunchers)",
+            "steamApiKey=$($global:steamApiKey)",
             "backupFolderPath=$($global:backupFolderPath)",
             "language=$($global:language)"
         )
@@ -3333,7 +4289,7 @@ function Save-Configuration {
     } catch {}
 }
 
-$form.Add_FormClosing({ Save-Configuration; Remove-TemporaryCovers })
+$form.Add_FormClosing({ Stop-StartupBackgroundJobs; Save-Configuration; Remove-TemporaryCovers })
 
 # Игры, убранные из списка клавишей Delete. Это ТОЛЬКО скрытие в интерфейсе:
 # папки на диске не трогаются. Действует до кнопки «Обновить» или перезапуска.
@@ -5069,6 +6025,10 @@ function Save-FirstWorkingUrl ($urls, $destPath) {
 # сообщений WinForms. Никаких обращений к контролам из фонового потока по-прежнему
 # нет — всё происходит в UI-потоке, просто он не заблокирован.
 $global:uiPumpDuringDownload = $false
+# Флаг прерывания текущей карточки. Пока идёт сетевой поиск/загрузка,
+# UI продолжает прокачиваться; при закрытии карточки или кнопках «Отмена»/«Пропустить»
+# фоновые ожидания должны немедленно прекращаться.
+$global:editorLoadAbortRequested = $false
 
 # ===================== ФОНОВЫЕ (НЕБЛОКИРУЮЩИЕ) JSON-ЗАПРОСЫ =====================
 # В отличие от Invoke-UiPumpingDownload (отдельный ПРОЦЕСС curl.exe — подходит
@@ -5107,6 +6067,10 @@ function Invoke-BackgroundJsonRequest ($scriptBlock, [object[]]$argumentList, [i
     try {
         while (-not $async.IsCompleted) {
             [System.Windows.Forms.Application]::DoEvents()
+            if ($global:editorLoadAbortRequested) {
+                try { $ps.Stop() } catch {}
+                break
+            }
             Start-Sleep -Milliseconds 30
             if ((Get-Date) -gt $deadline) { try { $ps.Stop() } catch {}; break }
         }
@@ -5146,30 +6110,54 @@ function Invoke-SgdbApiRequest ($url, [hashtable]$headers, [int]$timeoutSec = 20
     $wasUnauthorized = $false
     $errMsg = $null
     $resp = $null
+    $is401 = $false
 
+    # Сетевой запрос выполняем в отдельном runspace. UI при этом продолжает
+    # прокачиваться, поэтому крестик карточки и кнопки «Отмена/Пропустить»
+    # остаются нажимаемыми даже при медленном или зависшем сервере.
+    $requestBlock = {
+        param($requestUrl, $requestHeaders, $requestTimeout)
+        try {
+            return (Invoke-RestMethod -Uri $requestUrl -Headers $requestHeaders -TimeoutSec $requestTimeout -ErrorAction Stop)
+        } catch {
+            return [PSCustomObject]@{ __RequestError = [string]$_.Exception.Message; __Response = $_.Exception.Response }
+        }
+    }
     try {
-        $resp = Invoke-RestMethod -Uri $url -Headers $headers -TimeoutSec $timeoutSec -ErrorAction Stop
+        $bg = Invoke-BackgroundJsonRequest $requestBlock @($url,$headers,$timeoutSec) ([Math]::Max(1,$timeoutSec + 2))
+        if ($bg -and $bg.PSObject.Properties['__RequestError']) {
+            $errMsg = [string]$bg.__RequestError
+            $is401 = $false
+            try { $is401 = ($bg.__Response -ne $null -and $bg.__Response.StatusCode.value__ -eq 401) } catch {}
+            $resp = $null
+        } else {
+            $resp = $bg
+        }
     } catch {
         $errMsg = [string]$_.Exception.Message
-        $is401 = $false
-        try { $is401 = ($_.Exception.Response -ne $null -and $_.Exception.Response.StatusCode.value__ -eq 401) } catch {}
+    }
 
-        if ($is401) {
-            $wasUnauthorized = $true
-            if (-not $NoKeyRetry) {
-                # Ключ, скорее всего, отозван/истёк — сбрасываем и переполучаем,
-                # затем даём ОДНУ повторную попытку с новым ключом.
-                $global:steamGridDbApiKey = ""
-                $global:steamGridDbApiKeyValid = $false
-                $newKey = [string](Ensure-SteamGridDbApiKey)
-                if (-not [string]::IsNullOrWhiteSpace($newKey)) {
-                    $headers = @{ Authorization = "Bearer $newKey" }
-                    try {
-                        $resp = Invoke-RestMethod -Uri $url -Headers $headers -TimeoutSec $timeoutSec -ErrorAction Stop
+    if ($is401) {
+        $wasUnauthorized = $true
+        if (-not $NoKeyRetry -and -not $global:editorLoadAbortRequested) {
+            # Ключ, скорее всего, отозван/истёк — сбрасываем и переполучаем,
+            # затем даём ОДНУ повторную попытку с новым ключом.
+            $global:steamGridDbApiKey = ""
+            $global:steamGridDbApiKeyValid = $false
+            $newKey = [string](Ensure-SteamGridDbApiKey)
+            if (-not [string]::IsNullOrWhiteSpace($newKey)) {
+                $headers = @{ Authorization = "Bearer $newKey" }
+                try {
+                    $bg2 = Invoke-BackgroundJsonRequest $requestBlock @($url,$headers,$timeoutSec) ([Math]::Max(1,$timeoutSec + 2))
+                    if ($bg2 -and $bg2.PSObject.Properties['__RequestError']) {
+                        $errMsg = [string]$bg2.__RequestError
+                        $resp = $null
+                    } else {
+                        $resp = $bg2
                         $errMsg = $null
-                    } catch {
-                        $errMsg = [string]$_.Exception.Message
                     }
+                } catch {
+                    $errMsg = [string]$_.Exception.Message
                 }
             }
         }
@@ -5206,6 +6194,10 @@ function Invoke-UiPumpingDownload ($url, $targetPath, [int]$maxSeconds = 40) {
         $deadline = (Get-Date).AddSeconds([Math]::Max(5, $maxSeconds) + 10)
         while (-not $proc.HasExited) {
             [System.Windows.Forms.Application]::DoEvents()
+            if ($global:editorLoadAbortRequested) {
+                try { $proc.Kill() } catch {}
+                break
+            }
             Start-Sleep -Milliseconds 40
             if ((Get-Date) -gt $deadline) { try { $proc.Kill() } catch {}; break }
         }
@@ -5552,11 +6544,26 @@ $global:exeSelectionCache = @{}
 # ярлыка при "Добавить выбранные игры в Steam" (иначе ID не совпадёт).
 $global:folderDisplayNameCache = @{}
 
+function Test-IsGameLauncherExe ($exe) {
+    if ($exe -eq $null) { return $false }
+    try {
+        # Учитываем имя файла и путь: лаунчеры часто находятся в отдельной
+        # папке Launcher/Launchers, даже если само имя EXE не содержит слова.
+        return ([string]$exe.FullName -match '(?i)(^|[\\/ _.-])launchers?([\\/ _.-]|$)') -or
+               ([string]$exe.BaseName -match '(?i)(^|[ _.-])launcher(s)?([ _.-]|$)')
+    } catch { return $false }
+}
+
 function Get-GameExecutable ($gamePath, $gameName, [scriptblock]$selectorFn = $null) {
     $cacheKey = $gamePath.ToUpper()
     if ($global:exeSelectionCache.ContainsKey($cacheKey)) {
         $cachedPath = $global:exeSelectionCache[$cacheKey]
-        if (Test-Path $cachedPath) { return (Get-Item -Path $cachedPath) }
+        if (Test-Path $cachedPath) {
+            $cachedItem = Get-Item -Path $cachedPath
+            if ([bool]$global:suggestGameLaunchers -or -not (Test-IsGameLauncherExe $cachedItem)) {
+                return $cachedItem
+            }
+        }
         $global:exeSelectionCache.Remove($cacheKey)
     }
 
@@ -5576,11 +6583,23 @@ function Get-GameExecutable ($gamePath, $gameName, [scriptblock]$selectorFn = $n
     # лаунчера) — раньше они не отсеивались и засоряли список выбора.
     $junkPattern = '(?i)unins00|\buninstall(er)?\b|unitycrashhandler|crashpad|crashreportclient|crashreporter|crs-handler|crs-uploader|unrealcefsubprocess|\bcefsubprocess\b|\bcefsharp\b|browsersubprocess|driverversionchecker|layerschecker|battleye|easyanticheat|\beac\b|vc_?redist|_?commonredist|\bdotnetfx\b|\bdxsetup\b|\bdirectx\b.*setup|\bprereqsetup\b|physxsetup|vcredist|vulkanrt|\bautorun\b|\bupdater\b|\bpatcher\b|installer\.exe$|_original|_crack|\\Support\\|\\runtimes\\|\\(config|settings|options|cfg)\.exe$'
     
-    $allExes = Get-ChildItem -Path $gamePath -Filter "*.exe" -File -Recurse -ErrorAction SilentlyContinue
-    $clean = $allExes | Where-Object { $_.FullName -notmatch $junkPattern }
-    # Если фильтр случайно отсёк вообще всё (крайний случай) — лучше показать
-    # пользователю полный список, чем молча вернуть "exe не найден".
-    if ($clean.Count -eq 0) { $clean = $allExes }
+    $allExes = @(Get-ChildItem -Path $gamePath -Filter "*.exe" -File -Recurse -ErrorAction SilentlyContinue)
+    $clean = @($allExes | Where-Object { $_.FullName -notmatch $junkPattern })
+    $launcherLikePattern = '(?i)launcher'
+
+    # По умолчанию игровые лаунчеры не участвуют в автоматическом поиске EXE.
+    # Если пользователь включил настройку — они остаются среди кандидатов, но
+    # по-прежнему имеют более низкий приоритет, чем прямой EXE игры.
+    if (-not [bool]$global:suggestGameLaunchers) {
+        $clean = @($clean | Where-Object { -not (Test-IsGameLauncherExe $_) })
+    }
+
+    # Если фильтр служебных EXE ничего не оставил, возвращаем только исходные
+    # EXE, но не нарушаем настройку лаунчеров: при выключенной настройке
+    # лаунчеры всё равно не возвращаются.
+    if ($clean.Count -eq 0 -and $allExes.Count -gt 0 -and [bool]$global:suggestGameLaunchers) {
+        $clean = $allExes
+    }
 
     # Приоритет — файлы прямо в КОРНЕ папки игры. Технический мусор (редистрибутивы,
     # установщики движка, крash-репортеры) почти всегда лежит во вложенных папках;
@@ -5592,7 +6611,6 @@ function Get-GameExecutable ($gamePath, $gameName, [scriptblock]$selectorFn = $n
     # выбора) exe определялся чисто алфавитным порядком, а не тем, похож ли
     # файл на лаунчер, из-за чего диалог мог по умолчанию выделять лаунчер
     # вместо прямого запуска игры.
-    $launcherLikePattern = '(?i)launcher'
     $candidates = @($preOrdered | Sort-Object `
         @{Expression={ if ($_.FullName -match $launcherLikePattern) { 1 } else { 0 } }}, `
         Name)
@@ -5609,8 +6627,8 @@ function Get-GameExecutable ($gamePath, $gameName, [scriptblock]$selectorFn = $n
         } else {
             $resultExe = Show-ExeSelectionDialog $candidates $gamePath $gameName
         }
-    } elseif ($allExes.Count -gt 0) {
-        $resultExe = ($allExes | Sort-Object Length -Descending | Select-Object -First 1)
+    } elseif ($clean.Count -gt 0) {
+        $resultExe = ($clean | Sort-Object Length -Descending | Select-Object -First 1)
     }
 
     if ($resultExe -ne $null) { $global:exeSelectionCache[$cacheKey] = $resultExe.FullName }
@@ -5635,6 +6653,49 @@ function Start-PumpedSleep ([int]$milliseconds) {
 }
 
 function Find-SteamAppInfo ($gameName) {
+    $global:lastAppIdSearchError = $null
+    $normTarget = Get-NormalizedGameKey $gameName
+
+    # ===== 0) Локальная база приложений Steam (Настройки -> Steam Web API) =====
+    # Полная база (весь каталог Steam, не ограниченный выдачей/популярностью
+    # витрины) — если она скачана, точное совпадение по названию даёт
+    # мгновенный ответ без обращения в интернет. Поиск идёт по индексу в
+    # памяти (раньше — Where-Object с регулярным выражением по каждой из
+    # ~250 тыс. записей).
+    #
+    # БАГ-ФИКС: одноимённых игр в Steam бывает несколько (например, два
+    # "Keeper" — 2021 г. и Double Fine 2025 г.), а раньше молча брался первый
+    # по App ID — то есть почти всегда самая старая. Если "чистых" точных
+    # совпадений больше одного, локальная база выбрать не может — тогда
+    # решает витрина Steam (она знает, какая из них популярнее), а локальный
+    # вариант остаётся запасным на случай, если интернета нет.
+    $localFirst = $null
+    $localAmbiguous = $false
+    try {
+        if ([SteamAppsIndex]::EnsureLoaded([string]$global:steamAppsDbFile)) {
+            $localExact = @([SteamAppsIndex]::FindExact([string]$gameName, 6))
+            if ($localExact.Count -gt 0) {
+                $localFirst = [PSCustomObject]@{ Id = [string]$localExact[0].AppId; Name = [string]$localExact[0].Name }
+                $cleanExact = @($localExact | Where-Object { -not $_.Junk })
+                $localAmbiguous = ($cleanExact.Count -gt 1)
+            }
+        }
+    } catch {}
+
+    if ($null -ne $localFirst -and -not $localAmbiguous) { return $localFirst }
+
+    $onlineFound = Find-SteamAppInfoOnline $gameName
+    if ($null -eq $localFirst) { return $onlineFound }
+
+    if ($null -ne $onlineFound -and (Get-NormalizedGameKey ([string]$onlineFound.Name)) -eq $normTarget) {
+        return $onlineFound
+    }
+    $global:lastAppIdSearchError = $null
+    return $localFirst
+}
+
+# Поиск App ID через онлайн-поиск витрины Steam (без локальной базы).
+function Find-SteamAppInfoOnline ($gameName) {
     $global:lastAppIdSearchError = $null
     $normTarget = Get-NormalizedGameKey $gameName
     $targetTokens = Get-NameTokens $gameName
@@ -5848,44 +6909,133 @@ function Find-SteamAppInfo ($gameName) {
 function Get-SteamStoreNameCandidates ([string]$query, [int]$limit = 12) {
     $q = ([string]$query).Trim()
     if ($q.Length -lt 2) { return @() }
+    $qKey = Get-NormalizedGameKey $q
 
     $results = New-Object System.Collections.Generic.List[object]
     $seenIds = New-Object 'System.Collections.Generic.HashSet[string]'
 
-    # ===== Онлайн-поиск витрины Steam (storesearch), без ключа =====
-    if ($results.Count -lt $limit) {
+    # ===== 1) Онлайн-поиск витрины Steam (storesearch), без ключа =====
+    # БАГ-ФИКС: раньше онлайн-поиск запускался ТОЛЬКО если локальная база
+    # вернула меньше $limit вариантов. Для короткого/частого названия
+    # (например "Keeper") локальная база сразу забивала все 12 мест старыми
+    # играми с наименьшими App ID — и витрина Steam (которая как раз знает,
+    # какая из одноимённых игр популярная/новая) вообще не опрашивалась.
+    # Теперь онлайн-выдача запрашивается всегда, а результаты обоих
+    # источников смешиваются (см. скоры ниже). Запрос идёт в фоновом
+    # runspace (окно не замирает), ответы кэшируются на время сеанса —
+    # повторный набор/стирание символов не создаёт лишних запросов.
+    if ($null -eq $script:steamStoreSearchCache) { $script:steamStoreSearchCache = @{} }
+    $cacheKey = $q.ToLowerInvariant()
+    $onlineItems = @()
+    if ($script:steamStoreSearchCache.ContainsKey($cacheKey)) {
+        $onlineItems = @($script:steamStoreSearchCache[$cacheKey])
+    } else {
         try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch {}
         $searchTerm = [System.Uri]::EscapeDataString($q)
         $url = "https://store.steampowered.com/api/storesearch/?term=$searchTerm&l=english&cc=us"
-        $data = $null
-        try {
-            $data = Invoke-RestMethod -Uri $url -UserAgent "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" -TimeoutSec 8 -ErrorAction Stop
-        } catch {
+        $storeSearchRequest = {
+            param($u)
             try {
-                $rawLines = curl.exe -s -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" $url
-                $rawJson = ($rawLines -join "")
-                if (-not [string]::IsNullOrWhiteSpace($rawJson)) { $data = $rawJson | ConvertFrom-Json -ErrorAction Stop }
-            } catch {}
+                return (Invoke-RestMethod -Uri $u -UserAgent "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" -TimeoutSec 8 -ErrorAction Stop)
+            } catch {
+                try {
+                    $rawLines = curl.exe -s -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" --connect-timeout 6 --max-time 8 $u
+                    $rawJson = ($rawLines -join "")
+                    if (-not [string]::IsNullOrWhiteSpace($rawJson)) { return ($rawJson | ConvertFrom-Json -ErrorAction Stop) }
+                } catch {}
+                return $null
+            }
         }
-        if ($data -ne $null -and $data.items -ne $null) {
-            $rank = 0
-            foreach ($it in $data.items) {
-                $rank++
-                $id = [string]$it.id
-                $nm = [string]$it.name
-                if ([string]::IsNullOrWhiteSpace($id) -or [string]::IsNullOrWhiteSpace($nm)) { continue }
-                if (-not $seenIds.Add($id)) { continue }
-                # Позиция в выдаче storesearch = ранг релевантности от самого
-                # Steam. Переводим её в убывающий скор, чтобы сортировка ниже
-                # совпадала именно с порядком витрины, а не с локальным
-                # скорингом по словам.
-                $score = [Math]::Max(0.05, 0.78 - ($rank * 0.03))
-                $results.Add([PSCustomObject]@{ Id = $id; Name = $nm; MatchScore = [double]$score })
+        $data = $null
+        try { $data = Invoke-BackgroundJsonRequest $storeSearchRequest @($url) 12 } catch { $data = $null }
+        $rawItems = $null
+        if ($data -ne $null) { $rawItems = $data.items }
+        if ($null -ne $rawItems) {
+            $onlineItems = @($rawItems)
+            if ($onlineItems.Count -gt 0) {
+                if ($script:steamStoreSearchCache.Count -ge 60) { $script:steamStoreSearchCache.Clear() }
+                $script:steamStoreSearchCache[$cacheKey] = $onlineItems
             }
         }
     }
 
+    # Порядок выдачи витрины = её собственный ранг релевантности/популярности.
+    $onlineRank = 0
+    foreach ($it in $onlineItems) {
+        $id = [string]$it.id
+        $nm = [string]$it.name
+        if ([string]::IsNullOrWhiteSpace($id) -or [string]::IsNullOrWhiteSpace($nm)) { continue }
+        if (-not $seenIds.Add($id)) { continue }
+        $onlineRank++
+        if ((Get-NormalizedGameKey $nm) -eq $qKey) {
+            $score = 2.0 - ($onlineRank * 0.001) + 0.0005
+        } else {
+            $score = 1.0 - ($onlineRank * 0.03) + 0.015
+        }
+        $results.Add([PSCustomObject]@{ Id = $id; Name = $nm; MatchScore = [double]$score })
+    }
+
+    # ===== 2) Локальная база приложений Steam (Настройки -> Steam Web API) =====
+    # Мгновенный поиск по индексу в памяти. Полный каталог Steam, не
+    # ограниченный выдачей витрины — находит и то, что витрина не показала.
+    # Порядок уже отранжирован (точные -> начинаются с запроса -> ...,
+    # soundtrack/demo/playtest — в самом конце).
+    try {
+        $localMatches = @(Search-LocalSteamAppsDatabase $q ($limit * 2))
+        $localRank = 0
+        foreach ($lm in $localMatches) {
+            $lmId = [string]$lm.appid
+            $lmName = [string]$lm.name
+            if ([string]::IsNullOrWhiteSpace($lmId) -or [string]::IsNullOrWhiteSpace($lmName)) { continue }
+            if (-not $seenIds.Add($lmId)) { continue }
+            $localRank++
+            if ((Get-NormalizedGameKey $lmName) -eq $qKey) {
+                $lmScore = 2.0 - ($localRank * 0.001)
+            } elseif ($lm.Junk) {
+                $lmScore = 0.30 - ($localRank * 0.001)
+            } else {
+                $lmScore = [Math]::Max(0.35, 1.0 - ($localRank * 0.03))
+            }
+            $results.Add([PSCustomObject]@{ Id = $lmId; Name = $lmName; MatchScore = [double]$lmScore })
+        }
+    } catch {}
+
+    if ($results.Count -eq 0) { return @() }
     return @($results | Sort-Object MatchScore -Descending | Select-Object -First $limit)
+}
+
+# Собирает соответствие "строка в выпадающем списке -> вариант". Раньше строкой
+# списка было просто название, а ключом словаря — то же название, поэтому
+# ДВЕ разные игры с одинаковым названием (как "Keeper" 2021 года и "Keeper"
+# от Double Fine) схлопывались в одну: вторая молча терялась, и выбрать её в
+# списке было невозможно. Теперь у одноимённых вариантов в списке дописывается
+# App ID; при выборе название в поле берётся из самого варианта (.Name), так
+# что суффикс в текст названия не попадает.
+function New-EditorTitleCandidateMap ($candidates) {
+    $map = @{}
+    $names = New-Object System.Collections.Generic.List[string]
+    $counts = @{}
+    foreach ($c in @($candidates)) {
+        if ($null -eq $c) { continue }
+        $nm = [string]$c.Name
+        if ([string]::IsNullOrWhiteSpace($nm)) { continue }
+        $k = $nm.ToLowerInvariant()
+        $counts[$k] = 1 + [int]$counts[$k]
+    }
+    foreach ($c in @($candidates)) {
+        if ($null -eq $c) { continue }
+        $nm = [string]$c.Name
+        if ([string]::IsNullOrWhiteSpace($nm)) { continue }
+        $label = $nm
+        if ([int]$counts[$nm.ToLowerInvariant()] -gt 1 -and -not [string]::IsNullOrWhiteSpace([string]$c.Id)) {
+            $label = "$nm  (#$([string]$c.Id))"
+        }
+        if (-not $map.ContainsKey($label)) {
+            $map[$label] = $c
+            [void]$names.Add($label)
+        }
+    }
+    return [PSCustomObject]@{ Map = $map; Names = $names }
 }
 
 # ===================== SteamGridDB — РЕЗЕРВНЫЙ ИСТОЧНИК ОБЛОЖЕК =====================
@@ -6212,7 +7362,7 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
         $y=10+($row*($cardHeight+13))
         $card.Location=New-Object System.Drawing.Point([int]$x,[int]$y)
         $card.BorderStyle=[System.Windows.Forms.BorderStyle]::FixedSingle
-        $card.BackColor=[System.Drawing.Color]::FromArgb(27,40,56)
+        $card.BackColor=[System.Drawing.Color]::FromArgb(13,20,28)
         $flow.Controls.Add($card)
 
         $pb=New-Object System.Windows.Forms.PictureBox
@@ -6410,7 +7560,10 @@ function Get-EditorExecutableCandidates ($gamePath) {
     $junkPattern = '(?i)unins00|\buninstall(er)?\b|unitycrashhandler|crashpad|crashreportclient|crashreporter|crs-handler|crs-uploader|unrealcefsubprocess|\bcefsubprocess\b|\bcefsharp\b|browsersubprocess|driverversionchecker|layerschecker|battleye|easyanticheat|\beac\b|vc_?redist|_?commonredist|\bdotnetfx\b|\bdxsetup\b|\bdirectx\b.*setup|\bprereqsetup\b|physxsetup|vcredist|vulkanrt|\bautorun\b|\bupdater\b|\bpatcher\b|installer\.exe$|_original|_crack|\\Support\\|\\runtimes\\|\\(config|settings|options|cfg)\.exe$'
     $all = @(Get-ChildItem -Path $gamePath -Filter '*.exe' -File -Recurse -ErrorAction SilentlyContinue)
     $clean = @($all | Where-Object { $_.FullName -notmatch $junkPattern })
-    if ($clean.Count -eq 0) { $clean = $all }
+    if (-not [bool]$global:suggestGameLaunchers) {
+        $clean = @($clean | Where-Object { -not (Test-IsGameLauncherExe $_) })
+    }
+    if ($clean.Count -eq 0 -and $all.Count -gt 0 -and [bool]$global:suggestGameLaunchers) { $clean = $all }
     $root = @($clean | Where-Object { $_.DirectoryName.TrimEnd('\') -eq $gamePath.TrimEnd('\') })
     $ordered = if ($root.Count -gt 0) { $root } else { $clean }
     # БАГ-ФИКС: раньше сортировка учитывала только "лежит ли exe в корне папки
@@ -7457,10 +8610,50 @@ function Set-ApiKeyValidationBadge($pictureBox, [string]$state, [string]$tip) {
     } catch {}
 }
 
+# Ставит текст в LinkLabel и делает кликабельными адреса вида «домен/путь»
+# (steamgriddb.com/profile/preferences/api и т.п.), где бы они ни стояли в тексте —
+# поэтому одинаково работает для всех языков интерфейса. Ссылка открывается в
+# браузере по умолчанию (см. обработчик LinkClicked у самого поля).
+function Set-HintLinkText($label, [string]$text) {
+    try {
+        $label.Text = $text
+        # Сбрасываем ссылку по умолчанию (весь текст) и ставим только найденные адреса.
+        $label.Links.Clear()
+        $urlPattern = '(?i)\b(?:[a-z0-9-]+\.)+[a-z]{2,}/[a-z0-9\-._~/%?=&#]*[a-z0-9\-_~/%=&#]'
+        foreach ($m in [regex]::Matches($text, $urlPattern)) {
+            [void]$label.Links.Add($m.Index, $m.Length, ('https://' + $m.Value))
+        }
+    } catch {}
+}
+
 function Show-ProgramSettingsDialog {
     $originalSteamInstallPath = [string]$global:steamInstallPath
     $originalSteamUserId = [string]$global:steamUserId
-    $settingsAccepted = $false
+    $originalSuggestGameLaunchers = [bool]$global:suggestGameLaunchers
+    # ВАЖНО: обработчики событий (Add_Click/Add_FormClosed) выполняются в дочерней
+    # области видимости, и простое присваивание `$settingsAccepted = $true` внутри
+    # обработчика создавало бы ЛОКАЛЬНУЮ копию переменной — родительская осталась
+    # бы $false. Из-за этого после «Сохранить» FormClosed считал, что диалог
+    # отменён, и откатывал флаги валидности ключей (и путь/профиль Steam) к
+    # состоянию на момент открытия. Хэштаблица изменяется по ссылке, поэтому
+    # значение видно во всех обработчиках.
+    $settingsState = @{ Accepted = $false }
+
+    # Проверка ключей при запуске идёт в фоне — здесь результат уже нужен.
+    try { Complete-StartupKeyChecks -Wait } catch {}
+
+    # БАГ-ФИКС: результат проверки ключей (Valid/Check) менялся "живьём" при
+    # каждом изменении текста в полях (см. Add_TextChanged/таймеры ниже), даже
+    # если диалог потом закрывали без сохранения. Сам текст ключа откатывался
+    # по кнопке "Отмена" корректно, а вот флаг валидности — нет, поэтому при
+    # повторном открытии значок статуса не соответствовал сохранённому ключу.
+    # Запоминаем исходное состояние ПОСЛЕ ожидания фоновой проверки (иначе тут
+    # был бы захвачен ещё не готовый, устаревший результат) и восстанавливаем
+    # его при отмене.
+    $originalSgdbKeyValid = [bool]$global:steamGridDbApiKeyValid
+    $originalSgdbKeyCheck = $global:steamGridDbApiKeyCheck
+    $originalSteamKeyValid = [bool]$global:steamApiKeyValid
+    $originalSteamKeyCheck = $global:steamApiKeyCheck
 
     $dlg = New-Object System.Windows.Forms.Form
     $dlg.Text = (T 'settings_title')
@@ -7468,7 +8661,7 @@ function Show-ProgramSettingsDialog {
     $dlg.FormBorderStyle = 'FixedDialog'
     $dlg.MaximizeBox = $false
     $dlg.MinimizeBox = $false
-    $dlg.ClientSize = New-Object System.Drawing.Size(560, 575)
+    $dlg.ClientSize = New-Object System.Drawing.Size(560, 773)
     $dlg.BackColor = $steamUi.Bg
     $dlg.ForeColor = $steamUi.Text
     $dlg.Font = New-Object System.Drawing.Font('Segoe UI', 9)
@@ -7553,7 +8746,7 @@ function Show-ProgramSettingsDialog {
     $cmbSteamProfile = New-Object System.Windows.Forms.ComboBox
     $cmbSteamProfile.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
     $cmbSteamProfile.Location = New-Object System.Drawing.Point(120, 132)
-    $cmbSteamProfile.Size = New-Object System.Drawing.Size(420, 30)
+    $cmbSteamProfile.Size = New-Object System.Drawing.Size(320, 30)
     $cmbSteamProfile.BackColor = $steamUi.Input
     $cmbSteamProfile.ForeColor = $steamUi.Text
     $cmbSteamProfile.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
@@ -7566,9 +8759,67 @@ function Show-ProgramSettingsDialog {
     $steamProfileHint.ForeColor = $steamUi.Muted
     $dlg.Controls.Add($steamProfileHint)
 
+    # Галочка настроена в том же стиле, что и галочки выбора игр на главной странице:
+    # квадрат 14x14, цвет $steamUi.Accent и белая галочка. Стандартный WinForms
+    # CheckBox здесь не используем, потому что его системная галочка выглядит бледно
+    # и отличается от основной галочки программы.
+    $chkSuggestLaunchers = New-Object System.Windows.Forms.Panel
+    $chkSuggestLaunchers.Location = New-Object System.Drawing.Point(120, 188)
+    $chkSuggestLaunchers.Size = New-Object System.Drawing.Size(22, 22)
+    $chkSuggestLaunchers.BackColor = $steamUi.Bg
+    $chkSuggestLaunchers.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $chkSuggestLaunchers.Tag = [bool]$global:suggestGameLaunchers
+
+    $chkSuggestLaunchers.Add_Paint({
+        param($sender, $e)
+        $checked = [bool]$sender.Tag
+        $cbRect = New-Object System.Drawing.Rectangle(4, 4, 14, 14)
+        if ($checked) {
+            $cbBg = New-Object System.Drawing.SolidBrush($steamUi.Accent)
+            $e.Graphics.FillRectangle($cbBg, $cbRect)
+            $cbBg.Dispose()
+            $checkPen = New-Object System.Drawing.Pen([System.Drawing.Color]::White, 1.6)
+            $e.Graphics.DrawLine($checkPen, $cbRect.X + 3, $cbRect.Y + 7, $cbRect.X + 6, $cbRect.Y + 10)
+            $e.Graphics.DrawLine($checkPen, $cbRect.X + 6, $cbRect.Y + 10, $cbRect.X + 11, $cbRect.Y + 3)
+            $checkPen.Dispose()
+        } else {
+            $cbPen = New-Object System.Drawing.Pen($steamUi.Muted, 1.2)
+            $e.Graphics.DrawRectangle($cbPen, $cbRect)
+            $cbPen.Dispose()
+        }
+    })
+
+    $exeFilterLabel = New-Object System.Windows.Forms.Label
+    $exeFilterLabel.Text = (T 'set_exe_filter')
+    $exeFilterLabel.Location = New-Object System.Drawing.Point(20, 188)
+    $exeFilterLabel.Size = New-Object System.Drawing.Size(92, 22)
+    $exeFilterLabel.ForeColor = $steamUi.Muted
+    $exeFilterLabel.BackColor = $steamUi.Bg
+    $exeFilterLabel.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
+
+    $chkSuggestLaunchersLabel = New-Object System.Windows.Forms.Label
+    $chkSuggestLaunchersLabel.Text = (T 'set_offer_launchers')
+    $chkSuggestLaunchersLabel.Location = New-Object System.Drawing.Point(146, 188)
+    $chkSuggestLaunchersLabel.Size = New-Object System.Drawing.Size(394, 22)
+    $chkSuggestLaunchersLabel.ForeColor = $steamUi.Muted
+    $chkSuggestLaunchersLabel.BackColor = $steamUi.Bg
+    $chkSuggestLaunchersLabel.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
+    $chkSuggestLaunchersLabel.Cursor = [System.Windows.Forms.Cursors]::Hand
+
+    $toggleSuggestLaunchers = {
+        $chkSuggestLaunchers.Tag = -not [bool]$chkSuggestLaunchers.Tag
+        $chkSuggestLaunchers.Invalidate()
+    }
+    $chkSuggestLaunchers.Add_Click($toggleSuggestLaunchers)
+    $chkSuggestLaunchersLabel.Add_Click($toggleSuggestLaunchers)
+
+    $dlg.Controls.Add($exeFilterLabel)
+    $dlg.Controls.Add($chkSuggestLaunchers)
+    $dlg.Controls.Add($chkSuggestLaunchersLabel)
+
     $section = New-Object System.Windows.Forms.Label
     $section.Text = 'SteamGridDB'
-    $section.Location = New-Object System.Drawing.Point(20, 202)
+    $section.Location = New-Object System.Drawing.Point(20, 226)
     $section.Size = New-Object System.Drawing.Size(520, 25)
     $section.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 10.5)
     $section.ForeColor = $steamUi.Accent
@@ -7576,7 +8827,7 @@ function Show-ProgramSettingsDialog {
 
     $keyLabel = New-Object System.Windows.Forms.Label
     $keyLabel.Text = (T 'set_api_key')
-    $keyLabel.Location = New-Object System.Drawing.Point(20, 236)
+    $keyLabel.Location = New-Object System.Drawing.Point(20, 260)
     $keyLabel.Size = New-Object System.Drawing.Size(70, 28)
     $keyLabel.ForeColor = $steamUi.Muted
     $keyLabel.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
@@ -7585,11 +8836,11 @@ function Show-ProgramSettingsDialog {
     # Значок состояния API-ключа — точно такой же, как в карточке игры:
     # зелёная галочка для валидного ключа, красный ! для невалидного.
     # Он находится непосредственно перед полем ввода.
-    $apiKeyValidationBadge = New-ConfidenceBadge $dlg 94 241
+    $apiKeyValidationBadge = New-ConfidenceBadge $dlg 94 265
 
     $keyPanel = New-Object System.Windows.Forms.Panel
-    $keyPanel.Location = New-Object System.Drawing.Point(120, 236)
-    $keyPanel.Size = New-Object System.Drawing.Size(420, 30)
+    $keyPanel.Location = New-Object System.Drawing.Point(120, 260)
+    $keyPanel.Size = New-Object System.Drawing.Size(320, 30)
     $keyPanel.BackColor = $steamUi.Input
     $keyPanel.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
     $dlg.Controls.Add($keyPanel)
@@ -7602,18 +8853,20 @@ function Show-ProgramSettingsDialog {
     $txtKey.Font = New-Object System.Drawing.Font('Segoe UI', 9)
     $txtKey.Text = [string]$global:steamGridDbApiKey
     $txtKey.Location = New-Object System.Drawing.Point(6, 4)
-    $txtKey.Size = New-Object System.Drawing.Size(408, 21)
+    $txtKey.Size = New-Object System.Drawing.Size(308, 21)
     $keyPanel.Controls.Add($txtKey)
 
     # При открытии настроек НЕ выполняем повторную проверку API. Используем
     # результат проверки, уже полученный при запуске программы. Поэтому
-    # зелёная галочка/красный ! сразу видны рядом с ключом.
+    # зелёная галочка/красный ! сразу видны рядом с ключом. Текстом статус не
+    # дублируется: причина отказа лежит в подсказке-tooltip значка.
     if (-not [string]::IsNullOrWhiteSpace([string]$global:steamGridDbApiKey)) {
         if ([bool]$global:steamGridDbApiKeyValid) {
             Set-ApiKeyValidationBadge $apiKeyValidationBadge 'valid' (T 'key_valid')
         } else {
             $startupCheck = $global:steamGridDbApiKeyCheck
             $startupMsg = if ($startupCheck -ne $null -and -not [string]::IsNullOrWhiteSpace([string]$startupCheck.Message)) { [string]$startupCheck.Message } else { (T 'key_invalid_default') }
+            if ($startupCheck -ne $null -and $startupCheck.Kind -eq 'invalid') { $startupMsg += (T 'key_new_key') }
             Set-ApiKeyValidationBadge $apiKeyValidationBadge 'invalid' $startupMsg
         }
     } else {
@@ -7631,25 +8884,20 @@ function Show-ProgramSettingsDialog {
         if ([string]::IsNullOrWhiteSpace($key)) {
             $global:steamGridDbApiKeyValid = $false
             Set-ApiKeyValidationBadge $apiKeyValidationBadge 'hidden' ''
-            & $applyKeyHint $null
             return
         }
 
         $global:steamGridDbApiKeyValid = $false
-        # Запрос синхронный, поэтому заранее показываем "проверяю" и просим
-        # перерисовать подпись — иначе она не успеет обновиться до ответа.
-        $hint.Text = (T 'key_checking')
-        $hint.ForeColor = $steamUi.Muted
-        try { $hint.Refresh() } catch {}
         $check = Test-SteamGridDbApiKey $key
         if ($check.Valid) {
             Set-ApiKeyValidationBadge $apiKeyValidationBadge 'valid' $check.Message
         } else {
             # Красный ! и при неверном ключе, и при сетевом сбое; чем именно
-            # это вызвано, объясняют tooltip и подпись под полем.
-            Set-ApiKeyValidationBadge $apiKeyValidationBadge 'invalid' $check.Message
+            # это вызвано, объясняет tooltip значка.
+            $failTip = [string]$check.Message
+            if ($check.Kind -eq 'invalid') { $failTip += (T 'key_new_key') }
+            Set-ApiKeyValidationBadge $apiKeyValidationBadge 'invalid' $failTip
         }
-        & $applyKeyHint $check
     })
 
     $txtKey.Add_TextChanged({
@@ -7657,56 +8905,251 @@ function Show-ProgramSettingsDialog {
         # После любого изменения ключ снова считается непроверенным, поэтому
         # кнопка SGDB в карточке игры должна стать неактивной до новой успешной проверки.
         $global:steamGridDbApiKeyValid = $false
-        if ([string]::IsNullOrWhiteSpace([string]$txtKey.Text.Trim())) {
-            Set-ApiKeyValidationBadge $apiKeyValidationBadge 'hidden' ''
-            & $applyKeyHint $null
-            return
-        }
         Set-ApiKeyValidationBadge $apiKeyValidationBadge 'hidden' ''
-        $hint.Text = (T 'key_checking')
-        $hint.ForeColor = $steamUi.Muted
-        $apiKeyValidationTimer.Start()
+        # Пустое поле — показываем подсказку по ключу, иначе только значок.
+        & $applySettingsLayout
+        if (-not [string]::IsNullOrWhiteSpace([string]$txtKey.Text.Trim())) {
+            $apiKeyValidationTimer.Start()
+        }
     })
 
     $dlg.Add_FormClosed({
         try { $apiKeyValidationTimer.Stop(); $apiKeyValidationTimer.Dispose() } catch {}
     })
 
-    $hint = New-Object System.Windows.Forms.Label
-    $hint.Text = (T 'key_hint_default')
-    $hint.Location = New-Object System.Drawing.Point(120, 270)
+    # Подсказка под самым полем ключа (что это за ключ и где его взять).
+    # Видна только пока поле пустое; когда ключ введён — состояние показывает
+    # значок рядом с полем (см. $applySettingsLayout ниже).
+    $hint = New-Object System.Windows.Forms.LinkLabel
+    $hint.Location = New-Object System.Drawing.Point(120, 292)
     $hint.Size = New-Object System.Drawing.Size(420, 30)
     $hint.ForeColor = $steamUi.Muted
+    $hint.LinkColor = $steamUi.Accent
+    $hint.ActiveLinkColor = $steamUi.Accent2
+    $hint.VisitedLinkColor = $steamUi.Accent
+    $hint.LinkBehavior = [System.Windows.Forms.LinkBehavior]::HoverUnderline
+    $hint.Add_LinkClicked({
+        param($sender, $e)
+        try { Start-Process ([string]$e.Link.LinkData) } catch {}
+    })
+    Set-HintLinkText $hint (T 'key_hint_default')
     $dlg.Controls.Add($hint)
 
-    # Подпись под полем ключа: пока поле пустое — обычная подсказка (что это
-    # за ключ и где его взять); когда ключ введён — результат его проверки:
-    # зелёным (действителен), красным (ключ/доступ) или жёлтым (сервис не
-    # ответил, ключ при этом не признан плохим).
-    $hintDefaultText = [string]$hint.Text
     $hintColorError = [System.Drawing.Color]::FromArgb(232, 110, 110)
     $hintColorWarn = [System.Drawing.Color]::FromArgb(226, 180, 90)
-    $applyKeyHint = {
-        param($check)
-        if ($check -eq $null -or [string]::IsNullOrWhiteSpace([string]$txtKey.Text)) {
-            $hint.Text = $hintDefaultText
-            $hint.ForeColor = $steamUi.Muted
+
+    # --- Steam Web API (отдельный ключ, только для локальной базы игр) ---
+    $swSection = New-Object System.Windows.Forms.Label
+    $swSection.Text = (T 'sw_section')
+    $swSection.Location = New-Object System.Drawing.Point(20, 328)
+    $swSection.Size = New-Object System.Drawing.Size(520, 25)
+    $swSection.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 10.5)
+    $swSection.ForeColor = $steamUi.Accent
+    $dlg.Controls.Add($swSection)
+
+    $swKeyLabel = New-Object System.Windows.Forms.Label
+    $swKeyLabel.Text = (T 'set_api_key')
+    $swKeyLabel.Location = New-Object System.Drawing.Point(20, 362)
+    $swKeyLabel.Size = New-Object System.Drawing.Size(70, 28)
+    $swKeyLabel.ForeColor = $steamUi.Muted
+    $swKeyLabel.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
+    $dlg.Controls.Add($swKeyLabel)
+
+    $swKeyValidationBadge = New-ConfidenceBadge $dlg 94 367
+
+    $swKeyPanel = New-Object System.Windows.Forms.Panel
+    $swKeyPanel.Location = New-Object System.Drawing.Point(120, 362)
+    $swKeyPanel.Size = New-Object System.Drawing.Size(320, 30)
+    $swKeyPanel.BackColor = $steamUi.Input
+    $swKeyPanel.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+    $dlg.Controls.Add($swKeyPanel)
+
+    $txtSteamKey = New-Object System.Windows.Forms.TextBox
+    $txtSteamKey.AutoSize = $false
+    $txtSteamKey.BorderStyle = [System.Windows.Forms.BorderStyle]::None
+    $txtSteamKey.BackColor = $steamUi.Input
+    $txtSteamKey.ForeColor = $steamUi.Text
+    $txtSteamKey.Font = New-Object System.Drawing.Font('Segoe UI', 9)
+    $txtSteamKey.Text = [string]$global:steamApiKey
+    $txtSteamKey.Location = New-Object System.Drawing.Point(6, 4)
+    $txtSteamKey.Size = New-Object System.Drawing.Size(308, 21)
+    $swKeyPanel.Controls.Add($txtSteamKey)
+
+    if (-not [string]::IsNullOrWhiteSpace([string]$global:steamApiKey)) {
+        if ([bool]$global:steamApiKeyValid) {
+            Set-ApiKeyValidationBadge $swKeyValidationBadge 'valid' (T 'key_valid')
+        } else {
+            $swStartupCheck = $global:steamApiKeyCheck
+            $swStartupMsg = if ($swStartupCheck -ne $null -and -not [string]::IsNullOrWhiteSpace([string]$swStartupCheck.Message)) { [string]$swStartupCheck.Message } else { (T 'key_invalid_default') }
+            if ($swStartupCheck -ne $null -and ($swStartupCheck.Kind -eq 'invalid' -or $swStartupCheck.Kind -eq 'forbidden')) { $swStartupMsg += (T 'sw_key_new_key') }
+            Set-ApiKeyValidationBadge $swKeyValidationBadge 'invalid' $swStartupMsg
+        }
+    } else {
+        Set-ApiKeyValidationBadge $swKeyValidationBadge 'hidden' ''
+    }
+
+    $swKeyValidationTimer = New-Object System.Windows.Forms.Timer
+    $swKeyValidationTimer.Interval = 650
+    $swKeyValidationTimer.Add_Tick({
+        $swKeyValidationTimer.Stop()
+        $swKey = [string]$txtSteamKey.Text.Trim()
+        if ([string]::IsNullOrWhiteSpace($swKey)) {
+            $global:steamApiKeyValid = $false
+            Set-ApiKeyValidationBadge $swKeyValidationBadge 'hidden' ''
             return
         }
-        $hintText = [string]$check.Message
-        # Для недействительного ключа сразу подсказываем, где взять новый.
-        if ($check.Kind -eq 'invalid') { $hintText += (T 'key_new_key') }
-        $hint.Text = $hintText
-        if ($check.Severity -eq 'ok') { $hint.ForeColor = $steamUi.Green }
-        elseif ($check.Severity -eq 'warn') { $hint.ForeColor = $hintColorWarn }
-        else { $hint.ForeColor = $hintColorError }
+        $global:steamApiKeyValid = $false
+        $swCheck = Test-SteamApiKey $swKey
+        if ($swCheck.Valid) {
+            Set-ApiKeyValidationBadge $swKeyValidationBadge 'valid' $swCheck.Message
+        } else {
+            $swFailTip = [string]$swCheck.Message
+            if ($swCheck.Kind -eq 'invalid' -or $swCheck.Kind -eq 'forbidden') { $swFailTip += (T 'sw_key_new_key') }
+            Set-ApiKeyValidationBadge $swKeyValidationBadge 'invalid' $swFailTip
+        }
+    })
+
+    $txtSteamKey.Add_TextChanged({
+        $swKeyValidationTimer.Stop()
+        $global:steamApiKeyValid = $false
+        Set-ApiKeyValidationBadge $swKeyValidationBadge 'hidden' ''
+        # Вернуть обычную подсказку по ключу (там мог остаться ответ на «Обновить»
+        # без ключа) и пересобрать раскладку: пустое поле — подсказка, иначе —
+        # строка состояния локальной базы.
+        Set-HintLinkText $swHint $swHintDefaultText
+        $swHint.ForeColor = $steamUi.Muted
+        & $applySettingsLayout
+        if (-not [string]::IsNullOrWhiteSpace([string]$txtSteamKey.Text.Trim())) {
+            $swKeyValidationTimer.Start()
+        }
+    })
+
+    $dlg.Add_FormClosed({
+        try { $swKeyValidationTimer.Stop(); $swKeyValidationTimer.Dispose() } catch {}
+    })
+
+    # Пока поле ключа пустое, под ним стоит подсказка по ключу; когда ключ введён,
+    # на её месте показывается строка состояния локальной базы ($dbStatusLabel).
+    $swHint = New-Object System.Windows.Forms.LinkLabel
+    $swHint.Location = New-Object System.Drawing.Point(120, 394)
+    $swHint.Size = New-Object System.Drawing.Size(420, 64)
+    $swHint.Font = New-Object System.Drawing.Font('Segoe UI', 8.5)
+    $swHint.ForeColor = $steamUi.Muted
+    $swHint.LinkColor = $steamUi.Accent
+    $swHint.ActiveLinkColor = $steamUi.Accent2
+    $swHint.VisitedLinkColor = $steamUi.Accent
+    $swHint.LinkBehavior = [System.Windows.Forms.LinkBehavior]::HoverUnderline
+    $swHint.Add_LinkClicked({
+        param($sender, $e)
+        try { Start-Process ([string]$e.Link.LinkData) } catch {}
+    })
+    Set-HintLinkText $swHint (T 'sw_key_hint')
+    $dlg.Controls.Add($swHint)
+
+    $swHintDefaultText = [string]$swHint.Text
+
+    # Ручное обновление локальной базы игр (сама она обновляется раз в неделю).
+    $btnUpdateDb = New-Object System.Windows.Forms.Button
+    $btnUpdateDb.Text = (T 'sw_db_btn_short')
+    $btnUpdateDb.Location = New-Object System.Drawing.Point(450, 362)
+    $btnUpdateDb.Size = New-Object System.Drawing.Size(90, 30)
+    $btnUpdateDb.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    $btnUpdateDb.FlatAppearance.BorderColor = $steamUi.Border
+    $btnUpdateDb.BackColor = $steamUi.Panel
+    $btnUpdateDb.ForeColor = $steamUi.Text
+    $btnUpdateDb.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $dlg.Controls.Add($btnUpdateDb)
+
+    $dbStatusLabel = New-Object System.Windows.Forms.Label
+    # Стоит вплотную под полем Steam Web API-ключа (там же, где подсказка $swHint;
+    # что из двух видно, решает $applySettingsLayout). Текст прижат к верху,
+    # чтобы не «проваливаться» вниз от поля.
+    $dbStatusLabel.Location = New-Object System.Drawing.Point(120, 394)
+    $dbStatusLabel.Size = New-Object System.Drawing.Size(420, 18)
+    $dbStatusLabel.Font = New-Object System.Drawing.Font('Segoe UI', 8.5)
+    $dbStatusLabel.ForeColor = $steamUi.Muted
+    $dbStatusLabel.AutoEllipsis = $true
+    $dbStatusLabel.TextAlign = [System.Drawing.ContentAlignment]::TopLeft
+    $dlg.Controls.Add($dbStatusLabel)
+    $dbStatusTip = New-Object System.Windows.Forms.ToolTip
+    $dbStatusTip.SetToolTip($btnUpdateDb, (T 'sw_db_update_btn'))
+
+    # Текущее состояние базы (без ожидания: если индекс ещё грузится, поле пустое).
+    $dbCount = 0; $dbUpdated = ''
+    try { $dbCount = [int][SteamAppsIndex]::Count; $dbUpdated = [string][SteamAppsIndex]::UpdatedAt } catch {}
+    if ($dbCount -gt 0) {
+        $dbStatusLabel.Text = (T 'sw_db_status_known' @($dbCount, $dbUpdated))
+    } elseif (-not (Test-Path -LiteralPath ([string]$global:steamAppsDbFile))) {
+        $dbStatusLabel.Text = (T 'sw_db_status_none')
     }
-    # Начальное состояние — по результату проверки, сделанной при запуске.
-    & $applyKeyHint $global:steamGridDbApiKeyCheck
+    # Обновление уже идёт (автообновление при запуске) — показываем это и ждём.
+    $dbPollTimer = New-Object System.Windows.Forms.Timer
+    $dbPollTimer.Interval = 500
+    $dbPollTimer.Add_Tick({
+        try { Complete-StartupKeyChecks } catch {}
+
+        # Пока фоновое обновление идёт, читаем процент из служебного файла.
+        # Текст остаётся в одной строке: «Обновляю… 42%».
+        if ($null -ne $script:startupJobs['Db']) {
+            try {
+                $progressPath = ([string]$global:steamAppsDbFile) + '.progress'
+                if (Test-Path -LiteralPath $progressPath) {
+                    $rawPct = [string]([System.IO.File]::ReadAllText($progressPath)).Trim()
+                    $pct = 0
+                    if ([int]::TryParse($rawPct, [ref]$pct)) {
+                        if ($pct -lt 0) { $pct = 0 }
+                        if ($pct -gt 100) { $pct = 100 }
+                        $dbStatusLabel.Text = (T 'sw_db_state_updating') + ' ' + $pct + '%'
+                    }
+                }
+            } catch {}
+            return
+        }
+
+        $dbPollTimer.Stop()
+        $btnUpdateDb.Enabled = $true
+        $dbRes = $script:lastDbRefreshResult
+        if ($null -ne $dbRes -and $dbRes['Ok']) {
+            $dbStatusLabel.ForeColor = $steamUi.Green
+            $dbStatusLabel.Text = (T 'sw_db_update_done_msg' @($dbRes['Count']))
+            $dbStatusTip.SetToolTip($dbStatusLabel, '')
+        } else {
+            $dbErr = ''
+            if ($null -ne $dbRes) { $dbErr = [string]$dbRes['Error'] }
+            $dbStatusLabel.ForeColor = $hintColorError
+            $dbStatusLabel.Text = if ($dbErr -match '403') { (T 'sw_key_403') } else { (T 'sw_db_state_fail') }
+            $dbStatusTip.SetToolTip($dbStatusLabel, $dbErr)
+        }
+    })
+    if ($null -ne $script:startupJobs['Db']) {
+        $btnUpdateDb.Enabled = $false
+        $dbStatusLabel.Text = (T 'sw_db_state_updating') + ' 0%'
+        $dbPollTimer.Start()
+    }
+
+    $btnUpdateDb.Add_Click({
+        $dbKey = [string]$txtSteamKey.Text.Trim()
+        if ([string]::IsNullOrWhiteSpace($dbKey)) {
+            # Поле ключа пустое → строка состояния базы скрыта, поэтому ответ
+            # показываем на месте подсказки (вернётся к обычной при вводе ключа).
+            $swHint.ForeColor = $hintColorWarn
+            Set-HintLinkText $swHint (T 'sw_db_state_nokey')
+            return
+        }
+        $btnUpdateDb.Enabled = $false
+        $dbStatusLabel.ForeColor = $steamUi.Muted
+        $dbStatusLabel.Text = (T 'sw_db_state_updating')
+        $dbStatusTip.SetToolTip($dbStatusLabel, '')
+        [void](Start-LocalSteamAppsDbRefresh $dbKey -Force)
+        $dbPollTimer.Start()
+    })
+    $dlg.Add_FormClosed({
+        try { $dbPollTimer.Stop(); $dbPollTimer.Dispose() } catch {}
+    })
 
     $backupSection = New-Object System.Windows.Forms.Label
     $backupSection.Text = (T 'set_backup_section')
-    $backupSection.Location = New-Object System.Drawing.Point(20, 304)
+    $backupSection.Location = New-Object System.Drawing.Point(20, 478)
     $backupSection.Size = New-Object System.Drawing.Size(520, 25)
     $backupSection.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 10.5)
     $backupSection.ForeColor = $steamUi.Accent
@@ -7716,7 +9159,7 @@ function Show-ProgramSettingsDialog {
     # первая в ряду, слева от «Создать бэкап».
     $btnBrowseBackupFolder = New-Object System.Windows.Forms.Button
     $btnBrowseBackupFolder.Text = (T 'browse')
-    $btnBrowseBackupFolder.Location = New-Object System.Drawing.Point(20, 339)
+    $btnBrowseBackupFolder.Location = New-Object System.Drawing.Point(20, 513)
     $btnBrowseBackupFolder.Size = New-Object System.Drawing.Size(145, 34)
     $btnBrowseBackupFolder.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $btnBrowseBackupFolder.FlatAppearance.BorderColor = $steamUi.Border
@@ -7730,7 +9173,7 @@ function Show-ProgramSettingsDialog {
 
     $btnCreateBackup = New-Object System.Windows.Forms.Button
     $btnCreateBackup.Text = (T 'set_create_backup')
-    $btnCreateBackup.Location = New-Object System.Drawing.Point(175, 339)
+    $btnCreateBackup.Location = New-Object System.Drawing.Point(175, 513)
     $btnCreateBackup.Size = New-Object System.Drawing.Size(145, 34)
     $btnCreateBackup.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $btnCreateBackup.FlatAppearance.BorderColor = $steamUi.Accent2
@@ -7742,7 +9185,7 @@ function Show-ProgramSettingsDialog {
 
     $btnRestoreBackup = New-Object System.Windows.Forms.Button
     $btnRestoreBackup.Text = (T 'set_restore')
-    $btnRestoreBackup.Location = New-Object System.Drawing.Point(330, 339)
+    $btnRestoreBackup.Location = New-Object System.Drawing.Point(330, 513)
     $btnRestoreBackup.Size = New-Object System.Drawing.Size(145, 34)
     $btnRestoreBackup.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $btnRestoreBackup.FlatAppearance.BorderColor = $steamUi.Accent2
@@ -7754,7 +9197,7 @@ function Show-ProgramSettingsDialog {
     $dlg.Controls.Add($btnRestoreBackup)
 
     $lvBackups = New-Object System.Windows.Forms.ListView
-    $lvBackups.Location = New-Object System.Drawing.Point(20, 382)
+    $lvBackups.Location = New-Object System.Drawing.Point(20, 556)
     $lvBackups.Size = New-Object System.Drawing.Size(520, 112)
     $lvBackups.View = [System.Windows.Forms.View]::Details
     $lvBackups.FullRowSelect = $true
@@ -7773,7 +9216,7 @@ function Show-ProgramSettingsDialog {
     # копий («Готово к восстановлению», «Создано копий: N» и т.п.).
     $backupHint = New-Object System.Windows.Forms.Label
     $backupHint.Text = ''
-    $backupHint.Location = New-Object System.Drawing.Point(20, 496)
+    $backupHint.Location = New-Object System.Drawing.Point(20, 670)
     $backupHint.Size = New-Object System.Drawing.Size(520, 18)
     $backupHint.ForeColor = $steamUi.Muted
     $backupHint.Font = New-Object System.Drawing.Font('Segoe UI', 8.5)
@@ -7781,7 +9224,7 @@ function Show-ProgramSettingsDialog {
 
     $appVersionLabel = New-Object System.Windows.Forms.Label
     $appVersionLabel.Text = "$($global:appTitle) • v$($global:appVersion)"
-    $appVersionLabel.Location = New-Object System.Drawing.Point(20, 515)
+    $appVersionLabel.Location = New-Object System.Drawing.Point(20, 689)
     $appVersionLabel.Size = New-Object System.Drawing.Size(300, 34)
     $appVersionLabel.ForeColor = $steamUi.Muted
     $appVersionLabel.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
@@ -7789,7 +9232,7 @@ function Show-ProgramSettingsDialog {
 
     $btnCancel = New-Object System.Windows.Forms.Button
     $btnCancel.Text = (T 'set_cancel')
-    $btnCancel.Location = New-Object System.Drawing.Point(335, 515)
+    $btnCancel.Location = New-Object System.Drawing.Point(335, 689)
     $btnCancel.Size = New-Object System.Drawing.Size(100, 34)
     $btnCancel.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $btnCancel.FlatAppearance.BorderColor = $steamUi.Border
@@ -7800,7 +9243,7 @@ function Show-ProgramSettingsDialog {
 
     $btnSave = New-Object System.Windows.Forms.Button
     $btnSave.Text = (T 'set_save')
-    $btnSave.Location = New-Object System.Drawing.Point(440, 515)
+    $btnSave.Location = New-Object System.Drawing.Point(440, 689)
     $btnSave.Size = New-Object System.Drawing.Size(100, 34)
     $btnSave.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $btnSave.FlatAppearance.BorderColor = $steamUi.Accent2
@@ -7808,6 +9251,53 @@ function Show-ProgramSettingsDialog {
     $btnSave.ForeColor = $steamUi.Text
     $btnSave.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 9)
     $dlg.Controls.Add($btnSave)
+
+    # Раскладка нижней части окна зависит от того, заполнены ли поля ключей:
+    #  - SteamGridDB: пустое поле → подсказка по ключу, заполнено → ничего
+    #    (состояние показывает значок), блок Steam Web API поднимается выше;
+    #  - Steam Web API: пустое поле → подсказка по ключу, заполнено → строка
+    #    «Локальная база: …» вплотную под полем;
+    #  - всё, что ниже, сдвигается вслед за ними, а высота окна подгоняется.
+    # Координаты — исходные («базовые») плюс сдвиг $dy.
+    $applySettingsLayout = {
+        $sgEmpty = [string]::IsNullOrWhiteSpace([string]$txtKey.Text)
+        $swEmpty = [string]::IsNullOrWhiteSpace([string]$txtSteamKey.Text)
+
+        $hint.Visible = $sgEmpty
+        $dy = if ($sgEmpty) { 0 } else { -24 }
+
+        $swSection.Top = 328 + $dy
+        $swKeyLabel.Top = 362 + $dy
+        $swKeyPanel.Top = 362 + $dy
+        $swKeyValidationBadge.Top = 367 + $dy
+        $btnUpdateDb.Top = 362 + $dy
+
+        $swHint.Top = 394 + $dy
+        $dbStatusLabel.Top = 394 + $dy
+        $swHint.Visible = $swEmpty
+        $dbStatusLabel.Visible = (-not $swEmpty)
+        $slotHeight = if ($swEmpty) { $swHint.Height } else { $dbStatusLabel.Height }
+
+        $bTop = 394 + $dy + $slotHeight + 14
+        $backupSection.Top = $bTop
+        $btnBrowseBackupFolder.Top = $bTop + 35
+        $btnCreateBackup.Top = $bTop + 35
+        $btnRestoreBackup.Top = $bTop + 35
+        $lvBackups.Top = $bTop + 78
+        $backupHint.Top = $bTop + 192
+        $appVersionLabel.Top = $bTop + 211
+        $btnCancel.Top = $bTop + 211
+        $btnSave.Top = $bTop + 211
+
+        $newHeight = $bTop + 271
+        $oldHeight = $dlg.ClientSize.Height
+        if ($oldHeight -ne $newHeight) {
+            $dlg.ClientSize = New-Object System.Drawing.Size(560, $newHeight)
+            # Окно уже открыто — держим его по центру относительно прежней позиции.
+            if ($dlg.Visible) { try { $dlg.Top = $dlg.Top + [int](($oldHeight - $newHeight) / 2) } catch {} }
+        }
+    }
+    & $applySettingsLayout
 
     $refreshSteamProfiles = {
         try {
@@ -8262,7 +9752,27 @@ function Show-ProgramSettingsDialog {
             $global:steamInstallPath = $fullSteamPath
             $global:steamUserId = $chosenUserId
             $global:steamGridDbApiKey = $txtKey.Text.Trim()
-            $settingsAccepted = $true
+            $launchersSettingChanged = ([bool]$global:suggestGameLaunchers -ne [bool]$chkSuggestLaunchers.Tag)
+            $global:suggestGameLaunchers = [bool]$chkSuggestLaunchers.Tag
+            if ($launchersSettingChanged) { $global:exeSelectionCache.Clear() }
+            $global:steamApiKey = $txtSteamKey.Text.Trim()
+            $settingsState.Accepted = $true
+
+            # Если ключ изменили и сразу нажали «Сохранить», не дождавшись отложенной
+            # проверки (таймер 650 мс), — проверяем его сейчас, чтобы сохранённое
+            # состояние соответствовало сохранённому ключу.
+            try {
+                if ($apiKeyValidationTimer.Enabled) {
+                    $apiKeyValidationTimer.Stop()
+                    if (-not [string]::IsNullOrWhiteSpace($global:steamGridDbApiKey)) { [void](Test-SteamGridDbApiKey $global:steamGridDbApiKey) }
+                }
+            } catch {}
+            try {
+                if ($swKeyValidationTimer.Enabled) {
+                    $swKeyValidationTimer.Stop()
+                    if (-not [string]::IsNullOrWhiteSpace($global:steamApiKey)) { [void](Test-SteamApiKey $global:steamApiKey) }
+                }
+            } catch {}
 
             # Язык: применяем к главному окну сразу, диалоги подхватят его при следующем открытии.
             $langIdx = $cmbLanguage.SelectedIndex
@@ -8307,9 +9817,14 @@ function Show-ProgramSettingsDialog {
 
     $dlg.Add_FormClosed({
         try {
-            if (-not $settingsAccepted) {
+            if (-not $settingsState.Accepted) {
                 $global:steamInstallPath = $originalSteamInstallPath
                 $global:steamUserId = $originalSteamUserId
+                $global:suggestGameLaunchers = $originalSuggestGameLaunchers
+                $global:steamGridDbApiKeyValid = $originalSgdbKeyValid
+                $global:steamGridDbApiKeyCheck = $originalSgdbKeyCheck
+                $global:steamApiKeyValid = $originalSteamKeyValid
+                $global:steamApiKeyCheck = $originalSteamKeyCheck
             }
         } catch {}
     })
@@ -8489,6 +10004,14 @@ function Show-EditorAlternativeCover($slot, [string]$title) {
             $chooserHeight = 130
         }
 
+        try {
+            $slotFormForSuppress = $slot.Panel.FindForm()
+            if($null -ne $slotFormForSuppress -and $null -ne $slotFormForSuppress.Tag){
+                $es = $slotFormForSuppress.Tag
+                if($es.LastSuggestionField -eq 'title'){ $es.SuppressTitleSuggestionOnce=$true }
+                elseif($es.LastSuggestionField -eq 'launch'){ $es.SuppressLaunchOptionOnce=$true }
+            }
+        } catch {}
         $chosen = Show-SgdbAssetChooser $title $items $chooserWidth $chooserHeight $slot.Panel.FindForm()
         if ([string]::IsNullOrWhiteSpace([string]$chosen)) {
             return
@@ -8620,6 +10143,9 @@ function Set-ConfidenceBadge($pictureBox, [bool]$confident, [string]$confidentTi
 }
 
 function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode = $false, $batchHost = $null) {
+    # Каждая новая карточка начинает с чистого состояния отмены.
+    # Предыдущая карточка могла быть закрыта во время сетевой загрузки.
+    $global:editorLoadAbortRequested = $false
     if($batchMode){ $script:batchCardCancelRequested = $false; $script:batchCardSkipRequested = $false }
     $editMode = $false
     $existingShortcut = $null
@@ -8793,7 +10319,19 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
 
     # SGDB доступен только после успешной проверки API-ключа. Пустой, изменённый,
     # невалидный или не проверенный ключ оставляет переключатель серым и неактивным.
+    # Проверка ключа SGDB при запуске идёт в фоне. Если она ещё не закончилась,
+    # кнопка пока серая, а этот таймер включит её, как только результат будет готов.
+    $sgdbPendingTimer = New-Object System.Windows.Forms.Timer
+    $sgdbPendingTimer.Interval = 400
+    $sgdbPendingTimer.Add_Tick({
+        try { $sgdbPendingTimer.Stop() } catch {}
+        try { & $updateSgdbButtonState } catch {}
+    })
+    $dlg.Add_FormClosed({
+        try { $sgdbPendingTimer.Stop(); $sgdbPendingTimer.Dispose() } catch {}
+    })
     $updateSgdbButtonState = {
+        try { Complete-StartupKeyChecks } catch {}
         $isValid = ([bool]$global:steamGridDbApiKeyValid -and -not [string]::IsNullOrWhiteSpace([string]$global:steamGridDbApiKey))
         $searchSgdbBtn.Enabled = $isValid
         if($isValid){
@@ -8816,13 +10354,15 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
             $searchSgdbBtn.FlatAppearance.BorderColor=[System.Drawing.Color]::FromArgb(65,65,65)
             $searchSgdbBtn.Cursor=[System.Windows.Forms.Cursors]::Default
         }
+        if (Test-StartupKeyChecksPending) { try { $sgdbPendingTimer.Start() } catch {} }
     }
     & $updateSgdbButtonState
 
     # Состояние источника хранится в объекте, а не в локальной переменной: PowerShell
     # создаёт отдельную область видимости для обработчиков событий и из-за обычного
     # присваивания $editorState.SearchSource переключение фактически возвращалось к Steam.
-    $editorState = [PSCustomObject]@{ SearchSource = 'Steam'; SwitchSerial = 0 }
+    $editorState = [PSCustomObject]@{ SearchSource = 'Steam'; SwitchSerial = 0; LastSuggestionField = ''; SuppressTitleSuggestionOnce = $false; SuppressLaunchOptionOnce = $false }
+    try { $dlg.Tag = $editorState } catch {}
 
     # Название и EXE используют один и тот же стиль ComboBox:
     # одинаковая высота строки, фон, рамка и выделение.
@@ -9115,8 +10655,14 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
             $launchOptResults.BringToFront()
         } catch {}
     }
-    $txtLaunchOptions.Add_Click({ & $openLaunchOptionsDropDown })
-    $txtLaunchOptions.Add_GotFocus({ & $openLaunchOptionsDropDown })
+    $txtLaunchOptions.Add_Click({
+        if($editorState.SuppressLaunchOptionOnce){ $editorState.SuppressLaunchOptionOnce=$false; return }
+        $editorState.LastSuggestionField='launch'
+        & $openLaunchOptionsDropDown
+    })
+    # GotFocus намеренно не открывает список. Возврат фокуса после окна выбора
+    # обложки не должен считаться кликом по полю и повторно раскрывать список.
+    # Список открывается только явным кликом по самому полю.
     $txtLaunchOptions.Add_KeyDown({
         if($_.KeyCode -eq [System.Windows.Forms.Keys]::Down -and $launchOptResults.Visible -and $launchOptResults.Items.Count -gt 0){
             $_.SuppressKeyPress=$true
@@ -9139,6 +10685,12 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     $slots.Horizontal = New-EditorCoverSlot $dlg (T 'slot_horizontal') 305 138 270 280
     $slots.Hero = New-EditorCoverSlot $dlg (T 'slot_hero') 590 138 270 280
     $slots.Logo = New-EditorCoverSlot $dlg (T 'slot_logo') 20 428 270 170
+    # Для всех четырёх типов обложек фон карточки должен совпадать
+    # с тёмным фоном области изображения внутри.
+    $slots.Vertical.Panel.BackColor = $steamUi.Input
+    $slots.Horizontal.Panel.BackColor = $steamUi.Input
+    $slots.Hero.Panel.BackColor = $steamUi.Input
+    $slots.Logo.Panel.BackColor = $steamUi.Input
 
     # Клик по миниатюре открывает альтернативы ИМЕННО этого типа.
     # Если текущий источник Steam, варианты подгружаются напрямую из SGDB по
@@ -9463,15 +11015,10 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
             # Заполняем выпадающий список теми же кандидатами, которые реально
             # использованы для текущего источника.
             if($tag -ne $null){
-                $newMap=@{}
-                foreach($c in $candidates){
-                    if($null -eq $c){continue}
-                    $nm=[string]$c.Name
-                    if(-not [string]::IsNullOrWhiteSpace($nm) -and -not $newMap.ContainsKey($nm)){
-                        $newMap[$nm]=$c
-                    }
-                }
-                if($newMap.Count -eq 0){ $newMap[[string]$chosen.Name]=$chosen }
+                $mapInfo=New-EditorTitleCandidateMap $candidates
+                $newMap=$mapInfo.Map
+                $mapNames=$mapInfo.Names
+                if($newMap.Count -eq 0){ $newMap[[string]$chosen.Name]=$chosen; [void]$mapNames.Add([string]$chosen.Name) }
                 $tag.Map=$newMap
                 $tag.RefreshNeeded=$false
 
@@ -9480,7 +11027,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
                 try {
                     $titleResults.BeginUpdate()
                     $titleResults.Items.Clear()
-                    foreach($key in $newMap.Keys){ [void]$titleResults.Items.Add([string]$key) }
+                    foreach($key in $mapNames){ [void]$titleResults.Items.Add([string]$key) }
                     & $resizeEditorTitleResults
                 } finally {
                     try { $titleResults.EndUpdate() } catch {}
@@ -9715,17 +11262,20 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
                     $candidates=@(Get-EditorSgdbCandidates $query $txtId.Text.Trim())
                 }
 
-                $newMap=@{}
-                $names=New-Object System.Collections.Generic.List[string]
-                foreach($c in $candidates){
-                    if($null -eq $c){continue}
-                    $nm=[string]$c.Name
-                    if([string]::IsNullOrWhiteSpace($nm)){continue}
-                    if(-not $newMap.ContainsKey($nm)){
-                        $newMap[$nm]=$c
-                        [void]$names.Add($nm)
-                    }
+                # Пока шёл поиск (он прокачивает сообщения окна), пользователь мог
+                # продолжить набор — тогда этот результат уже устарел: не
+                # показываем его, а сразу перезапускаем поиск по актуальному тексту.
+                if((([string]$txtTitle.Text).Trim()) -ne $query){
+                    $tag.RefreshNeeded=$true
+                    try { $tag.SearchTimer.Stop(); $tag.SearchTimer.Start() } catch {}
+                    return $false
                 }
+
+                # Одноимённые варианты (разные App ID) больше не схлопываются в
+                # один пункт списка — см. New-EditorTitleCandidateMap.
+                $mapInfo=New-EditorTitleCandidateMap $candidates
+                $newMap=$mapInfo.Map
+                $names=$mapInfo.Names
 
                 # Это отдельный TextBox, поэтому обновление Items списка
                 # НИКОГДА не должно переписывать Text. Раньше здесь использовался
@@ -9815,8 +11365,17 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
         } catch {}
     }
 
+    # Закрытие списка возвращает фокус в поле названия (Focus()). Это вызывает
+    # GotFocus, который теперь сам открывает подсказки, — на время возврата фокуса
+    # обработчик отключаем, иначе после выбора варианта/Esc список открывался бы снова.
+    $titleFocusState=@{Skip=$false}
+
     $closeEditorTitleDropDown = {
-        try { $titleResults.Visible=$false; $titleResults.SelectedIndex=-1; $txtTitle.Focus() } catch {}
+        try {
+            $titleFocusState.Skip=$true
+            $titleResults.Visible=$false; $titleResults.SelectedIndex=-1; $txtTitle.Focus()
+        } catch {
+        } finally { $titleFocusState.Skip=$false }
     }
 
 
@@ -9897,7 +11456,34 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
         } catch {}
     })
 
-    
+
+    # Подсказки появляются сразу, как только курсор встал в поле названия (по
+    # фокусу или по клику в уже сфокусированное поле) — ещё до начала набора.
+    # Поиск идёт через тот же отложенный таймер, что и при наборе: на фокусе
+    # сетевой запрос не блокирует UI. Если список для текущего текста уже
+    # загружен, таймер просто раскроет его без повторного запроса.
+    $showEditorTitleSuggestionsOnEnter = {
+        try {
+            if($titleFocusState.Skip){ return }
+            $tag=$txtTitle.Tag
+            if($null -eq $tag -or $tag.Busy -or $tag.SuppressAutoSearch){ return }
+            if($titleResults.Visible){ return }
+            if(([string]$txtTitle.Text).Trim().Length -lt 2){ return }
+            $timer=$tag.SearchTimer
+            if($null -eq $timer){ return }
+            $timer.Stop()
+            $timer.Start()
+        } catch {}
+    }
+    # GotFocus не раскрывает список: после возврата фокуса из окна выбора
+    # обложки поле получает фокус автоматически, но это не является кликом
+    # пользователя по полю. Открытие выполняется только через Click.
+    $txtTitle.Add_Click({
+        if($editorState.SuppressTitleSuggestionOnce){ $editorState.SuppressTitleSuggestionOnce=$false; return }
+        $editorState.LastSuggestionField='title'
+        & $showEditorTitleSuggestionsOnEnter
+    })
+
     $titleResults.Add_MouseClick({ & $commitEditorTitleResult })
     $titleResults.Add_KeyDown({
         if($_.KeyCode -eq [System.Windows.Forms.Keys]::Enter){ $_.SuppressKeyPress=$true; & $commitEditorTitleResult }
@@ -10100,6 +11686,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
                 try { $initialTag.SearchTimer.Stop() } catch {}
             }
         }
+        if($global:editorLoadAbortRequested -or $dlg.IsDisposed -or $dlg.Disposing){ return }
         $titleConfidentInitial = if($editorState.SearchSource -eq 'Steam'){ $found -ne $null } else { (@($candidates).Count -gt 0) }
         Set-ConfidenceBadge $titleConfidenceBadge $titleConfidentInitial (T 'badge_title_ok') (T 'badge_title_fail_auto')
         $loadedExistingCovers=$false
@@ -10153,6 +11740,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
             } else {
                 [void](Load-EditorSgdbPreviews -gameName $txtTitle.Text.Trim() -steamAppId '' -slots $slots -statusLabel $status -sgdbGameId ([int]$txtId.Text.Trim()))
             }
+            if($global:editorLoadAbortRequested -or $dlg.IsDisposed -or $dlg.Disposing){ return }
         } else {
             Stop-EditorLoading $slots $dlg
             foreach($sl in $slots.Values){ Set-EditorPreviewFile $sl $null | Out-Null }
@@ -10307,18 +11895,90 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
         }
     })
 
+    # Закрытие карточки во время сетевой загрузки не должно ждать ответа сервера.
+    # FormClosing срабатывает и для крестика, и для кнопок «Отмена»/«Пропустить».
+    $dlg.Add_FormClosing({
+        $global:editorLoadAbortRequested = $true
+    })
+
     if($btnCancel -ne $null){
         $btnCancel.Add_Click({
             $script:batchCardCancelRequested = $true
+            $global:editorLoadAbortRequested = $true
             $dlg.Close()
         })
     }
     if($batchMode -and $btnSkip -ne $null){
         $btnSkip.Add_Click({
             $script:batchCardSkipRequested = $true
+            $global:editorLoadAbortRequested = $true
             $dlg.Close()
         })
     }
+    # Если открыт список подсказок названия или параметров, любой клик
+    # в другом месте карточки должен закрывать его. Важно: клик по самому
+    # полю и по его списку не закрывает список. Обработчик навешивается
+    # рекурсивно на все существующие контролы карточки, поэтому это работает
+    # не только по фону формы, но и по кнопкам, подписям, панелям и обложкам.
+    $hideEditorDropDownsOnOutsideClick = {
+        param($sender, $e)
+        try {
+            $ctrl = $sender
+            $isInsideExcluded = $false
+            $excluded = @($txtTitle, $pnlTitle, $titleResults, $txtLaunchOptions, $launchOptResults)
+            foreach($root in $excluded){
+                if($null -eq $root){ continue }
+                $node = $ctrl
+                while($null -ne $node){
+                    if([object]::ReferenceEquals($node, $root)){
+                        $isInsideExcluded = $true
+                        break
+                    }
+                    $node = $node.Parent
+                }
+                if($isInsideExcluded){ break }
+            }
+            if($isInsideExcluded){ return }
+            if($titleResults.Visible){
+                $titleResults.Visible = $false
+                $titleResults.SelectedIndex = -1
+            }
+            if($launchOptResults.Visible){
+                $launchOptResults.Visible = $false
+                $launchOptResults.SelectedIndex = -1
+            }
+            # Реально снимаем фокус именно с текстового поля. Form.Focus()
+            # здесь недостаточно: WinForms может оставить ActiveControl
+            # прежним, поэтому курсор в TextBox продолжает мигать.
+            # Используем отдельный невидимый focus-sink. Если клик был по
+            # кнопке/другому фокусируемому контролу, этот контрол после
+            # MouseDown получит фокус обычным порядком WinForms.
+            try {
+                if([object]::ReferenceEquals($dlg.ActiveControl,$txtTitle) -or [object]::ReferenceEquals($dlg.ActiveControl,$txtLaunchOptions)){
+                    $dlg.ActiveControl=$editorFocusSink
+                    $editorFocusSink.Focus() | Out-Null
+                } else {
+                    if($txtTitle.Focused -or $txtLaunchOptions.Focused){
+                        $editorFocusSink.Focus() | Out-Null
+                    }
+                }
+            } catch {}
+        } catch {}
+    }
+
+    $wireOutsideDropDownDismiss = $null
+    $wireOutsideDropDownDismiss = {
+        param($control)
+        try {
+            if($null -eq $control){ return }
+            $control.Add_MouseDown($hideEditorDropDownsOnOutsideClick)
+            foreach($child in @($control.Controls)){
+                & $wireOutsideDropDownDismiss $child
+            }
+        } catch {}
+    }
+    & $wireOutsideDropDownDismiss $dlg
+
     # Esc закрывает карточку так же, как кнопка отмены. Порядок такой:
     #  1) открытый выпадающий список (варианты названия, список EXE) — Esc закрывает только его;
     #  2) идёт сохранение/поиск (кнопка добавления отключена) — Esc игнорируется;
@@ -10355,6 +12015,10 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     } else {
         $dlg.ShowDialog() | Out-Null
     }
+    # Карточка уже закрыта — дальнейшая работа программы не должна наследовать
+    # её флаг отмены. Флаги пакетного режима остаются отдельно и обрабатываются
+    # вызывающим циклом.
+    $global:editorLoadAbortRequested = $false
     # В режиме редактирования Steam закрывался перед записью shortcuts.vdf
     # только если пользователь реально сохранил изменения (см.
     # $steamWasKilledThisSession выше). Запускаем его здесь после полного
