@@ -4,6 +4,21 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [1.1.0] - 2026-09-21
+
+### Added
+- Steam Web API support for more accurate game title and App ID searches.
+- Local Steam game database with saved titles and App IDs for faster searches.
+- EXE filter setting to optionally include game launchers in executable suggestions.
+
+### Improved
+- Improved application stability and responsiveness during network operations and cover loading.
+- Improved search speed using the local game database and in-memory index.
+- Improved SteamGridDB and cover loading behavior.
+- Improved cancellation and skipping of ongoing operations.
+- Improved title and launch parameter suggestions and focus handling.
+- Improved overall UI consistency and localization.
+
 ## [1.0.1] - 2026-09-20
 
 ### Fixed
