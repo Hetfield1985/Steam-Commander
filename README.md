@@ -141,6 +141,7 @@ Both game panels share the same keys.
 | **Delete** | Remove selected games from the list (files on disk are untouched) |
 | **Ctrl+A** | Select all |
 | **Esc** | Close the current game card (same as *Cancel*) |
+| **Alt+Shift+Enter** | Calculate the size of all folders in the active panel. |
 
 The **Refresh** button brings removed rows back.
 
