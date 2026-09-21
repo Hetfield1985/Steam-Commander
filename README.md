@@ -75,10 +75,12 @@ Steam Commander is a Windows Forms desktop tool written in PowerShell. You point
 - Game card with title, executable, start folder and launch parameters.
 - Four artwork slots: **vertical**, **horizontal**, **hero/background**, **logo** — each with a live preview and a source badge (Steam / SteamGridDB).
 - Title and executable confidence indicators (green check when the match is reliable).
+- **Steam Web API integration** for more accurate game title and App ID matching, with titles and App IDs cached locally for faster searches.
 - Executable detection with junk filtering (uninstallers, crash handlers, redistributables, …) and a hint from Steam's own launch data.
 - Launch parameters suggested from Steam data, with human-readable descriptions for well-known options.
 - **Batch mode** for many games at once, with optional **auto-fill**: confidently recognised games are added without opening a card; the card opens only for games the program could not identify unambiguously.
 - Steam **cover region** selection (localised artwork).
+- **EXE filter** with an option to include game launchers in executable suggestions.
 
 **Moving games**
 - Move ticked games from one panel folder to the other with progress, speed and free-space check.
@@ -99,6 +101,7 @@ Steam Commander is a Windows Forms desktop tool written in PowerShell. You point
 - Steam installed and started at least once (so a `userdata` profile exists).
 - **Administrator rights** — the program asks for them and exits without.
 - Internet access for game search and artwork (see [Privacy and network](#privacy-and-network)).
+- Optional: a free Steam Web API key for more accurate game title and App ID matching.
 - Optional (but highly recommended): a free [SteamGridDB API key](https://www.steamgriddb.com/profile/preferences) for the SteamGridDB source.
 
 ## Installation
@@ -119,10 +122,11 @@ See [Building](#building).
 ## Getting started
 
 1. Launch Steam Commander and open **Settings**. Check the Steam folder and pick the Steam **profile** (`userdata`) you want to work with.
-2. *(Optional but highly recommended)* Paste your SteamGridDB API key. A status message under the field tells you whether the key is valid, revoked, or the service is unavailable.
-3. Choose a game folder for left panel and, if you want to move games between drives, another one for right panel.
-4. Tick the games you want and press **Add selected games to library**, or open a single game card with double-click / Enter.
-5. Check the title, executable and artwork, then save.
+2. *(Optional)* Add your **Steam Web API key** for more accurate game title and App ID matching. Game titles and App IDs are downloaded and stored in a local database for faster subsequent searches.
+3. *(Optional but highly recommended)* Paste your **SteamGridDB API key** for additional artwork. A status message under the field tells you whether the key is valid, revoked, or the service is unavailable.
+4. Choose a game folder for left panel and, if you want to move games between drives, another one for right panel.
+5. Tick the games you want and press **Add selected games to library**, or open a single game card with double-click / Enter.
+6. Check the title, executable and artwork, then save.
 
 > **Note:** when the program writes to `shortcuts.vdf` it closes Steam and starts it again afterwards. Close running games and let Steam finish syncing first.
 
@@ -145,11 +149,12 @@ The **Refresh** button brings removed rows back.
 | What | Where |
 |---|---|
 | Settings (`config.ini`), cover-source metadata | `%APPDATA%\Steam Commander` |
+| Steam game database | `%APPDATA%\Steam Commander` |
 | `shortcuts.vdf` backups (default) | `backups` folder next to the executable — can be changed in Settings |
 | Temporary covers | `%TEMP%\SteamCommander` (removed when the program closes) |
 | Steam shortcuts and artwork | your Steam profile: `Steam\userdata\<id>\config\shortcuts.vdf` and `config\grid\` |
 
-Your SteamGridDB API key is stored **in plain text** in `config.ini`. Do not share that file.
+Your Steam Web API key and SteamGridDB API key are stored **in plain text** in `config.ini`. Do not share that file.
 
 ## Privacy and network
 
@@ -157,7 +162,9 @@ There is no telemetry. The program only contacts services needed for its job:
 
 - `store.steampowered.com`, `api.steampowered.com` and the `*.steamstatic.com` CDNs — game search and official artwork.
 - `api.steamcmd.net` — Steam launch data (executable and launch options hints).
-- `www.steamgriddb.com` — alternative artwork (only with your API key).
+- `www.steamgriddb.com` — alternative artwork (with your SteamGridDB API key).
+
+The Steam Web API is used to download game titles and App IDs for the local database when a Steam Web API key is configured.
 
 ## Building
 
@@ -174,7 +181,7 @@ A GitHub Actions workflow (`.github/workflows/release.yml`) builds and attaches 
 
 ## Project structure
 
-```
+```text
 Steam-Commander/
 ├── src/Steam_Commander.ps1      # the whole application
 ├── build/build.ps1              # ps2exe build script
