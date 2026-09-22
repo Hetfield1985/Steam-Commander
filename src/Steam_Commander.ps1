@@ -305,7 +305,7 @@ $global:dirD = ""
 # Единая версия приложения — используется в заголовке главного окна, в
 # подписи внизу окна настроек и в User-Agent HTTP-запросов. Меняйте только
 # здесь при выпуске новой версии.
-$global:appVersion = "1.1.0"
+$global:appVersion = "1.1.1"
 $global:appTitle = "Steam Commander"
 
 # ===================== ЛОКАЛИЗАЦИЯ =====================
@@ -386,6 +386,7 @@ $script:I18n = @{
         set_language = 'Язык'
         set_steam_folder = 'Папка Steam'
         set_profile = 'Профиль'
+        set_region = 'Регион'
         set_profile_hint = 'Выберите userdata-профиль, с которым будет работать программа.'
         set_exe_filter = 'Фильтр EXE'
         set_offer_launchers = 'Предлагать лаунчеры'
@@ -503,6 +504,7 @@ $script:I18n = @{
         sl_steam_fetch = 'Получаю официальные ресурсы Steam для App ID {0}…'
         sl_steam_found = 'Steam: найдено ресурсов — {0} из 4.'
         covlang_tip = 'Регион обложек Steam: {0}. Нажмите, чтобы выбрать другой.'
+        covlang_more = 'Ещё регионы ({0}). Нажмите, чтобы открыть список.'
         covlang_no_appid = 'Регион обложек: сначала нужен App ID игры.'
         covlang_checking = 'Определяю доступные регионы обложек…'
         covlang_unavailable = 'Не удалось определить доступные регионы обложек для этой игры.'
@@ -545,6 +547,7 @@ $script:I18n = @{
         slot_horizontal = '2. Горизонтальная'
         slot_hero = '3. Hero / фон'
         slot_logo = '4. Логотип'
+        slot_icon = '5. Иконка'
         card_info = 'Steam — основной источник. Клик по любой миниатюре открывает варианты SteamGridDB только для этого типа, не переключая источник целиком.'
         card_save = 'Сохранить изменения'
         card_add = 'Добавить игру в библиотеку'
@@ -682,6 +685,7 @@ $script:I18n = @{
         set_language = 'Language'
         set_steam_folder = 'Steam folder'
         set_profile = 'Profile'
+        set_region = 'Region'
         set_profile_hint = 'Choose the userdata profile the program will work with.'
         set_exe_filter = 'EXE filter'
         set_offer_launchers = 'Suggest launchers'
@@ -799,6 +803,7 @@ $script:I18n = @{
         sl_steam_fetch = 'Fetching official Steam assets for App ID {0}…'
         sl_steam_found = 'Steam: assets found — {0} of 4.'
         covlang_tip = 'Steam cover region: {0}. Click to choose another one.'
+        covlang_more = 'More regions ({0}). Click to open the list.'
         covlang_no_appid = 'Cover region: the game App ID is required first.'
         covlang_checking = 'Checking available cover regions…'
         covlang_unavailable = 'Could not determine the available cover regions for this game.'
@@ -841,6 +846,7 @@ $script:I18n = @{
         slot_horizontal = '2. Horizontal'
         slot_hero = '3. Hero / background'
         slot_logo = '4. Logo'
+        slot_icon = '5. Icon'
         card_info = 'Steam is the primary source. Clicking any thumbnail opens SteamGridDB options for that type only, without switching the whole source.'
         card_save = 'Save changes'
         card_add = 'Add game to library'
@@ -978,6 +984,7 @@ $script:I18n = @{
         set_language = '语言'
         set_steam_folder = 'Steam 文件夹'
         set_profile = '配置文件'
+        set_region = '区域'
         set_profile_hint = '选择程序要使用的 userdata 配置文件。'
         set_exe_filter = 'EXE 筛选'
         set_offer_launchers = '提供游戏启动器'
@@ -1096,6 +1103,7 @@ $script:I18n = @{
         sl_steam_fetch = '正在获取 App ID {0} 的 Steam 官方素材…'
         sl_steam_found = 'Steam：已找到素材 — {0}/4。'
         covlang_tip = 'Steam 封面区域：{0}。点击可选择其他区域。'
+        covlang_more = '更多区域（{0}）。点击打开列表。'
         covlang_no_appid = '封面区域：需要先填写游戏的 App ID。'
         covlang_checking = '正在检查可用的封面区域…'
         covlang_unavailable = '无法确定该游戏可用的封面区域。'
@@ -1138,6 +1146,7 @@ $script:I18n = @{
         slot_horizontal = '2. 横版'
         slot_hero = '3. Hero / 背景'
         slot_logo = '4. Logo'
+        slot_icon = '5. 图标'
         card_info = 'Steam 为主要来源。点击任意缩略图只会打开该类型的 SteamGridDB 可选项，而不会切换整个来源。'
         card_save = '保存更改'
         card_add = '添加游戏到库'
@@ -1275,6 +1284,7 @@ $script:I18n = @{
         set_language = 'Idioma'
         set_steam_folder = 'Carpeta de Steam'
         set_profile = 'Perfil'
+        set_region = 'Región'
         set_profile_hint = 'Elige el perfil de userdata con el que trabajará el programa.'
         set_exe_filter = 'Filtro EXE'
         set_offer_launchers = 'Sugerir lanzadores'
@@ -1393,6 +1403,7 @@ $script:I18n = @{
         sl_steam_fetch = 'Obteniendo los recursos oficiales de Steam para el App ID {0}…'
         sl_steam_found = 'Steam: recursos encontrados — {0} de 4.'
         covlang_tip = 'Región de portadas de Steam: {0}. Haz clic para elegir otra.'
+        covlang_more = 'Más regiones ({0}). Haz clic para abrir la lista.'
         covlang_no_appid = 'Región de portadas: primero se necesita el App ID del juego.'
         covlang_checking = 'Comprobando las regiones de portadas disponibles…'
         covlang_unavailable = 'No se pudieron determinar las regiones de portadas disponibles para este juego.'
@@ -1435,6 +1446,7 @@ $script:I18n = @{
         slot_horizontal = '2. Horizontal'
         slot_hero = '3. Hero / fondo'
         slot_logo = '4. Logotipo'
+        slot_icon = '5. Icono'
         card_info = 'Steam es la fuente principal. Al hacer clic en cualquier miniatura se abren las opciones de SteamGridDB solo para ese tipo, sin cambiar toda la fuente.'
         card_save = 'Guardar cambios'
         card_add = 'Añadir juego a la biblioteca'
@@ -1572,6 +1584,7 @@ $script:I18n = @{
         set_language = 'Idioma'
         set_steam_folder = 'Pasta da Steam'
         set_profile = 'Perfil'
+        set_region = 'Região'
         set_profile_hint = 'Escolha o perfil de userdata com o qual o programa vai trabalhar.'
         set_exe_filter = 'Filtro EXE'
         set_offer_launchers = 'Sugerir launchers'
@@ -1690,6 +1703,7 @@ $script:I18n = @{
         sl_steam_fetch = 'Obtendo os recursos oficiais da Steam para o App ID {0}…'
         sl_steam_found = 'Steam: recursos encontrados — {0} de 4.'
         covlang_tip = 'Região das capas da Steam: {0}. Clique para escolher outra.'
+        covlang_more = 'Mais regiões ({0}). Clique para abrir a lista.'
         covlang_no_appid = 'Região das capas: primeiro é necessário o App ID do jogo.'
         covlang_checking = 'Verificando as regiões de capas disponíveis…'
         covlang_unavailable = 'Não foi possível determinar as regiões de capas disponíveis para este jogo.'
@@ -1732,6 +1746,7 @@ $script:I18n = @{
         slot_horizontal = '2. Horizontal'
         slot_hero = '3. Hero / plano de fundo'
         slot_logo = '4. Logotipo'
+        slot_icon = '5. Ícone'
         card_info = 'A Steam é a fonte principal. Ao clicar em qualquer miniatura, abrem-se as opções do SteamGridDB apenas para aquele tipo, sem trocar a fonte inteira.'
         card_save = 'Salvar alterações'
         card_add = 'Adicionar jogo à biblioteca'
@@ -1869,6 +1884,7 @@ $script:I18n = @{
         set_language = 'Sprache'
         set_steam_folder = 'Steam-Ordner'
         set_profile = 'Profil'
+        set_region = 'Region'
         set_profile_hint = 'Wähle das userdata-Profil aus, mit dem das Programm arbeiten soll.'
         set_exe_filter = 'EXE-Filter'
         set_offer_launchers = 'Launcher vorschlagen'
@@ -1987,6 +2003,7 @@ $script:I18n = @{
         sl_steam_fetch = 'Offizielle Steam-Assets für App-ID {0} werden abgerufen…'
         sl_steam_found = 'Steam: Assets gefunden — {0} von 4.'
         covlang_tip = 'Steam-Cover-Region: {0}. Klicken, um eine andere auszuwählen.'
+        covlang_more = 'Weitere Regionen ({0}). Klicken, um die Liste zu öffnen.'
         covlang_no_appid = 'Cover-Region: Zuerst wird die App-ID des Spiels benötigt.'
         covlang_checking = 'Verfügbare Cover-Regionen werden geprüft…'
         covlang_unavailable = 'Die verfügbaren Cover-Regionen für dieses Spiel konnten nicht ermittelt werden.'
@@ -2029,6 +2046,7 @@ $script:I18n = @{
         slot_horizontal = '2. Querformat'
         slot_hero = '3. Hero / Hintergrund'
         slot_logo = '4. Logo'
+        slot_icon = '5. Symbol'
         card_info = 'Steam ist die Hauptquelle. Ein Klick auf ein beliebiges Vorschaubild öffnet die SteamGridDB-Optionen nur für diesen Typ, ohne die gesamte Quelle zu wechseln.'
         card_save = 'Änderungen speichern'
         card_add = 'Spiel zur Bibliothek hinzufügen'
@@ -2141,6 +2159,10 @@ $global:steamGridDbApiKeyValid = $false
 # Если включено, игровые лаунчеры разрешены среди автоматически найденных EXE.
 # По умолчанию выключено: лаунчеры отбрасываются из списка кандидатов.
 $global:suggestGameLaunchers = $false
+# Регион обложек Steam (API-имя: english, russian, …). Задаётся в «Настройках»
+# и используется как язык ассетов по умолчанию (кнопки EN/РУ на карточке,
+# загрузка официальных обложек). Пустое значение = брать из языка интерфейса.
+$global:steamCoverRegion = ''
 
 # Публичный ключ Steam Web API (steamcommunity.com/dev/apikey) — отдельный от
 # ключа SteamGridDB. Используется только для скачивания полного списка
@@ -2163,6 +2185,10 @@ function Create-InitialDirs {
     # Рядом с EXE ничего не создаём.
     if (-not (Test-Path $global:appDataDir)) {
         New-Item -ItemType Directory -Path $global:appDataDir -Force | Out-Null
+    }
+    $defaultBackupDir = Join-Path $global:appDataDir "backup"
+    if (-not (Test-Path -LiteralPath $defaultBackupDir)) {
+        New-Item -ItemType Directory -Path $defaultBackupDir -Force | Out-Null
     }
     if (-not (Test-Path $global:coverSourcesDir)) {
         New-Item -ItemType Directory -Path $global:coverSourcesDir -Force | Out-Null
@@ -2529,16 +2555,16 @@ $global:exeDir = [System.AppDomain]::CurrentDomain.BaseDirectory
 # Конфигурация пользователя — в %APPDATA%, а не рядом с EXE.
 $global:configPath = Join-Path $global:appDataDir "config.ini"
 
-# Папка для резервных копий shortcuts.vdf. Пусто = папка "backups" рядом
-# с программой (значение по умолчанию); пользователь может выбрать свою
-# папку через кнопку «Обзор» в настройках.
+# Папка для резервных копий shortcuts.vdf. Пусто = %AppData%\Steam Commander\backup
+# (рядом с config.ini и прочими настройками программы). Пользователь может
+# выбрать свою папку через кнопку «Обзор» в настройках.
 $global:backupFolderPath = ""
 
 function Get-BackupFolderPath {
     if (-not [string]::IsNullOrWhiteSpace([string]$global:backupFolderPath)) {
         return [string]$global:backupFolderPath
     }
-    return (Join-Path $global:exeDir "backups")
+    return (Join-Path $global:appDataDir "backup")
 }
 
 # Настройки Steam: путь установки и конкретный профиль userdata.
@@ -2693,6 +2719,7 @@ function Load-Configuration {
                 if ($line.StartsWith("steamApiKey=")) { $global:steamApiKey = $line.Substring(12).Trim() }
                 if ($line.StartsWith("backupFolderPath=")) { $global:backupFolderPath = $line.Substring(17).Trim() }
                 if ($line.StartsWith("language=")) { $global:language = $line.Substring(9).Trim() }
+                if ($line.StartsWith("steamCoverRegion=")) { $global:steamCoverRegion = $line.Substring(17).Trim() }
             }
         } catch {}
     }
@@ -4283,7 +4310,8 @@ function Save-Configuration {
             "suggestGameLaunchers=$($global:suggestGameLaunchers)",
             "steamApiKey=$($global:steamApiKey)",
             "backupFolderPath=$($global:backupFolderPath)",
-            "language=$($global:language)"
+            "language=$($global:language)",
+            "steamCoverRegion=$($global:steamCoverRegion)"
         )
         $configData | Out-File $global:configPath -Encoding UTF8 -Force -ErrorAction SilentlyContinue
     } catch {}
@@ -4862,7 +4890,30 @@ function Update-ExistingSteamShortcut ($shortcutRecord, $newName, $newExePath, $
         Set-VdfStringField $targetEntry "LaunchOptions" ([string]$newLaunchOptions)
 
         $iconField=$targetEntry.Body.Children | Where-Object { $_.Key -eq "icon" } | Select-Object -First 1
-        if($iconField -ne $null -and $iconField.Type -eq 0x01){$iconField.Value=""}
+        $iconVal = ''
+        try {
+            $gridIcon = Join-Path (Join-Path ([string]$shortcutRecord.UserDataDir) 'config\grid') ([string]$shortcutRecord.ShortcutId + '_icon.png')
+            $tempIcon = Get-TempIconPath
+            if ($null -ne $tempIcon -and (Test-Path -LiteralPath $tempIcon)) {
+                $iconExt = [System.IO.Path]::GetExtension($tempIcon)
+                if ([string]::IsNullOrWhiteSpace($iconExt)) { $iconExt = '.png' }
+                $gridIcon = Join-Path (Join-Path ([string]$shortcutRecord.UserDataDir) 'config\grid') ([string]$shortcutRecord.ShortcutId + '_icon' + $iconExt)
+                $gridParent = Split-Path $gridIcon -Parent
+                if (-not (Test-Path -LiteralPath $gridParent)) {
+                    New-Item -ItemType Directory -Path $gridParent -Force | Out-Null
+                }
+                Copy-Item -LiteralPath $tempIcon -Destination $gridIcon -Force -ErrorAction SilentlyContinue
+            }
+            if (-not [string]::IsNullOrWhiteSpace($gridIcon) -and (Test-Path -LiteralPath $gridIcon)) { $iconVal = $gridIcon }
+            elseif ($null -ne $tempIcon -and (Test-Path -LiteralPath $tempIcon)) { $iconVal = $tempIcon }
+        } catch { $iconVal = '' }
+        try {
+            if ($iconField -ne $null -and $iconField.Type -eq 0x01) {
+                $iconField.Value = [string]$iconVal
+            } elseif (-not [string]::IsNullOrWhiteSpace($iconVal)) {
+                Set-VdfStringField $targetEntry 'icon' $iconVal
+            }
+        } catch {}
 
         [System.IO.File]::WriteAllBytes($filePath,(Write-VdfFileBytes $root.Children))
         Save-Configuration
@@ -4894,7 +4945,10 @@ function Copy-ExistingShortcutCoversToTemp ($shortcutRecord) {
         @{Src=($shortcutId+"p.jpg");Dst="temp_p.jpg"},
         @{Src=($shortcutId+"_hero.jpg");Dst="temp_hero.jpg"},
         @{Src=($shortcutId+"_logo.png");Dst="temp_logo.png"},
-        @{Src=($shortcutId+".jpg");Dst="temp_header.jpg"}
+        @{Src=($shortcutId+".jpg");Dst="temp_header.jpg"},
+        @{Src=($shortcutId+"_icon.ico");Dst="temp_icon.ico"},
+        @{Src=($shortcutId+"_icon.png");Dst="temp_icon.png"},
+        @{Src=($shortcutId+"_icon.jpg");Dst="temp_icon.jpg"}
     )
     foreach($pair in $pairs){
         $srcFile=Join-Path $gridDir $pair.Src
@@ -4934,6 +4988,15 @@ function Save-ExistingShortcutCoversToGrid ($shortcutRecord) {
             }catch{}
         }
     }
+    try {
+        $iconSrc = Get-TempIconPath
+        if ($null -ne $iconSrc) {
+            $iconExt = [System.IO.Path]::GetExtension($iconSrc)
+            if ([string]::IsNullOrWhiteSpace($iconExt)) { $iconExt = '.png' }
+            Copy-Item -LiteralPath $iconSrc -Destination (Join-Path $gridDir ($shortcutId + '_icon' + $iconExt)) -Force -ErrorAction Stop
+            $changed = $true
+        }
+    } catch {}
     return $changed
 }
 
@@ -5016,8 +5079,27 @@ function Add-ShortcutToSteam ($gameName, $exePath, $startDir, $launchOptions = "
             # LaunchOptions — параметры запуска из карточки.
             $fEntry.Add(0x01); $fEntry.AddRange([byte[]]([System.Text.Encoding]::UTF8.GetBytes("LaunchOptions"))); $fEntry.Add(0x00); $fEntry.AddRange([byte[]]$bLaunchOptions); $fEntry.Add(0x00)
 
-            # icon
-            $fEntry.Add(0x01); $fEntry.AddRange([byte[]]([System.Text.Encoding]::UTF8.GetBytes("icon"))); $fEntry.Add(0x00); $fEntry.Add(0x00)
+            # icon — путь к client-иконке (ошибка копирования НЕ должна ломать добавление).
+            $iconPathForVdf = ''
+            try {
+                $iconSrc = Get-TempIconPath
+                if ($null -ne $iconSrc -and (Test-Path -LiteralPath $iconSrc)) {
+                    $gridDirForIcon = Join-Path $_.FullName 'config\grid'
+                    if (-not (Test-Path -LiteralPath $gridDirForIcon)) {
+                        New-Item -ItemType Directory -Path $gridDirForIcon -Force | Out-Null
+                    }
+                    $iconExt = [System.IO.Path]::GetExtension($iconSrc)
+                    if ([string]::IsNullOrWhiteSpace($iconExt)) { $iconExt = '.png' }
+                    $candIcon = Join-Path $gridDirForIcon ([string]$shortcutIdValue + '_icon' + $iconExt)
+                    Copy-Item -LiteralPath $iconSrc -Destination $candIcon -Force -ErrorAction SilentlyContinue
+                    if (Test-Path -LiteralPath $candIcon) { $iconPathForVdf = $candIcon }
+                }
+            } catch { $iconPathForVdf = '' }
+            $fEntry.Add(0x01); $fEntry.AddRange([byte[]]([System.Text.Encoding]::UTF8.GetBytes("icon"))); $fEntry.Add(0x00)
+            if (-not [string]::IsNullOrWhiteSpace($iconPathForVdf)) {
+                $fEntry.AddRange([byte[]]([System.Text.Encoding]::UTF8.GetBytes($iconPathForVdf)))
+            }
+            $fEntry.Add(0x00)
 
             # IsHidden
             $fEntry.Add(0x02); $fEntry.AddRange([byte[]]([System.Text.Encoding]::UTF8.GetBytes("IsHidden"))); $fEntry.Add(0x00); $fEntry.AddRange([byte[]]@(0,0,0,0))
@@ -5154,7 +5236,7 @@ function Remove-TemporaryCovers {
 # оставались лежать, и игра без App ID (например, фанатская, которой нет в
 # Steam) получала чужие обложки, хотя в слотах было "NO COVER".
 function Clear-TempCoverFiles {
-    foreach ($f in @('temp_p.jpg','temp_hero.jpg','temp_header.jpg','temp_logo.png')) {
+    foreach ($f in @('temp_p.jpg','temp_hero.jpg','temp_header.jpg','temp_logo.png','temp_icon.png','temp_icon.ico','temp_icon.jpg')) {
         try { Remove-Item -LiteralPath (Join-Path $global:tempCovers $f) -Force -ErrorAction SilentlyContinue } catch {}
     }
 }
@@ -5176,6 +5258,14 @@ function Clear-TempCoverFiles {
 # hero-фона, header и логотипа.
 # Язык Steam (для локализованных обложек) по языку интерфейса из «Настроек».
 function Get-SteamAssetLanguage {
+    # Явный регион из «Настроек» имеет приоритет над языком интерфейса.
+    $region = [string]$global:steamCoverRegion
+    if (-not [string]::IsNullOrWhiteSpace($region)) {
+        $key = $region.Trim().ToLowerInvariant()
+        foreach ($l in @($script:steamCoverLanguages)) {
+            if ([string]$l.Steam -eq $key) { return $key }
+        }
+    }
     $code = [string]$global:language
     foreach ($l in @($script:languageList)) {
         if ([string]$l.Code -eq $code -and -not [string]::IsNullOrWhiteSpace([string]$l.Steam)) { return [string]$l.Steam }
@@ -5340,6 +5430,10 @@ function Get-SteamLanguageInfo ([string]$steamLang) {
 function Get-SteamPicsAvailableLanguages ($appId) {
     $common = Get-SteamPicsCommon $appId
     if ($common -eq $null -or $common.library_assets_full -eq $null) { return @() }
+    # Язык считается доступным, только если у него есть СВОЙ файл, отличный от
+    # english (или english отсутствует в этом слоте). Иначе Steam часто дублирует
+    # один и тот же путь под всеми языками — кнопка РУ светилась бы при
+    # полностью английских обложках.
     $found = New-Object 'System.Collections.Generic.HashSet[string]'
     foreach ($nodeName in @('library_capsule','library_hero','library_logo','library_header')) {
         $node = $common.library_assets_full.$nodeName
@@ -5347,10 +5441,36 @@ function Get-SteamPicsAvailableLanguages ($appId) {
         foreach ($key in @('image2x','image')) {
             $img = $node.$key
             if ($img -eq $null) { continue }
-            foreach ($p in @($img.PSObject.Properties)) {
-                if ($p.Value -is [string] -and -not [string]::IsNullOrEmpty([string]$p.Value)) { [void]$found.Add([string]$p.Name) }
+            $props = @($img.PSObject.Properties)
+            $engVal = $null
+            try {
+                if (($props | Where-Object { [string]$_.Name -eq 'english' } | Select-Object -First 1) -ne $null) {
+                    $ev = $img.english
+                    if ($ev -is [string] -and -not [string]::IsNullOrEmpty($ev)) { $engVal = [string]$ev }
+                }
+            } catch {}
+            foreach ($p in $props) {
+                $val = $p.Value
+                if (-not ($val -is [string]) -or [string]::IsNullOrEmpty([string]$val)) { continue }
+                $langName = [string]$p.Name
+                if ($langName -eq 'english') {
+                    [void]$found.Add('english')
+                    continue
+                }
+                # Свой путь (отличается от english) или english в этом слоте нет.
+                if ([string]::IsNullOrEmpty($engVal) -or -not [string]::Equals([string]$val, $engVal, [System.StringComparison]::OrdinalIgnoreCase)) {
+                    [void]$found.Add($langName)
+                }
             }
         }
+    }
+    if ($found.Count -eq 0) {
+        # Нет ни одного распознанного языка — считаем, что есть хотя бы english.
+        [void]$found.Add('english')
+    } elseif (-not $found.Contains('english')) {
+        # У части игр english-ключ отсутствует, но файлы есть под другими именами;
+        # english всё равно оставляем как безопасный fallback-кнопку.
+        [void]$found.Add('english')
     }
     $ordered = @()
     foreach ($l in $script:steamCoverLanguages) { if ($found.Contains([string]$l.Steam)) { $ordered += [string]$l.Steam } }
@@ -5499,6 +5619,210 @@ function Get-SteamPicsAssetUrls ($appId, [string]$lang = 'english') {
     }
     if (@($out.Capsule).Count -eq 0 -and @($out.Hero).Count -eq 0 -and @($out.Header).Count -eq 0 -and @($out.Logo).Count -eq 0) { return $null }
     return $out
+}
+
+# Иконка клиента Steam (маленькая квадратная) — common.clienticon / common.icon.
+# URL: steamcommunity/public/images/apps/{appid}/{hash}.jpg
+function Get-SteamClientIconUrls ($appId) {
+    $common = Get-SteamPicsCommon $appId
+    if ($common -eq $null) { return @() }
+    $id = ([string]$appId).Trim()
+    $hosts = @(
+        'https://cdn.cloudflare.steamstatic.com/steamcommunity/public/images/apps',
+        'https://cdn.akamai.steamstatic.com/steamcommunity/public/images/apps',
+        'https://media.steampowered.com/steamcommunity/public/images/apps',
+        'https://steamcdn-a.akamaihd.net/steamcommunity/public/images/apps'
+    )
+    $urls = New-Object System.Collections.Generic.List[string]
+    # Приоритет: Steam App Icon (common.icon) — это отдельная иконка приложения.
+    # clienticon — только резервный старый ICO-ассет.
+    try {
+        $iconHash = [string]$common.icon
+        if (-not [string]::IsNullOrWhiteSpace($iconHash)) {
+            $iconHash = $iconHash.Trim()
+            foreach ($h in $hosts) { [void]$urls.Add("$h/$id/$iconHash.jpg") }
+        }
+    } catch {}
+    try {
+        $clientHash = [string]$common.clienticon
+        if (-not [string]::IsNullOrWhiteSpace($clientHash)) {
+            $clientHash = $clientHash.Trim()
+            foreach ($h in $hosts) { [void]$urls.Add("$h/$id/$clientHash.ico") }
+        }
+    } catch {}
+    return @($urls)
+}
+
+# Путь к скачанной иконке в temp (ico предпочтительнее png/jpg).
+function Get-TempIconPath {
+    # png после растра из ico — предпочтительнее для превью (без чёрного кадра).
+    foreach ($name in @('temp_icon.png', 'temp_icon.jpg', 'temp_icon.ico')) {
+        $p = Join-Path $global:tempCovers $name
+        if (Test-Path -LiteralPath $p) {
+            try {
+                if ((Get-Item -LiteralPath $p).Length -gt 64) { return $p }
+            } catch {}
+        }
+    }
+    return $null
+}
+
+# БАГ-ФИКС: расширение временного файла иконки раньше угадывалось только по
+# хвосту URL SteamGridDB (.ico / .jpg / иначе .png "по умолчанию"). CDN
+# SteamGridDB не всегда честно отражает реальный формат в ссылке — иногда
+# настоящий ICO-файл отдаётся под URL без ".ico" на конце. Из-за этого файл
+# сохранялся с неверным расширением (например ICO-байты как .png), и дальше
+# по коду он шёл НЕ через Icon.ToBitmap(), а через общий Image.FromStream,
+# который на реальных ICO-байтах вместо ошибки часто рисует "сломанную"
+# шумную картинку. Эта функция после скачивания смотрит на первые байты
+# файла (настоящую сигнатуру формата) и переименовывает файл в правильное
+# расширение, если оно не совпадает с угаданным.
+function Repair-IconFileExtension ([string]$path) {
+    try {
+        if ([string]::IsNullOrWhiteSpace($path) -or -not (Test-Path -LiteralPath $path)) { return $path }
+        $bytes = [System.IO.File]::ReadAllBytes($path)
+        if ($bytes.Length -lt 4) { return $path }
+        $isIco = ($bytes[0] -eq 0 -and $bytes[1] -eq 0 -and $bytes[2] -eq 1 -and $bytes[3] -eq 0)
+        $isPng = ($bytes.Length -ge 8 -and $bytes[0] -eq 0x89 -and $bytes[1] -eq 0x50 -and $bytes[2] -eq 0x4E -and $bytes[3] -eq 0x47)
+        $isJpg = ($bytes[0] -eq 0xFF -and $bytes[1] -eq 0xD8)
+        $wantExt = $null
+        if ($isIco) { $wantExt = '.ico' } elseif ($isJpg) { $wantExt = '.jpg' } elseif ($isPng) { $wantExt = '.png' }
+        if ($null -eq $wantExt) { return $path }
+        $curExt = [System.IO.Path]::GetExtension($path).ToLowerInvariant()
+        if ($curExt -eq $wantExt) { return $path }
+        $newPath = [System.IO.Path]::ChangeExtension($path, $wantExt)
+        try {
+            Remove-Item -LiteralPath $newPath -Force -ErrorAction SilentlyContinue
+            Move-Item -LiteralPath $path -Destination $newPath -Force
+            return $newPath
+        } catch { return $path }
+    } catch { return $path }
+}
+
+# БАГ-ФИКС (настоящая причина "сломанных"/шумных иконок): System.Drawing.Icon
+# в .NET имеет давний известный баг с современными ICO-файлами, где крупный
+# размер (обычно 256x256) хранится не как обычный растр (DIB), а как вложенный
+# PNG-чанк (формат из Windows Vista+). Для таких записей Icon(...).ToBitmap()
+# иногда декодирует сырые PNG-байты так, будто это простой растр — отсюда и
+# цветной "шум" вместо картинки. Эта функция сама разбирает заголовок ICO
+# (ICONDIR/ICONDIRENTRY), находит запись с максимальным размером и, если она
+# хранится как PNG, декодирует её НАПРЯМУЮ через Image.FromStream — это
+# полностью обходит баг и даёт чёткую картинку. Возвращает $null, если ICO
+# не в PNG-формате (тогда вызывающий код использует обычный System.Drawing.Icon
+# как раньше — для классических DIB-иконок он работает нормально).
+function ConvertFrom-IcoBytesToBitmap ([byte[]]$bytes) {
+    if ($null -eq $bytes -or $bytes.Length -lt 6) { return $null }
+    try {
+        $type = [System.BitConverter]::ToUInt16($bytes, 2)
+        $count = [System.BitConverter]::ToUInt16($bytes, 4)
+        if ($type -ne 1 -or $count -lt 1) { return $null }
+        $best = $null
+        for ($i = 0; $i -lt $count; $i++) {
+            $entryOffset = 6 + ($i * 16)
+            if ($entryOffset + 16 -gt $bytes.Length) { break }
+            $w = [int]$bytes[$entryOffset]; if ($w -eq 0) { $w = 256 }
+            $h = [int]$bytes[$entryOffset + 1]; if ($h -eq 0) { $h = 256 }
+            $bytesInRes = [System.BitConverter]::ToUInt32($bytes, $entryOffset + 8)
+            $imageOffset = [System.BitConverter]::ToUInt32($bytes, $entryOffset + 12)
+            $entry = [PSCustomObject]@{ Width = $w; Height = $h; Size = $bytesInRes; Offset = $imageOffset }
+            if ($null -eq $best -or ($entry.Width * $entry.Height) -gt ($best.Width * $best.Height)) { $best = $entry }
+        }
+        if ($null -eq $best) { return $null }
+        if (($best.Offset + $best.Size) -gt $bytes.Length -or $best.Size -lt 8) { return $null }
+        $off = [int]$best.Offset
+        $isPng = ($bytes[$off] -eq 0x89 -and $bytes[$off+1] -eq 0x50 -and $bytes[$off+2] -eq 0x4E -and $bytes[$off+3] -eq 0x47)
+        if (-not $isPng) { return $null }
+        $chunk = New-Object byte[] ([int]$best.Size)
+        [System.Array]::Copy($bytes, $off, $chunk, 0, [int]$best.Size)
+        $ms = New-Object System.IO.MemoryStream(,$chunk)
+        try {
+            $tmpImg = [System.Drawing.Image]::FromStream($ms)
+            try { return (New-Object System.Drawing.Bitmap($tmpImg)) } finally { $tmpImg.Dispose() }
+        } finally { $ms.Dispose() }
+    } catch { return $null }
+}
+
+# Единая точка получения Bitmap из ICO-файла: сначала пробуем прямой разбор
+# (обходит баг с PNG-чанками), при неудаче — обычный System.Drawing.Icon
+# с явным запросом крупного размера (иначе конструктор без размера берёт
+# маленькую системную иконку, и превью получается мыльным).
+function Get-BitmapFromIcoFile ([string]$path) {
+    if ([string]::IsNullOrWhiteSpace($path) -or -not (Test-Path -LiteralPath $path)) { return $null }
+    try {
+        $bytes = [System.IO.File]::ReadAllBytes($path)
+        $direct = ConvertFrom-IcoBytesToBitmap $bytes
+        if ($null -ne $direct) { return $direct }
+    } catch {}
+    $ico = $null
+    try {
+        try { $ico = New-Object System.Drawing.Icon($path, 256, 256) }
+        catch { $ico = New-Object System.Drawing.Icon($path) }
+        return $ico.ToBitmap()
+    } catch { return $null }
+    finally { try { if ($null -ne $ico) { $ico.Dispose() } } catch {} }
+}
+
+
+# Скачивает clienticon/icon в temp и всегда делает temp_icon.png для превью.
+# $force — перезаписать даже если файл уже есть (иначе при открытии карточки
+# остаётся старый чёрный png, сохранённый ранее в grid).
+function Download-SteamIconToTemp ([string]$appId, [bool]$force = $false) {
+    if ([string]::IsNullOrWhiteSpace($appId) -or $appId -notmatch '^\d+$') { return $false }
+    if (-not (Test-Path $global:tempCovers)) { New-Item -ItemType Directory -Path $global:tempCovers -Force | Out-Null }
+    if ($force) {
+        foreach ($n in @('temp_icon.ico','temp_icon.png','temp_icon.jpg')) {
+            try { Remove-Item -LiteralPath (Join-Path $global:tempCovers $n) -Force -ErrorAction SilentlyContinue } catch {}
+        }
+    } elseif ($null -ne (Get-TempIconPath)) {
+        return $true
+    }
+    try {
+        $commonIcon = Get-SteamPicsCommon $appId
+        $hosts = @(
+            'https://cdn.cloudflare.steamstatic.com/steamcommunity/public/images/apps',
+            'https://cdn.akamai.steamstatic.com/steamcommunity/public/images/apps',
+            'https://media.steampowered.com/steamcommunity/public/images/apps',
+            'https://steamcdn-a.akamaihd.net/steamcommunity/public/images/apps'
+        )
+        $id = ([string]$appId).Trim()
+        # Сначала настоящий Steam App Icon (common.icon).
+        # БАГ-ФИКС: раньше Save-FirstWorkingUrl отбраковывал любой файл
+        # меньше 512 байт (порог, рассчитанный на обложки), а маленькие
+        # квадратные иконки нередко весят меньше — из-за этого валидная
+        # иконка могла быть удалена ещё на этапе скачивания, хотя
+        # Get-TempIconPath ниже проверяет её по гораздо меньшему порогу
+        # (64 байта). Теперь для иконок используется тот же порог в 64 байта.
+        if ($commonIcon -ne $null -and -not [string]::IsNullOrWhiteSpace([string]$commonIcon.icon)) {
+            $ih = ([string]$commonIcon.icon).Trim()
+            $jpgUrls = @($hosts | ForEach-Object { "$_/$id/$ih.jpg" })
+            Save-FirstWorkingUrl $jpgUrls (Join-Path $global:tempCovers 'temp_icon.jpg') 64 | Out-Null
+        }
+        # Если App Icon отсутствует, используем clienticon как резерв.
+        if ($null -eq (Get-TempIconPath) -and $commonIcon -ne $null -and -not [string]::IsNullOrWhiteSpace([string]$commonIcon.clienticon)) {
+            $ch = ([string]$commonIcon.clienticon).Trim()
+            $icoUrls = @($hosts | ForEach-Object { "$_/$id/$ch.ico" })
+            Save-FirstWorkingUrl $icoUrls (Join-Path $global:tempCovers 'temp_icon.ico') 64 | Out-Null
+        }
+        try {
+            $icoPath = Join-Path $global:tempCovers 'temp_icon.ico'
+            $pngPath = Join-Path $global:tempCovers 'temp_icon.png'
+            if (Test-Path -LiteralPath $icoPath) {
+                $bmpIcon = Get-BitmapFromIcoFile $icoPath
+                if ($null -ne $bmpIcon) {
+                    try { $bmpIcon.Save($pngPath, [System.Drawing.Imaging.ImageFormat]::Png) } finally { $bmpIcon.Dispose() }
+                }
+            }
+        } catch {}
+        try {
+            $jpgPath = Join-Path $global:tempCovers 'temp_icon.jpg'
+            $pngPath = Join-Path $global:tempCovers 'temp_icon.png'
+            if ((Test-Path -LiteralPath $jpgPath) -and -not (Test-Path -LiteralPath $pngPath)) {
+                $img = [System.Drawing.Image]::FromFile($jpgPath)
+                try { $img.Save($pngPath, [System.Drawing.Imaging.ImageFormat]::Png) } finally { $img.Dispose() }
+            }
+        } catch {}
+    } catch {}
+    return ($null -ne (Get-TempIconPath))
 }
 
 # ===================== ПОДСКАЗКА EXE ИЗ STEAM (PICS: config.launch) =====================
@@ -6008,11 +6332,11 @@ function Format-LaunchOptionHint ($entry) {
     return ($parts -join ' · ')
 }
 
-function Save-FirstWorkingUrl ($urls, $destPath) {
+function Save-FirstWorkingUrl ($urls, $destPath, [int]$minSize = 512) {
     if ($urls -eq $null) { return $false }
     foreach ($candidateUrl in @($urls)) {
         if ([string]::IsNullOrEmpty([string]$candidateUrl)) { continue }
-        if (Download-RemoteImage ([string]$candidateUrl) $destPath) { return $true }
+        if (Download-RemoteImage ([string]$candidateUrl) $destPath $minSize) { return $true }
     }
     return $false
 }
@@ -6172,7 +6496,7 @@ function Invoke-SgdbApiRequest ($url, [hashtable]$headers, [int]$timeoutSec = 20
     }
 }
 
-function Invoke-UiPumpingDownload ($url, $targetPath, [int]$maxSeconds = 40) {
+function Invoke-UiPumpingDownload ($url, $targetPath, [int]$maxSeconds = 40, [int]$minSize = 512) {
     # $true  — файл скачан
     # $false — не скачался
     # $null  — не удалось даже запустить curl.exe; вызывающий код должен
@@ -6206,12 +6530,12 @@ function Invoke-UiPumpingDownload ($url, $targetPath, [int]$maxSeconds = 40) {
     } catch { $exitCode = 1 }
     finally { try { $proc.Dispose() } catch {} }
 
-    if ($exitCode -eq 0 -and (Test-Path $targetPath) -and (Get-Item $targetPath -ErrorAction SilentlyContinue).Length -ge 512) { return $true }
+    if ($exitCode -eq 0 -and (Test-Path $targetPath) -and (Get-Item $targetPath -ErrorAction SilentlyContinue).Length -ge $minSize) { return $true }
     Remove-Item $targetPath -Force -ErrorAction SilentlyContinue
     return $false
 }
 
-function Download-RemoteImage ($url, $targetPath) {
+function Download-RemoteImage ($url, $targetPath, [int]$minSize = 512) {
     if ([string]::IsNullOrWhiteSpace([string]$url)) { return $false }
     try {
         $parent = Split-Path -Parent $targetPath
@@ -6220,7 +6544,7 @@ function Download-RemoteImage ($url, $targetPath) {
 
     # Карточка игры: качаем так, чтобы анимация загрузки продолжала крутиться.
     if ($global:uiPumpDuringDownload) {
-        $pumped = Invoke-UiPumpingDownload $url $targetPath 40
+        $pumped = Invoke-UiPumpingDownload $url $targetPath 40 $minSize
         if ($pumped -eq $true) { return $true }
         if ($pumped -eq $false) { return $false }
         # $null — curl.exe недоступен, идём обычным путём ниже.
@@ -6228,12 +6552,12 @@ function Download-RemoteImage ($url, $targetPath) {
 
     try {
         Invoke-WebRequest -Uri $url -UserAgent "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" -TimeoutSec 30 -UseBasicParsing -OutFile $targetPath -ErrorAction Stop
-        if ((Test-Path $targetPath) -and (Get-Item $targetPath).Length -ge 512) { return $true }
+        if ((Test-Path $targetPath) -and (Get-Item $targetPath).Length -ge $minSize) { return $true }
     } catch {}
     Remove-Item $targetPath -Force -ErrorAction SilentlyContinue
     try {
         & curl.exe -L -s -S -f --connect-timeout 10 --max-time 40 -A "Mozilla/5.0" $url -o $targetPath 2>$null
-        if ($LASTEXITCODE -eq 0 -and (Test-Path $targetPath) -and (Get-Item $targetPath).Length -ge 512) { return $true }
+        if ($LASTEXITCODE -eq 0 -and (Test-Path $targetPath) -and (Get-Item $targetPath).Length -ge $minSize) { return $true }
     } catch {}
     Remove-Item $targetPath -Force -ErrorAction SilentlyContinue
     return $false
@@ -6242,8 +6566,8 @@ function Download-RemoteImage ($url, $targetPath) {
 function Get-SteamGridDbAssetsBySteamAppId ($steamAppId) {
     if ([string]::IsNullOrWhiteSpace([string]$global:steamGridDbApiKey)) { return $null }
     $headers = @{ Authorization = "Bearer $($global:steamGridDbApiKey)" }
-    $result = [ordered]@{ Grids = @(); Heroes = @(); Logos = @() }
-    foreach ($kind in @('grids','heroes','logos')) {
+    $result = [ordered]@{ Grids = @(); Heroes = @(); Logos = @(); Icons = @() }
+    foreach ($kind in @('grids','heroes','logos','icons')) {
         $url = "https://www.steamgriddb.com/api/v2/$kind/steam/$steamAppId"
         $r = Invoke-SgdbApiRequest $url $headers 30
         if ($r.Success) {
@@ -6251,7 +6575,7 @@ function Get-SteamGridDbAssetsBySteamAppId ($steamAppId) {
             $result[$prop] = @($r.Data)
         }
     }
-    $total = @($result.Grids).Count + @($result.Heroes).Count + @($result.Logos).Count
+    $total = @($result.Grids).Count + @($result.Heroes).Count + @($result.Logos).Count + @($result.Icons).Count
     if ($total -eq 0) { return $null }
     return [PSCustomObject]$result
 }
@@ -6263,6 +6587,25 @@ function Try-FillMissingLogoFromSteamGridDB ($steamAppId) {
     if ($assets -eq $null -or @($assets.Logos).Count -eq 0) { return $false }
     foreach ($logo in @($assets.Logos)) {
         if (Download-RemoteImage ([string]$logo.url) (Join-Path $global:tempCovers 'temp_logo.png')) { return $true }
+    }
+    return $false
+}
+
+function Try-FillMissingIconFromSteamGridDB ($steamAppId) {
+    if ($null -ne (Get-TempIconPath)) { return $true }
+    if ([string]::IsNullOrWhiteSpace([string]$global:steamGridDbApiKey)) { return $false }
+    $assets = Get-SteamGridDbAssetsBySteamAppId $steamAppId
+    if ($assets -eq $null -or @($assets.Icons).Count -eq 0) { return $false }
+    foreach ($ic in @($assets.Icons | Sort-Object @{Expression={try{[double]$_.score}catch{0}};Descending=$true})) {
+        $url = [string]$ic.url
+        if ([string]::IsNullOrWhiteSpace($url)) { continue }
+        $ext = '.png'
+        try {
+            if ($url -match '\.ico(\?|$)') { $ext = '.ico' }
+            elseif ($url -match '\.jpe?g(\?|$)') { $ext = '.jpg' }
+        } catch {}
+        $dest = Join-Path $global:tempCovers ("temp_icon" + $ext)
+        if (Download-RemoteImage $url $dest) { Repair-IconFileExtension $dest | Out-Null; return $true }
     }
     return $false
 }
@@ -6315,9 +6658,18 @@ function Download-CoversToTemp ($cleanAppID, [bool]$allowSgdbLogo = $true) {
     if (-not (Test-Path (Join-Path $global:tempCovers "temp_logo.png")))   { Download-RemoteImage "${baseApps}${cleanAppID}/logo.png" (Join-Path $global:tempCovers "temp_logo.png") | Out-Null }
     if (-not (Test-Path (Join-Path $global:tempCovers "temp_header.jpg"))) { Download-RemoteImage "${baseApps}${cleanAppID}/header.jpg" (Join-Path $global:tempCovers "temp_header.jpg") | Out-Null }
 
+    # Иконка приложения (clienticon/.ico или icon/.jpg → temp_icon.png).
+    try { Download-SteamIconToTemp $cleanAppID $false | Out-Null } catch {}
+
     foreach ($tempFile in @("temp_p.jpg", "temp_hero.jpg", "temp_logo.png", "temp_header.jpg")) {
         $tempFilePath = Join-Path $global:tempCovers $tempFile
         if ((Test-Path $tempFilePath) -and (Get-Item $tempFilePath).Length -lt 512) {
+            Remove-Item $tempFilePath -Force -ErrorAction SilentlyContinue
+        }
+    }
+    foreach ($tempFile in @("temp_icon.ico", "temp_icon.png", "temp_icon.jpg")) {
+        $tempFilePath = Join-Path $global:tempCovers $tempFile
+        if ((Test-Path $tempFilePath) -and (Get-Item $tempFilePath).Length -lt 64) {
             Remove-Item $tempFilePath -Force -ErrorAction SilentlyContinue
         }
     }
@@ -6381,6 +6733,10 @@ function Download-CoversToTemp ($cleanAppID, [bool]$allowSgdbLogo = $true) {
                 }
             }
         }
+    }
+
+    if ($allowSgdbLogo -and $null -eq (Get-TempIconPath)) {
+        try { Try-FillMissingIconFromSteamGridDB $cleanAppID | Out-Null } catch {}
     }
 
     if ($allowSgdbLogo -and -not (Test-Path (Join-Path $global:tempCovers "temp_logo.png"))) {
@@ -6501,8 +6857,12 @@ function Add-GameToSteamQuietly ($game) {
     try {
         $global:exeSelectionCache[$cacheKey] = $chosenExe.FullName
 
-        $displayName = [string]$steamInfo.Name
         $appId = [string]$steamInfo.Id
+        $displayName = [string]$steamInfo.Name
+        try {
+            $localizedQuiet = Get-SteamLocalizedAppName $appId ([string](Get-SteamAssetLanguage))
+            if (-not [string]::IsNullOrWhiteSpace([string]$localizedQuiet)) { $displayName = [string]$localizedQuiet }
+        } catch {}
 
         # Обе панели равноправны: автоматическое добавление тоже не переносит
         # игру между папками и не создаёт никаких ссылок. Steam получает реальный
@@ -6510,8 +6870,21 @@ function Add-GameToSteamQuietly ($game) {
         $finalExe = $chosenExe.FullName
         $finalStart = $game.Path
 
-        Download-CoversToTemp $appId $false | Out-Null
-        Fill-MissingCoversFromSgdb $appId
+        # БАГ-ФИКС: раньше здесь (в отличие от карточки игры) флаг
+        # $global:uiPumpDuringDownload оставался выключенным, поэтому
+        # Invoke-WebRequest/curl.exe качали обложки и иконку БЛОКИРУЮЩЕ —
+        # при недоступности/медленном ответе Steam CDN интерфейс мог
+        # замереть на десятки секунд во время автодобавления игры.
+        # Включаем тот же неблокирующий режим (curl.exe + DoEvents), что
+        # используется при открытой карточке.
+        $prevUiPump = $global:uiPumpDuringDownload
+        $global:uiPumpDuringDownload = $true
+        try {
+            Download-CoversToTemp $appId $false | Out-Null
+            Fill-MissingCoversFromSgdb $appId
+        } finally {
+            $global:uiPumpDuringDownload = $prevUiPump
+        }
 
         $newId = Add-ShortcutToSteam $displayName $finalExe $finalStart ''
         if (-not $newId) {
@@ -6520,7 +6893,23 @@ function Add-GameToSteamQuietly ($game) {
             return $result
         }
 
-        if (Test-CoversValid) { Copy-TempCoversDirectlyToGrid $newId | Out-Null }
+        if (Test-CoversValid) {
+            Copy-TempCoversDirectlyToGrid $newId | Out-Null
+            # Регион обложек (из «Настроек» / фактический fallback english) — чтобы
+            # при позже открытой карточке кнопка региона совпадала с сохранённым.
+            try {
+                $coverLang = [string]$script:lastCoversLanguage
+                if ([string]::IsNullOrWhiteSpace($coverLang)) { $coverLang = [string](Get-SteamAssetLanguage) }
+                $quietSlots = [PSCustomObject]@{
+                    Vertical   = [PSCustomObject]@{ Source = 'Steam' }
+                    Horizontal = [PSCustomObject]@{ Source = 'Steam' }
+                    Hero       = [PSCustomObject]@{ Source = 'Steam' }
+                    Logo       = [PSCustomObject]@{ Source = 'Steam' }
+                    Icon       = [PSCustomObject]@{ Source = 'Steam' }
+                }
+                Save-CoverSourcesMetadata ([string]$newId) $quietSlots $coverLang | Out-Null
+            } catch {}
+        }
         $global:folderDisplayNameCache[$game.Path.ToUpper()] = $displayName
         $result.Success = $true
     } catch {
@@ -6650,6 +7039,90 @@ function Start-PumpedSleep ([int]$milliseconds) {
         [System.Windows.Forms.Application]::DoEvents()
         Start-Sleep -Milliseconds 20
     }
+}
+
+# Возвращает официальное локализованное название Steam для App ID в языке,
+# выбранном в программе. App ID остаётся единственным идентификатором игры;
+# отображаемое название берётся отдельно из Steam Store API.
+# Результаты кэшируются на время работы программы, чтобы повторное открытие
+# карточки не создавало лишний HTTP-запрос.
+$global:steamLocalizedNameCache = @{}
+
+function Get-SteamLocalizedAppName ([string]$appId, [string]$languageCode = '') {
+    if([string]::IsNullOrWhiteSpace($appId)) { return $null }
+    $idKey = ([string]$appId).Trim()
+
+    # Разрешаем язык: UI-код (ru/en), Steam-имя (russian/english) или, если пусто, —
+    # регион из «Настроек». Если локализации нет — english.
+    $steamLanguage = 'english'
+    try {
+        if ([string]::IsNullOrWhiteSpace([string]$languageCode)) {
+            $steamLanguage = [string](Get-SteamAssetLanguage)
+        } else {
+            $lang = @($script:languageList | Where-Object { $_.Code -eq [string]$languageCode }) | Select-Object -First 1
+            if($null -ne $lang -and -not [string]::IsNullOrWhiteSpace([string]$lang.Steam)) {
+                $steamLanguage = [string]$lang.Steam
+            } else {
+                $key = ([string]$languageCode).Trim().ToLowerInvariant()
+                $known = $false
+                foreach ($l in @($script:steamCoverLanguages)) {
+                    if ([string]$l.Steam -eq $key) { $known = $true; break }
+                }
+                if (-not $known) {
+                    foreach ($l in @($script:languageList)) {
+                        if ([string]$l.Steam -eq $key) { $known = $true; break }
+                    }
+                }
+                if ($known) { $steamLanguage = $key }
+            }
+        }
+    } catch { $steamLanguage = 'english' }
+
+    $tryLangs = @($steamLanguage)
+    if ($steamLanguage -ne 'english') { $tryLangs += 'english' }
+
+    foreach ($lang in $tryLangs) {
+        $cacheKey = $idKey + '|' + $lang
+        try {
+            if ($global:steamLocalizedNameCache.ContainsKey($cacheKey)) {
+                $cached = [string]$global:steamLocalizedNameCache[$cacheKey]
+                # Непустой кэш — сразу отдаём. Пустой (прошлый сбой) не блокирует
+                # повторный запрос: store API мог быть временно недоступен.
+                if (-not [string]::IsNullOrWhiteSpace($cached)) { return $cached }
+            }
+        } catch {}
+
+        $name = $null
+        try {
+            $url = "https://store.steampowered.com/api/appdetails/?appids=$([System.Uri]::EscapeDataString($idKey))&l=$([System.Uri]::EscapeDataString($lang))"
+            $json = $null
+            try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch {}
+            try {
+                $json = Invoke-RestMethod -Uri $url -Method Get -TimeoutSec 10 -ErrorAction Stop
+            } catch {
+                try {
+                    $raw = (& curl.exe -L --silent --show-error --max-time 10 --connect-timeout 10 --compressed --user-agent "SteamCommander/$($global:appVersion)" $url 2>$null) -join "`n"
+                    if (-not [string]::IsNullOrWhiteSpace($raw)) { $json = $raw | ConvertFrom-Json }
+                } catch {}
+            }
+            $entry = $null
+            if ($null -ne $json) {
+                try {
+                    if ($json.PSObject.Properties.Name -contains $idKey) { $entry = $json.$idKey }
+                    else { $entry = $json.$idKey }
+                } catch {
+                    try { $entry = $json.($idKey) } catch {}
+                }
+            }
+            if ($null -ne $entry -and $entry.success -and $null -ne $entry.data -and -not [string]::IsNullOrWhiteSpace([string]$entry.data.name)) {
+                $name = [string]$entry.data.name
+            }
+        } catch {}
+
+        try { $global:steamLocalizedNameCache[$cacheKey] = if ($null -ne $name) { $name } else { '' } } catch {}
+        if (-not [string]::IsNullOrWhiteSpace($name)) { return $name }
+    }
+    return $null
 }
 
 function Find-SteamAppInfo ($gameName) {
@@ -7114,7 +7587,7 @@ function Get-SgdbAssetsForGame ($gameId, $headers) {
     # Поэтому получаем grids без жёсткого dimensions-фильтра и фильтруем
     # размеры локально. Это также позволяет поддержать альтернативные
     # стандартные размеры SGDB: 342x482 / 660x930 и 460x215.
-    $result = [ordered]@{ GridsVertical=@(); GridsHorizontal=@(); Heroes=@(); Logos=@() }
+    $result = [ordered]@{ GridsVertical=@(); GridsHorizontal=@(); Heroes=@(); Logos=@(); Icons=@() }
 
     $gridsReq = Invoke-SgdbApiRequest "https://www.steamgriddb.com/api/v2/grids/game/$gameId" $headers 20
     if ($gridsReq.Success) {
@@ -7159,7 +7632,8 @@ function Get-SgdbAssetsForGame ($gameId, $headers) {
 
     foreach($req in @(
         @{ Name='Heroes'; Url="https://www.steamgriddb.com/api/v2/heroes/game/$gameId" },
-        @{ Name='Logos'; Url="https://www.steamgriddb.com/api/v2/logos/game/$gameId" }
+        @{ Name='Logos'; Url="https://www.steamgriddb.com/api/v2/logos/game/$gameId" },
+        @{ Name='Icons'; Url="https://www.steamgriddb.com/api/v2/icons/game/$gameId" }
     )) {
         $r = Invoke-SgdbApiRequest $req.Url $headers 20
         if ($r.Success) {
@@ -7309,7 +7783,7 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
     $lbl=New-Object System.Windows.Forms.Label
     $lbl.Text=(T 'sgdb_chooser_hint')
     $lbl.Location=New-Object System.Drawing.Point(15,12)
-    $lbl.Size=New-Object System.Drawing.Size(990,25)
+    $lbl.Size=New-Object System.Drawing.Size(1050,25)
     $lbl.Font=New-Object System.Drawing.Font("Segoe UI",9,[System.Drawing.FontStyle]::Bold)
     $lbl.ForeColor=[System.Drawing.Color]::FromArgb(220,223,228)
     $dlg.Controls.Add($lbl)
@@ -7318,7 +7792,7 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
     # FlowLayoutPanel при AutoScroll и не создаёт горизонтальный диапазон.
     $flow=New-Object System.Windows.Forms.Panel
     $flow.Location=New-Object System.Drawing.Point(12,45)
-    $flow.Size=New-Object System.Drawing.Size(1000,580)
+    $flow.Size=New-Object System.Drawing.Size(1060,580)
     $flow.Anchor='Top,Bottom,Left,Right'
     $flow.AutoScroll=$true
     $flow.BackColor=[System.Drawing.Color]::FromArgb(23,29,37)
@@ -7331,6 +7805,23 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
     # падению WinForms. Вместо этого UI Timer периодически проверяет завершившиеся curl.
     $dialogState=@{Result=$null;Clients=New-Object System.Collections.ArrayList;SpinIndex=0;Closed=$false}
     $maxItems=[Math]::Min(40,$items.Count)
+
+    # Рассчитываем число колонок и размеры сетки один раз, по фактической
+    # ширине области. Для вертикальных (170 px) получается 5 колонок; для
+    # широких Horizontal/Hero/Logo/Icon (270 px) — 3 колонки. Остальные
+    # карточки автоматически переходят на следующую строку.
+    $cardWidth=$thumbWidth+14
+    $cardHeight=$thumbHeight+42
+    $availableWidth=[Math]::Max(1,$flow.ClientSize.Width-12)
+    $cellWidth=[Math]::Max(1,$cardWidth+10)
+    $columns=[Math]::Max(1,[int][Math]::Floor(($availableWidth+10)/$cellWidth))
+    # Ширина сетки уже посчитанного числа колонок почти никогда не занимает
+    # всю доступную ширину области ровно — раньше сетка всегда прижималась
+    # к левому краю (x=10), а весь остаток уходил одним куском вправо.
+    # Центрируем сетку по горизонтали, чтобы отступы слева и справа от
+    # миниатюр были одинаковыми.
+    $gridWidth=($columns*$cellWidth)-10
+    $gridOffsetX=10+[Math]::Max(0,[int][Math]::Floor(($availableWidth-$gridWidth)/2))
 
     for($j=0;$j -lt $maxItems;$j++){
         $item=$items[$j]
@@ -7345,20 +7836,11 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
         if([string]::IsNullOrWhiteSpace($url)){$url=$thumbUrl}
 
         $card=New-Object System.Windows.Forms.Panel
-        $cardWidth=$thumbWidth+14
-        $cardHeight=$thumbHeight+42
         $card.Size=New-Object System.Drawing.Size($cardWidth,$cardHeight)
 
-        # Рассчитываем число колонок по фактической ширине области.
-        # Для вертикальных (170 px) получается 5 колонок; для широких
-        # Horizontal/Hero/Logo (270 px) — 3 колонки. Остальные карточки
-        # автоматически переходят на следующую строку.
-        $availableWidth=[Math]::Max(1,$flow.ClientSize.Width-12)
-        $cellWidth=[Math]::Max(1,$cardWidth+10)
-        $columns=[Math]::Max(1,[int][Math]::Floor(($availableWidth+10)/$cellWidth))
         $col=$j % $columns
         $row=[int][Math]::Floor($j/$columns)
-        $x=10+($col*$cellWidth)
+        $x=$gridOffsetX+($col*$cellWidth)
         $y=10+($row*($cardHeight+13))
         $card.Location=New-Object System.Drawing.Point([int]$x,[int]$y)
         $card.BorderStyle=[System.Windows.Forms.BorderStyle]::FixedSingle
@@ -7423,27 +7905,12 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
         }
     }
 
-    # Задаём минимальную высоту содержимого, чтобы при большом количестве
-    # вариантов появлялась именно вертикальная полоса прокрутки.
-    $cardHeightForScroll=$thumbHeight+42
-    $availableWidthForScroll=[Math]::Max(1,$flow.ClientSize.Width-12)
-    $cellWidthForScroll=[Math]::Max(1,$thumbWidth+14+10)
-    $columnsForScroll=[Math]::Max(1,[int][Math]::Floor(($availableWidthForScroll+10)/$cellWidthForScroll))
-    $rowsForScroll=[int][Math]::Ceiling($maxItems/[double]$columnsForScroll)
-    $contentHeight=10+($rowsForScroll*$cardHeightForScroll)+(($rowsForScroll-1)*13)+10
-    $flow.AutoScrollMinSize=New-Object System.Drawing.Size(1,[int]$contentHeight)
-    $flow.HorizontalScroll.Enabled=$false
-    $flow.HorizontalScroll.Visible=$false
-
-    # Явно задаём высоту содержимого, чтобы при большом количестве
-    # вариантов появлялась вертикальная прокрутка, а горизонтальная была
-    # полностью исключена.
-    $scrollCardHeight=$thumbHeight+42
-    $scrollAvailableWidth=[Math]::Max(1,$flow.ClientSize.Width-12)
-    $scrollCellWidth=[Math]::Max(1,$thumbWidth+14+10)
-    $scrollColumns=[Math]::Max(1,[int][Math]::Floor(($scrollAvailableWidth+10)/$scrollCellWidth))
-    $scrollRows=[int][Math]::Ceiling($maxItems/[double]$scrollColumns)
-    $scrollContentHeight=10+($scrollRows*$scrollCardHeight)+([Math]::Max(0,$scrollRows-1)*13)+10
+    # Задаём минимальную высоту содержимого (по уже посчитанному числу
+    # колонок $columns), чтобы при большом количестве вариантов появлялась
+    # именно вертикальная полоса прокрутки, а горизонтальная была полностью
+    # исключена.
+    $rowsForScroll=[int][Math]::Ceiling($maxItems/[double]$columns)
+    $scrollContentHeight=10+($rowsForScroll*$cardHeight)+([Math]::Max(0,$rowsForScroll-1)*13)+10
     $flow.AutoScrollMinSize=New-Object System.Drawing.Size(1,[int]$scrollContentHeight)
     $flow.HorizontalScroll.Enabled=$false
     $flow.HorizontalScroll.Visible=$false
@@ -7506,7 +7973,7 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
 
     $btnClose=New-Object System.Windows.Forms.Button
     $btnClose.Text=(T 'set_cancel')
-    $btnClose.Location=New-Object System.Drawing.Point(875,635)
+    $btnClose.Location=New-Object System.Drawing.Point(935,635)
     $btnClose.Size=New-Object System.Drawing.Size(120,32)
     $btnClose.Anchor='Bottom,Right'
     $btnClose.Add_Click({$dlg.DialogResult=[System.Windows.Forms.DialogResult]::Cancel;$dlg.Close()})
@@ -7518,7 +7985,10 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
     # пустую тёмную полосу снизу, и не зависит от масштабирования экрана,
     # потому что ClientSize и Location/Size дочерних элементов масштабируются
     # WinForms согласованно.
-    $dlg.ClientSize=New-Object System.Drawing.Size(1024, ($btnClose.Bottom+15))
+    # Ширина ~1084 подходит для всех категорий: и для узких вертикальных
+    # обложек (5 колонок по 170px), и для широких 270px-миниатюр —
+    # горизонтальных/hero/логотипа/иконки (3 колонки).
+    $dlg.ClientSize=New-Object System.Drawing.Size(1084, ($btnClose.Bottom+15))
 
     $dlg.ShowDialog($owner)|Out-Null
     return $dialogState.Result
@@ -7546,6 +8016,16 @@ function Copy-TempCoversDirectlyToGrid ($shortcutId) {
         if (Test-Path (Join-Path $global:tempCovers "temp_hero.jpg")) { Copy-Item (Join-Path $global:tempCovers "temp_hero.jpg") (Join-Path $gridDir ($shortcutId + "_hero.jpg")) -Force }
         if (Test-Path (Join-Path $global:tempCovers "temp_logo.png")) { Copy-Item (Join-Path $global:tempCovers "temp_logo.png") (Join-Path $gridDir ($shortcutId + "_logo.png")) -Force }
         if (Test-Path (Join-Path $global:tempCovers "temp_header.jpg")) { Copy-Item (Join-Path $global:tempCovers "temp_header.jpg") (Join-Path $gridDir ($shortcutId + ".jpg")) -Force }
+        $iconTemp = Get-TempIconPath
+        if ($null -ne $iconTemp) {
+            $iconExt = [System.IO.Path]::GetExtension($iconTemp)
+            if ([string]::IsNullOrWhiteSpace($iconExt)) { $iconExt = '.png' }
+            Copy-Item -LiteralPath $iconTemp -Destination (Join-Path $gridDir ($shortcutId + '_icon' + $iconExt)) -Force
+            # Дублируем как _icon.png для превью при повторном открытии, если исходник не png.
+            if ($iconExt -ne '.png') {
+                try { Copy-Item -LiteralPath $iconTemp -Destination (Join-Path $gridDir ($shortcutId + '_icon.png')) -Force -ErrorAction SilentlyContinue } catch {}
+            }
+        }
     }
 
     if (Test-Path $global:tempCovers) { Remove-Item $global:tempCovers -Recurse -Force -ErrorAction SilentlyContinue }
@@ -7808,6 +8288,9 @@ function Save-CoverSourcesMetadata([string]$shortcutId, $slots, [string]$coverLa
             hero   = (& $resolve $slots.Hero)
             logo   = (& $resolve $slots.Logo)
         }
+        try {
+            if ($null -ne $slots.Icon) { $data['icon'] = (& $resolve $slots.Icon) }
+        } catch {}
         # Регион (язык) Steam-обложек — чтобы при повторном открытии карточки кнопка
         # региона показывала тот, на котором обложки были сохранены.
         if (-not [string]::IsNullOrWhiteSpace($coverLang)) { $data['lang'] = $coverLang }
@@ -7930,11 +8413,43 @@ function Set-EditorPreviewFile($slot, $filePath) {
         if ($slot.Stream -ne $null) { $slot.Stream.Dispose(); $slot.Stream = $null }
         if ($slot.Picture.Image -ne $null) { $slot.Picture.Image.Dispose(); $slot.Picture.Image = $null }
     } catch {}
-    if ([string]::IsNullOrWhiteSpace($filePath) -or -not (Test-Path $filePath) -or (Get-Item $filePath -ErrorAction SilentlyContinue).Length -lt 512) {
+    $minBytes = 64
+    if ([string]::IsNullOrWhiteSpace($filePath) -or -not (Test-Path $filePath) -or (Get-Item $filePath -ErrorAction SilentlyContinue).Length -lt $minBytes) {
         Set-EditorMissingState $slot $true
         return $false
     }
     try {
+        $ext = ''
+        try { $ext = [System.IO.Path]::GetExtension($filePath).ToLowerInvariant() } catch {}
+        # Определяем реальный формат по сигнатуре байтов, а не только по
+        # расширению файла: некоторые ссылки SteamGridDB отдают ICO под именем
+        # без ".ico", и Image.FromStream на настоящих ICO-байтах вместо ошибки
+        # часто рисует "сломанную"/шумную картинку вместо явного отказа.
+        $isIcoContent = $false
+        try {
+            $head = New-Object byte[] 4
+            $fs = [System.IO.File]::OpenRead($filePath)
+            try { [void]$fs.Read($head, 0, 4) } finally { $fs.Dispose() }
+            $isIcoContent = ($head[0] -eq 0 -and $head[1] -eq 0 -and $head[2] -eq 1 -and $head[3] -eq 0)
+        } catch {}
+        # ICO: Image.FromStream часто даёт чёрный/шумный кадр. Берём через
+        # Icon.ToBitmap, явно запрашивая крупный размер — иначе конструктор
+        # Icon без размера берёт маленькую системную иконку (обычно 32x32)
+        # даже если в файле есть 256x256, и превью получается мыльным.
+        if ($ext -eq '.ico' -or $isIcoContent) {
+            $bmp = $null
+            try {
+                $bmp = Get-BitmapFromIcoFile $filePath
+                if ($null -eq $bmp) { throw 'icon decode failed' }
+                $slot.Stream = $null
+                $slot.Picture.Image = $bmp
+                $bmp = $null
+                Set-EditorMissingState $slot $false
+                return $true
+            } finally {
+                try { if ($null -ne $bmp) { $bmp.Dispose() } } catch {}
+            }
+        }
         $bytes = [System.IO.File]::ReadAllBytes($filePath)
         $ms = New-Object System.IO.MemoryStream(,$bytes)
         $img = [System.Drawing.Image]::FromStream($ms)
@@ -8094,20 +8609,81 @@ function Stop-EditorLoading($slots, $form) {
 }
 
 
-# ===================== КНОПКА РЕГИОНА ОБЛОЖЕК В КАРТОЧКЕ =====================
-# Кнопка (Name = 'EditorCoverLangButton') показывает регион (язык) Steam-обложек,
-# которые сейчас загружены в карточку. Состояние лежит в её .Tag (Lang + ToolTip),
-# чтобы глобальные функции загрузки могли обновлять её, не зная про локальные
-# переменные карточки.
-function Set-EditorCoverLangButton($btn, [string]$steamLang) {
+# ===================== ЯЗЫКИ ОБЛОЖЕК В КАРТОЧКЕ =====================
+# Вместо одного переключателя показываем все реально найденные языки Steam
+# отдельными компактными значками. Активный язык — синий, остальные найденные —
+# приглушённые, в том же стиле, что и переключатель Steam / SteamGridDB.
+# Сам контейнер сохраняет совместимость со старым кодом: .Tag.Lang содержит
+# текущий выбранный язык и используется при сохранении метаданных обложек.
+function Set-EditorCoverLangButton($panel, [string]$steamLang) {
     try {
-        if ($null -eq $btn) { return }
+        if ($null -eq $panel) { return }
         if ([string]::IsNullOrWhiteSpace($steamLang)) { $steamLang = 'english' }
         $info = Get-SteamLanguageInfo $steamLang
-        $btn.Text = [string]$info.Short
-        $btn.Tag.Lang = [string]$info.Steam
-        $btn.Tag.Tip.SetToolTip($btn, (T 'covlang_tip' @([string]$info.Name)))
+        if ($null -eq $panel.Tag) { $panel.Tag = [PSCustomObject]@{} }
+        $panel.Tag.Lang = [string]$info.Steam
+        foreach($child in @($panel.Controls)) {
+            try {
+                $isMore = $false
+                try { $isMore = [bool]$child.Tag.IsMore } catch { $isMore = $false }
+                if ($isMore) {
+                    $overflow = @()
+                    try { $overflow = @($child.Tag.Overflow) } catch {}
+                    $active = ($overflow -contains [string]$info.Steam)
+                } else {
+                    $lang = [string]$child.Tag.Lang
+                    $active = ($lang -eq [string]$info.Steam)
+                }
+                if($active){
+                    $child.BackColor = $steamUi.Accent2
+                    $child.ForeColor = [System.Drawing.Color]::White
+                    $child.FlatAppearance.BorderColor = $steamUi.Accent2
+                } else {
+                    $child.BackColor = $steamUi.Panel
+                    $child.ForeColor = $steamUi.Muted
+                    $child.FlatAppearance.BorderColor = $steamUi.Border
+                }
+            } catch {}
+        }
     } catch {}
+}
+
+function Set-EditorCoverLanguageButtons($panel, [object[]]$codes, [string]$activeLang) {
+    try {
+        if ($null -eq $panel) { return }
+        $panel.Controls.Clear()
+        $panel.Tag.Codes = @($codes)
+        if([string]::IsNullOrWhiteSpace($activeLang)){ $activeLang = Get-SteamAssetLanguage }
+        $panel.Tag.Lang = [string]$activeLang
+        foreach($c in @($codes)) {
+            $inf = Get-SteamLanguageInfo ([string]$c)
+            $b = New-Object System.Windows.Forms.Button
+            $b.Size = New-Object System.Drawing.Size(40,24)
+            $b.Margin = New-Object System.Windows.Forms.Padding(2,2,2,2)
+            $b.Padding = New-Object System.Windows.Forms.Padding(0)
+            $b.Text = [string]$inf.Short
+            $b.FlatStyle = 'Flat'
+            $b.Font = New-Object System.Drawing.Font('Segoe UI Semibold',8.5)
+            $b.Cursor = [System.Windows.Forms.Cursors]::Hand
+            $b.TabStop = $false
+            $b.Tag = [PSCustomObject]@{ Lang=[string]$inf.Steam; Tip=(New-Object System.Windows.Forms.ToolTip) }
+            $b.Tag.Tip.SetToolTip($b, (T 'covlang_tip' @([string]$inf.Name)))
+            if([string]$inf.Steam -eq [string]$activeLang){
+                $b.BackColor=$steamUi.Accent2; $b.ForeColor=[System.Drawing.Color]::White; $b.FlatAppearance.BorderColor=$steamUi.Accent2
+            } else {
+                $b.BackColor=$steamUi.Panel; $b.ForeColor=$steamUi.Muted; $b.FlatAppearance.BorderColor=$steamUi.Border
+            }
+            [void]$panel.Controls.Add($b)
+        }
+        $panel.Visible = (@($codes).Count -gt 0)
+    } catch {}
+}
+
+function Get-EditorCoverLanguagePanel($control) {
+    try {
+        if($null -eq $control){ return $null }
+        return @($control.Controls.Find('EditorCoverLangButton', $true))[0]
+    } catch { return $null }
 }
 
 # Перезагружает Steam-обложки карточки на выбранном языке. Заменяются только
@@ -8199,12 +8775,29 @@ function Load-EditorSteamPreviews($appId, $slots, $statusLabel) {
         if (Set-EditorPreviewFile $slots.Horizontal (Join-Path $global:tempCovers 'temp_header.jpg')) { Set-EditorSourceBadge $slots.Horizontal 'Steam'; $ok++ }
         if (Set-EditorPreviewFile $slots.Hero (Join-Path $global:tempCovers 'temp_hero.jpg')) { Set-EditorSourceBadge $slots.Hero 'Steam'; $ok++ }
         if (Set-EditorPreviewFile $slots.Logo (Join-Path $global:tempCovers 'temp_logo.png')) { Set-EditorSourceBadge $slots.Logo 'Steam'; $ok++ }
+        if ($null -ne $slots.Icon) {
+            $iconPrev = Get-TempIconPath
+            if ($null -ne $iconPrev -and (Set-EditorPreviewFile $slots.Icon $iconPrev)) { Set-EditorSourceBadge $slots.Icon 'Steam'; $ok++ }
+        }
         $statusLabel.Text = (T 'sl_steam_found' @($ok))
-        # Кнопка региона в карточке — на языке, на котором обложки реально загрузились.
+        # Список языков заполняется самой карточкой после завершения загрузки.
+        # Здесь только запоминаем найденные коды в панели, чтобы не создавать
+        # кнопки без обработчиков во время первичной загрузки.
         try {
-            $langBtn = $null
-            if ($null -ne $form) { $langBtn = @($form.Controls.Find('EditorCoverLangButton', $true))[0] }
-            Set-EditorCoverLangButton $langBtn ([string]$script:lastCoversLanguage)
+            $langPanel = Get-EditorCoverLanguagePanel $form
+            if($null -ne $langPanel){
+                $avail = @(Get-SteamPicsAvailableLanguages $appId)
+                # Только реально доступные регионы. Регион из «Настроек» НЕ
+                # подмешиваем в список, если у игры для него нет ассетов —
+                # иначе светится РУ при английских обложках.
+                if ($avail.Count -eq 0) { $avail = @('english') }
+                $prefer = [string](Get-SteamAssetLanguage)
+                if ($avail -contains $prefer) { $activeLang = $prefer }
+                elseif ($avail -contains 'english') { $activeLang = 'english' }
+                else { $activeLang = [string]$avail[0] }
+                $langPanel.Tag.Codes = @($avail)
+                $langPanel.Tag.Lang = [string]$activeLang
+            }
         } catch {}
     } catch {
         foreach($s in $slots.Values){ Set-EditorPreviewFile $s $null | Out-Null }
@@ -8287,6 +8880,7 @@ function Load-EditorSgdbPreviews($gameName, $steamAppId, $slots, $statusLabel, $
                     } | Sort-Object @{Expression={try{[double]$_.score}catch{0}};Descending=$true})
                     Heroes = @($direct.Heroes | Sort-Object @{Expression={try{[double]$_.score}catch{0}};Descending=$true})
                     Logos  = @($direct.Logos  | Sort-Object @{Expression={try{[double]$_.score}catch{0}};Descending=$true})
+                    Icons  = @($direct.Icons  | Sort-Object @{Expression={try{[double]$_.score}catch{0}};Descending=$true})
                 }
 
                 # Fallback по соотношению сторон — как в старой версии.
@@ -8391,6 +8985,8 @@ function Load-EditorSgdbPreviews($gameName, $steamAppId, $slots, $statusLabel, $
         $horizontal = @($assets.GridsHorizontal)
         $heroes = @($assets.Heroes)
         $logos = @($assets.Logos)
+        $icons = @()
+        try { $icons = @($assets.Icons) } catch { $icons = @() }
 
         # Сохраняем ВСЕ варианты, чтобы клик по миниатюре открывал
         # старый проверенный chooser, а не только первый выбранный результат.
@@ -8398,11 +8994,13 @@ function Load-EditorSgdbPreviews($gameName, $steamAppId, $slots, $statusLabel, $
         try { $slots.Horizontal.SgdbItems = @($horizontal) } catch {}
         try { $slots.Hero.SgdbItems = @($heroes) } catch {}
         try { $slots.Logo.SgdbItems = @($logos) } catch {}
+        try { if ($null -ne $slots.Icon) { $slots.Icon.SgdbItems = @($icons) } } catch {}
 
         $v = if($vertical.Count -gt 0){[string]$vertical[0].url}else{$null}
         $h = if($horizontal.Count -gt 0){[string]$horizontal[0].url}else{$null}
         $hero = if($heroes.Count -gt 0){[string]$heroes[0].url}else{$null}
         $logo = if($logos.Count -gt 0){[string]$logos[0].url}else{$null}
+        $iconUrl = if($icons.Count -gt 0){[string]$icons[0].url}else{$null}
 
         $urls = @(
             [PSCustomObject]@{Key='Vertical';Url=$v;File=(Join-Path $global:tempCovers 'temp_p.jpg');Slot=$slots.Vertical},
@@ -8410,6 +9008,17 @@ function Load-EditorSgdbPreviews($gameName, $steamAppId, $slots, $statusLabel, $
             [PSCustomObject]@{Key='Hero';Url=$hero;File=(Join-Path $global:tempCovers 'temp_hero.jpg');Slot=$slots.Hero},
             [PSCustomObject]@{Key='Logo';Url=$logo;File=(Join-Path $global:tempCovers 'temp_logo.png');Slot=$slots.Logo}
         )
+        if ($null -ne $slots.Icon) {
+            $iconFile = Join-Path $global:tempCovers 'temp_icon.png'
+            try {
+                if (-not [string]::IsNullOrWhiteSpace($iconUrl) -and $iconUrl -match '\.ico(\?|$)') {
+                    $iconFile = Join-Path $global:tempCovers 'temp_icon.ico'
+                } elseif (-not [string]::IsNullOrWhiteSpace($iconUrl) -and $iconUrl -match '\.jpe?g(\?|$)') {
+                    $iconFile = Join-Path $global:tempCovers 'temp_icon.jpg'
+                }
+            } catch {}
+            $urls += [PSCustomObject]@{Key='Icon';Url=$iconUrl;File=$iconFile;Slot=$slots.Icon}
+        }
 
         # Сначала очищаем старые SGDB-временные картинки, чтобы старый результат
         # никогда не оставался на экране при новом поиске.
@@ -8431,7 +9040,8 @@ function Load-EditorSgdbPreviews($gameName, $steamAppId, $slots, $statusLabel, $
             # Используем старый проверенный Download-RemoteImage:
             # Invoke-WebRequest -> fallback curl, с таймаутом.
             if (Download-RemoteImage ([string]$u.Url) ([string]$u.File)) {
-                if (Set-EditorPreviewFile $u.Slot $u.File) {
+                $actualFile = if ($u.Key -eq 'Icon') { Repair-IconFileExtension ([string]$u.File) } else { [string]$u.File }
+                if (Set-EditorPreviewFile $u.Slot $actualFile) {
                     Set-EditorSourceBadge $u.Slot 'SteamGridDB'
                     $loaded++
                 }
@@ -8484,12 +9094,13 @@ function Get-SteamShortcutsFiles {
 
 function Get-ManualShortcutBackupFiles {
     try {
-        if (-not (Test-Path $global:exeDir)) { return @() }
+        $dir = Get-BackupFolderPath
+        if ([string]::IsNullOrWhiteSpace($dir) -or -not (Test-Path -LiteralPath $dir -PathType Container)) { return @() }
         $filter = "shortcuts_*.vdf.bak"
         if (-not [string]::IsNullOrWhiteSpace([string]$global:steamUserId) -and [string]$global:steamUserId -match '^\d+$') {
             $filter = "shortcuts_{0}_*.vdf.bak" -f [string]$global:steamUserId
         }
-        return @(Get-ChildItem -LiteralPath (Get-BackupFolderPath) -Filter $filter -File -ErrorAction SilentlyContinue |
+        return @(Get-ChildItem -LiteralPath $dir -Filter $filter -File -ErrorAction SilentlyContinue |
             Sort-Object LastWriteTime -Descending)
     } catch {
         return @()
@@ -8690,6 +9301,26 @@ function Show-ProgramSettingsDialog {
     $langToolTip = New-Object System.Windows.Forms.ToolTip
     $langToolTip.SetToolTip($cmbLanguage, 'Язык / Language / 语言 / Idioma / Sprache')
 
+    # Смена языка интерфейса сразу переключает регион обложек на соответствующий
+    # язык Steam (ru→russian, en→english, zh→schinese, …). Регион всё ещё можно
+    # выбрать вручную отдельно — до следующего переключения языка.
+    $syncRegionFromUiLanguage = {
+        try {
+            $li = $cmbLanguage.SelectedIndex
+            if ($li -lt 0 -or $li -ge $script:languageList.Count) { return }
+            $steamCode = [string]$script:languageList[$li].Steam
+            if ([string]::IsNullOrWhiteSpace($steamCode)) { return }
+            $regList = @($cmbSteamRegion.Tag)
+            for ($ri = 0; $ri -lt $regList.Count; $ri++) {
+                if ([string]::Equals([string]$regList[$ri].Steam, $steamCode, [System.StringComparison]::OrdinalIgnoreCase)) {
+                    if ($cmbSteamRegion.SelectedIndex -ne $ri) { $cmbSteamRegion.SelectedIndex = $ri }
+                    return
+                }
+            }
+        } catch {}
+    }
+    $cmbLanguage.Add_SelectionChangeCommitted({ & $syncRegionFromUiLanguage })
+
     $steamSection = New-Object System.Windows.Forms.Label
     $steamSection.Text = 'Steam'
     $steamSection.Location = New-Object System.Drawing.Point(20, 58)
@@ -8752,11 +9383,45 @@ function Show-ProgramSettingsDialog {
     $cmbSteamProfile.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $dlg.Controls.Add($cmbSteamProfile)
 
+    # Регион обложек Steam (вместо бывшей подписи «Выбран профиль: …»).
+    $steamRegionLabel = New-Object System.Windows.Forms.Label
+    $steamRegionLabel.Text = (T 'set_region')
+    $steamRegionLabel.Location = New-Object System.Drawing.Point(20, 166)
+    $steamRegionLabel.Size = New-Object System.Drawing.Size(92, 28)
+    $steamRegionLabel.ForeColor = $steamUi.Muted
+    $steamRegionLabel.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
+    $dlg.Controls.Add($steamRegionLabel)
+
+    $cmbSteamRegion = New-Object System.Windows.Forms.ComboBox
+    $cmbSteamRegion.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
+    $cmbSteamRegion.Location = New-Object System.Drawing.Point(120, 166)
+    $cmbSteamRegion.Size = New-Object System.Drawing.Size(320, 30)
+    $cmbSteamRegion.BackColor = $steamUi.Input
+    $cmbSteamRegion.ForeColor = $steamUi.Text
+    $cmbSteamRegion.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    $cmbSteamRegion.IntegralHeight = $false
+    $cmbSteamRegion.MaxDropDownItems = 16
+    foreach ($rl in @($script:steamCoverLanguages)) {
+        [void]$cmbSteamRegion.Items.Add([string]$rl.Name)
+    }
+    $cmbSteamRegion.Tag = @($script:steamCoverLanguages)
+    $regionSel = 0
+    $wantRegion = [string]$global:steamCoverRegion
+    if ([string]::IsNullOrWhiteSpace($wantRegion)) { $wantRegion = [string](Get-SteamAssetLanguage) }
+    for ($ri = 0; $ri -lt $script:steamCoverLanguages.Count; $ri++) {
+        if ([string]$script:steamCoverLanguages[$ri].Steam -eq $wantRegion) { $regionSel = $ri; break }
+    }
+    if ($cmbSteamRegion.Items.Count -gt 0) { $cmbSteamRegion.SelectedIndex = $regionSel }
+    $dlg.Controls.Add($cmbSteamRegion)
+
+    # Скрытая строка статуса для ошибок сохранения (путь Steam и т.п.) —
+    # раньше использовалась подпись выбранного профиля на этом месте.
     $steamProfileHint = New-Object System.Windows.Forms.Label
-    $steamProfileHint.Text = (T 'set_profile_hint')
-    $steamProfileHint.Location = New-Object System.Drawing.Point(120, 166)
-    $steamProfileHint.Size = New-Object System.Drawing.Size(420, 22)
-    $steamProfileHint.ForeColor = $steamUi.Muted
+    $steamProfileHint.Text = ''
+    $steamProfileHint.Location = New-Object System.Drawing.Point(120, 194)
+    $steamProfileHint.Size = New-Object System.Drawing.Size(420, 0)
+    $steamProfileHint.ForeColor = $steamUi.Accent
+    $steamProfileHint.Visible = $false
     $dlg.Controls.Add($steamProfileHint)
 
     # Галочка настроена в том же стиле, что и галочки выбора игр на главной странице:
@@ -8764,7 +9429,7 @@ function Show-ProgramSettingsDialog {
     # CheckBox здесь не используем, потому что его системная галочка выглядит бледно
     # и отличается от основной галочки программы.
     $chkSuggestLaunchers = New-Object System.Windows.Forms.Panel
-    $chkSuggestLaunchers.Location = New-Object System.Drawing.Point(120, 188)
+    $chkSuggestLaunchers.Location = New-Object System.Drawing.Point(120, 202)
     $chkSuggestLaunchers.Size = New-Object System.Drawing.Size(22, 22)
     $chkSuggestLaunchers.BackColor = $steamUi.Bg
     $chkSuggestLaunchers.Cursor = [System.Windows.Forms.Cursors]::Hand
@@ -8791,7 +9456,7 @@ function Show-ProgramSettingsDialog {
 
     $exeFilterLabel = New-Object System.Windows.Forms.Label
     $exeFilterLabel.Text = (T 'set_exe_filter')
-    $exeFilterLabel.Location = New-Object System.Drawing.Point(20, 188)
+    $exeFilterLabel.Location = New-Object System.Drawing.Point(20, 202)
     $exeFilterLabel.Size = New-Object System.Drawing.Size(92, 22)
     $exeFilterLabel.ForeColor = $steamUi.Muted
     $exeFilterLabel.BackColor = $steamUi.Bg
@@ -8799,7 +9464,7 @@ function Show-ProgramSettingsDialog {
 
     $chkSuggestLaunchersLabel = New-Object System.Windows.Forms.Label
     $chkSuggestLaunchersLabel.Text = (T 'set_offer_launchers')
-    $chkSuggestLaunchersLabel.Location = New-Object System.Drawing.Point(146, 188)
+    $chkSuggestLaunchersLabel.Location = New-Object System.Drawing.Point(146, 202)
     $chkSuggestLaunchersLabel.Size = New-Object System.Drawing.Size(394, 22)
     $chkSuggestLaunchersLabel.ForeColor = $steamUi.Muted
     $chkSuggestLaunchersLabel.BackColor = $steamUi.Bg
@@ -8819,7 +9484,7 @@ function Show-ProgramSettingsDialog {
 
     $section = New-Object System.Windows.Forms.Label
     $section.Text = 'SteamGridDB'
-    $section.Location = New-Object System.Drawing.Point(20, 226)
+    $section.Location = New-Object System.Drawing.Point(20, 240)
     $section.Size = New-Object System.Drawing.Size(520, 25)
     $section.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 10.5)
     $section.ForeColor = $steamUi.Accent
@@ -8827,7 +9492,7 @@ function Show-ProgramSettingsDialog {
 
     $keyLabel = New-Object System.Windows.Forms.Label
     $keyLabel.Text = (T 'set_api_key')
-    $keyLabel.Location = New-Object System.Drawing.Point(20, 260)
+    $keyLabel.Location = New-Object System.Drawing.Point(20, 274)
     $keyLabel.Size = New-Object System.Drawing.Size(70, 28)
     $keyLabel.ForeColor = $steamUi.Muted
     $keyLabel.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
@@ -8836,10 +9501,10 @@ function Show-ProgramSettingsDialog {
     # Значок состояния API-ключа — точно такой же, как в карточке игры:
     # зелёная галочка для валидного ключа, красный ! для невалидного.
     # Он находится непосредственно перед полем ввода.
-    $apiKeyValidationBadge = New-ConfidenceBadge $dlg 94 265
+    $apiKeyValidationBadge = New-ConfidenceBadge $dlg 94 279
 
     $keyPanel = New-Object System.Windows.Forms.Panel
-    $keyPanel.Location = New-Object System.Drawing.Point(120, 260)
+    $keyPanel.Location = New-Object System.Drawing.Point(120, 274)
     $keyPanel.Size = New-Object System.Drawing.Size(320, 30)
     $keyPanel.BackColor = $steamUi.Input
     $keyPanel.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
@@ -8921,7 +9586,7 @@ function Show-ProgramSettingsDialog {
     # Видна только пока поле пустое; когда ключ введён — состояние показывает
     # значок рядом с полем (см. $applySettingsLayout ниже).
     $hint = New-Object System.Windows.Forms.LinkLabel
-    $hint.Location = New-Object System.Drawing.Point(120, 292)
+    $hint.Location = New-Object System.Drawing.Point(120, 306)
     $hint.Size = New-Object System.Drawing.Size(420, 30)
     $hint.ForeColor = $steamUi.Muted
     $hint.LinkColor = $steamUi.Accent
@@ -8941,7 +9606,7 @@ function Show-ProgramSettingsDialog {
     # --- Steam Web API (отдельный ключ, только для локальной базы игр) ---
     $swSection = New-Object System.Windows.Forms.Label
     $swSection.Text = (T 'sw_section')
-    $swSection.Location = New-Object System.Drawing.Point(20, 328)
+    $swSection.Location = New-Object System.Drawing.Point(20, 342)
     $swSection.Size = New-Object System.Drawing.Size(520, 25)
     $swSection.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 10.5)
     $swSection.ForeColor = $steamUi.Accent
@@ -8949,16 +9614,16 @@ function Show-ProgramSettingsDialog {
 
     $swKeyLabel = New-Object System.Windows.Forms.Label
     $swKeyLabel.Text = (T 'set_api_key')
-    $swKeyLabel.Location = New-Object System.Drawing.Point(20, 362)
+    $swKeyLabel.Location = New-Object System.Drawing.Point(20, 376)
     $swKeyLabel.Size = New-Object System.Drawing.Size(70, 28)
     $swKeyLabel.ForeColor = $steamUi.Muted
     $swKeyLabel.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
     $dlg.Controls.Add($swKeyLabel)
 
-    $swKeyValidationBadge = New-ConfidenceBadge $dlg 94 367
+    $swKeyValidationBadge = New-ConfidenceBadge $dlg 94 381
 
     $swKeyPanel = New-Object System.Windows.Forms.Panel
-    $swKeyPanel.Location = New-Object System.Drawing.Point(120, 362)
+    $swKeyPanel.Location = New-Object System.Drawing.Point(120, 376)
     $swKeyPanel.Size = New-Object System.Drawing.Size(320, 30)
     $swKeyPanel.BackColor = $steamUi.Input
     $swKeyPanel.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
@@ -9031,7 +9696,7 @@ function Show-ProgramSettingsDialog {
     # Пока поле ключа пустое, под ним стоит подсказка по ключу; когда ключ введён,
     # на её месте показывается строка состояния локальной базы ($dbStatusLabel).
     $swHint = New-Object System.Windows.Forms.LinkLabel
-    $swHint.Location = New-Object System.Drawing.Point(120, 394)
+    $swHint.Location = New-Object System.Drawing.Point(120, 408)
     $swHint.Size = New-Object System.Drawing.Size(420, 64)
     $swHint.Font = New-Object System.Drawing.Font('Segoe UI', 8.5)
     $swHint.ForeColor = $steamUi.Muted
@@ -9051,7 +9716,7 @@ function Show-ProgramSettingsDialog {
     # Ручное обновление локальной базы игр (сама она обновляется раз в неделю).
     $btnUpdateDb = New-Object System.Windows.Forms.Button
     $btnUpdateDb.Text = (T 'sw_db_btn_short')
-    $btnUpdateDb.Location = New-Object System.Drawing.Point(450, 362)
+    $btnUpdateDb.Location = New-Object System.Drawing.Point(450, 376)
     $btnUpdateDb.Size = New-Object System.Drawing.Size(90, 30)
     $btnUpdateDb.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $btnUpdateDb.FlatAppearance.BorderColor = $steamUi.Border
@@ -9064,7 +9729,7 @@ function Show-ProgramSettingsDialog {
     # Стоит вплотную под полем Steam Web API-ключа (там же, где подсказка $swHint;
     # что из двух видно, решает $applySettingsLayout). Текст прижат к верху,
     # чтобы не «проваливаться» вниз от поля.
-    $dbStatusLabel.Location = New-Object System.Drawing.Point(120, 394)
+    $dbStatusLabel.Location = New-Object System.Drawing.Point(120, 408)
     $dbStatusLabel.Size = New-Object System.Drawing.Size(420, 18)
     $dbStatusLabel.Font = New-Object System.Drawing.Font('Segoe UI', 8.5)
     $dbStatusLabel.ForeColor = $steamUi.Muted
@@ -9155,11 +9820,21 @@ function Show-ProgramSettingsDialog {
     $backupSection.ForeColor = $steamUi.Accent
     $dlg.Controls.Add($backupSection)
 
+    # Текущий путь к папке бэкапов (по умолчанию %AppData%\Steam Commander\backup).
+    $lblBackupPath = New-Object System.Windows.Forms.Label
+    $lblBackupPath.Text = (T 'set_backup_current' @((Get-BackupFolderPath)))
+    $lblBackupPath.Location = New-Object System.Drawing.Point(20, 504)
+    $lblBackupPath.Size = New-Object System.Drawing.Size(520, 22)
+    $lblBackupPath.ForeColor = $steamUi.Muted
+    $lblBackupPath.Font = New-Object System.Drawing.Font('Segoe UI', 8.5)
+    $lblBackupPath.AutoEllipsis = $true
+    $dlg.Controls.Add($lblBackupPath)
+
     # Кнопка выбора собственной папки для сохранения резервных копий —
     # первая в ряду, слева от «Создать бэкап».
     $btnBrowseBackupFolder = New-Object System.Windows.Forms.Button
     $btnBrowseBackupFolder.Text = (T 'browse')
-    $btnBrowseBackupFolder.Location = New-Object System.Drawing.Point(20, 513)
+    $btnBrowseBackupFolder.Location = New-Object System.Drawing.Point(20, 530)
     $btnBrowseBackupFolder.Size = New-Object System.Drawing.Size(145, 34)
     $btnBrowseBackupFolder.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $btnBrowseBackupFolder.FlatAppearance.BorderColor = $steamUi.Border
@@ -9173,7 +9848,7 @@ function Show-ProgramSettingsDialog {
 
     $btnCreateBackup = New-Object System.Windows.Forms.Button
     $btnCreateBackup.Text = (T 'set_create_backup')
-    $btnCreateBackup.Location = New-Object System.Drawing.Point(175, 513)
+    $btnCreateBackup.Location = New-Object System.Drawing.Point(175, 530)
     $btnCreateBackup.Size = New-Object System.Drawing.Size(145, 34)
     $btnCreateBackup.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $btnCreateBackup.FlatAppearance.BorderColor = $steamUi.Accent2
@@ -9185,7 +9860,7 @@ function Show-ProgramSettingsDialog {
 
     $btnRestoreBackup = New-Object System.Windows.Forms.Button
     $btnRestoreBackup.Text = (T 'set_restore')
-    $btnRestoreBackup.Location = New-Object System.Drawing.Point(330, 513)
+    $btnRestoreBackup.Location = New-Object System.Drawing.Point(330, 530)
     $btnRestoreBackup.Size = New-Object System.Drawing.Size(145, 34)
     $btnRestoreBackup.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $btnRestoreBackup.FlatAppearance.BorderColor = $steamUi.Accent2
@@ -9197,7 +9872,7 @@ function Show-ProgramSettingsDialog {
     $dlg.Controls.Add($btnRestoreBackup)
 
     $lvBackups = New-Object System.Windows.Forms.ListView
-    $lvBackups.Location = New-Object System.Drawing.Point(20, 556)
+    $lvBackups.Location = New-Object System.Drawing.Point(20, 573)
     $lvBackups.Size = New-Object System.Drawing.Size(520, 112)
     $lvBackups.View = [System.Windows.Forms.View]::Details
     $lvBackups.FullRowSelect = $true
@@ -9216,7 +9891,7 @@ function Show-ProgramSettingsDialog {
     # копий («Готово к восстановлению», «Создано копий: N» и т.п.).
     $backupHint = New-Object System.Windows.Forms.Label
     $backupHint.Text = ''
-    $backupHint.Location = New-Object System.Drawing.Point(20, 670)
+    $backupHint.Location = New-Object System.Drawing.Point(20, 687)
     $backupHint.Size = New-Object System.Drawing.Size(520, 18)
     $backupHint.ForeColor = $steamUi.Muted
     $backupHint.Font = New-Object System.Drawing.Font('Segoe UI', 8.5)
@@ -9224,7 +9899,7 @@ function Show-ProgramSettingsDialog {
 
     $appVersionLabel = New-Object System.Windows.Forms.Label
     $appVersionLabel.Text = "$($global:appTitle) • v$($global:appVersion)"
-    $appVersionLabel.Location = New-Object System.Drawing.Point(20, 689)
+    $appVersionLabel.Location = New-Object System.Drawing.Point(20, 706)
     $appVersionLabel.Size = New-Object System.Drawing.Size(300, 34)
     $appVersionLabel.ForeColor = $steamUi.Muted
     $appVersionLabel.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
@@ -9232,7 +9907,7 @@ function Show-ProgramSettingsDialog {
 
     $btnCancel = New-Object System.Windows.Forms.Button
     $btnCancel.Text = (T 'set_cancel')
-    $btnCancel.Location = New-Object System.Drawing.Point(335, 689)
+    $btnCancel.Location = New-Object System.Drawing.Point(335, 706)
     $btnCancel.Size = New-Object System.Drawing.Size(100, 34)
     $btnCancel.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $btnCancel.FlatAppearance.BorderColor = $steamUi.Border
@@ -9243,7 +9918,7 @@ function Show-ProgramSettingsDialog {
 
     $btnSave = New-Object System.Windows.Forms.Button
     $btnSave.Text = (T 'set_save')
-    $btnSave.Location = New-Object System.Drawing.Point(440, 689)
+    $btnSave.Location = New-Object System.Drawing.Point(440, 706)
     $btnSave.Size = New-Object System.Drawing.Size(100, 34)
     $btnSave.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $btnSave.FlatAppearance.BorderColor = $steamUi.Accent2
@@ -9266,30 +9941,31 @@ function Show-ProgramSettingsDialog {
         $hint.Visible = $sgEmpty
         $dy = if ($sgEmpty) { 0 } else { -24 }
 
-        $swSection.Top = 328 + $dy
-        $swKeyLabel.Top = 362 + $dy
-        $swKeyPanel.Top = 362 + $dy
-        $swKeyValidationBadge.Top = 367 + $dy
-        $btnUpdateDb.Top = 362 + $dy
+        $swSection.Top = 342 + $dy
+        $swKeyLabel.Top = 376 + $dy
+        $swKeyPanel.Top = 376 + $dy
+        $swKeyValidationBadge.Top = 381 + $dy
+        $btnUpdateDb.Top = 376 + $dy
 
-        $swHint.Top = 394 + $dy
-        $dbStatusLabel.Top = 394 + $dy
+        $swHint.Top = 408 + $dy
+        $dbStatusLabel.Top = 408 + $dy
         $swHint.Visible = $swEmpty
         $dbStatusLabel.Visible = (-not $swEmpty)
         $slotHeight = if ($swEmpty) { $swHint.Height } else { $dbStatusLabel.Height }
 
-        $bTop = 394 + $dy + $slotHeight + 14
+        $bTop = 408 + $dy + $slotHeight + 14
         $backupSection.Top = $bTop
-        $btnBrowseBackupFolder.Top = $bTop + 35
-        $btnCreateBackup.Top = $bTop + 35
-        $btnRestoreBackup.Top = $bTop + 35
-        $lvBackups.Top = $bTop + 78
-        $backupHint.Top = $bTop + 192
-        $appVersionLabel.Top = $bTop + 211
-        $btnCancel.Top = $bTop + 211
-        $btnSave.Top = $bTop + 211
+        $lblBackupPath.Top = $bTop + 26
+        $btnBrowseBackupFolder.Top = $bTop + 52
+        $btnCreateBackup.Top = $bTop + 52
+        $btnRestoreBackup.Top = $bTop + 52
+        $lvBackups.Top = $bTop + 95
+        $backupHint.Top = $bTop + 209
+        $appVersionLabel.Top = $bTop + 228
+        $btnCancel.Top = $bTop + 228
+        $btnSave.Top = $bTop + 228
 
-        $newHeight = $bTop + 271
+        $newHeight = $bTop + 288
         $oldHeight = $dlg.ClientSize.Height
         if ($oldHeight -ne $newHeight) {
             $dlg.ClientSize = New-Object System.Drawing.Size(560, $newHeight)
@@ -9311,7 +9987,6 @@ function Show-ProgramSettingsDialog {
                 $cmbSteamProfile.Items.Add((T 'set_no_profiles')) | Out-Null
                 $cmbSteamProfile.SelectedIndex = 0
                 $cmbSteamProfile.Enabled = $false
-                $steamProfileHint.Text = (T 'set_profile_none')
                 return
             }
 
@@ -9327,12 +10002,7 @@ function Show-ProgramSettingsDialog {
                     break
                 }
             }
-            if ($selectedIndex -lt 0) {
-                $selectedIndex = 0
-                $steamProfileHint.Text = (T 'set_profile_auto')
-            } else {
-                $steamProfileHint.Text = (T 'set_profile_chosen' @([string]$profiles[$selectedIndex].Id))
-            }
+            if ($selectedIndex -lt 0) { $selectedIndex = 0 }
             $cmbSteamProfile.SelectedIndex = $selectedIndex
         } catch {
             $cmbSteamProfile.Items.Clear()
@@ -9355,14 +10025,7 @@ function Show-ProgramSettingsDialog {
     })
 
     $cmbSteamProfile.Add_SelectionChangeCommitted({
-        try {
-            $profiles = @($cmbSteamProfile.Tag)
-            $idx = $cmbSteamProfile.SelectedIndex
-            if ($idx -ge 0 -and $idx -lt $profiles.Count) {
-                $steamProfileHint.ForeColor = $steamUi.Muted
-                $steamProfileHint.Text = (T 'set_profile_chosen' @([string]$profiles[$idx].Id))
-            }
-        } catch {}
+        # Профиль уже виден в ComboBox — отдельная подпись не нужна.
     })
 
     & $refreshSteamProfiles
@@ -9642,7 +10305,9 @@ function Show-ProgramSettingsDialog {
             $res = Show-CenteredFolderDialog (T 'pick_backup_folder') (Get-BackupFolderPath)
             if ($res -ne $null -and -not [string]::IsNullOrWhiteSpace([string]$res)) {
                 $global:backupFolderPath = [string]$res
-                $backupFolderTip.SetToolTip($btnBrowseBackupFolder, (T 'set_backup_current' @((Get-BackupFolderPath))))
+                $pathText = (T 'set_backup_current' @((Get-BackupFolderPath)))
+                try { $lblBackupPath.Text = $pathText } catch {}
+                try { $backupFolderTip.SetToolTip($btnBrowseBackupFolder, $pathText) } catch {}
                 & $refreshBackupList
             }
         } catch {}
@@ -9723,22 +10388,19 @@ function Show-ProgramSettingsDialog {
         try {
             $chosenSteamPath = [string]$txtSteamPath.Text.Trim()
             if ([string]::IsNullOrWhiteSpace($chosenSteamPath)) {
-                $steamProfileHint.ForeColor = $steamUi.Accent
-                $steamProfileHint.Text = (T 'set_path_empty')
+                [System.Windows.Forms.MessageBox]::Show((T 'set_path_empty'), (T 'settings_title'), [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
                 return
             }
 
             $fullSteamPath = [System.IO.Path]::GetFullPath($chosenSteamPath)
             if (-not (Test-Path -LiteralPath $fullSteamPath -PathType Container)) {
-                $steamProfileHint.ForeColor = $steamUi.Accent
-                $steamProfileHint.Text = (T 'set_path_missing')
+                [System.Windows.Forms.MessageBox]::Show((T 'set_path_missing'), (T 'settings_title'), [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
                 return
             }
 
             $steamExeCandidate = Join-Path $fullSteamPath 'steam.exe'
             if (-not (Test-Path -LiteralPath $steamExeCandidate -PathType Leaf)) {
-                $steamProfileHint.ForeColor = $steamUi.Accent
-                $steamProfileHint.Text = (T 'set_exe_missing')
+                [System.Windows.Forms.MessageBox]::Show((T 'set_exe_missing'), (T 'settings_title'), [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
                 return
             }
 
@@ -9784,13 +10446,19 @@ function Show-ProgramSettingsDialog {
                 }
             }
 
+            # Регион обложек Steam.
+            $regIdx = $cmbSteamRegion.SelectedIndex
+            $regList = @($cmbSteamRegion.Tag)
+            if ($regIdx -ge 0 -and $regIdx -lt $regList.Count) {
+                $global:steamCoverRegion = [string]$regList[$regIdx].Steam
+            }
+
             Save-Configuration
             try { Refresh-Panels } catch {}
             $dlg.DialogResult = [System.Windows.Forms.DialogResult]::OK
             $dlg.Close()
         } catch {
-            $steamProfileHint.ForeColor = $steamUi.Accent
-            $steamProfileHint.Text = (T 'set_save_err' @([string]$_.Exception.Message))
+            [System.Windows.Forms.MessageBox]::Show((T 'set_save_err' @([string]$_.Exception.Message)), (T 'settings_title'), [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
         }
     })
 
@@ -9965,6 +10633,7 @@ function Prepare-EditorSteamSgdbAlternatives($slot, [string]$title, [string]$ste
             }
             '^\s*3\.' { $items = @($assets.Heroes) }
             '^\s*4\.' { $items = @($assets.Logos) }
+            '^\s*5\.' { $items = @($assets.Icons) }
         }
 
         if ($items.Count -eq 0) {
@@ -9999,7 +10668,12 @@ function Show-EditorAlternativeCover($slot, [string]$title) {
 
         $chooserWidth = 170
         $chooserHeight = 230
-        if ($title -match '^\s*[234]\.') {
+        if ($title -match '^\s*[2345]\.') {
+            # БАГ-ФИКС: слот иконки в карточке теперь того же размера, что и
+            # остальные (270x170, как Логотип) — раньше здесь был отдельный
+            # квадратный вариант 120x120, из-за которого превью в диалоге
+            # выбора не совпадало по пропорциям с тем, как иконка реально
+            # выглядит в карточке после выбора.
             $chooserWidth = 270
             $chooserHeight = 130
         }
@@ -10022,9 +10696,28 @@ function Show-EditorAlternativeCover($slot, [string]$title) {
             '^\s*2\.' { 'temp_header.jpg'; break }
             '^\s*3\.' { 'temp_hero.jpg'; break }
             '^\s*4\.' { 'temp_logo.png'; break }
+            '^\s*5\.' {
+                $ext = '.png'
+                try {
+                    if ([string]$chosen -match '\.ico(\?|$)') { $ext = '.ico' }
+                    elseif ([string]$chosen -match '\.jpe?g(\?|$)') { $ext = '.jpg' }
+                } catch {}
+                ('temp_icon' + $ext)
+                break
+            }
             default { return }
         }
         $target = Join-Path $global:tempCovers $fileName
+        # При выборе иконки сбрасываем остальные расширения, чтобы Get-TempIconPath
+        # не вернул старый чёрный/чужой файл.
+        if ($title -match '^\s*5\.') {
+            foreach ($n in @('temp_icon.ico','temp_icon.png','temp_icon.jpg')) {
+                $p = Join-Path $global:tempCovers $n
+                if ($p -ne $target) {
+                    try { Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue } catch {}
+                }
+            }
+        }
 
         # Используем тот же рабочий загрузчик, что и в старой версии.
         # Замена обложки — это тоже загрузка миниатюры, поэтому на время
@@ -10037,6 +10730,17 @@ function Show-EditorAlternativeCover($slot, [string]$title) {
         try { if ($null -ne $slotForm) { $slotForm.Cursor = [System.Windows.Forms.Cursors]::WaitCursor } } catch {}
         try {
             if (Download-RemoteImage ([string]$chosen) $target) {
+                if ($title -match '^\s*5\.') { $target = Repair-IconFileExtension $target }
+                if ($title -match '^\s*5\.' -and $target -match '\.ico$') {
+                    try {
+                        $pngPath = Join-Path $global:tempCovers 'temp_icon.png'
+                        $bmpIcon = Get-BitmapFromIcoFile $target
+                        if ($null -ne $bmpIcon) {
+                            try { $bmpIcon.Save($pngPath, [System.Drawing.Imaging.ImageFormat]::Png) } finally { $bmpIcon.Dispose() }
+                            if (Test-Path -LiteralPath $pngPath) { $target = $pngPath }
+                        }
+                    } catch {}
+                }
                 if (Set-EditorPreviewFile $slot $target) {
                     Set-EditorSourceBadge $slot 'SteamGridDB'
                     $slot.SgdbSelectedUrl = [string]$chosen
@@ -10142,6 +10846,47 @@ function Set-ConfidenceBadge($pictureBox, [bool]$confident, [string]$confidentTi
     } catch {}
 }
 
+# Определяет Steam App ID для уже добавленной игры, не путая пользовательское
+# имя ярлыка с именем папки. Для существующих shortcut'ов сначала используем
+# имя папки игры (обычно это оригинальное/английское имя), затем AppName как
+# запасной вариант. Найденное официальное имя Steam НЕ подменяет название,
+# которое пользователь видит и редактирует в карточке.
+function Find-ExistingGameSteamAppInfo($displayName, $gamePath, $existingShortcut) {
+    $queries = New-Object System.Collections.Generic.List[string]
+
+    try {
+        if(-not [string]::IsNullOrWhiteSpace([string]$gamePath)) {
+            $folderName = [System.IO.Path]::GetFileName($gamePath.TrimEnd('\'))
+            if(-not [string]::IsNullOrWhiteSpace($folderName)) {
+                [void]$queries.Add($folderName)
+            }
+        }
+    } catch {}
+
+    try {
+        if($null -ne $existingShortcut -and -not [string]::IsNullOrWhiteSpace([string]$existingShortcut.AppName)) {
+            $shortcutName = [string]$existingShortcut.AppName
+            if(-not $queries.Contains($shortcutName)) { [void]$queries.Add($shortcutName) }
+        }
+    } catch {}
+
+    try {
+        if(-not [string]::IsNullOrWhiteSpace([string]$displayName) -and -not $queries.Contains([string]$displayName)) {
+            [void]$queries.Add([string]$displayName)
+        }
+    } catch {}
+
+    foreach($query in $queries) {
+        try {
+            $result = Find-SteamAppInfo ([string]$query)
+            if($null -ne $result -and -not [string]::IsNullOrWhiteSpace([string]$result.Id)) {
+                return $result
+            }
+        } catch {}
+    }
+    return $null
+}
+
 function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode = $false, $batchHost = $null) {
     # Каждая новая карточка начинает с чистого состояния отмены.
     # Предыдущая карточка могла быть закрыта во время сетевой загрузки.
@@ -10155,11 +10900,15 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     # пользователь просто открыл и закрыл/отменил карточку: Steam ни разу не
     # закрывался, но всё равно поднимался на передний план, из-за чего главное
     # окно программы (и всё, что было под ним) уходило в фон без причины.
-    $steamWasKilledThisSession = $false
+    $script:steamWasKilledThisSession = $false
     if(-not $batchMode){
         try { $existingShortcut = Find-SteamShortcutRecord $gameName $gamePath } catch { $existingShortcut = $null }
         if($existingShortcut -ne $null){
             $editMode = $true
+            # AppName в shortcuts.vdf — это пользовательское отображаемое имя
+            # ярлыка. Не используем его как единственный источник для поиска
+            # Steam App ID и не подменяем им $gameName: пользователь мог назвать
+            # игру на русском/своим именем, а папка осталась оригинальной.
             if(-not [string]::IsNullOrWhiteSpace([string]$existingShortcut.AppName)){ $gameName=[string]$existingShortcut.AppName }
         }
     }
@@ -10685,12 +11434,18 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     $slots.Horizontal = New-EditorCoverSlot $dlg (T 'slot_horizontal') 305 138 270 280
     $slots.Hero = New-EditorCoverSlot $dlg (T 'slot_hero') 590 138 270 280
     $slots.Logo = New-EditorCoverSlot $dlg (T 'slot_logo') 20 428 270 170
-    # Для всех четырёх типов обложек фон карточки должен совпадать
+    # Иконка приложения (clienticon) — справа от логотипа, в свободной зоне.
+    # Размер такой же, как у остальных слотов (270x170, как у Логотипа) —
+    # раньше слот был уже (120px), из-за чего фон-заглушка "NO COVER" не
+    # помещалась целиком и выглядела обрезанной по сравнению с другими слотами.
+    $slots.Icon = New-EditorCoverSlot $dlg (T 'slot_icon') 305 428 270 170
+    # Для всех типов обложек фон карточки должен совпадать
     # с тёмным фоном области изображения внутри.
     $slots.Vertical.Panel.BackColor = $steamUi.Input
     $slots.Horizontal.Panel.BackColor = $steamUi.Input
     $slots.Hero.Panel.BackColor = $steamUi.Input
     $slots.Logo.Panel.BackColor = $steamUi.Input
+    $slots.Icon.Panel.BackColor = $steamUi.Input
 
     # Клик по миниатюре открывает альтернативы ИМЕННО этого типа.
     # Если текущий источник Steam, варианты подгружаются напрямую из SGDB по
@@ -10719,11 +11474,14 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
         }
         Show-EditorAlternativeCover $slots.Logo (T 'slot_logo')
     })
+    $slots.Icon.Picture.Add_Click({
+        if($editorState.SearchSource -eq 'Steam' -and @($slots.Icon.SgdbItems).Count -eq 0){
+            [void](Prepare-EditorSteamSgdbAlternatives $slots.Icon (T 'slot_icon') $txtId.Text.Trim())
+        }
+        Show-EditorAlternativeCover $slots.Icon (T 'slot_icon')
+    })
 
-    $info = New-Object System.Windows.Forms.Label
-    $info.Text=(T 'card_info')
-    $info.Location='305,423'; $info.Size='555,70'; $info.ForeColor=$steamUi.Muted
-    $dlg.Controls.Add($info)
+    # Подсказка card_info убрана: перекрывала кнопки регионов.
 
     # Нижняя строка карточки. В пакетном режиме три кнопки стоят строго у нижнего
     # края окна и равномерно делят всю ширину карточки на три одинаковые части:
@@ -10771,63 +11529,169 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
         $dlg.Controls.Add($btnSkip)
     }
 
-    # ===== Кнопка региона (языка) обложек Steam — справа над нижней кнопкой =====
-    # Показывает регион загруженных Steam-обложек (EN, РУ, DE…). По клику определяет,
-    # на каких языках у игры есть обложки, и раскрывает список для выбора. Список —
-    # обычный ListBox поверх формы (тот же приём, что у titleResults/launchOptResults).
-    $btnCoverLang = New-Object System.Windows.Forms.Button
+    # ===== Все доступные языки обложек Steam =====
+    # Невидимая матрица 6×5 (до 30 значков = полный список языков Steam).
+    # Ячейка 44×28 (кнопка 40×24 + margin 2). Панель прижата к правому краю
+    # и сдвинута на одну строку выше прежнего положения (Y 500 → 472).
+    $coverLangCols = 6
+    $coverLangRowsMax = 5
+    $coverLangCellW = 44
+    $coverLangCellH = 28
+    # Правый край сетки = правый край поля App ID (pnlId), чтобы значки
+    # не вылезали за общий контентный край интерфейса.
+    $coverLangRightEdge = 855
+    try { $coverLangRightEdge = [int]($pnlId.Left + $pnlId.Width) } catch {}
+    $coverLangTop = 472
+    $coverLangGridW = $coverLangCols * $coverLangCellW
+
+    $btnCoverLang = New-Object System.Windows.Forms.FlowLayoutPanel
     $btnCoverLang.Name = 'EditorCoverLangButton'
-    $btnCoverLang.Size = New-Object System.Drawing.Size(48,26)
-    # Нижний край кнопки — вровень с нижним краем слота логотипа (Y=428, высота 170).
-    $btnCoverLang.Location = New-Object System.Drawing.Point((860 - 48), ((428 + 170) - 26))
-    $btnCoverLang.FlatStyle = 'Flat'
-    $btnCoverLang.FlatAppearance.BorderColor = $steamUi.Border
-    $btnCoverLang.BackColor = $steamUi.Panel
-    $btnCoverLang.ForeColor = $steamUi.Text
-    $btnCoverLang.Font = New-Object System.Drawing.Font('Segoe UI Semibold',8.5)
-    $btnCoverLang.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $btnCoverLang.Size = New-Object System.Drawing.Size($coverLangGridW, $coverLangCellH)
+    $btnCoverLang.Location = New-Object System.Drawing.Point(($coverLangRightEdge - $coverLangGridW), $coverLangTop)
+    $btnCoverLang.Anchor = [System.Windows.Forms.AnchorStyles]::Top
+    $btnCoverLang.FlowDirection = [System.Windows.Forms.FlowDirection]::LeftToRight
+    $btnCoverLang.WrapContents = $true
+    $btnCoverLang.AutoScroll = $false
+    $btnCoverLang.Padding = New-Object System.Windows.Forms.Padding(0)
+    $btnCoverLang.Margin = New-Object System.Windows.Forms.Padding(0)
+    $btnCoverLang.BackColor = $steamUi.Bg
+    $btnCoverLang.Cursor = [System.Windows.Forms.Cursors]::Default
     $btnCoverLang.TabStop = $false
-    $btnCoverLang.Tag = [PSCustomObject]@{ Lang='english'; Tip=(New-Object System.Windows.Forms.ToolTip) }
+    $btnCoverLang.Tag = [PSCustomObject]@{ Lang=[string](Get-SteamAssetLanguage); Codes=@() }
     $dlg.Controls.Add($btnCoverLang)
-    Set-EditorCoverLangButton $btnCoverLang (Get-SteamAssetLanguage)
 
-    $coverLangList = New-Object System.Windows.Forms.ListBox
-    $coverLangList.BackColor = $steamUi.Input
-    $coverLangList.ForeColor = $steamUi.Text
-    $coverLangList.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
-    $coverLangList.Font = New-Object System.Drawing.Font('Segoe UI',9)
-    $coverLangList.IntegralHeight = $false
-    $coverLangList.Visible = $false
-    $coverLangList.TabStop = $false
-    # Codes — Steam-имена языков в порядке строк списка; HiddenAt — когда список закрылся
-    # (клик по кнопке при открытом списке сначала уводит с него фокус и закрывает его —
-    # без этой отметки тот же клик тут же открыл бы список заново).
-    $coverLangList.Tag = [PSCustomObject]@{ Codes=@(); HiddenAt=[datetime]::MinValue }
-    $dlg.Controls.Add($coverLangList)
-
-    $hideCoverLangList = {
-        if($coverLangList.Visible){
-            $coverLangList.Visible = $false
-            $coverLangList.Tag.HiddenAt = [datetime]::Now
-        }
+    $alignCoverLangPanelRight = {
+        try {
+            $rightEdge = $coverLangRightEdge
+            try { $rightEdge = [int]($pnlId.Left + $pnlId.Width) } catch {}
+            $count = @($btnCoverLang.Controls).Count
+            if ($count -le 0) {
+                $btnCoverLang.Height = 0
+                $btnCoverLang.Width = 0
+                $btnCoverLang.Left = $rightEdge
+                $btnCoverLang.Top = $coverLangTop
+                return
+            }
+            # Ширина — по числу кнопок в первой строке (до 6), высота — по числу
+            # занятых строк (до 5). Правый край панели = правый край App ID.
+            $colsUsed = [Math]::Min($coverLangCols, $count)
+            $rowsUsed = [Math]::Min($coverLangRowsMax, [int][Math]::Ceiling($count / [double]$coverLangCols))
+            $btnCoverLang.Width = $colsUsed * $coverLangCellW
+            $btnCoverLang.Height = $rowsUsed * $coverLangCellH
+            $btnCoverLang.Top = $coverLangTop
+            $btnCoverLang.Left = [Math]::Max(20, $rightEdge - $btnCoverLang.Width)
+        } catch {}
     }
 
-    $commitCoverLang = {
-        $idx = $coverLangList.SelectedIndex
-        $codes = @($coverLangList.Tag.Codes)
-        & $hideCoverLangList
-        if($idx -lt 0 -or $idx -ge $codes.Count){ return }
-        $newLang = [string]$codes[$idx]
-        if($newLang -eq [string]$btnCoverLang.Tag.Lang){ return }
-        $appId = $txtId.Text.Trim()
-        if($appId -notmatch '^\d+$'){ return }
+    $renderCoverLanguages = {
+        param([object[]]$codes, [string]$activeLang)
+        $all = @($codes)
+        $maxCells = $coverLangCols * $coverLangRowsMax
+        $list = $all
+        $overflow = @()
+        if ($all.Count -gt $maxCells) {
+            # 29 обычных + 1 слот «...» на остальные. Активный регион всегда
+            # оставляем среди видимых, если он был в полном списке.
+            $take = $maxCells - 1
+            $list = @($all | Select-Object -First $take)
+            if (-not [string]::IsNullOrWhiteSpace([string]$activeLang) -and ($list -notcontains [string]$activeLang) -and ($all -contains [string]$activeLang)) {
+                $list[$list.Count - 1] = [string]$activeLang
+            }
+            $overflow = @($all | Where-Object { $list -notcontains $_ })
+        }
+        Set-EditorCoverLanguageButtons $btnCoverLang $list $activeLang
+        if ($overflow.Count -gt 0) {
+            $more = New-Object System.Windows.Forms.Button
+            $more.Size = New-Object System.Drawing.Size(40, 24)
+            $more.Margin = New-Object System.Windows.Forms.Padding(2, 2, 2, 2)
+            $more.Padding = New-Object System.Windows.Forms.Padding(0)
+            $more.Text = '...'
+            $more.FlatStyle = 'Flat'
+            $more.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 9)
+            $more.Cursor = [System.Windows.Forms.Cursors]::Hand
+            $more.TabStop = $false
+            $more.BackColor = $steamUi.Panel
+            $more.ForeColor = $steamUi.Muted
+            $more.FlatAppearance.BorderColor = $steamUi.Border
+            $moreTip = New-Object System.Windows.Forms.ToolTip
+            $moreTip.SetToolTip($more, (T 'covlang_more' @($overflow.Count)))
+            $more.Tag = [PSCustomObject]@{ IsMore = $true; Overflow = @($overflow); Lang = ''; Tip = $moreTip }
+            $more.Add_Click({
+                try {
+                    $ov = @($this.Tag.Overflow)
+                    if ($ov.Count -eq 0) { return }
+                    $menu = New-Object System.Windows.Forms.ContextMenuStrip
+                    $menu.BackColor = $steamUi.Panel
+                    $menu.ForeColor = $steamUi.Text
+                    $menu.ShowImageMargin = $false
+                    $cur = [string]$btnCoverLang.Tag.Lang
+                    foreach ($lg in $ov) {
+                        $inf = Get-SteamLanguageInfo ([string]$lg)
+                        $label = '{0}  {1}' -f [string]$inf.Short, [string]$inf.Name
+                        $item = $menu.Items.Add($label)
+                        $item.Tag = [string]$inf.Steam
+                        if ([string]$inf.Steam -eq $cur) {
+                            $item.Font = New-Object System.Drawing.Font($item.Font, [System.Drawing.FontStyle]::Bold)
+                        }
+                        $item.Add_Click({
+                            try { & $selectCoverLanguage ([string]$this.Tag) } catch {}
+                        })
+                    }
+                    $menu.Show($this, 0, $this.Height)
+                } catch {}
+            })
+            [void]$btnCoverLang.Controls.Add($more)
+            try { Set-EditorCoverLangButton $btnCoverLang ([string]$activeLang) } catch {}
+        }
+        foreach ($child in @($btnCoverLang.Controls)) {
+            try {
+                $isMore = $false
+                try { $isMore = [bool]$child.Tag.IsMore } catch {}
+                if (-not $isMore) { & $wireCoverLanguageButton $child }
+            } catch {}
+        }
+        & $alignCoverLangPanelRight
+    }
 
+    $selectCoverLanguage = {
+        param([string]$newLang)
+        if([string]::IsNullOrWhiteSpace($newLang)){ return }
+        if($editorState.SearchSource -ne 'Steam'){ return }
+        $appId = $txtId.Text.Trim()
+        if($appId -notmatch '^\d+$'){ $status.Text = (T 'covlang_no_appid'); return }
+        if([string]$btnCoverLang.Tag.Lang -eq $newLang){ return }
+
+        # 1) Сразу подсвечиваем кнопку региона — до любой сети.
+        Set-EditorCoverLangButton $btnCoverLang $newLang
+        try { [System.Windows.Forms.Application]::DoEvents() } catch {}
+
+        # 2) Сразу обновляем название под выбранный регион (кэш или быстрый API).
+        try {
+            $localizedName = Get-SteamLocalizedAppName $appId $newLang
+            if (-not [string]::IsNullOrWhiteSpace([string]$localizedName)) {
+                $tag = $txtTitle.Tag
+                if ($null -ne $tag) { $tag.SuppressAutoSearch = $true }
+                try {
+                    $txtTitle.Text = [string]$localizedName
+                    $txtTitle.SelectionStart = $txtTitle.Text.Length
+                    $txtTitle.SelectionLength = 0
+                    $dlg.Text = (T 'card_title' @([string]$localizedName))
+                } finally {
+                    if ($null -ne $tag) { $tag.SuppressAutoSearch = $false }
+                }
+                Set-ConfidenceBadge $titleConfidenceBadge $true (T 'badge_title_ok') (T 'badge_title_fail_auto')
+            }
+        } catch {}
+        try { [System.Windows.Forms.Application]::DoEvents() } catch {}
+
+        # 3) Затем грузим обложки выбранного региона (дольше).
         $addWas = $btnAdd.Enabled
         $btnCoverLang.Enabled = $false
         $btnAdd.Enabled = $false
         try {
             $n = [int]@(Reload-EditorSteamCoversForLanguage $appId $slots $status $newLang)[-1]
-            if($n -gt 0){ Set-EditorCoverLangButton $btnCoverLang $newLang }
+            # На случай если ControlAdded/перерисовка сбросили стиль — закрепляем выбор.
+            Set-EditorCoverLangButton $btnCoverLang $newLang
         } catch {
             $status.Text = (T 'covlang_fail' @([string](Get-SteamLanguageInfo $newLang).Name))
         } finally {
@@ -10836,64 +11700,36 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
         }
     }
 
-    $coverLangList.Add_MouseClick({
-        $i = $coverLangList.IndexFromPoint($_.Location)
-        if($i -lt 0){ return }
-        $coverLangList.SelectedIndex = $i
-        & $commitCoverLang
+    $btnCoverLang.Add_ControlAdded({
+        # После добавления/обновления значков сохраняем тот же стиль активного
+        # языка. Сам обработчик не меняет выбранный язык.
+        try { Set-EditorCoverLangButton $btnCoverLang ([string]$btnCoverLang.Tag.Lang) } catch {}
     })
-    $coverLangList.Add_KeyDown({
-        if($_.KeyCode -eq [System.Windows.Forms.Keys]::Enter){ $_.SuppressKeyPress = $true; $_.Handled = $true; & $commitCoverLang }
-        elseif($_.KeyCode -eq [System.Windows.Forms.Keys]::Escape){ $_.SuppressKeyPress = $true; $_.Handled = $true; & $hideCoverLangList }
+
+    $btnCoverLang.Add_MouseClick({
+        try {
+            $pt = $btnCoverLang.PointToClient([System.Windows.Forms.Cursor]::Position)
+            $child = $btnCoverLang.GetChildAtPoint($pt)
+            if($null -ne $child -and $child.Tag -ne $null -and $child.Tag.Lang){
+                & $selectCoverLanguage ([string]$child.Tag.Lang)
+            }
+        } catch {}
     })
-    $coverLangList.Add_Leave({ & $hideCoverLangList })
 
-    $btnCoverLang.Add_Click({
-        if($coverLangList.Visible){ & $hideCoverLangList; return }
-        if(((Get-Date) - $coverLangList.Tag.HiddenAt).TotalMilliseconds -lt 300){ return }
-        if($editorState.SearchSource -ne 'Steam'){ return }
-        $appId = $txtId.Text.Trim()
-        if($appId -notmatch '^\d+$'){ $status.Text = (T 'covlang_no_appid'); return }
-
-        $status.Text = (T 'covlang_checking')
-        $btnCoverLang.Enabled = $false
-        $dlg.Cursor = [System.Windows.Forms.Cursors]::WaitCursor
-        $avail = @()
-        $pumpWas = $global:uiPumpDuringDownload
-        $global:uiPumpDuringDownload = $true
-        try { $avail = @(Get-SteamPicsAvailableLanguages $appId) } catch { $avail = @() }
-        finally {
-            $global:uiPumpDuringDownload = $pumpWas
-            $dlg.Cursor = [System.Windows.Forms.Cursors]::Default
-            $btnCoverLang.Enabled = ($editorState.SearchSource -eq 'Steam')
-        }
-
-        $cur = [string]$btnCoverLang.Tag.Lang
-        if($avail.Count -eq 0){ $status.Text = (T 'covlang_unavailable'); return }
-        $codes = @($avail)
-        if($codes -notcontains $cur){ $codes = @($cur) + $codes }
-        if($codes.Count -le 1){ $status.Text = (T 'covlang_only_one' @([string](Get-SteamLanguageInfo $cur).Name)); return }
-
-        $coverLangList.Items.Clear()
-        foreach($c in $codes){
-            $inf = Get-SteamLanguageInfo $c
-            [void]$coverLangList.Items.Add(('{0}  ({1})' -f $inf.Name, $inf.Short))
-        }
-        $coverLangList.Tag.Codes = $codes
-        $listW = 210
-        $listH = [Math]::Min(240, ([int]$coverLangList.ItemHeight * $codes.Count) + 6)
-        $coverLangList.Size = New-Object System.Drawing.Size($listW, $listH)
-        $coverLangList.Location = New-Object System.Drawing.Point(($btnCoverLang.Right - $listW), ($btnCoverLang.Top - $listH - 2))
-        $coverLangList.SelectedIndex = [Array]::IndexOf($codes, $cur)
-        $status.Text = (T 'covlang_pick')
-        $coverLangList.Visible = $true
-        $coverLangList.BringToFront()
-        $coverLangList.Focus() | Out-Null
-    })
+    # FlowLayoutPanel передаёт клик дочерней кнопке, поэтому каждому значку
+    # добавляем тот же обработчик напрямую.
+    $wireCoverLanguageButton = {
+        param($b)
+        try {
+            $b.Add_Click({
+                try { & $selectCoverLanguage ([string]$this.Tag.Lang) } catch {}
+            })
+        } catch {}
+    }
 
     $updateSearchSourceUi = {
         # Регион обложек относится только к Steam-обложкам.
-        try { $btnCoverLang.Enabled = ($editorState.SearchSource -eq 'Steam'); if($editorState.SearchSource -ne 'Steam'){ $coverLangList.Visible = $false } } catch {}
+        try { $btnCoverLang.Enabled = ($editorState.SearchSource -eq 'Steam') } catch {}
         if($editorState.SearchSource -eq 'Steam'){
             $searchSteamBtn.BackColor=$steamUi.Accent2; $searchSteamBtn.ForeColor=[System.Drawing.Color]::White
             $searchSteamBtn.FlatAppearance.BorderColor=$steamUi.Accent2
@@ -11419,6 +12255,18 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
                     try { $steamChosenId=[int]$choice.Id } catch { $steamChosenId=0 }
                     if($steamChosenId -gt 0){
                         $txtId.Text=[string]$steamChosenId
+                        # После выбора варианта название — по региону из «Настроек».
+                        $localizedChoiceName = Get-SteamLocalizedAppName ([string]$steamChosenId) ([string](Get-SteamAssetLanguage))
+                        if(-not [string]::IsNullOrWhiteSpace([string]$localizedChoiceName)){
+                            $tag.SuppressAutoSearch=$true
+                            try {
+                                $txtTitle.Text=[string]$localizedChoiceName
+                                $txtTitle.SelectionStart=$txtTitle.Text.Length
+                                $txtTitle.SelectionLength=0
+                            } finally {
+                                $tag.SuppressAutoSearch=$false
+                            }
+                        }
                         Load-EditorSteamPreviews ([string]$steamChosenId) $slots $status
                         & $tryApplySteamExeHint ([string]$steamChosenId)
                     } else {
@@ -11665,12 +12513,31 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
         # Особенно заметно это на играх, для которых SGDB возвращает варианты.
         $initialTag=$txtTitle.Tag
         if($null -ne $initialTag){ $initialTag.SuppressAutoSearch=$true }
+        $found = $null
+        $candidates = @()
         try {
             if($editorState.SearchSource -eq 'Steam') {
-                $found = Find-SteamAppInfo $txtTitle.Text.Trim()
+                if($editMode -and $existingShortcut -ne $null) {
+                    # Для уже добавленной игры сначала пробуем имя папки, затем
+                    # AppName shortcut'а и только потом отображаемое имя карточки.
+                    # Это позволяет автоматически получить App ID даже если
+                    # пользователь ранее сохранил локализованное название.
+                    $found = Find-ExistingGameSteamAppInfo $txtTitle.Text.Trim() $gamePath $existingShortcut
+                } else {
+                    $found = Find-SteamAppInfo $txtTitle.Text.Trim()
+                }
                 if($found -ne $null){
                     $txtId.Text=[string]$found.Id
-                    $txtTitle.Text=[string]$found.Name
+                    # Официальное название: сначала store API по региону из «Настроек»,
+                    # иначе english, иначе имя из поиска/локальной базы (часто полнее папки).
+                    $localizedName = Get-SteamLocalizedAppName ([string]$found.Id) ([string](Get-SteamAssetLanguage))
+                    if ([string]::IsNullOrWhiteSpace([string]$localizedName) -and -not [string]::IsNullOrWhiteSpace([string]$found.Name)) {
+                        $localizedName = [string]$found.Name
+                    }
+                    if(-not [string]::IsNullOrWhiteSpace([string]$localizedName)) {
+                        $txtTitle.Text=[string]$localizedName
+                        $txtTitle.SelectionStart=$txtTitle.Text.Length
+                    }
                 }
             } else {
                 $candidates=@(Get-EditorSgdbCandidates $txtTitle.Text.Trim() '')
@@ -11689,6 +12556,29 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
         if($global:editorLoadAbortRequested -or $dlg.IsDisposed -or $dlg.Disposing){ return }
         $titleConfidentInitial = if($editorState.SearchSource -eq 'Steam'){ $found -ne $null } else { (@($candidates).Count -gt 0) }
         Set-ConfidenceBadge $titleConfidenceBadge $titleConfidentInitial (T 'badge_title_ok') (T 'badge_title_fail_auto')
+        # Название уже подставлено выше — сразу отдаём кадр UI, не дожидаясь обложек.
+        try {
+            if (-not [string]::IsNullOrWhiteSpace([string]$txtTitle.Text)) {
+                $dlg.Text = (T 'card_title' @([string]$txtTitle.Text.Trim()))
+            }
+        } catch {}
+        try { [System.Windows.Forms.Application]::DoEvents() } catch {}
+
+        # Кнопки регионов — ДО загрузки обложек (PICS лёгкий и кэшируется).
+        # Активна кнопка региона из «Настроек», если он есть у игры; иначе english.
+        try {
+            if($editorState.SearchSource -eq 'Steam' -and $txtId.Text -match '^\d+$'){
+                $availEarly = @(Get-SteamPicsAvailableLanguages $txtId.Text.Trim())
+                if ($availEarly.Count -eq 0) { $availEarly = @('english') }
+                $preferEarly = [string](Get-SteamAssetLanguage)
+                if ($availEarly -contains $preferEarly) { $activeEarly = $preferEarly }
+                elseif ($availEarly -contains 'english') { $activeEarly = 'english' }
+                else { $activeEarly = [string]$availEarly[0] }
+                & $renderCoverLanguages $availEarly $activeEarly
+                try { [System.Windows.Forms.Application]::DoEvents() } catch {}
+            }
+        } catch {}
+
         $loadedExistingCovers=$false
         if($editMode -and $existingShortcut -ne $null){
             try {
@@ -11715,6 +12605,18 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
                     if(Set-EditorPreviewFile $slots.Horizontal (Join-Path $global:tempCovers 'temp_header.jpg')){ Set-EditorSourceBadge $slots.Horizontal $hSource }
                     if(Set-EditorPreviewFile $slots.Hero (Join-Path $global:tempCovers 'temp_hero.jpg')){ Set-EditorSourceBadge $slots.Hero $heroSource }
                     if(Set-EditorPreviewFile $slots.Logo (Join-Path $global:tempCovers 'temp_logo.png')){ Set-EditorSourceBadge $slots.Logo $lSource }
+                    if($null -ne $slots.Icon){
+                        # Старый _icon.png из grid часто чёрный (битый ico→png).
+                        # Всегда тянем свежую иконку из Steam по App ID.
+                        $appForIcon = $txtId.Text.Trim()
+                        if ($appForIcon -match '^\d+$') {
+                            try { Download-SteamIconToTemp $appForIcon $true | Out-Null } catch {}
+                        }
+                        $iconPrev = Get-TempIconPath
+                        if($null -ne $iconPrev -and (Set-EditorPreviewFile $slots.Icon $iconPrev)){ Set-EditorSourceBadge $slots.Icon 'Steam' }
+                        else { Set-EditorPreviewFile $slots.Icon $null | Out-Null }
+                        try { $slots.Icon.ExpectedSource = 'Steam' } catch {}
+                    }
                     $slots.Vertical.ExpectedSource=$vSource
                     $slots.Horizontal.ExpectedSource=$hSource
                     $slots.Hero.ExpectedSource=$heroSource
@@ -11723,7 +12625,9 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
                     # раньше, обложки всегда были стандартными (английскими).
                     $savedCoverLang = 'english'
                     try { if ($null -ne $savedSources -and -not [string]::IsNullOrWhiteSpace([string]$savedSources.lang)) { $savedCoverLang = [string]$savedSources.lang } } catch {}
-                    Set-EditorCoverLangButton $btnCoverLang $savedCoverLang
+                    # Сохраняем старый выбранный язык для обратной совместимости,
+                    # но список доступных локализаций будет заполнен ниже по App ID.
+                    $btnCoverLang.Tag.Lang = [string]$savedCoverLang
                     $status.Text=(T 'st_covers_loaded')
                 }
             } catch {}
@@ -11746,6 +12650,26 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
             foreach($sl in $slots.Values){ Set-EditorPreviewFile $sl $null | Out-Null }
             $status.Text=if($editorState.SearchSource -eq 'Steam'){(T 'st_noid_hint_steam')}else{(T 'st_noid_hint_sgdb')}
         }
+
+        # Кнопки регионов уже показаны до загрузки обложек. Здесь — только
+        # запасной проход, если ранний не сработал (нет App ID на тот момент).
+        try {
+            $coverLangPanel = Get-EditorCoverLanguagePanel $dlg
+            if($editorState.SearchSource -eq 'Steam' -and $txtId.Text -match '^\d+$' -and $null -ne $coverLangPanel){
+                $avail = @($coverLangPanel.Tag.Codes)
+                if(@($avail).Count -eq 0){
+                    $avail = @(Get-SteamPicsAvailableLanguages $txtId.Text.Trim())
+                    if ($avail.Count -eq 0) { $avail = @('english') }
+                    $prefer = [string](Get-SteamAssetLanguage)
+                    if ($avail -contains $prefer) { $activeLang = $prefer }
+                    elseif ($avail -contains 'english') { $activeLang = 'english' }
+                    else { $activeLang = [string]$avail[0] }
+                    & $renderCoverLanguages $avail $activeLang
+                }
+            } elseif ($null -ne $coverLangPanel) {
+                $coverLangPanel.Visible = $false
+            }
+        } catch {}
 
         # Подсказка exe из Steam — теперь через переиспользуемый блок
         # $tryApplySteamExeHint (см. его определение выше), чтобы её можно было
@@ -11812,7 +12736,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
                 [System.Windows.Forms.Application]::DoEvents()
                 taskkill.exe /F /T /IM steam.exe 2>$null | Out-Null
                 Start-Sleep -Seconds 2
-                $steamWasKilledThisSession = $true
+                $script:steamWasKilledThisSession = $true
                 $freshShortcut=Find-SteamShortcutRecord $existingShortcut.AppName $gamePath
                 if($freshShortcut -eq $null){$freshShortcut=$existingShortcut}
                 $shortcutId=Update-ExistingSteamShortcut $freshShortcut $name $exePath $startDir $launchOptions
@@ -11824,16 +12748,18 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
                 # того же Steam-профиля, в котором лежит изменяемый shortcuts.vdf.
                 $freshShortcutAfterSave=Find-SteamShortcutRecord $name $gamePath
                 if($freshShortcutAfterSave -eq $null){$freshShortcutAfterSave=$freshShortcut}
-                $hasCovers=Test-CoversValid
+                $hasCovers=$false
+                try { $hasCovers=Test-CoversValid } catch { $hasCovers=$false }
                 $coversSaved=$false
                 if($hasCovers){
-                    $coversSaved=Save-ExistingShortcutCoversToGrid $freshShortcutAfterSave
+                    try { $coversSaved=Save-ExistingShortcutCoversToGrid $freshShortcutAfterSave } catch { $coversSaved=$false }
                     if($coversSaved){
-                        $newShortcutId=[string]$freshShortcutAfterSave.ShortcutId
-                        Save-CoverSourcesMetadata $newShortcutId $slots ([string]$btnCoverLang.Tag.Lang) | Out-Null
-                        # ID мог смениться (имя/EXE входят в CRC-32) — старый файл больше не актуален.
-                        $oldShortcutId=[string]$existingShortcut.ShortcutId
-                        if(-not [string]::IsNullOrWhiteSpace($oldShortcutId) -and $oldShortcutId -ne $newShortcutId){ Remove-CoverSourcesMetadata $oldShortcutId }
+                        try {
+                            $newShortcutId=[string]$freshShortcutAfterSave.ShortcutId
+                            Save-CoverSourcesMetadata $newShortcutId $slots ([string]$btnCoverLang.Tag.Lang) | Out-Null
+                            $oldShortcutId=[string]$existingShortcut.ShortcutId
+                            if(-not [string]::IsNullOrWhiteSpace($oldShortcutId) -and $oldShortcutId -ne $newShortcutId){ Remove-CoverSourcesMetadata $oldShortcutId }
+                        } catch {}
                     }
                 }
 
@@ -11877,10 +12803,11 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
 
             $newId=Add-ShortcutToSteam $name $finalExe $finalStart $launchOptions
             if(-not $newId){$reason=if($global:lastShortcutError){[string]$global:lastShortcutError}else{(T 'reason_shortcut_fail')};throw $reason}
-            $hasCovers=Test-CoversValid
+            $hasCovers=$false
+            try { $hasCovers=Test-CoversValid } catch { $hasCovers=$false }
             if($hasCovers){
-                Copy-TempCoversDirectlyToGrid $newId | Out-Null
-                Save-CoverSourcesMetadata ([string]$newId) $slots ([string]$btnCoverLang.Tag.Lang) | Out-Null
+                try { Copy-TempCoversDirectlyToGrid $newId | Out-Null } catch {}
+                try { Save-CoverSourcesMetadata ([string]$newId) $slots ([string]$btnCoverLang.Tag.Lang) | Out-Null } catch {}
             }
             if(-not $batchMode -and (Test-Path $steamPathProperty)){Start-Process -FilePath $steamPathProperty}
             $status.Text=if($hasCovers){(T 'st_done_added_covers')}else{(T 'st_done_added_nocovers')}
@@ -11991,7 +12918,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
         if($ac -is [System.Windows.Forms.ComboBox] -and $ac.DroppedDown){ return }
         $_.SuppressKeyPress = $true; $_.Handled = $true
         if($titleResults.Visible){ & $closeEditorTitleDropDown; $txtTitle.Focus(); return }
-        if($coverLangList.Visible){ & $hideCoverLangList; return }
+        # Языки обложек теперь представлены постоянными значками; отдельного списка нет.
         if(-not $btnAdd.Enabled){ return }
         if($btnCancel -ne $null){ $btnCancel.PerformClick() } else { $dlg.Close() }
     })
@@ -12027,7 +12954,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     # если Steam в этой сессии карточки не убивали: иначе он просто
     # поднимался поверх всех окон без всякой причины при обычном закрытии
     # или отмене карточки.
-    if($editMode -and -not $batchMode -and $steamWasKilledThisSession){
+    if($editMode -and -not $batchMode -and $script:steamWasKilledThisSession){
         try {
             $steamPathProperty=(Get-ItemProperty -Path 'HKCU:\Software\Valve\Steam' -Name 'SteamExe' -ErrorAction SilentlyContinue).SteamExe
             if([string]::IsNullOrEmpty($steamPathProperty)){$steamPathProperty='C:\Program Files (x86)\Steam\steam.exe'}
@@ -12341,7 +13268,7 @@ function Update-MainLibraryButtonState {
         $totalChecked = [int]$global:checkedC.Count + [int]$global:checkedD.Count
         $ready = [bool]$global:foldersReady
         $btnMoveGame.Enabled = ($ready -and $totalChecked -ge 1)
-        if ($ready -and $totalChecked -ge 2) {
+        if ($ready -and $totalChecked -ge 1) {
             $btnAddToSteam.Text = (T 'btn_add_batch_n' @($totalChecked))
             $btnAddToSteam.Visible = $true
             $btnAddToSteam.Enabled = $true
@@ -12719,9 +13646,9 @@ $btnAddToSteam.Add_Click({
         $labelHeader.Text = (T 'hd_cancelling')
         return
     }
-    # Кнопка видна только когда отмечено 2+ игры (см. Update-MainLibraryButtonState) —
-    # для ровно одной игры добавление идёт через клик по ней -> карточку, поэтому
-    # отдельная ветка "выбрана одна игра" здесь больше не нужна.
+    # Кнопка видна при 1+ отмеченной игре (см. Update-MainLibraryButtonState).
+    # Для одной игры путь тот же, что для батча: Smart Batch Add сам решает,
+    # можно ли добавить автоматически, или показывает карточку для подтверждения.
     $selectedGames=@(Get-CheckedGames)
     if($selectedGames.Count -eq 0){$labelHeader.Text=(T 'hd_tick_one');return}
 
