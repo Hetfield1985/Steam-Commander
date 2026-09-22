@@ -41,19 +41,19 @@
 ## Скриншоты
 
 <p align="center">
-  <img src="assets/screenshots/main.png" width="700" alt="Главное окно">
+  <img src="assets/screenshots/main_rus.png" width="700" alt="Главное окно">
 </p>
 
 <p align="center">
-  <img src="assets/screenshots/game_card.png" width="700" alt="Карточка игры">
+  <img src="assets/screenshots/game_card_rus.png" width="700" alt="Карточка игры">
 </p>
 
 <p align="center">
-  <img src="assets/screenshots/custom_covers.png" width="700" alt="Пользовательские обложки">
+  <img src="assets/screenshots/custom_covers_rus.png" width="700" alt="Пользовательские обложки">
 </p>
 
 <p align="center">
-  <img src="assets/screenshots/settings.png" width="500" alt="Настройки">
+  <img src="assets/screenshots/settings_rus.png" width="500" alt="Настройки">
 </p>
 
 ---
