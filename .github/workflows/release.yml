@@ -1,9 +1,8 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - 'v*'
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:
@@ -12,8 +11,10 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Install ps2exe
         shell: pwsh
@@ -23,15 +24,20 @@ jobs:
         shell: pwsh
         run: ./build/build.ps1
 
+      - name: Check EXE
+        shell: pwsh
+        run: |
+          Get-ChildItem -Path dist -Filter *.exe
+          
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: Steam-Commander
           path: dist/*.exe
 
-      - name: Publish GitHub release
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Upload EXE to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.event.release.tag_name }}
           files: dist/*.exe
           generate_release_notes: true
