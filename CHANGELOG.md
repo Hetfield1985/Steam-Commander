@@ -4,19 +4,23 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
-[1.1.1] - 2026-09-22
-Added
-Region setting for Steam cover language, independent of the interface language.
-Full grid of available cover languages in the game card, showing only languages that actually have covers for that game.
-Automatic game title translation when switching the cover language.
-Custom application icons are now saved and applied to shortcuts, with automatic SteamGridDB fallback when Steam has none.
-Improved
-Improved App ID matching for already-added games, based on folder and shortcut names.
-Improved custom icon downloading, format detection, and rendering reliability.
-Improved responsiveness during automatic batch game addition.
-Improved thumbnail selection windows with centered, evenly spaced layouts.
-Improved accuracy of cover language availability detection.
-Improved Settings dialog layout; removed a redundant profile status label.
+---
+
+## [1.1.1] - 2026-09-22
+### Added
+- Region setting for Steam cover language, independent of the interface language.
+- Full grid of available cover languages in the game card, showing only languages that actually have covers for that game.
+- Automatic game title translation when switching the cover language.
+- Custom application icons are now saved and applied to shortcuts, with automatic SteamGridDB fallback when Steam has none.
+### Improved
+- Improved App ID matching for already-added games, based on folder and shortcut names.
+- Improved custom icon downloading, format detection, and rendering reliability.
+- Improved responsiveness during automatic batch game addition.
+- Improved thumbnail selection windows with centered, evenly spaced layouts.
+- Improved accuracy of cover language availability detection.
+- Improved Settings dialog layout; removed a redundant profile status label.
+
+---
 
 ## [1.1.0] - 2026-09-21
 
@@ -32,6 +36,8 @@ Improved Settings dialog layout; removed a redundant profile status label.
 - Improved cancellation and skipping of ongoing operations.
 - Improved title and launch parameter suggestions and focus handling.
 - Improved overall UI consistency and localization.
+
+---
 
 ## [1.0.1] - 2026-09-20
 
