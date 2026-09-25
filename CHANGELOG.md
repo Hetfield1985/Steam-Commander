@@ -6,6 +6,22 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.2.1] - 2026-09-26
+
+### Added
+
+* **Steam Library** — browse and edit games directly in the library.
+* **Licensed games support** — covers and launch parameters can now be viewed and edited.
+* Improved Steam profile and game data detection.
+* Improved EXE and launch parameter detection.
+* Added automatic backups before modifying Steam data.
+
+### Fixed
+
+* Various issues with Steam data, game detection, covers, and launch parameters.
+
+
+---
 ## [1.1.1] - 2026-09-22
 ### Added
 - Region setting for Steam cover language, independent of the interface language.
