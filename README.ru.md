@@ -38,6 +38,10 @@
   <img src="assets/screenshots/animation_2.gif" width="700" alt="Демонстрация Steam Commander">
 </p>
 
+<p align="center">
+  <img src="assets/screenshots/animation_3.gif" width="700" alt="Steam Commander demo">
+</p>
+
 ## Скриншоты
 
 <p align="center">
