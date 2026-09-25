@@ -45,6 +45,10 @@
 </p>
 
 <p align="center">
+  <img src="assets/screenshots/library.png" width="700" alt="library window">
+</p>
+
+<p align="center">
   <img src="assets/screenshots/game_card.png" width="700" alt="Game card">
 </p>
 
