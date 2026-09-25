@@ -2,6 +2,31 @@
 Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName System.Design
 
+# Хелпер: жёстко прячет нативную горизонтальную полосу прокрутки у control'а
+# (даже если WinForms по каким-то причинам считает, что она нужна — например,
+# из-за округления ширины плиток/паддингов при пересчёте сетки библиотеки).
+# ShowScrollBar(hWnd, SB_HORZ, false) не трогает вертикальную полосу и не
+# требует пересчёта AutoScrollMinSize — просто гарантированно убирает
+# горизонтальную полосу с экрана.
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+
+public class Win32ScrollBarHelper
+{
+    private const int SB_HORZ = 0;
+
+    [DllImport("user32.dll")]
+    private static extern bool ShowScrollBar(IntPtr hWnd, int wBar, bool bShow);
+
+    public static void HideHorizontal(IntPtr hWnd)
+    {
+        if (hWnd == IntPtr.Zero) return;
+        try { ShowScrollBar(hWnd, SB_HORZ, false); } catch {}
+    }
+}
+'@
+
 # ComboBox выбора EXE: если в списке 0 или 1 элемент, выбирать не из чего —
 # поэтому кнопка-стрелка скрывается (закрашивается цветом фона) и раскрытие
 # списка блокируется. Как только в список добавляют второй элемент (в том числе
@@ -16,10 +41,12 @@ using System.Windows.Forms;
 public class SmartExeComboBox : ComboBox
 {
     private const int WM_PAINT = 0x000F;
+    private const int WM_NCPAINT = 0x0085;
     private const int WM_KEYDOWN = 0x0100;
     private const int WM_SYSKEYDOWN = 0x0104;
     private const int WM_LBUTTONDOWN = 0x0201;
     private const int WM_LBUTTONDBLCLK = 0x0203;
+    private const int WM_MOUSEWHEEL = 0x020A;
     private const int CB_ADDSTRING = 0x0143;
     private const int CB_DELETESTRING = 0x0144;
     private const int CB_INSERTSTRING = 0x014A;
@@ -32,22 +59,31 @@ public class SmartExeComboBox : ComboBox
     [DllImport("uxtheme.dll", ExactSpelling = true, CharSet = CharSet.Unicode)]
     private static extern int SetWindowTheme(IntPtr hWnd, string pszSubAppName, string pszSubIdList);
 
-    // Пока список пустой/с одним элементом, стрелку не только закрашиваем,
-    // но и полностью отключаем тему (visual styles) для контрола. Иначе при
-    // наведении курсора Windows проигрывает анимацию hot-tracking кнопки
-    // через UxTheme/BufferedPaint отдельно от WM_PAINT, и на долю секунды
-    // успевает мелькнуть настоящая стрелка, прежде чем мы её перекрываем.
-    // Без темы кнопка рисуется классическим стилем прямо внутри WM_PAINT —
-    // никакой отдельной анимации наведения, перекрытие срабатывает всегда.
+    // Цвет рамки (задаётся извне под тему Steam UI).
+    public Color BorderColor = Color.FromArgb(55, 65, 75);
+
     private bool? _themed;
+
+    // Убираем WS_BORDER / WS_EX_CLIENTEDGE — иначе WinForms рисует
+    // обломанную светлую системную рамку на тёмном фоне.
+    protected override CreateParams CreateParams
+    {
+        get
+        {
+            CreateParams cp = base.CreateParams;
+            cp.Style &= ~0x00800000;   // WS_BORDER
+            cp.ExStyle &= ~0x00000200; // WS_EX_CLIENTEDGE
+            return cp;
+        }
+    }
 
     private void UpdateTheme()
     {
         if (!IsHandleCreated) return;
-        bool wantThemed = !ArrowHidden;
+        bool wantThemed = false;
         if (_themed == wantThemed) return;
         _themed = wantThemed;
-        SetWindowTheme(Handle, wantThemed ? null : "", wantThemed ? null : "");
+        SetWindowTheme(Handle, "", "");
     }
 
     protected override void OnHandleCreated(EventArgs e)
@@ -57,9 +93,47 @@ public class SmartExeComboBox : ComboBox
         UpdateTheme();
     }
 
+    // "Заблокировано" — состояние поля в карточке лицензионной игры: оно
+    // должно выглядеть и вести себя как нередактируемое, но БЕЗ Enabled=false.
+    // При реальном отключении (Enabled=false) Windows перестаёт слать нам
+    // WM_PAINT/WM_NCPAINT через наш перехват и сама рисует системную (светлую)
+    // рамку/фон поверх тёмной темы — это и есть белый "глюк" рамки. Поэтому
+    // вместо Enabled просто блокируем ввод, а рисуем всё сами, как обычно.
+    public bool Locked = false;
+
     public bool ArrowHidden
     {
-        get { return Items.Count <= 1; }
+        get { return Items.Count <= 1 || Locked; }
+    }
+
+    private void PaintChrome()
+    {
+        if (!IsHandleCreated || Width <= 0 || Height <= 0) return;
+        using (Graphics g = Graphics.FromHwnd(Handle))
+        {
+            // Перекрываем системные артефакты рамки и стрелки единым фоном.
+            using (SolidBrush b = new SolidBrush(BackColor))
+            {
+                // тонкая внутренняя полоса по периметру
+                g.FillRectangle(b, new Rectangle(0, 0, Width, 2));
+                g.FillRectangle(b, new Rectangle(0, Height - 2, Width, 2));
+                g.FillRectangle(b, new Rectangle(0, 0, 2, Height));
+                g.FillRectangle(b, new Rectangle(Width - 2, 0, 2, Height));
+                if (ArrowHidden)
+                {
+                    int w = SystemInformation.VerticalScrollBarWidth + 4;
+                    g.FillRectangle(b, new Rectangle(Width - w - 1, 1, w, Height - 2));
+                }
+            }
+            // Рамку рисует внешняя Panel; здесь только подчищаем артефакты.
+            if (BorderColor.ToArgb() != BackColor.ToArgb())
+            {
+                using (Pen p = new Pen(BorderColor))
+                {
+                    g.DrawRectangle(p, 0, 0, Width - 1, Height - 1);
+                }
+            }
+        }
     }
 
     protected override void WndProc(ref Message m)
@@ -68,6 +142,7 @@ public class SmartExeComboBox : ComboBox
         {
             if (m.Msg == WM_LBUTTONDOWN || m.Msg == WM_LBUTTONDBLCLK) { return; }
             if (m.Msg == CB_SHOWDROPDOWN && m.WParam != IntPtr.Zero) { return; }
+            if (m.Msg == WM_MOUSEWHEEL) { return; }
             if (m.Msg == WM_KEYDOWN || m.Msg == WM_SYSKEYDOWN)
             {
                 int vk = m.WParam.ToInt32();
@@ -83,14 +158,9 @@ public class SmartExeComboBox : ComboBox
             UpdateTheme();
             Invalidate();
         }
-        else if (m.Msg == WM_PAINT && ArrowHidden)
+        else if (m.Msg == WM_PAINT || m.Msg == WM_NCPAINT)
         {
-            int w = SystemInformation.VerticalScrollBarWidth + 2;
-            using (Graphics g = Graphics.FromHwnd(Handle))
-            using (SolidBrush b = new SolidBrush(BackColor))
-            {
-                g.FillRectangle(b, new Rectangle(Width - w - 1, 1, w, Height - 2));
-            }
+            PaintChrome();
         }
     }
 }
@@ -305,7 +375,7 @@ $global:dirD = ""
 # Единая версия приложения — используется в заголовке главного окна, в
 # подписи внизу окна настроек и в User-Agent HTTP-запросов. Меняйте только
 # здесь при выпуске новой версии.
-$global:appVersion = "1.1.1"
+$global:appVersion = "1.2.1"
 $global:appTitle = "Steam Commander"
 
 # ===================== ЛОКАЛИЗАЦИЯ =====================
@@ -356,6 +426,17 @@ $script:I18n = @{
         batch_auto_tip = 'Если включено: при пакетном добавлении игры с уверенно определёнными названием и exe добавляются в библиотеку автоматически, без показа карточки. Карточка откроется только для игр, которые программа не смогла определить однозначно.'
         btn_add_batch = '＋  Добавить выбранные игры в библиотеку'
         btn_add_batch_n = '＋  Добавить выбранные игры в библиотеку ({0})'
+        btn_steam_library = 'Библиотека Steam'
+        lib_browser_title = 'Библиотека Steam'
+        lib_loading = 'Загрузка библиотеки…'
+        lib_empty = 'В библиотеке Steam пока нет игр.'
+        lib_search_cue = 'Поиск по названию…'
+        lib_back = 'Назад'
+        lib_count = 'Игр: {0}'
+        lib_kind_steam = 'Steam'
+        lib_kind_shortcut = 'Non-Steam'
+        lib_open_fail = 'Не удалось открыть библиотеку: {0}'
+        lib_licensed_hint = 'Лицензионная игра Steam: EXE и App ID недоступны для изменения.'
         tip_select_all = 'Отметить все игры в списке / снять все отметки'
         tip_lib_header = 'В библиотеке Steam (клик — сортировка)'
         tip_row_check = 'Отметить игру (для переноса или пакетного добавления)'
@@ -387,6 +468,10 @@ $script:I18n = @{
         set_steam_folder = 'Папка Steam'
         set_profile = 'Профиль'
         set_region = 'Регион'
+        set_steam_folder_invalid = 'Папка Steam не найдена: укажите папку, в которой лежит steam.exe.'
+        set_profile_invalid = 'Профиль Steam не выбран или не найден.'
+        set_profile_unknown = 'Эта папка не соответствует ни одному аккаунту Steam на этом компьютере (нет записи в loginusers.vdf).'
+        set_profile_unknown_short = 'не аккаунт Steam'
         set_profile_hint = 'Выберите userdata-профиль, с которым будет работать программа.'
         set_exe_filter = 'Фильтр EXE'
         set_offer_launchers = 'Предлагать лаунчеры'
@@ -655,6 +740,17 @@ $script:I18n = @{
         batch_auto_tip = 'If enabled: when adding several games at once, games whose name and exe are detected with confidence are added to the library automatically, without showing the card. The card opens only for games the program could not identify unambiguously.'
         btn_add_batch = '＋  Add selected games to library'
         btn_add_batch_n = '＋  Add selected games to library ({0})'
+        btn_steam_library = 'Steam Library'
+        lib_browser_title = 'Steam Library'
+        lib_loading = 'Loading library…'
+        lib_empty = 'No games in the Steam library yet.'
+        lib_search_cue = 'Search by name…'
+        lib_back = 'Back'
+        lib_count = 'Games: {0}'
+        lib_kind_steam = 'Steam'
+        lib_kind_shortcut = 'Non-Steam'
+        lib_open_fail = 'Could not open the library: {0}'
+        lib_licensed_hint = 'Licensed Steam game: EXE and App ID cannot be changed.'
         tip_select_all = 'Tick all games in the list / clear all ticks'
         tip_lib_header = 'In Steam library (click to sort)'
         tip_row_check = 'Tick the game (for moving or batch adding)'
@@ -686,6 +782,10 @@ $script:I18n = @{
         set_steam_folder = 'Steam folder'
         set_profile = 'Profile'
         set_region = 'Region'
+        set_steam_folder_invalid = 'Steam folder not found: point to the folder that contains steam.exe.'
+        set_profile_invalid = 'No Steam profile selected, or it could not be found.'
+        set_profile_unknown = 'This folder does not match any Steam account on this computer (no entry in loginusers.vdf).'
+        set_profile_unknown_short = 'not a Steam account'
         set_profile_hint = 'Choose the userdata profile the program will work with.'
         set_exe_filter = 'EXE filter'
         set_offer_launchers = 'Suggest launchers'
@@ -954,6 +1054,17 @@ $script:I18n = @{
         batch_auto_tip = '启用后：一次添加多个游戏时，名称和 exe 能被明确识别的游戏会自动加入库中，不再显示卡片。仅对程序无法明确识别的游戏才会打开卡片。'
         btn_add_batch = '＋  将所选游戏添加到库'
         btn_add_batch_n = '＋  将所选游戏添加到库（{0}）'
+        btn_steam_library = 'Steam 库'
+        lib_browser_title = 'Steam 库'
+        lib_loading = '正在加载库…'
+        lib_empty = 'Steam 库中暂无游戏。'
+        lib_search_cue = '按名称搜索…'
+        lib_back = '返回'
+        lib_count = '游戏：{0}'
+        lib_kind_steam = 'Steam'
+        lib_kind_shortcut = 'Non-Steam'
+        lib_open_fail = '无法打开库：{0}'
+        lib_licensed_hint = '正版 Steam 游戏：EXE 和 App ID 不可修改。'
         tip_select_all = '勾选列表中的所有游戏 / 取消全部勾选'
         tip_lib_header = '是否在 Steam 库中（点击排序）'
         tip_row_check = '勾选游戏（用于移动或批量添加）'
@@ -985,6 +1096,10 @@ $script:I18n = @{
         set_steam_folder = 'Steam 文件夹'
         set_profile = '配置文件'
         set_region = '区域'
+        set_steam_folder_invalid = '未找到 Steam 文件夹：请指定包含 steam.exe 的文件夹。'
+        set_profile_invalid = '未选择 Steam 配置文件，或找不到该配置文件。'
+        set_profile_unknown = '此文件夹与本机上的任何 Steam 账户都不匹配（loginusers.vdf 中没有对应记录）。'
+        set_profile_unknown_short = '不是 Steam 账户'
         set_profile_hint = '选择程序要使用的 userdata 配置文件。'
         set_exe_filter = 'EXE 筛选'
         set_offer_launchers = '提供游戏启动器'
@@ -1254,6 +1369,17 @@ $script:I18n = @{
         batch_auto_tip = 'Si está activado: al añadir varios juegos a la vez, los juegos cuyo nombre y exe se detectan con seguridad se añaden a la biblioteca automáticamente, sin mostrar la ficha. La ficha solo se abre para los juegos que el programa no pudo identificar sin ambigüedad.'
         btn_add_batch = '＋  Añadir juegos seleccionados a la biblioteca'
         btn_add_batch_n = '＋  Añadir juegos seleccionados a la biblioteca ({0})'
+        btn_steam_library = 'Biblioteca de Steam'
+        lib_browser_title = 'Biblioteca de Steam'
+        lib_loading = 'Cargando biblioteca…'
+        lib_empty = 'Aún no hay juegos en la biblioteca de Steam.'
+        lib_search_cue = 'Buscar por nombre…'
+        lib_back = 'Atrás'
+        lib_count = 'Juegos: {0}'
+        lib_kind_steam = 'Steam'
+        lib_kind_shortcut = 'Non-Steam'
+        lib_open_fail = 'No se pudo abrir la biblioteca: {0}'
+        lib_licensed_hint = 'Juego con licencia de Steam: EXE y App ID no se pueden cambiar.'
         tip_select_all = 'Marcar todos los juegos de la lista / quitar todas las marcas'
         tip_lib_header = 'En la biblioteca de Steam (clic para ordenar)'
         tip_row_check = 'Marcar el juego (para moverlo o añadirlo en lote)'
@@ -1285,6 +1411,10 @@ $script:I18n = @{
         set_steam_folder = 'Carpeta de Steam'
         set_profile = 'Perfil'
         set_region = 'Región'
+        set_steam_folder_invalid = 'No se encontró la carpeta de Steam: indica la carpeta que contiene steam.exe.'
+        set_profile_invalid = 'No se ha seleccionado ningún perfil de Steam, o no se encuentra.'
+        set_profile_unknown = 'Esta carpeta no corresponde a ninguna cuenta de Steam de este equipo (no hay entrada en loginusers.vdf).'
+        set_profile_unknown_short = 'no es una cuenta de Steam'
         set_profile_hint = 'Elige el perfil de userdata con el que trabajará el programa.'
         set_exe_filter = 'Filtro EXE'
         set_offer_launchers = 'Sugerir lanzadores'
@@ -1554,6 +1684,17 @@ $script:I18n = @{
         batch_auto_tip = 'Se ativado: ao adicionar vários jogos de uma vez, os jogos cujo nome e exe são detectados com segurança são adicionados à biblioteca automaticamente, sem mostrar a ficha. A ficha só é aberta para os jogos que o programa não conseguiu identificar sem ambiguidade.'
         btn_add_batch = '＋  Adicionar jogos selecionados à biblioteca'
         btn_add_batch_n = '＋  Adicionar jogos selecionados à biblioteca ({0})'
+        btn_steam_library = 'Biblioteca Steam'
+        lib_browser_title = 'Biblioteca Steam'
+        lib_loading = 'Carregando biblioteca…'
+        lib_empty = 'Ainda não há jogos na biblioteca Steam.'
+        lib_search_cue = 'Pesquisar por nome…'
+        lib_back = 'Voltar'
+        lib_count = 'Jogos: {0}'
+        lib_kind_steam = 'Steam'
+        lib_kind_shortcut = 'Non-Steam'
+        lib_open_fail = 'Não foi possível abrir a biblioteca: {0}'
+        lib_licensed_hint = 'Jogo licenciado da Steam: EXE e App ID não podem ser alterados.'
         tip_select_all = 'Marcar todos os jogos da lista / limpar todas as marcações'
         tip_lib_header = 'Na biblioteca da Steam (clique para ordenar)'
         tip_row_check = 'Marcar o jogo (para mover ou adicionar em lote)'
@@ -1585,6 +1726,10 @@ $script:I18n = @{
         set_steam_folder = 'Pasta da Steam'
         set_profile = 'Perfil'
         set_region = 'Região'
+        set_steam_folder_invalid = 'Pasta da Steam não encontrada: indique a pasta que contém o steam.exe.'
+        set_profile_invalid = 'Nenhum perfil da Steam selecionado, ou ele não foi encontrado.'
+        set_profile_unknown = 'Esta pasta não corresponde a nenhuma conta da Steam neste computador (sem entrada em loginusers.vdf).'
+        set_profile_unknown_short = 'não é uma conta da Steam'
         set_profile_hint = 'Escolha o perfil de userdata com o qual o programa vai trabalhar.'
         set_exe_filter = 'Filtro EXE'
         set_offer_launchers = 'Sugerir launchers'
@@ -1854,6 +1999,17 @@ $script:I18n = @{
         batch_auto_tip = 'Wenn aktiviert: Beim gleichzeitigen Hinzufügen mehrerer Spiele werden Spiele, deren Name und exe sicher erkannt wurden, automatisch der Bibliothek hinzugefügt, ohne dass die Karte angezeigt wird. Die Karte öffnet sich nur bei Spielen, die das Programm nicht eindeutig identifizieren konnte.'
         btn_add_batch = '＋  Ausgewählte Spiele zur Bibliothek hinzufügen'
         btn_add_batch_n = '＋  Ausgewählte Spiele zur Bibliothek hinzufügen ({0})'
+        btn_steam_library = 'Steam-Bibliothek'
+        lib_browser_title = 'Steam-Bibliothek'
+        lib_loading = 'Bibliothek wird geladen…'
+        lib_empty = 'Noch keine Spiele in der Steam-Bibliothek.'
+        lib_search_cue = 'Nach Namen suchen…'
+        lib_back = 'Zurück'
+        lib_count = 'Spiele: {0}'
+        lib_kind_steam = 'Steam'
+        lib_kind_shortcut = 'Non-Steam'
+        lib_open_fail = 'Bibliothek konnte nicht geöffnet werden: {0}'
+        lib_licensed_hint = 'Lizenziertes Steam-Spiel: EXE und App-ID können nicht geändert werden.'
         tip_select_all = 'Alle Spiele in der Liste anhaken / alle Häkchen entfernen'
         tip_lib_header = 'In der Steam-Bibliothek (zum Sortieren klicken)'
         tip_row_check = 'Spiel anhaken (zum Verschieben oder Stapel-Hinzufügen)'
@@ -1885,6 +2041,10 @@ $script:I18n = @{
         set_steam_folder = 'Steam-Ordner'
         set_profile = 'Profil'
         set_region = 'Region'
+        set_steam_folder_invalid = 'Steam-Ordner nicht gefunden: Wähle den Ordner mit der steam.exe aus.'
+        set_profile_invalid = 'Kein Steam-Profil ausgewählt, oder es wurde nicht gefunden.'
+        set_profile_unknown = 'Dieser Ordner gehört zu keinem Steam-Konto auf diesem Computer (kein Eintrag in loginusers.vdf).'
+        set_profile_unknown_short = 'kein Steam-Konto'
         set_profile_hint = 'Wähle das userdata-Profil aus, mit dem das Programm arbeiten soll.'
         set_exe_filter = 'EXE-Filter'
         set_offer_launchers = 'Launcher vorschlagen'
@@ -2640,6 +2800,35 @@ function Get-ConfiguredSteamProfileDirectories {
     }
 }
 
+# Используется и при автозапуске (решение — открывать ли окно настроек сразу),
+# и в самом окне настроек (чтобы показать красный значок рядом с полем).
+function Test-ConfiguredSteamPathValid {
+    try {
+        $path = [string]$global:steamInstallPath
+        if ([string]::IsNullOrWhiteSpace($path)) { return $false }
+        if (-not (Test-Path -LiteralPath $path -PathType Container)) { return $false }
+        $exeCandidate = Join-Path $path 'steam.exe'
+        return (Test-Path -LiteralPath $exeCandidate -PathType Leaf)
+    } catch { return $false }
+}
+
+function Test-ConfiguredSteamProfileValid {
+    try {
+        $userId = [string]$global:steamUserId
+        if ([string]::IsNullOrWhiteSpace($userId) -or $userId -notmatch '^\d+$') { return $false }
+        $userDataRoot = Join-Path (Get-ConfiguredSteamInstallPath) 'userdata'
+        $profilePath = Join-Path $userDataRoot $userId
+        if (-not (Test-Path -LiteralPath $profilePath -PathType Container)) { return $false }
+        # Папка существует, но это ещё не значит, что это настоящий аккаунт
+        # Steam: подложенная вручную папка с произвольным числом (например,
+        # созданная вручную "345345") тоже пройдёт Test-Path. Настоящий профиль
+        # обязан иметь запись в loginusers.vdf — см. Get-SteamUserProfiles.
+        $matched = @(Get-SteamUserProfiles) | Where-Object { [string]::Equals([string]$_.Id, $userId, [System.StringComparison]::OrdinalIgnoreCase) } | Select-Object -First 1
+        if ($null -eq $matched) { return $false }
+        return [bool]$matched.IsKnownAccount
+    } catch { return $false }
+}
+
 function Get-SteamUserProfiles {
     $result = New-Object System.Collections.ArrayList
     try {
@@ -2660,12 +2849,27 @@ function Get-SteamUserProfiles {
             $persona = ""
             $account = ""
             $mostRecent = $false
+            # Совпадение с реальной записью в loginusers.vdf — это и есть признак
+            # того, что папка действительно принадлежит аккаунту Steam, который
+            # когда-либо логинился на этом компьютере. Подсунутая вручную папка
+            # с произвольным числом (см. отчёт пользователя: папка "345345")
+            # проходит все прежние проверки (существует, имя из цифр), но такой
+            # записи в loginusers.vdf нет — это и отличает настоящий профиль от
+            # подделки.
+            $isKnownAccount = $false
 
             if (-not [string]::IsNullOrWhiteSpace($loginText)) {
                 try {
-                    $escapedId = [regex]::Escape($id)
+                    # Папка userdata названа по 32-битному AccountID, а ключи в
+                    # loginusers.vdf — это полные 64-битные SteamID64. Раньше
+                    # регэксп сравнивал их напрямую, поэтому НИКОГДА не совпадал
+                    # и PersonaName не находился. Переводим AccountID в SteamID64,
+                    # прибавляя базовое смещение индивидуальных аккаунтов Steam.
+                    $steamId64 = [uint64]$id + [uint64]76561197960265728
+                    $escapedId = [regex]::Escape([string]$steamId64)
                     $startMatch = [regex]::Match($loginText, '"' + $escapedId + '"\s*\{')
                     if ($startMatch.Success) {
+                        $isKnownAccount = $true
                         $tail = $loginText.Substring($startMatch.Index)
                         $block = $tail.Substring(0, [Math]::Min(5000, $tail.Length))
                         $pm = [regex]::Match($block, '"PersonaName"\s*"([^"]*)"')
@@ -2679,9 +2883,11 @@ function Get-SteamUserProfiles {
 
             $displayName = $id
             if (-not [string]::IsNullOrWhiteSpace($persona)) {
-                $displayName = $persona + "  [" + $id + "]"
+                $displayName = $id + "  (" + $persona + ")"
             } elseif (-not [string]::IsNullOrWhiteSpace($account)) {
-                $displayName = $account + "  [" + $id + "]"
+                $displayName = $id + "  (" + $account + ")"
+            } elseif (-not $isKnownAccount) {
+                $displayName = $id + "  (" + (T 'set_profile_unknown_short') + ")"
             }
 
             [void]$result.Add([PSCustomObject]@{
@@ -2691,6 +2897,7 @@ function Get-SteamUserProfiles {
                 DisplayName = $displayName
                 Directory = $dir
                 MostRecent = $mostRecent
+                IsKnownAccount = $isKnownAccount
             })
         }
 
@@ -3571,7 +3778,11 @@ if ([string]::IsNullOrWhiteSpace([string]$global:steamInstallPath)) {
 }
 if ([string]::IsNullOrWhiteSpace([string]$global:steamUserId)) {
     try {
-        $firstProfile = @(Get-SteamUserProfiles) | Select-Object -First 1
+        $allProfiles = @(Get-SteamUserProfiles)
+        # Предпочитаем настоящие аккаунты Steam (с записью в loginusers.vdf);
+        # если таких нет, откатываемся к первой попавшейся папке, как раньше.
+        $firstProfile = @($allProfiles | Where-Object { $_.IsKnownAccount }) | Select-Object -First 1
+        if ($firstProfile -eq $null) { $firstProfile = $allProfiles | Select-Object -First 1 }
         if ($firstProfile -ne $null) {
             $global:steamUserId = [string]$firstProfile.Id
         }
@@ -4260,6 +4471,22 @@ $btnAddToSteam.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 10.5)
 $btnAddToSteam.Visible = $false
 $pnlBatchActions.Controls.Add($btnAddToSteam)
 
+# Кнопка «Библиотека Steam» на том же месте, что и пакетное добавление.
+# Видна, когда нет отмеченных игр (кнопка добавления скрыта).
+$btnSteamLibrary = New-Object System.Windows.Forms.Button
+$btnSteamLibrary.Text = (T 'btn_steam_library')
+$btnSteamLibrary.Location = New-Object System.Drawing.Point(260, 0)
+$btnSteamLibrary.Size = New-Object System.Drawing.Size(520, 42)
+$btnSteamLibrary.FlatStyle = "Flat"
+$btnSteamLibrary.FlatAppearance.BorderColor = $steamUi.Accent2
+$btnSteamLibrary.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(35,78,106)
+$btnSteamLibrary.BackColor = [System.Drawing.Color]::FromArgb(25,55,75)
+$btnSteamLibrary.ForeColor = $steamUi.Text
+$btnSteamLibrary.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 10.5)
+$btnSteamLibrary.Cursor = [System.Windows.Forms.Cursors]::Hand
+$btnSteamLibrary.Visible = $true
+$pnlBatchActions.Controls.Add($btnSteamLibrary)
+
 # Кнопка настроек в стиле Steam.
 # Используется отдельный PNG самого Steam-стиля, чтобы форма шестерёнки
 # совпадала с визуальным эталоном, а не зависела от Unicode-шрифта Windows.
@@ -4295,6 +4522,7 @@ $pnlBatchActions.Controls.Add($btnSettings)
 $pnlBatchActions.Add_Resize({
     try {
         $btnAddToSteam.Left = [int](($pnlBatchActions.ClientSize.Width - $btnAddToSteam.Width) / 2)
+        $btnSteamLibrary.Left = [int](($pnlBatchActions.ClientSize.Width - $btnSteamLibrary.Width) / 2)
         $btnSettings.Left = $pnlBatchActions.ClientSize.Width - $btnSettings.Width
     } catch {}
 })
@@ -4871,6 +5099,9 @@ function Update-ExistingSteamShortcut ($shortcutRecord, $newName, $newExePath, $
         $filePath=[string]$shortcutRecord.FilePath
         if (-not (Test-Path $filePath)) { throw (T 'sc_file_missing' @($filePath)) }
 
+        # Авто-бэкап перед изменением файла (см. Create-AutoShortcutBackup).
+        Create-AutoShortcutBackup $filePath | Out-Null
+
         $bytes=[System.IO.File]::ReadAllBytes($filePath)
         $root=Read-VdfObjectBody $bytes 0
         $shortcutsNode=$root.Children | Where-Object { $_.Key -eq "shortcuts" } | Select-Object -First 1
@@ -5030,6 +5261,10 @@ function Add-ShortcutToSteam ($gameName, $exePath, $startDir, $launchOptions = "
         # Именно это выглядело как "игра не добавляется, а Steam не запускается".
         # Теперь при отсутствии файла мы создаём валидный shortcuts.vdf с нуля.
         $fileExisted = Test-Path $shortcutsFile
+
+        # Авто-бэкап перед изменением файла (см. Create-AutoShortcutBackup).
+        # Если файла ещё не было, бэкапировать нечего — он будет создан заново.
+        if ($fileExisted) { Create-AutoShortcutBackup $shortcutsFile | Out-Null }
 
         try {
             $bName = [System.Text.Encoding]::UTF8.GetBytes($gameName)
@@ -5835,6 +6070,7 @@ function Download-SteamIconToTemp ([string]$appId, [bool]$force = $false) {
 # служит подтверждением: если App ID определён неверно, нужного exe в папке
 # просто не окажется, и программа вернётся к прежнему выбору.
 $global:steamLaunchExeCache = @{}
+$global:steamPrimaryExeCache = @{}
 $global:steamLaunchHintDisabledUntil = [datetime]::MinValue
 
 # Возвращает массив относительных путей exe для Windows (в порядке записей
@@ -5869,6 +6105,7 @@ function Get-SteamLaunchExecutables ($appId) {
 
     $found = New-Object System.Collections.Generic.List[string]
     $optionExes = New-Object System.Collections.Generic.List[string]
+    $primaryRel = $null
     try {
         $appNode = $null
         if ($data.data -ne $null) {
@@ -5903,6 +6140,9 @@ function Get-SteamLaunchExecutables ($appId) {
                 if (-not [string]::IsNullOrEmpty($os) -and $os -notmatch 'windows') { continue }
                 $exe = ($exe -replace '/', '\').TrimStart('\')
                 if ([System.IO.Path]::IsPathRooted($exe) -or $exe -match '(^|\\)\.\.(\\|$)') { continue }
+                # Основной запуск по данным Steam (первая запись default/none),
+                # в том числе лаунчер — нужен для лицензионных игр.
+                if (-not $isOption -and $null -eq $primaryRel) { $primaryRel = $exe }
                 if ($isOption) {
                     if (-not $optionExes.Contains($exe)) { $optionExes.Add($exe) }
                 } else {
@@ -5915,6 +6155,7 @@ function Get-SteamLaunchExecutables ($appId) {
     } catch {}
 
     $global:steamLaunchExeCache[$appIdStr] = $found.ToArray()
+    $global:steamPrimaryExeCache[$appIdStr] = $primaryRel
     return @($found.ToArray())
 }
 
@@ -5965,6 +6206,31 @@ function Get-SteamHintedExecutable ($gamePath, $appId) {
             if ($nested.Count -eq 1) { return $nested[0] }
         } catch {}
     }
+    return $null
+}
+
+# Для ЛИЦЕНЗИОННЫХ игр: возвращает файл, который Steam называет основным
+# запуском (первая запись default/none), даже если это лаунчер — у такой игры
+# exe не выбирается пользователем и в ярлык не сохраняется, поэтому правильным
+# считается ровно тот файл, который указывает Steam. Возвращает FileInfo или
+# $null (нет данных Steam или такого файла нет в папке игры).
+function Get-SteamPrimaryExecutable ($gamePath, $appId) {
+    if ([string]::IsNullOrWhiteSpace($gamePath) -or -not (Test-Path -LiteralPath $gamePath)) { return $null }
+    [void](Get-SteamLaunchExecutables $appId)
+    $rel = $null
+    try { $rel = [string]$global:steamPrimaryExeCache[[string]$appId] } catch {}
+    if ([string]::IsNullOrWhiteSpace($rel)) { return $null }
+    try {
+        $full = Join-Path $gamePath $rel
+        if (Test-Path -LiteralPath $full -PathType Leaf) { return (Get-Item -LiteralPath $full) }
+    } catch {}
+    try {
+        $leaf = [System.IO.Path]::GetFileName($rel)
+        $suffix = '\' + $rel
+        $nested = @(Get-ChildItem -LiteralPath $gamePath -Filter $leaf -File -Recurse -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName.EndsWith($suffix, [System.StringComparison]::OrdinalIgnoreCase) })
+        if ($nested.Count -eq 1) { return $nested[0] }
+    } catch {}
     return $null
 }
 
@@ -7760,6 +8026,10 @@ function Set-CoverSpinnerState($spinner, [string]$state) {
 function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$thumbHeight, $owner) {
     $items=@($items)
     if($items.Count -eq 0){return $null}
+    # Уже скачанная миниатюра выбранного варианта передаётся вызывающему коду
+    # через эти переменные, чтобы не качать то же самое повторно.
+    $script:sgdbChooserPickedBytes=$null
+    $script:sgdbChooserPickedIsFull=$false
 
     $dlg=New-Object System.Windows.Forms.Form
     $dlg.Text="SteamGridDB — $title"
@@ -7855,6 +8125,7 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
         $pb.BackColor=[System.Drawing.Color]::FromArgb(13,20,28)
         $pb.Cursor=[System.Windows.Forms.Cursors]::Hand
         $pb.Tag=$url
+        $pb | Add-Member -NotePropertyName ThumbIsFull -NotePropertyValue ([bool]($thumbUrl -eq $url)) -Force
         $card.Controls.Add($pb)
 
         # Анимация загрузки поверх конкретно этой миниатюры.
@@ -7873,6 +8144,12 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
             try {
                 $picked=[string]$this.Tag
                 if(-not [string]::IsNullOrWhiteSpace($picked)){
+                    try {
+                        if($null -ne $this.PSObject.Properties['ThumbBytes'] -and $null -ne $this.ThumbBytes){
+                            $script:sgdbChooserPickedBytes=$this.ThumbBytes
+                            $script:sgdbChooserPickedIsFull=[bool]$this.ThumbIsFull
+                        }
+                    } catch {}
                     $dialogState.Result=$picked
                     $dlg.DialogResult=[System.Windows.Forms.DialogResult]::OK
                     $dlg.Close()
@@ -7940,6 +8217,7 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
                                     if($target.Image){try{$target.Image.Dispose()}catch{}}
                                     $target.Image=$img
                                     $target | Add-Member -NotePropertyName ImageStream -NotePropertyValue $ms -Force
+                                    $target | Add-Member -NotePropertyName ThumbBytes -NotePropertyValue $bytes -Force
                                     if($sp){Set-CoverSpinnerState $sp 'done'}
                                     $ok=$true
                                 }
@@ -9096,12 +9374,18 @@ function Get-ManualShortcutBackupFiles {
     try {
         $dir = Get-BackupFolderPath
         if ([string]::IsNullOrWhiteSpace($dir) -or -not (Test-Path -LiteralPath $dir -PathType Container)) { return @() }
-        $filter = "shortcuts_*.vdf.bak"
         if (-not [string]::IsNullOrWhiteSpace([string]$global:steamUserId) -and [string]$global:steamUserId -match '^\d+$') {
-            $filter = "shortcuts_{0}_*.vdf.bak" -f [string]$global:steamUserId
+            $filters = @(
+                ("shortcuts_{0}_*.vdf.bak" -f [string]$global:steamUserId),
+                ("auto_shortcuts_{0}_*.vdf.bak" -f [string]$global:steamUserId)
+            )
+        } else {
+            $filters = @("shortcuts_*.vdf.bak", "auto_shortcuts_*.vdf.bak")
         }
-        return @(Get-ChildItem -LiteralPath $dir -Filter $filter -File -ErrorAction SilentlyContinue |
-            Sort-Object LastWriteTime -Descending)
+        $files = foreach ($filter in $filters) {
+            Get-ChildItem -LiteralPath $dir -Filter $filter -File -ErrorAction SilentlyContinue
+        }
+        return @($files | Sort-Object LastWriteTime -Descending)
     } catch {
         return @()
     }
@@ -9114,7 +9398,7 @@ function Resolve-ManualBackupTarget {
         $name = [string]$BackupFile.Name
         $m = [System.Text.RegularExpressions.Regex]::Match(
             $name,
-            '^shortcuts_(.+)_(\d{4}-\d{2}-\d{2}_\d{2}-\d{2})(?:_\d+)?\.vdf\.bak$'
+            '^(?:auto_)?shortcuts_(.+)_(\d{4}-\d{2}-\d{2}_\d{2}-\d{2})(?:_\d+)?\.vdf\.bak$'
         )
         if (-not $m.Success) { return $null }
         $accountId = [string]$m.Groups[1].Value
@@ -9186,6 +9470,72 @@ function Create-ManualShortcutBackup {
             [System.Windows.Forms.MessageBoxIcon]::Error
         ) | Out-Null
         return @()
+    }
+}
+
+function Get-AutoShortcutBackupAccountId([string]$SourceFile) {
+    $accountId = [string]$global:steamUserId
+    if (-not [string]::IsNullOrWhiteSpace($accountId) -and $accountId -match '^\d+$') { return $accountId }
+    try {
+        # $SourceFile = ...\userdata\<accountId>\config\shortcuts.vdf
+        $accountId = [System.IO.Path]::GetFileName((Split-Path (Split-Path $SourceFile -Parent) -Parent))
+    } catch { $accountId = '' }
+    if ([string]::IsNullOrWhiteSpace($accountId) -or $accountId -notmatch '^\d+$') { $accountId = 'steam' }
+    return $accountId
+}
+
+# Автоматическая резервная копия shortcuts.vdf, создаваемая перед КАЖДЫМ его
+# изменением программой (в дополнение к бэкапам, создаваемым вручную кнопкой
+# "Создать бэкап"). Копии кладутся в ту же папку, что и ручные бэкапы и
+# используют схему имён "auto_shortcuts_<accountId>_...", поэтому они
+# автоматически подхватываются Get-ManualShortcutBackupFiles и показываются
+# в общем списке окна резервных копий, доступные для восстановления так же,
+# как и ручные. Префикс "auto_" в имени отличает их от ручных копий.
+# Хранится не более $global:autoBackupMaxCount авто-копий НА ПРОФИЛЬ — при
+# превышении лимита самые старые авто-копии этого профиля удаляются.
+$global:autoBackupMaxCount = 5
+
+function Create-AutoShortcutBackup {
+    param([string]$SourceFile)
+    try {
+        if ([string]::IsNullOrWhiteSpace($SourceFile) -or -not (Test-Path -LiteralPath $SourceFile)) { return $null }
+
+        $backupDir = Get-BackupFolderPath
+        [System.IO.Directory]::CreateDirectory([string]$backupDir) | Out-Null
+
+        $accountId = Get-AutoShortcutBackupAccountId $SourceFile
+        $stamp = (Get-Date).ToString("yyyy-MM-dd_HH-mm")
+
+        # Формат имени "auto_shortcuts_<accountId>_<дата>" отличается от ручных
+        # бэкапов только префиксом "auto_", поэтому фильтр списка
+        # (Get-ManualShortcutBackupFiles) и регэксп восстановления
+        # (Resolve-ManualBackupTarget) распознают и те, и другие.
+        $baseName = "auto_shortcuts_{0}_{1}" -f $accountId, $stamp
+        $target = Join-Path $backupDir ($baseName + ".vdf.bak")
+        $duplicateIndex = 2
+        while (Test-Path -LiteralPath $target) {
+            $target = Join-Path $backupDir ("{0}_{1}.vdf.bak" -f $baseName, $duplicateIndex)
+            $duplicateIndex++
+        }
+
+        [System.IO.File]::Copy([string]$SourceFile, [string]$target, $false)
+
+        # Ротация по кругу: оставляем только $global:autoBackupMaxCount самых
+        # свежих авто-копий для этого профиля, остальные удаляем.
+        try {
+            $autoFilter = "auto_shortcuts_{0}_*.vdf.bak" -f $accountId
+            $existingAuto = @(Get-ChildItem -LiteralPath $backupDir -Filter $autoFilter -File -ErrorAction SilentlyContinue |
+                Sort-Object LastWriteTime -Descending)
+            if ($existingAuto.Count -gt $global:autoBackupMaxCount) {
+                $existingAuto | Select-Object -Skip $global:autoBackupMaxCount | ForEach-Object {
+                    try { Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue } catch {}
+                }
+            }
+        } catch {}
+
+        return $target
+    } catch {
+        return $null
     }
 }
 
@@ -9332,10 +9682,15 @@ function Show-ProgramSettingsDialog {
     $steamPathLabel = New-Object System.Windows.Forms.Label
     $steamPathLabel.Text = (T 'set_steam_folder')
     $steamPathLabel.Location = New-Object System.Drawing.Point(20, 92)
-    $steamPathLabel.Size = New-Object System.Drawing.Size(100, 28)
+    $steamPathLabel.Size = New-Object System.Drawing.Size(80, 28)
     $steamPathLabel.ForeColor = $steamUi.Muted
     $steamPathLabel.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
     $dlg.Controls.Add($steamPathLabel)
+
+    # Значок ошибки — красный !, если папка Steam не найдена (или в ней нет
+    # steam.exe). Тот же значок, что используется для ключей API, стоит
+    # непосредственно перед полем ввода и обновляется вживую при правке пути.
+    $steamPathValidationBadge = New-ConfidenceBadge $dlg 100 97
 
     $steamPathPanel = New-Object System.Windows.Forms.Panel
     $steamPathPanel.Location = New-Object System.Drawing.Point(120, 92)
@@ -9369,10 +9724,14 @@ function Show-ProgramSettingsDialog {
     $steamProfileLabel = New-Object System.Windows.Forms.Label
     $steamProfileLabel.Text = (T 'set_profile')
     $steamProfileLabel.Location = New-Object System.Drawing.Point(20, 132)
-    $steamProfileLabel.Size = New-Object System.Drawing.Size(100, 28)
+    $steamProfileLabel.Size = New-Object System.Drawing.Size(80, 28)
     $steamProfileLabel.ForeColor = $steamUi.Muted
     $steamProfileLabel.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
     $dlg.Controls.Add($steamProfileLabel)
+
+    # Тот же значок ошибки, что и у пути Steam — показывается, если профиль
+    # не выбран или выбранный userdata-профиль не найден на диске.
+    $steamProfileValidationBadge = New-ConfidenceBadge $dlg 100 137
 
     $cmbSteamProfile = New-Object System.Windows.Forms.ComboBox
     $cmbSteamProfile.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
@@ -9975,6 +10334,50 @@ function Show-ProgramSettingsDialog {
     }
     & $applySettingsLayout
 
+    # Красные значки рядом с полями пути Steam и профиля: обновляются вживую
+    # при любой правке — ручном вводе пути, выборе через «Обзор», смене
+    # профиля в списке или пересборке самого списка профилей.
+    $refreshSteamValidationBadges = {
+        try {
+            $pathText = [string]$txtSteamPath.Text.Trim()
+            $pathOk = $false
+            if (-not [string]::IsNullOrWhiteSpace($pathText)) {
+                try {
+                    $exeCandidate = Join-Path $pathText 'steam.exe'
+                    $pathOk = (Test-Path -LiteralPath $pathText -PathType Container) -and (Test-Path -LiteralPath $exeCandidate -PathType Leaf)
+                } catch { $pathOk = $false }
+            }
+            if ($pathOk) {
+                Set-ApiKeyValidationBadge $steamPathValidationBadge 'hidden' ''
+            } else {
+                Set-ApiKeyValidationBadge $steamPathValidationBadge 'invalid' (T 'set_steam_folder_invalid')
+            }
+
+            $profileOk = [bool]($cmbSteamProfile.Enabled -and $cmbSteamProfile.Items.Count -gt 0 -and $cmbSteamProfile.SelectedIndex -ge 0)
+            $profileUnknown = $false
+            if ($profileOk) {
+                try {
+                    $selectedProfiles = @($cmbSteamProfile.Tag)
+                    $selIdx = $cmbSteamProfile.SelectedIndex
+                    if ($selIdx -ge 0 -and $selIdx -lt $selectedProfiles.Count) {
+                        # Папка существует и выглядит как userdata-профиль, но её
+                        # AccountID не найден ни в одной записи loginusers.vdf —
+                        # значит, это не настоящий, когда-либо залогиненный на
+                        # этом ПК аккаунт Steam, а подложенная вручную папка.
+                        $profileUnknown = -not [bool]$selectedProfiles[$selIdx].IsKnownAccount
+                    }
+                } catch {}
+            }
+            if ($profileOk -and -not $profileUnknown) {
+                Set-ApiKeyValidationBadge $steamProfileValidationBadge 'hidden' ''
+            } elseif ($profileOk -and $profileUnknown) {
+                Set-ApiKeyValidationBadge $steamProfileValidationBadge 'invalid' (T 'set_profile_unknown')
+            } else {
+                Set-ApiKeyValidationBadge $steamProfileValidationBadge 'invalid' (T 'set_profile_invalid')
+            }
+        } catch {}
+    }
+
     $refreshSteamProfiles = {
         try {
             $oldId = [string]$global:steamUserId
@@ -10009,8 +10412,14 @@ function Show-ProgramSettingsDialog {
             $cmbSteamProfile.Items.Add((T 'set_profiles_fail')) | Out-Null
             $cmbSteamProfile.SelectedIndex = 0
             $cmbSteamProfile.Enabled = $false
+        } finally {
+            & $refreshSteamValidationBadges
         }
     }
+
+    $txtSteamPath.Add_TextChanged({
+        & $refreshSteamValidationBadges
+    })
 
     $btnBrowseSteamPath.Add_Click({
         try {
@@ -10026,6 +10435,7 @@ function Show-ProgramSettingsDialog {
 
     $cmbSteamProfile.Add_SelectionChangeCommitted({
         # Профиль уже виден в ComboBox — отдельная подпись не нужна.
+        & $refreshSteamValidationBadges
     })
 
     & $refreshSteamProfiles
@@ -10724,12 +11134,40 @@ function Show-EditorAlternativeCover($slot, [string]$title) {
         # скачивания показываем на слоте анимацию, а не пустой квадрат/крест.
         $slotForm = $null
         try { $slotForm = $slot.Panel.FindForm() } catch {}
-        Set-EditorSlotLoading $slot $true
-        try { if ($null -ne $slotForm -and $null -ne $slotForm.Tag -and $null -ne $slotForm.Tag.EditorLoadTimer) { $slotForm.Tag.EditorLoadTimer.Start() } } catch {}
+        $pickedBytes = $script:sgdbChooserPickedBytes
+        $pickedIsFull = [bool]$script:sgdbChooserPickedIsFull
+        $script:sgdbChooserPickedBytes = $null
+        $script:sgdbChooserPickedIsFull = $false
+        $haveThumb = ($null -ne $pickedBytes -and $pickedBytes.Length -ge 512)
+        $downloadedOk = $false
+        if ($haveThumb -and $pickedIsFull) {
+            # Миниатюра в окне выбора — это и есть полное изображение: второй раз не качаем.
+            try { [System.IO.File]::WriteAllBytes($target, [byte[]]$pickedBytes); $downloadedOk = $true } catch { $downloadedOk = $false }
+        }
+        $interimShown = $false
+        if (-not $downloadedOk) {
+            if ($haveThumb) {
+                # Сразу показываем уже загруженную миниатюру, а полное изображение
+                # докачиваем в фоне и подменяем — без пустого слота и спиннера.
+                try {
+                    $previewPath = Join-Path $global:tempCovers 'sgdb_pick_preview.tmp'
+                    [System.IO.File]::WriteAllBytes($previewPath, [byte[]]$pickedBytes)
+                    $interimShown = [bool](Set-EditorPreviewFile $slot $previewPath)
+                    try { Remove-Item -LiteralPath $previewPath -Force -ErrorAction SilentlyContinue } catch {}
+                } catch { $interimShown = $false }
+            }
+            if ($interimShown) { $slot.IsLoading = $true } else { Set-EditorSlotLoading $slot $true }
+            try { if ($null -ne $slotForm -and $null -ne $slotForm.Tag -and $null -ne $slotForm.Tag.EditorLoadTimer) { $slotForm.Tag.EditorLoadTimer.Start() } } catch {}
+        }
         $global:uiPumpDuringDownload = $true
         try { if ($null -ne $slotForm) { $slotForm.Cursor = [System.Windows.Forms.Cursors]::WaitCursor } } catch {}
         try {
-            if (Download-RemoteImage ([string]$chosen) $target) {
+            if (-not $downloadedOk) { $downloadedOk = [bool](Download-RemoteImage ([string]$chosen) $target) }
+            if (-not $downloadedOk -and $interimShown) {
+                # Полное изображение не скачалось — возвращаем слот в состояние, соответствующее файлу на диске.
+                try { [void](Set-EditorPreviewFile $slot $target) } catch {}
+            }
+            if ($downloadedOk) {
                 if ($title -match '^\s*5\.') { $target = Repair-IconFileExtension $target }
                 if ($title -match '^\s*5\.' -and $target -match '\.ico$') {
                     try {
@@ -10887,13 +11325,1467 @@ function Find-ExistingGameSteamAppInfo($displayName, $gamePath, $existingShortcu
     return $null
 }
 
-function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode = $false, $batchHost = $null) {
+
+# ===================== БИБЛИОТЕКА STEAM (лицензии + non-steam) =====================
+function Get-SteamLibraryFolders {
+    $roots = New-Object System.Collections.Generic.List[string]
+    try {
+        $steamRoot = Get-ConfiguredSteamInstallPath
+        if ([string]::IsNullOrWhiteSpace($steamRoot)) { return @() }
+        $defaultApps = Join-Path $steamRoot 'steamapps'
+        if (Test-Path -LiteralPath $defaultApps) { [void]$roots.Add([string]$defaultApps) }
+        $vdfPath = Join-Path $defaultApps 'libraryfolders.vdf'
+        if (Test-Path -LiteralPath $vdfPath) {
+            $raw = Get-Content -LiteralPath $vdfPath -Raw -ErrorAction SilentlyContinue
+            if ($raw) {
+                foreach ($m in [regex]::Matches($raw, '"path"\s*"([^"]+)"')) {
+                    $p = [string]$m.Groups[1].Value
+                    $p = $p -replace '\\\\', '\'
+                    $apps = Join-Path $p 'steamapps'
+                    if ((Test-Path -LiteralPath $apps) -and -not ($roots -contains $apps)) {
+                        [void]$roots.Add($apps)
+                    }
+                }
+            }
+        }
+    } catch {}
+    return @($roots)
+}
+
+function Get-SteamLibraryEntries {
+    $list = New-Object System.Collections.Generic.List[object]
+    $seenAppIds = @{}
+
+    # 1) Установленные лицензионные игры (appmanifest_*.acf)
+    foreach ($appsRoot in @(Get-SteamLibraryFolders)) {
+        try {
+            Get-ChildItem -LiteralPath $appsRoot -Filter 'appmanifest_*.acf' -File -ErrorAction SilentlyContinue | ForEach-Object {
+                try {
+                    $raw = Get-Content -LiteralPath $_.FullName -Raw -ErrorAction SilentlyContinue
+                    if ([string]::IsNullOrWhiteSpace($raw)) { return }
+                    $appId = ''
+                    $name = ''
+                    $installDir = ''
+                    if ($raw -match '"appid"\s*"(\d+)"') { $appId = [string]$Matches[1] }
+                    if ($raw -match '"name"\s*"([^"]*)"') { $name = [string]$Matches[1] }
+                    if ($raw -match '"installdir"\s*"([^"]*)"') { $installDir = [string]$Matches[1] }
+                    if ([string]::IsNullOrWhiteSpace($appId) -or $appId -eq '0') { return }
+                    if ($seenAppIds.ContainsKey($appId)) { return }
+                    $seenAppIds[$appId] = $true
+                    if ([string]::IsNullOrWhiteSpace($name)) { $name = "App $appId" }
+                    $fullPath = ''
+                    if (-not [string]::IsNullOrWhiteSpace($installDir)) {
+                        $fullPath = Join-Path (Join-Path $appsRoot 'common') $installDir
+                    }
+                    [void]$list.Add([PSCustomObject]@{
+                        Name = $name
+                        AppId = $appId
+                        Kind = 'steam'
+                        Path = $fullPath
+                        Exe = ''
+                        StartDir = $fullPath
+                        LaunchOptions = ''
+                        ShortcutRecord = $null
+                    })
+                } catch {}
+            }
+        } catch {}
+    }
+
+    # 2) Non-Steam ярлыки из shortcuts.vdf
+    try {
+        $userDataPath = Get-ConfiguredSteamUserDataPath
+        if (Test-Path $userDataPath) {
+            Get-ChildItem -Path $userDataPath -Filter 'shortcuts.vdf' -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object {
+                try {
+                    $bytes = [System.IO.File]::ReadAllBytes($_.FullName)
+                    if ($bytes.Length -eq 0) { return }
+                    $shortcutsNode = Get-ShortcutsNode $bytes
+                    if ($null -eq $shortcutsNode) { return }
+                    foreach ($entry in $shortcutsNode.Body.Children) {
+                        if ($entry.Type -ne 0x00) { continue }
+                        $fields = @{}
+                        foreach ($field in $entry.Body.Children) {
+                            if ($field.Type -eq 0x01 -or $field.Type -eq 0x02) { $fields[$field.Key] = $field }
+                        }
+                        $appName = if ($fields.ContainsKey('AppName')) { [string]$fields['AppName'].Value } else { '' }
+                        $exe = if ($fields.ContainsKey('Exe')) { [string]$fields['Exe'].Value } else { '' }
+                        $startDir = if ($fields.ContainsKey('StartDir')) { [string]$fields['StartDir'].Value } else { '' }
+                        $launchOptions = if ($fields.ContainsKey('LaunchOptions')) { [string]$fields['LaunchOptions'].Value } else { '' }
+                        $entryId = if ($fields.ContainsKey('appid')) { [string]$fields['appid'].Value } else { '' }
+                        $cleanExe = $exe.Trim('"')
+                        $cleanStart = $startDir.Trim('"')
+                        if ([string]::IsNullOrWhiteSpace($appName)) { continue }
+                        $record = [PSCustomObject]@{
+                            FilePath = [string]$_.FullName
+                            UserDataDir = [string]$_.Directory.Parent.FullName
+                            Entry = $entry
+                            ShortcutId = $entryId
+                            AppName = $appName
+                            Exe = $cleanExe
+                            StartDir = $cleanStart
+                            LaunchOptions = $launchOptions
+                        }
+                        [void]$list.Add([PSCustomObject]@{
+                            Name = $appName
+                            AppId = $entryId
+                            Kind = 'shortcut'
+                            Path = $cleanStart
+                            Exe = $cleanExe
+                            StartDir = $cleanStart
+                            LaunchOptions = $launchOptions
+                            ShortcutRecord = $record
+                        })
+                    }
+                } catch {}
+            }
+        }
+    } catch {}
+
+    return @($list | Sort-Object @{Expression='Name';Ascending=$true})
+}
+
+function Test-LibraryCoverCandidateFile ([string]$path) {
+    # Отсекает иконки/логотипы: слишком маленькие или почти квадратные мелкие файлы.
+    if ([string]::IsNullOrWhiteSpace($path) -or -not (Test-Path -LiteralPath $path -PathType Leaf)) { return $false }
+    try {
+        $fi = Get-Item -LiteralPath $path -ErrorAction Stop
+        if ($fi.Length -lt 2048) { return $false }
+        $n = $fi.Name.ToLowerInvariant()
+        if ($n -match '(^|[^a-z])(logo|icon|clienticon|clienttga|tga|blur)([^a-z]|$)') { return $false }
+        $bytes = [System.IO.File]::ReadAllBytes($fi.FullName)
+        $ms = New-Object System.IO.MemoryStream(,$bytes)
+        $img = $null
+        try {
+            $img = [System.Drawing.Image]::FromStream($ms)
+            $w = [int]$img.Width
+            $h = [int]$img.Height
+            if ($w -lt 120 -or $h -lt 120) { return $false }
+            $ratio = if ($h -gt 0) { $w / [double]$h } else { 1 }
+            # Иконки/логотипы обычно квадрат ~1:1. Обложка библиотеки — портрет ~2:3 или широкий header ~2:1.
+            # Квадрат ≈ логотип/иконка (в т.ч. большая синяя «R»), для плитки библиотеки не подходит.
+            if ($ratio -gt 0.85 -and $ratio -lt 1.15) { return $false }
+            return $true
+        } finally {
+            if ($null -ne $img) { try { $img.Dispose() } catch {} }
+            try { $ms.Dispose() } catch {}
+        }
+    } catch { return $false }
+}
+
+function Get-LibraryCoverPath ([string]$appId) {
+    if ([string]::IsNullOrWhiteSpace($appId) -or $appId -notmatch '^\d+$') { return $null }
+    try {
+        $ranked = New-Object System.Collections.Generic.List[object]
+
+        $addFile = {
+            param([string]$p, [int]$prio)
+            if ([string]::IsNullOrWhiteSpace($p)) { return }
+            try {
+                if (-not (Test-Path -LiteralPath $p -PathType Leaf)) { return }
+                $fi = Get-Item -LiteralPath $p -ErrorAction Stop
+                if ($fi.Length -lt 2048) { return }
+                $n = $fi.Name.ToLowerInvariant()
+                if ($n -match 'logo|icon|clienticon|clienttga|blur|\.tga$') { return }
+                if (-not (Test-LibraryCoverCandidateFile $fi.FullName)) { return }
+                # Уточняем приоритет по пропорциям: портрет выше широкого header.
+                $extra = 0
+                try {
+                    $bytes = [System.IO.File]::ReadAllBytes($fi.FullName)
+                    $ms = New-Object System.IO.MemoryStream(,$bytes)
+                    $img = [System.Drawing.Image]::FromStream($ms)
+                    try {
+                        if ($img.Height -gt ($img.Width * 1.15)) { $extra = 0 }
+                        elseif ($img.Width -gt ($img.Height * 1.15)) { $extra = 8 }
+                        else { $extra = 20 }
+                    } finally { $img.Dispose(); $ms.Dispose() }
+                } catch { $extra = 15 }
+                [void]$ranked.Add([PSCustomObject]@{ Path = $fi.FullName; Prio = ($prio + $extra); Size = [int64]$fi.Length })
+            } catch {}
+        }
+
+        $scanAppDir = {
+            param([string]$dir, [int]$basePrio)
+            if ([string]::IsNullOrWhiteSpace($dir) -or -not (Test-Path -LiteralPath $dir -PathType Container)) { return }
+            try {
+                Get-ChildItem -LiteralPath $dir -File -ErrorAction SilentlyContinue | ForEach-Object {
+                    $n = $_.Name.ToLowerInvariant()
+                    if ($n -notmatch '\.(jpe?g|png)$') { return }
+                    if ($n -match 'logo|icon|clienticon|blur') { return }
+                    $prio = $basePrio + 40
+                    # library_hero — широкий баннер, для портретной плитки не используем.
+                    if ($n -match 'library_hero|hero_blur') { return }
+                    if ($n -match '600x900|library_600') { $prio = $basePrio }
+                    elseif ($n -match 'library_capsule') { $prio = $basePrio + 3 }
+                    elseif ($n -match 'header') { $prio = $basePrio + 18 }
+                    elseif ($n -match 'capsule') { $prio = $basePrio + 22 }
+                    & $addFile $_.FullName $prio
+                }
+            } catch {}
+        }
+
+        foreach ($profile in @(Get-ConfiguredSteamProfileDirectories)) {
+            $root = [string]$profile.FullName
+            $grid = Join-Path $root 'config\grid'
+            foreach ($name in @(
+                ($appId + 'p.jpg'), ($appId + 'p.png'),
+                ($appId + '_library_600x900.jpg'), ($appId + '_library_600x900.png'),
+                ($appId + '.jpg'), ($appId + '.png')
+            )) {
+                & $addFile (Join-Path $grid $name) 0
+            }
+
+            $libCache = Join-Path $root 'librarycache'
+            foreach ($rel in @(
+                (Join-Path $appId 'library_600x900.jpg'),
+                (Join-Path $appId 'library_600x900_2x.jpg'),
+                (Join-Path $appId 'library_capsule.jpg'),
+                (Join-Path $appId 'library_capsule_2x.jpg'),
+                (Join-Path $appId 'header.jpg'),
+                ($appId + '_library_600x900.jpg'),
+                ($appId + '_library_capsule.jpg')
+            )) {
+                & $addFile (Join-Path $libCache $rel) 10
+            }
+            & $scanAppDir (Join-Path $libCache $appId) 20
+            try {
+                if (Test-Path -LiteralPath $libCache -PathType Container) {
+                    Get-ChildItem -LiteralPath $libCache -File -ErrorAction SilentlyContinue |
+                        Where-Object { $_.Name -like ($appId + '*') -and $_.Name -match '\.(jpe?g|png)$' -and $_.Name -notmatch 'logo|icon' } |
+                        ForEach-Object { & $addFile $_.FullName 28 }
+                }
+            } catch {}
+        }
+
+        try {
+            $steamRoot = Get-ConfiguredSteamInstallPath
+            if (-not [string]::IsNullOrWhiteSpace($steamRoot)) {
+                $appc = Join-Path $steamRoot 'appcache\librarycache'
+                foreach ($name in @(
+                    ($appId + '_library_600x900.jpg'),
+                    ($appId + '_library_600x900_2x.jpg'),
+                    ($appId + '_library_capsule.jpg'),
+                    ($appId + '_library_capsule_2x.jpg')
+                )) {
+                    & $addFile (Join-Path $appc $name) 30
+                }
+                & $scanAppDir (Join-Path $appc $appId) 35
+            }
+        } catch {}
+
+        if ($ranked.Count -eq 0) { return $null }
+        $best = $ranked | Sort-Object Prio, @{Expression='Size';Descending=$true} | Select-Object -First 1
+        if ($null -ne $best) { return [string]$best.Path }
+    } catch {}
+    return $null
+}
+
+
+
+function Get-LibraryHeaderPath ([string]$appId, [string]$userDataDir = '') {
+    # Горизонтальная обложка (header), НЕ hero/фон.
+    # Те же локальные пути, что у карточки игры. Без сети.
+    if ([string]::IsNullOrWhiteSpace($appId)) { return $null }
+    $id = $appId.Trim()
+    try {
+        # Два списка: сначала настоящий header, потом hero только как запасной.
+        $headers = New-Object System.Collections.Generic.List[string]
+        $heroes  = New-Object System.Collections.Generic.List[string]
+
+        $addPath = {
+            param([string]$p, [string]$kind)
+            if ([string]::IsNullOrWhiteSpace($p)) { return }
+            try {
+                if (-not (Test-Path -LiteralPath $p -PathType Leaf)) { return }
+                $fi = Get-Item -LiteralPath $p -ErrorAction Stop
+                if ($fi.Length -lt 2048) { return }
+                if ($kind -eq 'hero') { [void]$heroes.Add($fi.FullName) }
+                else { [void]$headers.Add($fi.FullName) }
+            } catch {}
+        }
+
+        $scanGrid = {
+            param([string]$gridDir)
+            if ([string]::IsNullOrWhiteSpace($gridDir) -or -not (Test-Path -LiteralPath $gridDir -PathType Container)) { return }
+            # {id}.jpg в grid — горизонтальная (как temp_header в редакторе).
+            foreach ($n in @(($id + '.jpg'), ($id + '.png'), ($id + '_header.jpg'))) {
+                & $addPath (Join-Path $gridDir $n) 'header'
+            }
+            # hero в grid — только fallback.
+            foreach ($n in @(($id + '_hero.jpg'), ($id + '_library_hero.jpg'))) {
+                & $addPath (Join-Path $gridDir $n) 'hero'
+            }
+        }
+
+        $scanLibCache = {
+            param([string]$libCache)
+            if ([string]::IsNullOrWhiteSpace($libCache) -or -not (Test-Path -LiteralPath $libCache -PathType Container)) { return }
+            foreach ($rel in @(
+                (Join-Path $id 'header.jpg'),
+                (Join-Path $id 'library_header.jpg'),
+                (Join-Path $id 'library_header_2x.jpg'),
+                ($id + '_header.jpg'),
+                ($id + '_library_header.jpg')
+            )) {
+                & $addPath (Join-Path $libCache $rel) 'header'
+            }
+            foreach ($rel in @(
+                (Join-Path $id 'library_hero.jpg'),
+                (Join-Path $id 'library_hero_2x.jpg'),
+                ($id + '_library_hero.jpg')
+            )) {
+                & $addPath (Join-Path $libCache $rel) 'hero'
+            }
+            $appDir = Join-Path $libCache $id
+            try {
+                if (Test-Path -LiteralPath $appDir -PathType Container) {
+                    Get-ChildItem -LiteralPath $appDir -File -ErrorAction SilentlyContinue | ForEach-Object {
+                        if ($_.Length -lt 2048) { return }
+                        if ($_.Name -notmatch '\.(jpe?g|png)$') { return }
+                        if ($_.Name -match 'logo|icon|capsule|600x900|portrait') { return }
+                        $n = $_.Name.ToLowerInvariant()
+                        if ($n -match 'header') { & $addPath $_.FullName 'header' }
+                        elseif ($n -match 'hero') { & $addPath $_.FullName 'hero' }
+                    }
+                }
+            } catch {}
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace($userDataDir)) {
+            & $scanGrid (Join-Path $userDataDir 'config\grid')
+            & $scanLibCache (Join-Path $userDataDir 'librarycache')
+        }
+        try {
+            foreach ($profile in @(Get-ConfiguredSteamProfileDirectories)) {
+                $root = [string]$profile.FullName
+                if (-not [string]::IsNullOrWhiteSpace($userDataDir) -and ($root -eq $userDataDir)) { continue }
+                & $scanGrid (Join-Path $root 'config\grid')
+                & $scanLibCache (Join-Path $root 'librarycache')
+            }
+        } catch {}
+        try {
+            $steamRoot = Get-ConfiguredSteamInstallPath
+            if (-not [string]::IsNullOrWhiteSpace($steamRoot)) {
+                $appc = Join-Path $steamRoot 'appcache\librarycache'
+                & $scanLibCache $appc
+                $appDir = Join-Path $appc $id
+                try {
+                    if (Test-Path -LiteralPath $appDir -PathType Container) {
+                        Get-ChildItem -LiteralPath $appDir -Recurse -File -ErrorAction SilentlyContinue |
+                            Where-Object {
+                                $_.Length -gt 2048 -and
+                                $_.Name -match '\.(jpe?g|png)$' -and
+                                $_.Name -match 'header|hero' -and
+                                $_.Name -notmatch 'logo|icon|600x900'
+                            } |
+                            Select-Object -First 30 |
+                            ForEach-Object {
+                                $n = $_.Name.ToLowerInvariant()
+                                if ($n -match 'header') { & $addPath $_.FullName 'header' }
+                                elseif ($n -match 'hero') { & $addPath $_.FullName 'hero' }
+                            }
+                    }
+                } catch {}
+            }
+        } catch {}
+
+        $pickWide = {
+            param($list)
+            foreach ($p in $list) {
+                try {
+                    $bmp = New-Object System.Drawing.Bitmap($p)
+                    try {
+                        if ($bmp.Width -ge [int]($bmp.Height * 1.15)) { return $p }
+                    } finally { $bmp.Dispose() }
+                } catch {
+                    # Не прочитали размеры — для явного header всё равно отдаём.
+                    $n = [System.IO.Path]::GetFileName($p).ToLowerInvariant()
+                    if ($n -match 'header' -or $n -match ('^' + [regex]::Escape($id.ToLowerInvariant()) + '\.(jpe?g|png)$')) { return $p }
+                }
+            }
+            return $null
+        }
+
+        $best = & $pickWide $headers
+        if ($best) { return $best }
+        # Hero только если header нигде нет.
+        $best = & $pickWide $heroes
+        if ($best) { return $best }
+        return $null
+    } catch { return $null }
+}
+
+
+function Show-SteamLibraryBrowser {
+    # Сбрасываем флаг на каждое новое открытие библиотеки: он отличает закрытие
+    # кнопкой "Назад" (просто вернуться к главному окну) от закрытия крестиком/
+    # Alt+F4 (это "верх" всего окна программы — такое закрытие должно завершать
+    # программу целиком, а не только прятать библиотеку). См. $dlg.Add_FormClosing
+    # ниже и $btnLibBack.Add_Click.
+    $script:libClosingViaBack = $false
+    $dlg = New-Object System.Windows.Forms.Form
+    $dlg.Text = (T 'lib_browser_title')
+    $dlg.Size = New-Object System.Drawing.Size(980, 720)
+    $dlg.StartPosition = 'CenterParent'
+    $dlg.MinimizeBox = $false
+    $dlg.MaximizeBox = $true
+    $dlg.BackColor = $steamUi.Bg
+    $dlg.ForeColor = $steamUi.Text
+    $dlg.Font = New-Object System.Drawing.Font('Segoe UI', 9)
+    try { $dlg.Icon = $form.Icon } catch {}
+    # Не показываем пустой кадр: окно появляется только после первой раскладки сетки.
+    $dlg.Opacity = 0
+    try {
+        $flags = [System.Reflection.BindingFlags]::Instance -bor [System.Reflection.BindingFlags]::NonPublic
+        [System.Windows.Forms.Control].GetProperty('DoubleBuffered', $flags).SetValue($dlg, $true, $null)
+    } catch {}
+
+    # Кнопка "Назад" в стиле Steam: тонкая рисованная стрелка вместо иконки,
+    # закрывает окно библиотеки и возвращает главное окно программы (см.
+    # обработчик $btnSteamLibrary.Add_Click, который прячет $form на время
+    # показа библиотеки и снова показывает его после закрытия этого диалога).
+    $btnLibBack = New-Object System.Windows.Forms.Button
+    $btnLibBack.Location = New-Object System.Drawing.Point(12, 10)
+    $btnLibBack.Size = New-Object System.Drawing.Size(34, 34)
+    $btnLibBack.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    $btnLibBack.FlatAppearance.BorderSize = 0
+    $btnLibBack.FlatAppearance.MouseOverBackColor = $steamUi.Bg
+    $btnLibBack.FlatAppearance.MouseDownBackColor = $steamUi.Bg
+    $btnLibBack.BackColor = $steamUi.Bg
+    $btnLibBack.Text = ''
+    $btnLibBack.UseVisualStyleBackColor = $false
+    $btnLibBack.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $btnLibBack.TabStop = $false
+    $btnLibBack.AccessibleName = (T 'lib_back')
+    $libBackTip = New-Object System.Windows.Forms.ToolTip
+    $libBackTip.SetToolTip($btnLibBack, (T 'lib_back'))
+    $script:libBackHover = $false
+    $script:libBackDown = $false
+    $btnLibBack.Add_MouseEnter({ $script:libBackHover = $true; $btnLibBack.Invalidate() })
+    $btnLibBack.Add_MouseLeave({ $script:libBackHover = $false; $script:libBackDown = $false; $btnLibBack.Invalidate() })
+    $btnLibBack.Add_MouseDown({ $script:libBackDown = $true; $btnLibBack.Invalidate() })
+    $btnLibBack.Add_MouseUp({ $script:libBackDown = $false; $btnLibBack.Invalidate() })
+    $btnLibBack.Add_Paint({
+        param($sender, $e)
+        $g = $e.Graphics
+        $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+        $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+        $w = [float]$sender.ClientSize.Width
+        $h = [float]$sender.ClientSize.Height
+        $cx = $w / 2.0
+        $cy = $h / 2.0
+        # Круглая подложка в стиле Steam (при наведении / нажатии).
+        if ($script:libBackDown -or $script:libBackHover) {
+            $bgCol = if ($script:libBackDown) {
+                [System.Drawing.Color]::FromArgb(38, 76, 108)
+            } else {
+                [System.Drawing.Color]::FromArgb(42, 56, 72)
+            }
+            $pad = 1.5
+            $brush = New-Object System.Drawing.SolidBrush($bgCol)
+            try { $g.FillEllipse($brush, $pad, $pad, $w - $pad * 2, $h - $pad * 2) } finally { $brush.Dispose() }
+            if ($script:libBackHover -and -not $script:libBackDown) {
+                $ringCol = [System.Drawing.Color]::FromArgb(70, 102, 192, 244)
+                $ringPen = New-Object System.Drawing.Pen($ringCol, 1.2)
+                try { $g.DrawEllipse($ringPen, $pad, $pad, $w - $pad * 2, $h - $pad * 2) } finally { $ringPen.Dispose() }
+            }
+        }
+        # Стрелка «‹»: чуть толще, скруглённые концы, лёгкий сдвиг влево для оптического центра.
+        $arrowCol = if ($script:libBackDown) {
+            [System.Drawing.Color]::White
+        } elseif ($script:libBackHover) {
+            $steamUi.Accent
+        } else {
+            $steamUi.Muted
+        }
+        $ox = $cx - 1.0
+        $arm = 6.0
+        $pen = New-Object System.Drawing.Pen($arrowCol, 2.4)
+        try {
+            $pen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+            $pen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+            $pen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
+            $pts = @(
+                (New-Object System.Drawing.PointF(($ox + $arm * 0.55), ($cy - $arm))),
+                (New-Object System.Drawing.PointF(($ox - $arm * 0.55), $cy)),
+                (New-Object System.Drawing.PointF(($ox + $arm * 0.55), ($cy + $arm)))
+            )
+            $g.DrawLines($pen, $pts)
+        } finally { $pen.Dispose() }
+    })
+    $btnLibBack.Add_Click({ $script:libClosingViaBack = $true; try { $dlg.Close() } catch {} })
+    $dlg.Controls.Add($btnLibBack)
+
+    $txtSearch = New-Object System.Windows.Forms.TextBox
+    $txtSearch.Location = New-Object System.Drawing.Point(54, 14)
+    $txtSearch.Size = New-Object System.Drawing.Size(320, 28)
+    $txtSearch.BackColor = $steamUi.Input
+    $txtSearch.ForeColor = $steamUi.Text
+    $txtSearch.BorderStyle = 'FixedSingle'
+    $dlg.Controls.Add($txtSearch)
+    try { Set-TextBoxCue $txtSearch (T 'lib_search_cue') } catch {}
+
+    $lblCount = New-Object System.Windows.Forms.Label
+    $lblCount.Location = New-Object System.Drawing.Point(388, 18)
+    $lblCount.Size = New-Object System.Drawing.Size(400, 22)
+    $lblCount.ForeColor = $steamUi.Muted
+    $lblCount.Text = (T 'lib_loading')
+    $dlg.Controls.Add($lblCount)
+
+    $scroll = New-Object System.Windows.Forms.Panel
+    $scroll.Location = New-Object System.Drawing.Point(12, 52)
+    $scroll.Size = New-Object System.Drawing.Size(940, 610)
+    $scroll.AutoScroll = $true
+    $scroll.BackColor = $steamUi.Panel
+    $scroll.Anchor = 'Top,Bottom,Left,Right'
+    try {
+        $scroll.HorizontalScroll.Enabled = $false
+        $scroll.HorizontalScroll.Visible = $false
+    } catch {}
+    try {
+        $flags = [System.Reflection.BindingFlags]::Instance -bor [System.Reflection.BindingFlags]::NonPublic
+        [System.Windows.Forms.Control].GetProperty('DoubleBuffered', $flags).SetValue($scroll, $true, $null)
+    } catch {}
+    $dlg.Controls.Add($scroll)
+
+    $flow = New-Object System.Windows.Forms.FlowLayoutPanel
+    $flow.Location = New-Object System.Drawing.Point(0, 0)
+    $flow.FlowDirection = [System.Windows.Forms.FlowDirection]::LeftToRight
+    $flow.WrapContents = $true
+    $flow.AutoSize = $false
+    $flow.BackColor = $steamUi.Panel
+    $flow.Padding = New-Object System.Windows.Forms.Padding(0, 8, 0, 8)
+    $flow.Margin = New-Object System.Windows.Forms.Padding(0)
+    try {
+        $flags = [System.Reflection.BindingFlags]::Instance -bor [System.Reflection.BindingFlags]::NonPublic
+        [System.Windows.Forms.Control].GetProperty('DoubleBuffered', $flags).SetValue($flow, $true, $null)
+    } catch {}
+    $scroll.Controls.Add($flow)
+
+    # Плитка 140x220, margin 6 с каждой стороны → внешняя ширина 152.
+    $script:libTileInnerW = 150
+    $script:libTileInnerH = 225
+    $script:libTileMargin = 6
+
+    # Применить ширину сетки под текущий ClientSize (без горизонтального скролла).
+    # Раскладка сетки: ширина всегда = ClientSize скролла (после учёта
+    # вертикальной полосы). Высоту считаем сами — AutoSize по ширине не
+    # используем, чтобы PreferredSize не раздувал горизонтальный скролл.
+    $applyLibraryFlowWidth = {
+        param([int]$avail)
+        $avail = [Math]::Max(120, $avail)
+        $tileOuter = [int]$script:libTileInnerW + (2 * [int]$script:libTileMargin)
+        if ($tileOuter -lt 1) { $tileOuter = 1 }
+        $cols = [Math]::Max(1, [int][Math]::Floor($avail / [double]$tileOuter))
+        $contentW = $cols * $tileOuter
+        $padLeft = [Math]::Max(0, [int](($avail - $contentW) / 2))
+        $count = [int]$flow.Controls.Count
+        $rows = if ($count -le 0) { 0 } else { [int][Math]::Ceiling($count / [double]$cols) }
+        $tileH = [int]$script:libTileInnerH + (2 * [int]$script:libTileMargin)
+        # padding top+bottom = 8+8
+        $contentH = if ($rows -le 0) { 16 } else { 16 + ($rows * $tileH) }
+
+        $flow.SuspendLayout()
+        try {
+            $flow.AutoSize = $false
+            $flow.Padding = New-Object System.Windows.Forms.Padding($padLeft, 8, 0, 8)
+            $flow.Width = $avail
+            $flow.Height = $contentH
+        } finally {
+            $flow.ResumeLayout($true)
+        }
+        return $contentH
+    }
+
+    $forceNoHScroll = {
+        try {
+            $scroll.HorizontalScroll.Maximum = 0
+            $scroll.HorizontalScroll.Value = 0
+            $scroll.HorizontalScroll.Visible = $false
+            $scroll.HorizontalScroll.Enabled = $false
+            # AutoScrollMinSize: ширина не больше клиента — иначе полоса снизу.
+            $ms = $scroll.AutoScrollMinSize
+            $cw = [Math]::Max(1, [int]$scroll.ClientSize.Width)
+            if ($ms.Width -gt $cw) {
+                $scroll.AutoScrollMinSize = New-Object System.Drawing.Size($cw, $ms.Height)
+            }
+            # Жёсткая подстраховка поверх всей логики выше: даже если из-за
+            # округления ширины плиток/паддингов WinForms всё же решит, что
+            # горизонтальная полоса нужна, прячем её напрямую через WinAPI.
+            if ($scroll.IsHandleCreated) {
+                [Win32ScrollBarHelper]::HideHorizontal($scroll.Handle)
+            }
+        } catch {}
+    }
+
+    $resetLibraryScroll = {
+        param([int]$preferY = -1, [int]$contentH = -1)
+        try {
+            if ($contentH -lt 0) {
+                $contentH = [Math]::Max(0, [int]$flow.Height)
+            }
+            $cw = [Math]::Max(1, [int]$scroll.ClientSize.Width)
+            $scroll.AutoScrollMinSize = New-Object System.Drawing.Size(0, 0)
+            # Ширина MinSize = 0 (не требуем гориз. прокрутки); высота = контент.
+            $scroll.AutoScrollMinSize = New-Object System.Drawing.Size(0, $contentH)
+            & $forceNoHScroll
+            $viewH = [Math]::Max(1, [int]$scroll.ClientSize.Height)
+            $maxY = [Math]::Max(0, $contentH - $viewH)
+            if ($preferY -lt 0) {
+                try { $preferY = -[int]$scroll.AutoScrollPosition.Y } catch { $preferY = 0 }
+            }
+            if ($preferY -lt 0) { $preferY = 0 }
+            if ($preferY -gt $maxY) { $preferY = $maxY }
+            $scroll.AutoScrollPosition = New-Object System.Drawing.Point(0, $preferY)
+            & $forceNoHScroll
+            # Программная установка AutoScrollPosition у WinForms Panel не
+            # всегда стирает предыдущий кадр под новой раскладкой — остаются
+            # "призраки" старых плиток на экране. Принудительно перерисовываем.
+            try { $scroll.Invalidate($true) } catch {}
+            try { $scroll.Update() } catch {}
+        } catch {}
+    }
+
+    $syncLibraryFlowWidth = {
+        try {
+            $savedY = 0
+            try { $savedY = -[int]$scroll.AutoScrollPosition.Y } catch { $savedY = 0 }
+
+            $sbw = [System.Windows.Forms.SystemInformation]::VerticalScrollBarWidth
+            $rawW = [Math]::Max(120, [int]$scroll.ClientSize.Width)
+            $viewH = [Math]::Max(1, [int]$scroll.ClientSize.Height)
+            $tileOuter = [int]$script:libTileInnerW + (2 * [int]$script:libTileMargin)
+            if ($tileOuter -lt 1) { $tileOuter = 1 }
+            $count = [int]$flow.Controls.Count
+
+            # Если контент выше окна, вертикальная полоса появится и отъест ширину.
+            # До её появления ClientSize ещё «полный» — заранее вычитаем sbw,
+            # иначе flow шире клиента и при первом показе виден горизонтальный скролл.
+            $vAlready = $false
+            try { $vAlready = [bool]$scroll.VerticalScroll.Visible } catch {}
+            $colsGuess = [Math]::Max(1, [int][Math]::Floor($rawW / [double]$tileOuter))
+            $rowsGuess = if ($count -le 0) { 0 } else { [int][Math]::Ceiling($count / [double]$colsGuess) }
+            $tileH = [int]$script:libTileInnerH + (2 * [int]$script:libTileMargin)
+            $hGuess = if ($rowsGuess -le 0) { 16 } else { 16 + ($rowsGuess * $tileH) }
+            $needV = ($hGuess -gt $viewH)
+            if ($needV -and -not $vAlready) {
+                $avail = [Math]::Max(120, $rawW - $sbw)
+            } else {
+                $avail = $rawW
+            }
+
+            $contentH = [int](& $applyLibraryFlowWidth $avail)
+            & $resetLibraryScroll $savedY $contentH
+
+            # После Apply ClientSize мог измениться — подогнать ещё раз.
+            $rawW2 = [Math]::Max(120, [int]$scroll.ClientSize.Width)
+            if ($rawW2 -ne $avail) {
+                $contentH = [int](& $applyLibraryFlowWidth $rawW2)
+                & $resetLibraryScroll $savedY $contentH
+            }
+
+            $finalW = [Math]::Max(1, [int]$scroll.ClientSize.Width)
+            if ($flow.Width -ne $finalW) { $flow.Width = $finalW }
+            & $forceNoHScroll
+            # AutoScroll-панель WinForms не всегда стирает старый кадр при
+            # программном изменении Padding/AutoScrollPosition (пересчёт
+            # padLeft при смене числа колонок) — остаются "призраки" старых
+            # плиток. Принудительно перерисовываем весь видимый регион.
+            try { $scroll.Invalidate($true) } catch {}
+            try { $scroll.Update() } catch {}
+        } catch {}
+    }
+
+    # Предсказание "нужна ли вертикальная полоса ещё до появления" (в
+    # syncLibraryFlowWidth) — это догадка по эвристике и может разойтись с
+    # реальностью именно в момент перехода между "не нужна" и "нужна" (когда
+    # число результатов растёт и добавляется новая строка плиток). Вместо
+    # того чтобы гадать точнее, здесь просто СМОТРИМ на факт: если после
+    # раскладки горизонтальная полоса всё равно видна — значит сетка шире
+    # реального клиента (обычно из-за только что появившейся вертикальной
+    # полосы, отъевшей ширину), пересчитываем ширину ещё раз с поправкой и
+    # повторяем, пока полоса не исчезнет (или не кончатся попытки).
+    $stabilizeLibraryGridWidth = {
+        for ($i = 0; $i -lt 4; $i++) {
+            $hasHScroll = $false
+            try {
+                $hasHScroll = ([int]$scroll.HorizontalScroll.Maximum -gt 0) -or [bool]$scroll.HorizontalScroll.Visible
+            } catch { $hasHScroll = $false }
+            if (-not $hasHScroll) { break }
+            try {
+                $sbw = [System.Windows.Forms.SystemInformation]::VerticalScrollBarWidth
+                $avail = [Math]::Max(120, [int]$scroll.ClientSize.Width - $sbw)
+                $contentH = [int](& $applyLibraryFlowWidth $avail)
+                & $resetLibraryScroll -1 $contentH
+                if ($flow.Width -ne $avail) { $flow.Width = $avail }
+                & $forceNoHScroll
+            } catch { break }
+        }
+        try { $scroll.Invalidate($true); $scroll.Update() } catch {}
+    }
+    & $syncLibraryFlowWidth
+    & $stabilizeLibraryGridWidth
+    $scroll.Add_Resize({ & $syncLibraryFlowWidth; & $stabilizeLibraryGridWidth })
+    $dlg.Add_Resize({
+        try {
+            $scroll.Width = [Math]::Max(100, $dlg.ClientSize.Width - 24)
+            $scroll.Height = [Math]::Max(100, $dlg.ClientSize.Height - 64)
+            & $syncLibraryFlowWidth
+            & $stabilizeLibraryGridWidth
+        } catch {}
+    })
+    # Maximize/Restore меняет ClientSize не только через Resize — ловим
+    # смену WindowState отдельно и пересобираем скролл после окончания
+    # системной анимации раскладки.
+    $script:libLastWindowState = $dlg.WindowState
+    $dlg.Add_SizeChanged({
+        try {
+            $ws = $dlg.WindowState
+            if ($ws -eq $script:libLastWindowState) { return }
+            $script:libLastWindowState = $ws
+            if ($ws -eq [System.Windows.Forms.FormWindowState]::Minimized) { return }
+            # После maximize/restore даём WinForms досчитать ClientSize,
+            # затем жёстко сбрасываем фантомный AutoScroll.
+            $dlg.BeginInvoke([Action]{
+                try {
+                    $scroll.Width = [Math]::Max(100, $dlg.ClientSize.Width - 24)
+                    $scroll.Height = [Math]::Max(100, $dlg.ClientSize.Height - 64)
+                    & $syncLibraryFlowWidth
+                    & $stabilizeLibraryGridWidth
+                } catch {}
+            }) | Out-Null
+        } catch {}
+    })
+
+    $script:libBrowserEntries = @()
+    $script:libCoverQueue = New-Object System.Collections.Queue
+    # Кэш "appId -> путь к файлу" на время сессии диалога: без него каждая
+    # пересборка сетки (в т.ч. при стирании символов в поиске) заново ставит
+    # в очередь скачивание уже скачанной обложки, забивая параллельные слоты
+    # ($libCoverMaxParallel) повторными запросами и задерживая появление
+    # свежих плиток.
+    $script:libCoverMemCache = @{}
+    $tileImages = New-Object System.Collections.Generic.List[System.Drawing.Image]
+    $libCoverCacheDir = Join-Path $env:TEMP 'SteamCommanderLibCovers'
+    try { if (-not (Test-Path -LiteralPath $libCoverCacheDir)) { New-Item -ItemType Directory -Path $libCoverCacheDir -Force | Out-Null } } catch {}
+
+    $applyCoverBytesToPic = {
+        param($pic, $bytes)
+        if ($null -eq $pic -or $pic.IsDisposed) { return }
+        if ($null -eq $bytes -or $bytes.Length -lt 2048) { return }
+        try {
+            $ms = New-Object System.IO.MemoryStream(,$bytes)
+            $img = [System.Drawing.Image]::FromStream($ms)
+            $w = [int]$img.Width
+            $h = [int]$img.Height
+            # Не ставим в плитку логотипы/иконки (квадрат и мелкий размер).
+            if ($w -lt 120 -or $h -lt 120) { $img.Dispose(); $ms.Dispose(); return }
+            $ratio = if ($h -gt 0) { $w / [double]$h } else { 1 }
+            if ($ratio -gt 0.85 -and $ratio -lt 1.15) {
+                $img.Dispose(); $ms.Dispose(); return
+            }
+            # Размер цели: явный размер плитки (Dock/Layout ещё может дать 0).
+            $tw = [int]$script:libTileInnerW
+            $th = [int]$script:libTileInnerH
+            if ($pic.Width -gt 32) { $tw = $pic.Width }
+            if ($pic.Height -gt 32) { $th = $pic.Height }
+            $tw = [Math]::Max(32, $tw)
+            $th = [Math]::Max(32, $th)
+            $bmp = New-Object System.Drawing.Bitmap($tw, $th)
+            $g = [System.Drawing.Graphics]::FromImage($bmp)
+            try {
+                $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+                $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+                $g.Clear([System.Drawing.Color]::FromArgb(20, 24, 28))
+                # Cover/crop как в Steam: заполняем всю плитку, лишнее обрезаем.
+                $scale = [Math]::Max($tw / [double]$w, $th / [double]$h)
+                $dw = [int]($w * $scale)
+                $dh = [int]($h * $scale)
+                $dx = [int](($tw - $dw) / 2)
+                $dy = [int](($th - $dh) / 2)
+                $g.DrawImage($img, $dx, $dy, $dw, $dh)
+            } finally { $g.Dispose() }
+            $img.Dispose(); $ms.Dispose()
+            $old = $pic.Image
+            $pic.Image = $bmp
+            [void]$tileImages.Add($bmp)
+            if ($null -ne $old) { try { $old.Dispose() } catch {} }
+            # Обложка подгрузилась — убираем текстовую заглушку на плитке.
+            try {
+                $parent = $pic.Parent
+                if ($null -ne $parent) {
+                    foreach ($c in @($parent.Controls)) {
+                        if ($c -is [System.Windows.Forms.Label]) {
+                            try { $parent.Controls.Remove($c); $c.Dispose() } catch {}
+                        }
+                    }
+                }
+            } catch {}
+        } catch {}
+    }
+
+    $applyCoverFileToPic = {
+        param($pic, $filePath)
+        if ($null -eq $pic -or $pic.IsDisposed) { return }
+        if ([string]::IsNullOrWhiteSpace([string]$filePath) -or -not (Test-Path -LiteralPath $filePath)) { return }
+        try {
+            $bytes = [System.IO.File]::ReadAllBytes($filePath)
+            & $applyCoverBytesToPic $pic $bytes
+        } catch {}
+    }
+
+    # Настоящий фон: WebClient.DownloadDataAsync — UI-поток не ждёт сеть.
+    $script:libCoverInflight = 0
+    $script:libCoverMaxParallel = 8
+    $script:libCoverClients = New-Object System.Collections.ArrayList
+
+    $startNextLibCoverDownloads = {
+        if ($dlg.IsDisposed -or $dlg.Disposing) { return }
+        if ($null -eq $script:libCoverQueue) { return }
+        try {
+            [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
+            [System.Net.ServicePointManager]::DefaultConnectionLimit = 16
+        } catch {}
+        while ([int]$script:libCoverInflight -lt [int]$script:libCoverMaxParallel -and $script:libCoverQueue.Count -gt 0) {
+            $job = $script:libCoverQueue.Dequeue()
+            if ($null -eq $job -or $null -eq $job.Pic -or $job.Pic.IsDisposed) { continue }
+            $appId = [string]$job.AppId
+
+            # Оба имени кэша: старое (до правки) и новое.
+            $tmpCandidates = @(
+                (Join-Path $libCoverCacheDir ($appId + '_libcover.jpg')),
+                (Join-Path $libCoverCacheDir ($appId + '_600x900.jpg'))
+            )
+            $tmp = $tmpCandidates[0]
+            $usedCache = $false
+            foreach ($cpath in $tmpCandidates) {
+                try {
+                    if ((Test-Path -LiteralPath $cpath) -and ((Get-Item -LiteralPath $cpath).Length -gt 2048)) {
+                        if (Test-LibraryCoverCandidateFile $cpath) {
+                            & $applyCoverFileToPic $job.Pic $cpath
+                            $usedCache = $true
+                            break
+                        }
+                        # Битый/логотип в кэше — удаляем и качаем нормальную обложку.
+                        Remove-Item -LiteralPath $cpath -Force -ErrorAction SilentlyContinue
+                    } elseif (Test-Path -LiteralPath $cpath) {
+                        Remove-Item -LiteralPath $cpath -Force -ErrorAction SilentlyContinue
+                    }
+                } catch {}
+            }
+            if ($usedCache) { continue }
+
+            $local = Get-LibraryCoverPath $appId
+            if ($local) {
+                try {
+                    Copy-Item -LiteralPath $local -Destination $tmp -Force -ErrorAction SilentlyContinue
+                    if ((Test-Path -LiteralPath $tmp) -and ((Get-Item -LiteralPath $tmp).Length -gt 512)) {
+                        & $applyCoverFileToPic $job.Pic $tmp
+                        continue
+                    }
+                } catch {}
+            }
+
+            # Без синхронного PICS на UI (он подвисал и срывал очередь).
+            # Сначала классическая вертикальная, затем то, что реально отдаёт CDN
+            # у игр вроде Robinson (нет library_600x900, но есть header/capsule).
+            $urls = New-Object System.Collections.Generic.List[string]
+            foreach ($host in @(
+                'https://cdn.cloudflare.steamstatic.com/steam/apps',
+                'https://steamcdn-a.akamaihd.net/steam/apps',
+                'https://shared.akamai.steamstatic.com/store_item_assets/steam/apps',
+                'https://shared.fastly.steamstatic.com/store_item_assets/steam/apps'
+            )) {
+                foreach ($file in @(
+                    'library_600x900.jpg',
+                    'library_600x900_2x.jpg',
+                    'library_capsule_2x.jpg',
+                    'library_capsule.jpg',
+                    'header.jpg',
+                    'capsule_616x353.jpg'
+                )) {
+                    [void]$urls.Add("$host/$appId/$file")
+                }
+            }
+
+            $wc = New-Object System.Net.WebClient
+            try { $wc.Headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) SteamCommander' } catch {}
+            [void]$script:libCoverClients.Add($wc)
+            $script:libCoverInflight++
+
+            $state = [PSCustomObject]@{
+                Pic = $job.Pic
+                AppId = $appId
+                Tmp = $tmp
+                Client = $wc
+                Urls = @($urls)
+                UrlIndex = 0
+            }
+            $wc.add_DownloadDataCompleted({
+                param($sender, $e)
+                $st = $e.UserState
+                $retrying = $false
+                try {
+                    if (-not $e.Cancelled -and $null -eq $e.Error -and $null -ne $e.Result -and $e.Result.Length -gt 2048) {
+                        # Отбраковка логотипов/иконок до записи в кэш.
+                        $accept = $false
+                        try {
+                            $msCheck = New-Object System.IO.MemoryStream(,$e.Result)
+                            $imgCheck = [System.Drawing.Image]::FromStream($msCheck)
+                            try {
+                                $cw = [int]$imgCheck.Width; $ch = [int]$imgCheck.Height
+                                if ($cw -ge 120 -and $ch -ge 120) {
+                                    $cr = if ($ch -gt 0) { $cw / [double]$ch } else { 1 }
+                                    if (-not ($cr -gt 0.85 -and $cr -lt 1.15)) {
+                                        $accept = $true
+                                    }
+                                }
+                            } finally { $imgCheck.Dispose(); $msCheck.Dispose() }
+                        } catch { $accept = $false }
+                        if ($accept) {
+                            try { [System.IO.File]::WriteAllBytes([string]$st.Tmp, $e.Result) } catch {}
+                            try { $script:libCoverMemCache[[string]$st.AppId] = [string]$st.Tmp } catch {}
+                            $picRef = $st.Pic
+                            $tmpRef = [string]$st.Tmp
+                            if ($null -ne $dlg -and -not $dlg.IsDisposed) {
+                                try {
+                                    [void]$dlg.BeginInvoke([Action]{
+                                        try { & $applyCoverFileToPic $picRef $tmpRef } catch {}
+                                    }.GetNewClosure())
+                                } catch {
+                                    try { & $applyCoverFileToPic $picRef $tmpRef } catch {}
+                                }
+                            }
+                        } elseif ($null -ne $st -and $null -ne $st.Urls) {
+                            # Похоже на логотип — пробуем следующий URL.
+                            $next = [int]$st.UrlIndex + 1
+                            if ($next -lt @($st.Urls).Count) {
+                                $st.UrlIndex = $next
+                                try {
+                                    $sender.DownloadDataAsync([Uri]([string]$st.Urls[$next]), $st)
+                                    $retrying = $true
+                                } catch { $retrying = $false }
+                            }
+                        }
+                    } elseif (-not $e.Cancelled -and $null -ne $st -and $null -ne $st.Urls) {
+                        $next = [int]$st.UrlIndex + 1
+                        if ($next -lt @($st.Urls).Count) {
+                            $st.UrlIndex = $next
+                            try {
+                                $sender.DownloadDataAsync([Uri]([string]$st.Urls[$next]), $st)
+                                $retrying = $true
+                            } catch { $retrying = $false }
+                        }
+                    }
+                } finally {
+                    if (-not $retrying) {
+                        $script:libCoverInflight = [Math]::Max(0, [int]$script:libCoverInflight - 1)
+                        try { $sender.Dispose() } catch {}
+                        try { [void]$script:libCoverClients.Remove($sender) } catch {}
+                        try {
+                            if (-not $dlg.IsDisposed -and $script:libCoverQueue.Count -gt 0) {
+                                $libCoverTimer.Start()
+                            }
+                        } catch {}
+                    }
+                }
+            }.GetNewClosure())
+
+            try {
+                $wc.DownloadDataAsync([Uri]([string]$state.Urls[0]), $state)
+            } catch {
+                $script:libCoverInflight = [Math]::Max(0, [int]$script:libCoverInflight - 1)
+                try { $wc.Dispose() } catch {}
+            }
+        }
+    }
+
+    $libCoverTimer = New-Object System.Windows.Forms.Timer
+    $libCoverTimer.Interval = 30
+    $libCoverTimer.Add_Tick({
+        try { $libCoverTimer.Stop() } catch {}
+        try { & $startNextLibCoverDownloads } catch {}
+    })
+
+    $openEntry = {
+        param($entry)
+        if ($null -eq $entry) { return }
+        try {
+            if ($entry.Kind -eq 'steam') {
+                Show-GameEditorDialog $entry.Name 'Steam' $entry.Path $false $null $entry $dlg
+            } else {
+                $path = [string]$entry.Path
+                if ([string]::IsNullOrWhiteSpace($path) -and -not [string]::IsNullOrWhiteSpace([string]$entry.Exe)) {
+                    try { $path = [System.IO.Path]::GetDirectoryName([string]$entry.Exe) } catch {}
+                }
+                Show-GameEditorDialog $entry.Name 'Steam' $path $false $null $null $dlg
+            }
+        } catch {
+            [System.Windows.Forms.MessageBox]::Show(
+                $dlg,
+                (T 'lib_open_fail' @([string]$_.Exception.Message)),
+                $global:appTitle,
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Error
+            ) | Out-Null
+        }
+    }
+
+    # --- Всплывающая карточка как в Steam (header + бейдж + название) ---
+    # Компактная миниатюра как в Steam (~230x150).
+    $libHoverCard = New-Object System.Windows.Forms.Panel
+    $libHoverCard.Size = New-Object System.Drawing.Size(230, 150)
+    $libHoverCard.BackColor = [System.Drawing.Color]::FromArgb(28, 34, 42)
+    $libHoverCard.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+    $libHoverCard.Visible = $false
+    $libHoverCard.Padding = New-Object System.Windows.Forms.Padding(0)
+    $dlg.Controls.Add($libHoverCard)
+    $libHoverCard.BringToFront()
+
+    $libHoverPic = New-Object System.Windows.Forms.PictureBox
+    $libHoverPic.Location = New-Object System.Drawing.Point(0, 0)
+    $libHoverPic.Size = New-Object System.Drawing.Size(228, 108)
+    $libHoverPic.SizeMode = [System.Windows.Forms.PictureBoxSizeMode]::Zoom
+    $libHoverPic.BackColor = [System.Drawing.Color]::FromArgb(16, 20, 26)
+    $libHoverCard.Controls.Add($libHoverPic)
+
+    $libHoverBadge = New-Object System.Windows.Forms.Label
+    $libHoverBadge.Location = New-Object System.Drawing.Point(8, 116)
+    $libHoverBadge.AutoSize = $true
+    $libHoverBadge.ForeColor = [System.Drawing.Color]::White
+    $libHoverBadge.Font = New-Object System.Drawing.Font('Segoe UI', 7, [System.Drawing.FontStyle]::Bold)
+    $libHoverBadge.Padding = New-Object System.Windows.Forms.Padding(3, 1, 3, 1)
+    $libHoverCard.Controls.Add($libHoverBadge)
+
+    $libHoverName = New-Object System.Windows.Forms.Label
+    $libHoverName.Location = New-Object System.Drawing.Point(8, 114)
+    $libHoverName.Size = New-Object System.Drawing.Size(212, 28)
+    $libHoverName.ForeColor = $steamUi.Text
+    $libHoverName.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 8.5)
+    $libHoverName.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
+    $libHoverCard.Controls.Add($libHoverName)
+
+    $script:libHoverImages = New-Object System.Collections.Generic.List[System.Drawing.Image]
+    $script:libHoverPendingTile = $null
+    $script:libHoverPendingEntry = $null
+    # Как в Steam: миниатюра не сразу, а с небольшой задержкой (~0.9 с).
+    $script:libHoverShowTimer = New-Object System.Windows.Forms.Timer
+    $script:libHoverShowTimer.Interval = 500
+    $script:libHoverShowTimer.Add_Tick({
+        try { $script:libHoverShowTimer.Stop() } catch {}
+        try {
+            $t = $script:libHoverPendingTile
+            $en = $script:libHoverPendingEntry
+            if ($null -eq $t -or $t.IsDisposed -or $null -eq $en) { return }
+            # Курсор всё ещё над плиткой?
+            $mp = $t.PointToClient([System.Windows.Forms.Control]::MousePosition)
+            if (-not $t.ClientRectangle.Contains($mp)) { return }
+            & $showLibHoverCardNow $t $en
+        } catch {}
+    })
+    $script:libHoverHideTimer = New-Object System.Windows.Forms.Timer
+    $script:libHoverHideTimer.Interval = 180
+    $script:libHoverHideTimer.Add_Tick({
+        try { $script:libHoverHideTimer.Stop() } catch {}
+        try {
+            $mp = $libHoverCard.PointToClient([System.Windows.Forms.Control]::MousePosition)
+            if ($libHoverCard.ClientRectangle.Contains($mp)) { return }
+        } catch {}
+        $libHoverCard.Visible = $false
+        try {
+            if ($null -ne $libHoverPic.Image) {
+                $old = $libHoverPic.Image
+                $libHoverPic.Image = $null
+                $old.Dispose()
+            }
+        } catch {}
+    })
+
+    $findLibraryHeaderPath = {
+        param($entry)
+        if ($null -eq $entry) { return $null }
+        try {
+            $id = [string]$entry.AppId
+            $ud = ''
+            if ($null -ne $entry.ShortcutRecord) {
+                if (-not [string]::IsNullOrWhiteSpace([string]$entry.ShortcutRecord.ShortcutId)) {
+                    $id = [string]$entry.ShortcutRecord.ShortcutId
+                }
+                if (-not [string]::IsNullOrWhiteSpace([string]$entry.ShortcutRecord.UserDataDir)) {
+                    $ud = [string]$entry.ShortcutRecord.UserDataDir
+                }
+            }
+            return (Get-LibraryHeaderPath $id $ud)
+        } catch { return $null }
+    }
+
+    $showLibHoverCard = {
+        param($tile, $entry)
+        try { $script:libHoverHideTimer.Stop() } catch {}
+        if ($null -eq $entry -or $null -eq $tile -or $tile.IsDisposed) { return }
+        # Уже показана карточка для этой же плитки — не перезапускаем задержку.
+        if ($libHoverCard.Visible -and [object]::ReferenceEquals($script:libHoverPendingTile, $tile)) { return }
+        $script:libHoverPendingTile = $tile
+        $script:libHoverPendingEntry = $entry
+        try { $script:libHoverShowTimer.Stop(); $script:libHoverShowTimer.Start() } catch {}
+    }
+
+    $showLibHoverCardNow = {
+        param($tile, $entry)
+        try { $script:libHoverHideTimer.Stop() } catch {}
+        if ($null -eq $entry -or $null -eq $tile -or $tile.IsDisposed) { return }
+        $libHoverName.Text = [string]$entry.Name
+        $isSteam = ([string]$entry.Kind -eq 'steam')
+        $libHoverBadge.Text = if ($isSteam) { (T 'lib_kind_steam') } else { (T 'lib_kind_shortcut') }
+        $libHoverBadge.BackColor = if ($isSteam) {
+            [System.Drawing.Color]::FromArgb(30, 144, 230)
+        } else {
+            [System.Drawing.Color]::FromArgb(90, 100, 110)
+        }
+        # Имя справа от бейджа (компактная карточка).
+        try {
+            $libHoverBadge.Location = New-Object System.Drawing.Point(8, 118)
+            $bx = $libHoverBadge.Right + 6
+            $libHoverName.Location = New-Object System.Drawing.Point($bx, 114)
+            $libHoverName.Size = New-Object System.Drawing.Size([Math]::Max(40, 220 - $bx), 28)
+        } catch {}
+
+        # Картинка: горизонтальная обложка или портрет.
+        try {
+            if ($null -ne $libHoverPic.Image) {
+                $old = $libHoverPic.Image
+                $libHoverPic.Image = $null
+                try { $old.Dispose() } catch {}
+            }
+        } catch {}
+        $hdr = $null
+        try { $hdr = & $findLibraryHeaderPath $entry } catch { $hdr = $null }
+        $applyHoverImageFile = {
+            param([string]$filePath)
+            if ([string]::IsNullOrWhiteSpace($filePath) -or -not (Test-Path -LiteralPath $filePath)) { return $false }
+            try {
+                $src = New-Object System.Drawing.Bitmap($filePath)
+                try {
+                    $tw = [Math]::Max(32, $libHoverPic.Width)
+                    $th = [Math]::Max(32, $libHoverPic.Height)
+                    $bmp = New-Object System.Drawing.Bitmap($tw, $th)
+                    $g = [System.Drawing.Graphics]::FromImage($bmp)
+                    try {
+                        $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+                        $g.Clear([System.Drawing.Color]::FromArgb(16, 20, 26))
+                        $sw = [int]$src.Width; $sh = [int]$src.Height
+                        # Cover-fill в горизонтальный кадр.
+                        $scale = [Math]::Max($tw / [double]$sw, $th / [double]$sh)
+                        $dw = [int]($sw * $scale)
+                        $dh = [int]($sh * $scale)
+                        $dx = [int](($tw - $dw) / 2)
+                        $dy = [int](($th - $dh) / 2)
+                        $g.DrawImage($src, $dx, $dy, $dw, $dh)
+                    } finally { $g.Dispose() }
+                    try {
+                        if ($null -ne $libHoverPic.Image) {
+                            $prev = $libHoverPic.Image
+                            $libHoverPic.Image = $null
+                            $prev.Dispose()
+                        }
+                    } catch {}
+                    $libHoverPic.Image = $bmp
+                    $libHoverPic.SizeMode = [System.Windows.Forms.PictureBoxSizeMode]::Normal
+                    [void]$script:libHoverImages.Add($bmp)
+                    return $true
+                } finally { $src.Dispose() }
+            } catch { return $false }
+        }
+        if ($hdr) { try { [void](& $applyHoverImageFile $hdr) } catch {} }
+
+        # Всегда справа от плитки; влево — только если справа не помещается.
+        try {
+            $gap = 10
+            $screenRight = $tile.PointToScreen((New-Object System.Drawing.Point(($tile.Width + $gap), 0)))
+            $clientRight = $dlg.PointToClient($screenRight)
+            $x = [int]$clientRight.X
+            $y = [int]$clientRight.Y
+            $cardW = [int]$libHoverCard.Width
+            $cardH = [int]$libHoverCard.Height
+            $maxX = [int]$dlg.ClientSize.Width - $cardW - 8
+            $maxY = [int]$dlg.ClientSize.Height - $cardH - 8
+            if ($x -gt $maxX) {
+                # Справа не влезает — ставим слева от плитки.
+                $screenLeft = $tile.PointToScreen((New-Object System.Drawing.Point((-$cardW - $gap), 0)))
+                $x = [int]$dlg.PointToClient($screenLeft).X
+            }
+            if ($x -lt 8) { $x = 8 }
+            if ($x -gt $maxX) { $x = [Math]::Max(8, $maxX) }
+            if ($y -gt $maxY) { $y = [Math]::Max(8, $maxY) }
+            if ($y -lt 8) { $y = 8 }
+            $libHoverCard.Location = New-Object System.Drawing.Point($x, $y)
+        } catch {
+            $libHoverCard.Location = New-Object System.Drawing.Point(20, 60)
+        }
+        $libHoverCard.Visible = $true
+        $libHoverCard.BringToFront()
+    }
+
+    $hideLibHoverCardNow = {
+        try { $script:libHoverShowTimer.Stop() } catch {}
+        try { $script:libHoverHideTimer.Stop() } catch {}
+        $script:libHoverPendingTile = $null
+        $script:libHoverPendingEntry = $null
+        $libHoverCard.Visible = $false
+        try {
+            if ($null -ne $libHoverPic.Image) {
+                $oldImg = $libHoverPic.Image
+                $libHoverPic.Image = $null
+                $oldImg.Dispose()
+            }
+        } catch {}
+    }
+    # Сразу скрываем при уходе с обложки (как в Steam).
+    $hideLibHoverCardSoon = { & $hideLibHoverCardNow }
+
+    $libHoverCard.Add_MouseEnter({ try { $script:libHoverHideTimer.Stop() } catch {} })
+    $libHoverCard.Add_MouseLeave({ & $hideLibHoverCardSoon })
+
+    $buildTiles = {
+        param($filter)
+        try { $libCoverTimer.Stop() } catch {}
+        try { while ($script:libCoverQueue.Count -gt 0) { [void]$script:libCoverQueue.Dequeue() } } catch {}
+        # Полностью скрываем панель на время пересборки: программные Invalidate()
+        # на AutoScroll-панели не всегда стирают предыдущий кадр (остаются
+        # "хвосты" старых плиток при смене отступа/числа колонок). Скрытие и
+        # повторный показ контрола форсируют полную чистую перерисовку без
+        # этого артефакта — в отличие от одного Invalidate().
+        $flow.Visible = $false
+        $flow.SuspendLayout()
+        try {
+            foreach ($c in @($flow.Controls)) {
+                try { $c.Dispose() } catch {}
+            }
+            $flow.Controls.Clear()
+            $q = ([string]$filter).Trim().ToLowerInvariant()
+            $shown = 0
+            foreach ($entry in @($script:libBrowserEntries)) {
+                if ($q -and -not ([string]$entry.Name).ToLowerInvariant().Contains($q)) { continue }
+                $shown++
+                $tile = New-Object System.Windows.Forms.Panel
+                $tile.Size = New-Object System.Drawing.Size([int]$script:libTileInnerW, [int]$script:libTileInnerH)
+                $m = [int]$script:libTileMargin
+                $tile.Margin = New-Object System.Windows.Forms.Padding($m)
+                $tile.BackColor = [System.Drawing.Color]::FromArgb(20, 24, 28)
+                $tile.Cursor = [System.Windows.Forms.Cursors]::Hand
+                $tile.Tag = $entry
+
+                # Только обложка — как сетка Steam. Название и бейдж во всплывающей карточке.
+                $pic = New-Object System.Windows.Forms.PictureBox
+                $pic.Location = New-Object System.Drawing.Point(0, 0)
+                $pic.Size = New-Object System.Drawing.Size([int]$script:libTileInnerW, [int]$script:libTileInnerH)
+                $pic.SizeMode = [System.Windows.Forms.PictureBoxSizeMode]::Normal
+                $pic.BackColor = [System.Drawing.Color]::FromArgb(20, 24, 28)
+                $pic.Cursor = [System.Windows.Forms.Cursors]::Hand
+                $pic.Tag = $entry
+
+                $skipCover = $false
+                $nm = ([string]$entry.Name).ToLowerInvariant()
+                if ($nm -match 'redistributable|steamworks common|directx|vcredist|visual c\+\+') { $skipCover = $true }
+                if ([string]$entry.AppId -in @('228980','228990')) { $skipCover = $true }
+
+                $coverPath = $null
+                if (-not $skipCover) { $coverPath = Get-LibraryCoverPath ([string]$entry.AppId) }
+                $hasCover = $false
+                if ($coverPath) {
+                    try { & $applyCoverFileToPic $pic $coverPath; $hasCover = ($null -ne $pic.Image) } catch {}
+                }
+                # Уже скачивали эту обложку в текущем сеансе библиотеки — берём
+                # из памяти вместо повторной постановки в сетевую очередь.
+                if (-not $hasCover -and -not $skipCover -and $script:libCoverMemCache.ContainsKey([string]$entry.AppId)) {
+                    $cachedPath = [string]$script:libCoverMemCache[[string]$entry.AppId]
+                    if ($cachedPath -and (Test-Path -LiteralPath $cachedPath)) {
+                        try { & $applyCoverFileToPic $pic $cachedPath; $hasCover = ($null -ne $pic.Image) } catch {}
+                    }
+                }
+                if (-not $hasCover -and -not $skipCover -and [string]$entry.Kind -eq 'steam' -and ($entry.AppId -match '^\d+$') -and ([long]$entry.AppId -gt 0)) {
+                    $script:libCoverQueue.Enqueue([PSCustomObject]@{ Pic = $pic; AppId = [string]$entry.AppId })
+                }
+
+                $click = {
+                    param($s, $e)
+                    $en = $s.Tag
+                    if ($null -eq $en -and $s.Parent -ne $null) { $en = $s.Parent.Tag }
+                    if ($null -ne $en) { & $openEntry $en }
+                }
+                $tile.Add_Click($click)
+                $pic.Add_Click($click)
+                $tile.Add_MouseEnter({
+                    param($s, $e)
+                    try {
+                        $en = $s.Tag
+                        if ($null -eq $en) { return }
+                        & $showLibHoverCard $s $en
+                    } catch {}
+                })
+                $tile.Add_MouseLeave({ & $hideLibHoverCardSoon })
+                $pic.Add_MouseEnter({
+                    param($s, $e)
+                    try {
+                        $t = $s.Parent
+                        $en = $s.Tag
+                        if ($null -eq $t -or $null -eq $en) { return }
+                        & $showLibHoverCard $t $en
+                    } catch {}
+                })
+                $pic.Add_MouseLeave({ & $hideLibHoverCardSoon })
+
+                # Нет обложки — текстовая заглушка с названием игры.
+                if (-not $hasCover) {
+                    $ph = New-Object System.Windows.Forms.Label
+                    $ph.Dock = [System.Windows.Forms.DockStyle]::Fill
+                    $ph.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
+                    $ph.ForeColor = [System.Drawing.Color]::FromArgb(180, 190, 200)
+                    $ph.BackColor = [System.Drawing.Color]::FromArgb(28, 34, 42)
+                    $ph.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 9)
+                    $ph.Text = [string]$entry.Name
+                    $ph.Cursor = [System.Windows.Forms.Cursors]::Hand
+                    $ph.Tag = $entry
+                    $ph.Padding = New-Object System.Windows.Forms.Padding(8)
+                    $ph.Add_Click($click)
+                    $ph.Add_MouseEnter({
+                        param($s, $e)
+                        try {
+                            $t = $s.Parent
+                            $en = $s.Tag
+                            if ($null -eq $t -or $null -eq $en) { return }
+                            & $showLibHoverCard $t $en
+                        } catch {}
+                    })
+                    $ph.Add_MouseLeave({ & $hideLibHoverCardSoon })
+                    $tile.Controls.Add($ph)
+                }
+
+                $tile.Controls.Add($pic)
+                if (-not $hasCover) { $ph.BringToFront() }
+                [void]$flow.Controls.Add($tile)
+            }
+            $lblCount.Text = (T 'lib_count' @($shown))
+            if ($shown -eq 0) { $lblCount.Text = (T 'lib_empty') }
+        } finally {
+            $flow.ResumeLayout($true)
+            try { & $syncLibraryFlowWidth } catch {}
+            try { & $resetLibraryScroll 0 } catch {}
+            $flow.Visible = $true
+            try { & $stabilizeLibraryGridWidth } catch {}
+            # Страховка от гонки: ScrollableControl пересчитывает видимость
+            # полос на СЛЕДУЮЩЕМ проходе Layout (после того как этот код уже
+            # отработал), и горизонтальная полоса может появиться заново.
+            # Догоняем её отложенным вызовом уже после обработки текущей
+            # очереди сообщений/layout-событий.
+            try {
+                if (-not $dlg.IsDisposed) {
+                    [void]$dlg.BeginInvoke([Action]{
+                        try { & $stabilizeLibraryGridWidth } catch {}
+                    })
+                }
+            } catch {}
+            # Обложки с CDN — после отрисовки сетки, пачками в фоне.
+            if ($script:libCoverQueue.Count -gt 0) {
+                try { $libCoverTimer.Start() } catch {}
+            }
+        }
+    }
+
+    $searchTimer = New-Object System.Windows.Forms.Timer
+    $searchTimer.Interval = 250
+    $searchTimer.Add_Tick({
+        try { $searchTimer.Stop() } catch {}
+        try { & $buildTiles $txtSearch.Text } catch {}
+    })
+    $txtSearch.Add_TextChanged({
+        try { $searchTimer.Stop(); $searchTimer.Start() } catch {}
+    })
+
+    $dlg.Add_Shown({
+        try {
+            $dlg.SuspendLayout()
+            $scroll.SuspendLayout()
+            $flow.SuspendLayout()
+            $lblCount.Text = (T 'lib_loading')
+            $script:libBrowserEntries = @(Get-SteamLibraryEntries)
+            & $buildTiles ''
+            try { & $syncLibraryFlowWidth } catch {}
+            try { & $resetLibraryScroll 0 } catch {}
+            $flow.ResumeLayout($true)
+            $scroll.ResumeLayout($true)
+            $dlg.ResumeLayout($true)
+            # Один финальный кадр — уже с сеткой, без промежуточных «пустых» отрисовок.
+            $dlg.Opacity = 1
+            # После первого показа ClientSize/полосы стабилизируются — ещё один
+            # проход убирает горизонтальный скролл, который иначе виден до
+            # первого Resize (maximize/restore).
+            try {
+                $dlg.BeginInvoke([Action]{
+                    try { & $syncLibraryFlowWidth } catch {}
+                    try { & $forceNoHScroll } catch {}
+                }) | Out-Null
+            } catch {}
+        } catch {
+            try { $flow.ResumeLayout($true); $scroll.ResumeLayout($true); $dlg.ResumeLayout($true) } catch {}
+            $dlg.Opacity = 1
+            $lblCount.Text = (T 'lib_open_fail' @([string]$_.Exception.Message))
+        }
+    })
+
+    # Окно библиотеки сейчас и есть "лицо" программы (главное окно на это
+    # время спрятано, см. $btnSteamLibrary.Add_Click) — поэтому закрытие её
+    # крестиком/Alt+F4 воспринимается как закрытие всей программы целиком,
+    # а не просто как возврат в главное окно. Кнопка "Назад" — другое дело:
+    # она сама выставляет $script:libClosingViaBack = $true перед закрытием.
+    $dlg.Add_FormClosing({
+        if (-not $script:libClosingViaBack) {
+            try { [System.Windows.Forms.Application]::Exit() } catch {}
+        }
+    })
+
+    $dlg.Add_FormClosed({
+        try { $script:libHoverShowTimer.Stop(); $script:libHoverShowTimer.Dispose() } catch {}
+        try { $script:libHoverHideTimer.Stop(); $script:libHoverHideTimer.Dispose() } catch {}
+        try {
+            if ($null -ne $libHoverPic.Image) { $libHoverPic.Image.Dispose(); $libHoverPic.Image = $null }
+        } catch {}
+        try {
+            foreach ($im in @($script:libHoverImages)) { try { $im.Dispose() } catch {} }
+            $script:libHoverImages.Clear()
+        } catch {}
+        try { $libCoverTimer.Stop(); $libCoverTimer.Dispose() } catch {}
+        try { while ($script:libCoverQueue.Count -gt 0) { [void]$script:libCoverQueue.Dequeue() } } catch {}
+        try {
+            foreach ($c in @($script:libCoverClients)) {
+                try { $c.CancelAsync() } catch {}
+                try { $c.Dispose() } catch {}
+            }
+            $script:libCoverClients.Clear()
+        } catch {}
+        $script:libCoverInflight = 0
+        try { $searchTimer.Stop(); $searchTimer.Dispose() } catch {}
+        foreach ($img in $tileImages) { try { $img.Dispose() } catch {} }
+    })
+
+    $dlg.ShowDialog($form) | Out-Null
+}
+
+function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode = $false, $batchHost = $null, $libraryEntry = $null, $ownerWin = $null) {
+    # Окно-владелец карточки: если её открыли из библиотеки — это окно
+    # библиотеки (карточка должна блокировать именно его и после закрытия
+    # возвращать на передний план именно его, а не прятать/поднимать главное
+    # окно программы, которое всё это время скрыто). Если карточку открыли
+    # не из библиотеки — владелец по умолчанию главное окно, как раньше.
+    if ($null -eq $ownerWin) { $ownerWin = $form }
     # Каждая новая карточка начинает с чистого состояния отмены.
     # Предыдущая карточка могла быть закрыта во время сетевой загрузки.
     $global:editorLoadAbortRequested = $false
     if($batchMode){ $script:batchCardCancelRequested = $false; $script:batchCardSkipRequested = $false }
     $editMode = $false
     $existingShortcut = $null
+    $licensedMode = $false
+    $licensedAppId = ''
     # Steam перезапускается после закрытия карточки только если он правда был
     # убит (taskkill) в этой сессии карточки — то есть при реальном сохранении
     # изменений. Раньше перезапуск срабатывал всегда при editMode, даже если
@@ -10901,7 +12793,18 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     # закрывался, но всё равно поднимался на передний план, из-за чего главное
     # окно программы (и всё, что было под ним) уходило в фон без причины.
     $script:steamWasKilledThisSession = $false
-    if(-not $batchMode){
+    if ($null -ne $libraryEntry -and [string]$libraryEntry.Kind -eq 'steam') {
+        $licensedMode = $true
+        $editMode = $true
+        $licensedAppId = [string]$libraryEntry.AppId
+        if (-not [string]::IsNullOrWhiteSpace([string]$libraryEntry.Name)) {
+            $gameName = [string]$libraryEntry.Name
+        }
+        if (-not [string]::IsNullOrWhiteSpace([string]$libraryEntry.Path)) {
+            $gamePath = [string]$libraryEntry.Path
+        }
+    }
+    if(-not $batchMode -and -not $licensedMode){
         try { $existingShortcut = Find-SteamShortcutRecord $gameName $gamePath } catch { $existingShortcut = $null }
         if($existingShortcut -ne $null){
             $editMode = $true
@@ -11147,9 +13050,16 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     # Единый EXE-пикер для карточки и пакетного добавления.
     # В закрытом состоянии показывается только выбранный EXE.
     # Полный список раскрывается только по стрелке ComboBox.
+    # Рамку рисует Panel (как у App ID / Название) — у самого ComboBox системная рамка снята.
+    $pnlExe = New-Object System.Windows.Forms.Panel
+    $pnlExe.Location = New-Object System.Drawing.Point(115, 50)
+    $pnlExe.Size = New-Object System.Drawing.Size(420, 28)
+    $pnlExe.BackColor = $steamUi.Input
+    $pnlExe.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+    $dlg.Controls.Add($pnlExe)
+
     $cmbExe = New-Object SmartExeComboBox
-    $cmbExe.Location = New-Object System.Drawing.Point(115,50)
-    $cmbExe.Size = New-Object System.Drawing.Size(420,28)
+    $cmbExe.Dock = [System.Windows.Forms.DockStyle]::Fill
     $cmbExe.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
     $cmbExe.DrawMode = [System.Windows.Forms.DrawMode]::OwnerDrawFixed
     $cmbExe.ItemHeight = 20
@@ -11159,7 +13069,8 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     $cmbExe.ForeColor = $steamUi.Text
     $cmbExe.Font = New-Object System.Drawing.Font("Segoe UI", 9)
     $cmbExe.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
-    $dlg.Controls.Add($cmbExe)
+    try { $cmbExe.BorderColor = $steamUi.Input } catch {}
+    $pnlExe.Controls.Add($cmbExe)
 
     # Флаг отличает программное назначение выбора (первичное автоопределение,
     # где сама уверенность ещё вычисляется отдельно) от реального клика
@@ -11194,8 +13105,14 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
         param($sender,$e)
         if($e.Index -lt 0){ return }
         $isSelected = (($e.State -band [System.Windows.Forms.DrawItemState]::Selected) -ne 0)
-        $bg = if($isSelected){ $steamUi.Accent2 } else { $steamUi.Input }
-        $fg = if($isSelected){ [System.Drawing.Color]::White } else { $steamUi.Text }
+        $isDisabled = $sender.Locked
+        if ($isDisabled) {
+            $bg = $steamUi.Panel
+            $fg = $steamUi.Muted
+        } else {
+            $bg = if($isSelected){ $steamUi.Accent2 } else { $steamUi.Input }
+            $fg = if($isSelected){ [System.Drawing.Color]::White } else { $steamUi.Text }
+        }
         $bgBrush = New-Object System.Drawing.SolidBrush($bg)
         $textBrush = New-Object System.Drawing.SolidBrush($fg)
         try {
@@ -11495,6 +13412,58 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
 
     $btnAdd = New-Object System.Windows.Forms.Button
     $btnAdd.Text=if($editMode){(T 'card_save')}else{(T 'card_add')}
+    # Лицензионные Steam-игры: EXE и App ID только для просмотра.
+    if ($licensedMode) {
+        try {
+            # Тот же фон, что у неактивной кнопки Steam/SGDB ($steamUi.Panel).
+            $disabledFill = $steamUi.Panel
+            $txtTitle.ReadOnly = $true
+            $txtTitle.TabStop = $false
+            $txtTitle.BackColor = $disabledFill
+            $txtTitle.ForeColor = $steamUi.Muted
+            try {
+                $pnlTitle.BackColor = $disabledFill
+                $pnlTitle.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+            } catch {}
+            $txtId.ReadOnly = $true
+            $txtId.TabStop = $false
+            $txtId.BackColor = $disabledFill
+            $txtId.ForeColor = $steamUi.Muted
+            $txtId.Text = $licensedAppId
+            try {
+                $pnlId.BackColor = $disabledFill
+                $pnlId.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+            } catch {}
+            # НЕ Enabled=false: у отключённого ComboBox Windows игнорирует наш
+            # перехват WM_PAINT/WM_NCPAINT и рисует системную светлую рамку/фон
+            # поверх тёмной темы (белый "глюк" рамки). Вместо этого только
+            # блокируем ввод (Locked) — поле остаётся полностью самостоятельно
+            # прорисованным, как во всех остальных состояниях.
+            try { $cmbExe.Locked = $true } catch {}
+            $cmbExe.TabStop = $false
+            $cmbExe.BackColor = $disabledFill
+            $cmbExe.ForeColor = $steamUi.Muted
+            try { $cmbExe.BorderColor = $disabledFill } catch {}
+            try { $cmbExe.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat } catch {}
+            try {
+                $pnlExe.BackColor = $disabledFill
+            } catch {}
+            try { $cmbExe.Invalidate(); $cmbExe.Refresh() } catch {}
+            # Скрываем «Обзор...» у EXE
+            try {
+                $btnBrowseExe.Enabled = $false
+                $btnBrowseExe.Visible = $false
+            } catch {}
+            foreach ($c in @($dlg.Controls)) {
+                try {
+                    if ($c -is [System.Windows.Forms.Button] -and [string]$c.Text -match 'Обзор|Browse') {
+                        if ($c.Location.Y -ge 45 -and $c.Location.Y -le 60) { $c.Enabled = $false; $c.Visible = $false }
+                    }
+                } catch {}
+            }
+        } catch {}
+    }
+
     if($batchMode){
         $btnAdd.Location=New-Object System.Drawing.Point((20 + ($bottomButtonWidth + $bottomButtonGap)*2),$bottomButtonY)
         $btnAdd.Size=New-Object System.Drawing.Size($bottomButtonWidth,$bottomButtonHeight)
@@ -11974,6 +13943,10 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
         $cached = $null
         try { if($global:exeSelectionCache.ContainsKey($cacheKey)){ $cached=[string]$global:exeSelectionCache[$cacheKey] } } catch {}
         $idx = -1
+        # Кэш выбора живёт до перезапуска программы и не знает, что ярлык уже
+        # удалили из Steam. Для одиночной карточки он засчитывается, только если
+        # игра сейчас есть в Steam (тогда выбор всё равно берётся из ярлыка ниже).
+        if($cached -and -not $batchMode -and $existingShortcut -eq $null){ $cached = $null }
         if($cached){
             for($i=0; $i -lt $exeCandidates.Count; $i++){
                 try {
@@ -11998,6 +13971,12 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     } else {
         $status.Text=(T 'st_no_exe')
         Set-ConfidenceBadge $exeConfidenceBadge $false (T 'badge_exe_ok') (T 'badge_exe_none')
+    }
+    # Лицензионная игра: EXE только для просмотра, поэтому зелёная отметка
+    # сразу при открытии карточки. ExeConfirmed не трогаем — подсказка Steam
+    # по-прежнему сможет выбрать нужный файл в списке.
+    if ($licensedMode) {
+        Set-ConfidenceBadge $exeConfidenceBadge $true (T 'lib_licensed_hint') ''
     }
 
     $btnBrowseExe.Add_Click({
@@ -12327,6 +14306,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     # обложки поле получает фокус автоматически, но это не является кликом
     # пользователя по полю. Открытие выполняется только через Click.
     $txtTitle.Add_Click({
+        if($licensedMode){ return }
         if($editorState.SuppressTitleSuggestionOnce){ $editorState.SuppressTitleSuggestionOnce=$false; return }
         $editorState.LastSuggestionField='title'
         & $showEditorTitleSuggestionsOnEnter
@@ -12457,6 +14437,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
             if ($editorState.ExeConfirmed) { return }
             if ([string]::IsNullOrWhiteSpace([string]$appIdForHint) -or ([string]$appIdForHint) -notmatch '^\d+$') { return }
             $hintedExe = Get-SteamHintedExecutable $gamePath ([string]$appIdForHint)
+            if ($hintedExe -eq $null -and $licensedMode) { $hintedExe = Get-SteamPrimaryExecutable $gamePath ([string]$appIdForHint) }
             if ($hintedExe -eq $null) { return }
             $hintIndex = -1
             for ($hi=0; $hi -lt $exeCandidates.Count; $hi++) {
@@ -12517,7 +14498,9 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
         $candidates = @()
         try {
             if($editorState.SearchSource -eq 'Steam') {
-                if($editMode -and $existingShortcut -ne $null) {
+                if ($licensedMode -and ($licensedAppId -match '^\d+$')) {
+                    $found = [PSCustomObject]@{ Id = $licensedAppId; Name = $gameName }
+                } elseif($editMode -and $existingShortcut -ne $null) {
                     # Для уже добавленной игры сначала пробуем имя папки, затем
                     # AppName shortcut'а и только потом отображаемое имя карточки.
                     # Это позволяет автоматически получить App ID даже если
@@ -12578,6 +14561,12 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
                 try { [System.Windows.Forms.Application]::DoEvents() } catch {}
             }
         } catch {}
+
+        # Значок exe определяем ДО загрузки обложек: подсказка Steam нужна
+        # только App ID, который уже известен, и не должна ждать миниатюры.
+        try { & $tryApplySteamExeHint $txtId.Text.Trim() } catch {}
+        try { [System.Windows.Forms.Application]::DoEvents() } catch {}
+        if($global:editorLoadAbortRequested -or $dlg.IsDisposed -or $dlg.Disposing){ return }
 
         $loadedExistingCovers=$false
         if($editMode -and $existingShortcut -ne $null){
@@ -12675,6 +14664,12 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
         # $tryApplySteamExeHint (см. его определение выше), чтобы её можно было
         # так же вызвать позже, при последующих подтверждениях App ID.
         & $tryApplySteamExeHint $txtId.Text.Trim()
+        # Лицензионная игра: EXE только для просмотра и нигде не сохраняется,
+        # поэтому красный "!" не имеет смысла — считаем поле подтверждённым.
+        if ($licensedMode -and -not $editorState.ExeConfirmed) {
+            $editorState.ExeConfirmed = $true
+            Set-ConfidenceBadge $exeConfidenceBadge $true (T 'lib_licensed_hint') ''
+        }
 
         # При открытии карточки ничего не выделяем автоматически и не оставляем
         # фокус на одном из полей ввода. Важно не просто сбросить SelectionLength,
@@ -12708,27 +14703,54 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     $btnAdd.Add_Click({
         $name=$txtTitle.Text.Trim()
         if([string]::IsNullOrWhiteSpace($name)){ $status.Text=(T 'st_enter_title'); return }
-        if($cmbExe.SelectedIndex -lt 0){ $status.Text=(T 'st_pick_exe'); return }
-        $exeIndex=$cmbExe.SelectedIndex
-        if($exeIndex -lt 0 -or $exeIndex -ge $exeCandidates.Count){ $status.Text=(T 'st_exe_gone'); return }
-        $exePath=[string]$exeCandidates[$exeIndex].FullName
-        if(-not (Test-Path $exePath)){ $status.Text=(T 'st_exe_bat_gone'); return }
-
-        # StartDir больше не является полем интерфейса:
-        # Steam получает каталог выбранного EXE/BAT автоматически.
-        $startDir=[System.IO.Path]::GetDirectoryName($exePath)
-        if([string]::IsNullOrWhiteSpace($startDir) -or -not (Test-Path $startDir -PathType Container)){
-            $status.Text=(T 'st_no_workdir')
-            return
-        }
         $launchOptions=$txtLaunchOptions.Text.Trim()
-
-        $cacheKey=$gamePath.ToUpper()
-        $global:exeSelectionCache[$cacheKey]=$exePath
-        $global:folderDisplayNameCache[$gamePath.ToUpper()]=$name
+        $exePath = ''
+        $startDir = ''
+        if (-not $licensedMode) {
+            if($cmbExe.SelectedIndex -lt 0){ $status.Text=(T 'st_pick_exe'); return }
+            $exeIndex=$cmbExe.SelectedIndex
+            if($exeIndex -lt 0 -or $exeIndex -ge $exeCandidates.Count){ $status.Text=(T 'st_exe_gone'); return }
+            $exePath=[string]$exeCandidates[$exeIndex].FullName
+            if(-not (Test-Path $exePath)){ $status.Text=(T 'st_exe_bat_gone'); return }
+            $startDir=[System.IO.Path]::GetDirectoryName($exePath)
+            if([string]::IsNullOrWhiteSpace($startDir) -or -not (Test-Path $startDir -PathType Container)){
+                $status.Text=(T 'st_no_workdir')
+                return
+            }
+            $cacheKey=$gamePath.ToUpper()
+            $global:exeSelectionCache[$cacheKey]=$exePath
+            $global:folderDisplayNameCache[$gamePath.ToUpper()]=$name
+        }
         $btnAdd.Enabled=$false; $searchSteamBtn.Enabled=$false; $searchSgdbBtn.Enabled=$false; $btnCoverLang.Enabled=$false; if($btnCancel -ne $null){$btnCancel.Enabled=$false}
 
         try {
+            if ($licensedMode) {
+                # Лицензионная игра: сохраняем только обложки в config\grid по App ID.
+                $steamPathProperty=(Get-ItemProperty -Path 'HKCU:\Software\Valve\Steam' -Name 'SteamExe' -ErrorAction SilentlyContinue).SteamExe
+                if([string]::IsNullOrEmpty($steamPathProperty)){$steamPathProperty='C:\Program Files (x86)\Steam\steam.exe'}
+                $labelHeader.Text=(T 'hd_saving' @($name))
+                [System.Windows.Forms.Application]::DoEvents()
+                taskkill.exe /F /T /IM steam.exe 2>$null | Out-Null
+                Start-Sleep -Seconds 2
+                $script:steamWasKilledThisSession = $true
+                $appIdSave = $licensedAppId
+                if ($appIdSave -notmatch '^\d+$') { $appIdSave = $txtId.Text.Trim() }
+                if ($appIdSave -notmatch '^\d+$') { throw 'App ID' }
+                $hasCovers=$false
+                try { $hasCovers=Test-CoversValid } catch { $hasCovers=$false }
+                $coversSaved=$false
+                if ($hasCovers) {
+                    try { $coversSaved = [bool](Copy-TempCoversDirectlyToGrid $appIdSave) } catch { $coversSaved=$false }
+                    if ($coversSaved) {
+                        try { Save-CoverSourcesMetadata ([string]$appIdSave) $slots ([string]$btnCoverLang.Tag.Lang) | Out-Null } catch {}
+                    }
+                }
+                $status.Text=if($coversSaved){(T 'st_done_saved_covers')}elseif($hasCovers){(T 'st_saved_no_covers')}else{(T 'st_done_saved')}
+                [System.Media.SystemSounds]::Asterisk.Play()
+                $dlg.DialogResult=[System.Windows.Forms.DialogResult]::OK
+                $dlg.Close()
+                return
+            }
             if($editMode){
                 $steamPathProperty=(Get-ItemProperty -Path 'HKCU:\Software\Valve\Steam' -Name 'SteamExe' -ErrorAction SilentlyContinue).SteamExe
                 if([string]::IsNullOrEmpty($steamPathProperty)){$steamPathProperty='C:\Program Files (x86)\Steam\steam.exe'}
@@ -12940,7 +14962,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
             Start-Sleep -Milliseconds 15
         }
     } else {
-        $dlg.ShowDialog() | Out-Null
+        $dlg.ShowDialog($ownerWin) | Out-Null
     }
     # Карточка уже закрыта — дальнейшая работа программы не должна наследовать
     # её флаг отмены. Флаги пакетного режима остаются отдельно и обрабатываются
@@ -12961,21 +14983,26 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
             if(Test-Path $steamPathProperty){Start-Process -FilePath $steamPathProperty}
         } catch {}
     }
-    # Возвращаем фокус и передний план главному окну программы — оно является
-    # владельцем карточки, но после Start-Process (запуск/перезапуск Steam)
-    # Windows отдаёт передний план именно новому процессу, а не владельцу
-    # закрывшегося диалога.
+    # Возвращаем фокус и передний план окну-владельцу карточки — оно было
+    # отключено (disabled) на время модального показа карточки, но после
+    # Start-Process (запуск/перезапуск Steam) Windows отдаёт передний план
+    # именно новому процессу, а не владельцу закрывшегося диалога. Раньше
+    # здесь всегда поднималось главное окно программы — из-за этого, если
+    # карточку открывали из библиотеки, главное окно (всё это время скрытое
+    # $form.Hide()) вдруг появлялось поверх/позади библиотеки без причины.
+    # Теперь поднимаем именно того владельца, с которым карточка была
+    # открыта — библиотеку или главное окно.
     if($batchHost -eq $null){
         # Это возвращение фокуса нужно только когда карточка была отдельным
-        # окном поверх главной формы. Когда карточка встроена в окно
-        # пакетного добавления (batchHost), поднимать главную форму нельзя —
-        # она закроет собой ещё работающее окно пакета.
+        # окном поверх своего владельца. Когда карточка встроена в окно
+        # пакетного добавления (batchHost), поднимать владельца нельзя —
+        # он закроет собой ещё работающее окно пакета.
         try {
-            if($form -ne $null){
-                if($form.WindowState -eq [System.Windows.Forms.FormWindowState]::Minimized){ $form.WindowState=[System.Windows.Forms.FormWindowState]::Normal }
-                $form.Show()
-                $form.Activate()
-                $form.BringToFront()
+            if($ownerWin -ne $null){
+                if($ownerWin -eq $form -and $form.WindowState -eq [System.Windows.Forms.FormWindowState]::Minimized){ $form.WindowState=[System.Windows.Forms.FormWindowState]::Normal }
+                $ownerWin.Show()
+                $ownerWin.Activate()
+                $ownerWin.BringToFront()
             }
         } catch {}
     }
@@ -13254,6 +15281,7 @@ function Apply-Localization {
         $btnSettings.AccessibleName = (T 'settings_title')
         $btnSettings.AccessibleDescription = (T 'settings_desc')
         $btnAddToSteam.Text = (T 'btn_add_batch')
+        $btnSteamLibrary.Text = (T 'btn_steam_library')
     } catch {}
     try { Update-SortHeaderUI 'C'; Update-SortHeaderUI 'D' } catch {}
     try { Update-MainLibraryButtonState } catch {}
@@ -13272,11 +15300,15 @@ function Update-MainLibraryButtonState {
             $btnAddToSteam.Text = (T 'btn_add_batch_n' @($totalChecked))
             $btnAddToSteam.Visible = $true
             $btnAddToSteam.Enabled = $true
+            $btnSteamLibrary.Visible = $false
         } else {
             $btnAddToSteam.Visible = $false
+            $btnSteamLibrary.Visible = $true
+            $btnSteamLibrary.Enabled = $true
+            $btnSteamLibrary.Text = (T 'btn_steam_library')
         }
     } catch {
-        try { $btnAddToSteam.Visible = $false } catch {}
+        try { $btnAddToSteam.Visible = $false; $btnSteamLibrary.Visible = $true } catch {}
     }
 }
 
@@ -13733,7 +15765,39 @@ $btnAddToSteam.Add_Click({
 })
 
 
+
+$btnSteamLibrary.Add_Click({
+    # Главное окно на время библиотеки не просто перекрывается модальным
+    # диалогом, а прячется полностью — библиотека выглядит как отдельный
+    # полноценный экран программы. Кнопка "Назад" в самой библиотеке лишь
+    # закрывает её ($dlg.Close()); показ главного окна обратно — здесь,
+    # в finally, вне зависимости от того, как диалог был закрыт (кнопкой
+    # "Назад" или крестиком).
+    try { $form.Hide() } catch {}
+    try {
+        Show-SteamLibraryBrowser
+    } catch {
+        try { $form.Show() } catch {}
+        [System.Windows.Forms.MessageBox]::Show(
+            $form,
+            (T 'lib_open_fail' @([string]$_.Exception.Message)),
+            $global:appTitle,
+            [System.Windows.Forms.MessageBoxButtons]::OK,
+            [System.Windows.Forms.MessageBoxIcon]::Error
+        ) | Out-Null
+        return
+    }
+    try { $form.Show(); $form.Activate() } catch {}
+})
+
 $form.Add_FormClosing({ Save-Configuration })
+
+# Если папка Steam не найдена или не выбран (либо не найден) userdata-профиль —
+# сразу открываем окно настроек, чтобы пользователь их указал. Нужные поля там
+# уже подсвечены красным значком (см. Show-ProgramSettingsDialog).
+if (-not (Test-ConfiguredSteamPathValid) -or -not (Test-ConfiguredSteamProfileValid)) {
+    try { Show-ProgramSettingsDialog | Out-Null } catch {}
+}
 
 Refresh-Panels
 $form.ShowDialog() | Out-Null
