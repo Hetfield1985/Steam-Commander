@@ -45,6 +45,10 @@
 </p>
 
 <p align="center">
+  <img src="assets/screenshots/library_rus.png" width="700" alt="Окно библиотеки Steam">
+</p>
+
+<p align="center">
   <img src="assets/screenshots/game_card_rus.png" width="700" alt="Карточка игры">
 </p>
 
