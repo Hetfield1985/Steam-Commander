@@ -6,6 +6,20 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.2.2] - 2026-09-26
+### Fixes
+* Fixed detection of games already added to Steam
+* The actual game path is now checked instead of relying only on the game name. The actual location on disk is checked.
+* Steam CDN remains as a fallback when no local icon is available.
+* The button now correctly shows the number of new games only.
+* If only games already in Steam are selected, the Add button is hidden.
+
+### Added
+* Path fields in both panels are now fully editable. Press Enter after entering a path to navigate to it.
+* Panel headers now show the volume name + drive letter instead of the generic folder name.
+
+---
+
 ## [1.2.1] - 2026-09-26
 
 ### Added
