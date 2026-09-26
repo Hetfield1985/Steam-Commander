@@ -375,7 +375,7 @@ $global:dirD = ""
 # Единая версия приложения — используется в заголовке главного окна, в
 # подписи внизу окна настроек и в User-Agent HTTP-запросов. Меняйте только
 # здесь при выпуске новой версии.
-$global:appVersion = "1.2.1"
+$global:appVersion = "1.2.2"
 $global:appTitle = "Steam Commander"
 
 # ===================== ЛОКАЛИЗАЦИЯ =====================
@@ -424,8 +424,8 @@ $script:I18n = @{
         btn_refresh = 'Обновить'
         batch_auto = 'Автозаполнение карточек'
         batch_auto_tip = 'Если включено: при пакетном добавлении игры с уверенно определёнными названием и exe добавляются в библиотеку автоматически, без показа карточки. Карточка откроется только для игр, которые программа не смогла определить однозначно.'
-        btn_add_batch = '＋  Добавить выбранные игры в библиотеку'
-        btn_add_batch_n = '＋  Добавить выбранные игры в библиотеку ({0})'
+        btn_add_batch = 'Добавить выбранные игры в библиотеку'
+        btn_add_batch_n = 'Добавить выбранные игры в библиотеку ({0})'
         btn_steam_library = 'Библиотека Steam'
         lib_browser_title = 'Библиотека Steam'
         lib_loading = 'Загрузка библиотеки…'
@@ -738,8 +738,8 @@ $script:I18n = @{
         btn_refresh = 'Refresh'
         batch_auto = 'Auto-fill cards'
         batch_auto_tip = 'If enabled: when adding several games at once, games whose name and exe are detected with confidence are added to the library automatically, without showing the card. The card opens only for games the program could not identify unambiguously.'
-        btn_add_batch = '＋  Add selected games to library'
-        btn_add_batch_n = '＋  Add selected games to library ({0})'
+        btn_add_batch = 'Add selected games to library'
+        btn_add_batch_n = 'Add selected games to library ({0})'
         btn_steam_library = 'Steam Library'
         lib_browser_title = 'Steam Library'
         lib_loading = 'Loading library…'
@@ -2416,32 +2416,42 @@ function Show-CenteredFolderDialog ($description, $initialPath) {
 
 $global:installedSteamGames = @{}
 
-# БАГ-ФИКС: сравнение "установлена ли игра" раньше шло точным совпадением строк
-# (имя папки на диске == AppName ярлыка / == name или installdir из .acf).
-# На практике это ломается сплошь и рядом: пользователь мог переименовать
-# ярлык в самом Steam (AppName после этого больше не совпадает с папкой),
-# Windows не разрешает символ ":" в именах папок (Steam заменяет его на "-"
-# или просто убирает), в AppName может затесаться лишняя точка/пробел/суффикс
-# и т.п. Из-за этого большинство реально установленных игр не подсвечивались.
+# БАГ-ФИКС: раньше "установлена ли игра" определялось только по совпадению
+# НАЗВАНИЯ (нормализованное имя папки == нормализованный AppName ярлыка).
+# Это ломалось в обе стороны: не подсвечивало реально установленные игры при
+# расхождениях в написании названия, и — куда хуже — ОШИБОЧНО подсвечивало
+# как "уже в Steam" любую папку, чьё название просто СОВПАДАЕТ с названием
+# уже добавленной игры, даже если это совершенно другая папка на другом диске
+# (например, тестовая копия с тем же именем).
 #
-# Решение: сравниваем не сырые строки, а их "нормализованную" форму — оставляем
-# только буквы и цифры, убирая ВСЮ пунктуацию, пробелы и регистр. Так
-# "Condemned: Criminal Origins PI Steam" и "Condemned - Criminal Origins"
-# всё ещё не совпадут (разный текст), но "Chop Chop Inc." и "Chop Chop Inc"
-# совпадут, как и "Bylina" / "BYLINA " и т.п. — все "технические" расхождения
-# в форматировании имени перестают ломать сравнение.
+# Теперь ключами словаря служат не названия, а нормализованные АБСОЛЮТНЫЕ ПУТИ
+# (см. Get-NormalizedGamePathKey) — тот самый корень игры под $dirC/$dirD, на
+# который в реальности указывает Exe/StartDir существующего ярлыка (см.
+# Get-TopLevelFolderUnderRoot и заполнение словаря в Refresh-Panels). Совпадение
+# признаётся только когда это буквально тот же самый путь на диске, а не просто
+# похожее название.
 function Get-NormalizedGameKey ($rawName) {
     if ([string]::IsNullOrEmpty($rawName)) { return "" }
     return [System.Text.RegularExpressions.Regex]::Replace($rawName.ToUpper(), '[^\p{L}\p{Nd}]', '')
 }
 
+# Ключ для сравнения РЕАЛЬНОГО расположения на диске (а не названия) — убираем
+# кавычки, завершающий "\" и регистр. Используется там, где "уже в библиотеке"
+# должно определяться по фактическому пути игры, а не по совпадению имени
+# папки (см. $global:installedSteamGames выше и комментарий у Refresh-Panels).
+function Get-NormalizedGamePathKey ($rawPath) {
+    if ([string]::IsNullOrEmpty($rawPath)) { return "" }
+    try { return $rawPath.Trim('"').TrimEnd('\').ToUpperInvariant() } catch { return "" }
+}
+
 # Тот же самый признак "в библиотеке", что рисует зелёную подпись-галочку у
 # строки списка (см. Register-ListBoxDrawEvent) — используется колонкой
 # сортировки "В библиотеке", чтобы сортировка совпадала с тем, что видно
-# на экране.
-function Test-PanelItemInLibrary ([string]$rawName) {
-    $clean = Clean-GameName $rawName
-    return [bool]$global:installedSteamGames.ContainsKey((Get-NormalizedGameKey $clean))
+# на экране. $rawPath — реальный путь папки на диске (обязателен: без пути
+# сравнение по одному лишь имени возвращало бы ложные совпадения).
+function Test-PanelItemInLibrary ([string]$rawName, [string]$rawPath = $null) {
+    if ([string]::IsNullOrEmpty($rawPath)) { return $false }
+    return [bool]$global:installedSteamGames.ContainsKey((Get-NormalizedGamePathKey $rawPath))
 }
 
 # ===================== НЕЧЁТКОЕ СРАВНЕНИЕ НАЗВАНИЙ ИГР =====================
@@ -2508,8 +2518,14 @@ function Register-ListBoxDrawEvent ($listBox) {
         
         $itemText = $sender.Items[$e.Index].ToString()
         $cleanName = Clean-GameName $itemText
-        $isInstalled = $global:installedSteamGames.ContainsKey((Get-NormalizedGameKey $cleanName))
         $src = [string]$sender.Tag
+        # Признак "в библиотеке" определяется по реальному пути папки (см.
+        # Get-NormalizedGamePathKey), а не просто по совпадению названия —
+        # иначе папка с тем же именем, что и уже добавленная игра, но лежащая
+        # в другом месте, ошибочно получала бы зелёную галочку.
+        $rootForRow = if ($src -eq 'C') { $global:dirC } else { $global:dirD }
+        $rowPath = if ([string]::IsNullOrWhiteSpace($rootForRow)) { $null } else { Join-Path $rootForRow $cleanName }
+        $isInstalled = if ($rowPath) { $global:installedSteamGames.ContainsKey((Get-NormalizedGamePathKey $rowPath)) } else { $false }
         $checkedSet = Get-CheckedSet $src
         $isChecked = $checkedSet.ContainsKey($cleanName)
         $isSelected = $e.State.HasFlag([System.Windows.Forms.DrawItemState]::Selected)
@@ -2575,9 +2591,7 @@ function Register-ListBoxDrawEvent ($listBox) {
 
         # Размер — посчитанный размер папки (Пробел / Alt+Shift+Enter / сортировка
         # "по размеру" кладут результат в общий $global:folderSizeCache).
-        $rootForSize = if ($src -eq 'C') { $global:dirC } else { $global:dirD }
-        $pathForSize = if ([string]::IsNullOrWhiteSpace($rootForSize)) { $null } else { Join-Path $rootForSize $cleanName }
-        $cachedSizeBytes = if ($pathForSize) { Get-FolderSizeCached $pathForSize } else { -1 }
+        $cachedSizeBytes = if ($rowPath) { Get-FolderSizeCached $rowPath } else { -1 }
         if ($cachedSizeBytes -ge 0) {
             # Меньше гигабайта показываем в мегабайтах (целым числом), от гигабайта — в ГБ.
             $sizeMb = [Math]::Round($cachedSizeBytes / 1MB, 0)
@@ -3885,17 +3899,34 @@ function New-MainPanelHeader($title, $path, $x, $width) {
 }
 
 $lblC = New-MainPanelHeader (T 'panel_extra') "" 20 470
-$lblPathC = New-Object System.Windows.Forms.Label
-$lblPathC.Location = New-Object System.Drawing.Point(20, 43)
-$lblPathC.Size = New-Object System.Drawing.Size(358, 26)
-$lblPathC.Font = New-Object System.Drawing.Font("Consolas", 8.2)
+$pnlPathC = New-Object System.Windows.Forms.Panel
+$pnlPathC.Location = New-Object System.Drawing.Point(20, 43)
+$pnlPathC.Size = New-Object System.Drawing.Size(358, 26)
+$pnlPathC.BackColor = $steamUi.Input
+$pnlPathC.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+$form.Controls.Add($pnlPathC)
+
+# Однострочный TextBox сам подгоняет высоту под шрифт и игнорирует явно
+# заданный Height — поэтому раньше поле выглядело "приплюснутым" при любой
+# высоте, указанной в Size. Решение: без рамки помещаем TextBox внутрь Panel
+# фиксированной высоты (как у кнопки "Обзор..." рядом) и центрируем его по
+# вертикали через PreferredHeight — эта величина WinForms считает сама под
+# текущий шрифт, поэтому центрирование остаётся точным при любом размере
+# шрифта.
+$lblPathC = New-Object System.Windows.Forms.TextBox
+$lblPathC.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+$lblPathC.BorderStyle = [System.Windows.Forms.BorderStyle]::None
 $lblPathC.BackColor = $steamUi.Input
 $lblPathC.ForeColor = $steamUi.Text
-$lblPathC.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
-$lblPathC.Padding = New-Object System.Windows.Forms.Padding(6, 0, 6, 0)
-$lblPathC.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
-$lblPathC.AutoEllipsis = $true
-$form.Controls.Add($lblPathC)
+$lblPathC.TextAlign = [System.Windows.Forms.HorizontalAlignment]::Left
+$lblPathC.AutoCompleteMode = [System.Windows.Forms.AutoCompleteMode]::None
+$lblPathC.AcceptsReturn = $false
+$lblPathC.TabStop = $true
+$lblPathC.Left = 6
+$lblPathC.Width = $pnlPathC.ClientSize.Width - 12
+$lblPathC.Top = [int](($pnlPathC.ClientSize.Height - $lblPathC.PreferredHeight) / 2)
+$lblPathC.Anchor = [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right -bor [System.Windows.Forms.AnchorStyles]::Top
+$pnlPathC.Controls.Add($lblPathC)
 
 # Кнопка "Обзор..." выровнена по одной строке с полем пути (как в Steam).
 $btnSelectC = New-Object System.Windows.Forms.Button
@@ -3951,17 +3982,28 @@ $lblEmptyC.Visible = $false
 $form.Controls.Add($lblEmptyC)
 
 $lblD = New-MainPanelHeader (T 'panel_main') "" 602 470
-$lblPathD = New-Object System.Windows.Forms.Label
-$lblPathD.Location = New-Object System.Drawing.Point(602, 43)
-$lblPathD.Size = New-Object System.Drawing.Size(358, 26)
-$lblPathD.Font = New-Object System.Drawing.Font("Consolas", 8.2)
+$pnlPathD = New-Object System.Windows.Forms.Panel
+$pnlPathD.Location = New-Object System.Drawing.Point(602, 43)
+$pnlPathD.Size = New-Object System.Drawing.Size(358, 26)
+$pnlPathD.BackColor = $steamUi.Input
+$pnlPathD.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+$form.Controls.Add($pnlPathD)
+
+# См. комментарий у $pnlPathC/$lblPathC.
+$lblPathD = New-Object System.Windows.Forms.TextBox
+$lblPathD.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+$lblPathD.BorderStyle = [System.Windows.Forms.BorderStyle]::None
 $lblPathD.BackColor = $steamUi.Input
 $lblPathD.ForeColor = $steamUi.Text
-$lblPathD.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
-$lblPathD.Padding = New-Object System.Windows.Forms.Padding(6, 0, 6, 0)
-$lblPathD.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
-$lblPathD.AutoEllipsis = $true
-$form.Controls.Add($lblPathD)
+$lblPathD.TextAlign = [System.Windows.Forms.HorizontalAlignment]::Left
+$lblPathD.AutoCompleteMode = [System.Windows.Forms.AutoCompleteMode]::None
+$lblPathD.AcceptsReturn = $false
+$lblPathD.TabStop = $true
+$lblPathD.Left = 6
+$lblPathD.Width = $pnlPathD.ClientSize.Width - 12
+$lblPathD.Top = [int](($pnlPathD.ClientSize.Height - $lblPathD.PreferredHeight) / 2)
+$lblPathD.Anchor = [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right -bor [System.Windows.Forms.AnchorStyles]::Top
+$pnlPathD.Controls.Add($lblPathD)
 
 # Кнопка "Обзор..." выровнена по одной строке с полем пути (как в Steam).
 $btnSelectD = New-Object System.Windows.Forms.Button
@@ -4429,7 +4471,9 @@ foreach ($tipList in @($listBoxC, $listBoxD)) {
                 $tipText = (T 'tip_row_check')
             } elseif ($_.X -ge $libStart -and $_.X -lt ($libStart + [int]$w[3])) {
                 $rowName = Clean-GameName $lb.Items[$idx].ToString()
-                if ($global:installedSteamGames.ContainsKey((Get-NormalizedGameKey $rowName))) { $tipText = (T 'tip_row_installed') }
+                $rootForRow = if ($src -eq 'C') { $global:dirC } else { $global:dirD }
+                $rowPath = if ([string]::IsNullOrWhiteSpace($rootForRow)) { $null } else { Join-Path $rootForRow $rowName }
+                if ($rowPath -and $global:installedSteamGames.ContainsKey((Get-NormalizedGamePathKey $rowPath))) { $tipText = (T 'tip_row_installed') }
             }
         }
         if ($script:rowTipText[$src] -ne $tipText) {
@@ -4457,7 +4501,8 @@ $lblBatchAuto.Add_Click($toggleBatchAutoFill)
 # Центральная кнопка добавления — компактная и строго центрирована
 # относительно окна, а не растянута до шестерёнки.
 $btnAddToSteam = New-Object System.Windows.Forms.Button
-$btnAddToSteam.Text = (T 'btn_add_batch')
+$btnAddToSteam.Tag = (T 'btn_add_batch')
+$btnAddToSteam.Text = ''
 $btnAddToSteam.Location = New-Object System.Drawing.Point(260, 0)
 $btnAddToSteam.Size = New-Object System.Drawing.Size(520, 42)
 $btnAddToSteam.FlatStyle = "Flat"
@@ -4466,6 +4511,8 @@ $btnAddToSteam.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromA
 $btnAddToSteam.BackColor = [System.Drawing.Color]::FromArgb(25,55,75)
 $btnAddToSteam.ForeColor = $steamUi.Text
 $btnAddToSteam.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 10.5)
+$btnAddToSteam.Image = $null
+$btnAddToSteam.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
 # Появляется только когда отмечено 2+ игры галочками (см. Update-MainLibraryButtonState) —
 # для одной игры добавление идёт через клик по ней -> кнопку внутри её карточки.
 $btnAddToSteam.Visible = $false
@@ -4474,7 +4521,7 @@ $pnlBatchActions.Controls.Add($btnAddToSteam)
 # Кнопка «Библиотека Steam» на том же месте, что и пакетное добавление.
 # Видна, когда нет отмеченных игр (кнопка добавления скрыта).
 $btnSteamLibrary = New-Object System.Windows.Forms.Button
-$btnSteamLibrary.Text = (T 'btn_steam_library')
+$btnSteamLibrary.Tag = (T 'btn_steam_library')
 $btnSteamLibrary.Location = New-Object System.Drawing.Point(260, 0)
 $btnSteamLibrary.Size = New-Object System.Drawing.Size(520, 42)
 $btnSteamLibrary.FlatStyle = "Flat"
@@ -4483,6 +4530,8 @@ $btnSteamLibrary.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::Fro
 $btnSteamLibrary.BackColor = [System.Drawing.Color]::FromArgb(25,55,75)
 $btnSteamLibrary.ForeColor = $steamUi.Text
 $btnSteamLibrary.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 10.5)
+$btnSteamLibrary.Image = $null
+$btnSteamLibrary.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
 $btnSteamLibrary.Cursor = [System.Windows.Forms.Cursors]::Hand
 $btnSteamLibrary.Visible = $true
 $pnlBatchActions.Controls.Add($btnSteamLibrary)
@@ -4678,8 +4727,8 @@ function Apply-PanelView ([string]$source, [string[]]$forceSelectedNames = $null
         'DateAsc'     { $view = @($view | Sort-Object -Property LastWriteTime) }
         'SizeDesc'    { Ensure-FolderSizesCached $view; $view = @($view | Sort-Object -Property @{Expression={ Get-FolderSizeCached $_.Path }} -Descending) }
         'SizeAsc'     { Ensure-FolderSizesCached $view; $view = @($view | Sort-Object -Property @{Expression={ Get-FolderSizeCached $_.Path }}) }
-        'LibraryDesc' { $view = @($view | Sort-Object -Property @{Expression={ Test-PanelItemInLibrary $_.Name }; Descending=$true}, @{Expression='Name'}) }
-        'LibraryAsc'  { $view = @($view | Sort-Object -Property @{Expression={ Test-PanelItemInLibrary $_.Name }}, @{Expression='Name'}) }
+        'LibraryDesc' { $view = @($view | Sort-Object -Property @{Expression={ Test-PanelItemInLibrary $_.Name $_.Path }; Descending=$true}, @{Expression='Name'}) }
+        'LibraryAsc'  { $view = @($view | Sort-Object -Property @{Expression={ Test-PanelItemInLibrary $_.Name $_.Path }}, @{Expression='Name'}) }
         default       { $view = @($view | Sort-Object -Property Name) }
     }
 
@@ -4756,9 +4805,16 @@ function Refresh-Panels {
         try {
             $rtC = [System.IO.Path]::GetPathRoot($global:dirC).Substring(0,2)
             $driveC = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='$rtC'" -ErrorAction SilentlyContinue
-            $lblC.Text = if ($driveC -ne $null) { (T 'panel_free' @((T 'panel_extra'), ([string][Math]::Round($driveC.FreeSpace / 1GB, 2)), (T 'unit_gb'))) } else { (T 'panel_extra') }
-        } catch { $lblC.Text = (T 'panel_extra') }
-        $lblPathC.Text = (T 'path_prefix') + $global:dirC
+            # Вместо общего названия "Папка" показываем имя тома, как это делает Steam/Total Commander.
+            # Если у диска нет метки, оставляем букву диска.
+            $driveNameC = if ($driveC -ne $null -and -not [string]::IsNullOrWhiteSpace([string]$driveC.VolumeName)) {
+                "$($driveC.VolumeName) ($rtC)"
+            } else { $rtC }
+            $lblC.Text = if ($driveC -ne $null) { (T 'panel_free' @($driveNameC, ([string][Math]::Round($driveC.FreeSpace / 1GB, 2)), (T 'unit_gb'))) } else { $driveNameC }
+        } catch {
+            try { $lblC.Text = [System.IO.Path]::GetPathRoot($global:dirC).Substring(0,2) } catch { $lblC.Text = (T 'panel_extra') }
+        }
+        $lblPathC.Text = $global:dirC
         $lblEmptyC.Visible = $false
         $listBoxC.Visible = $true
     } else {
@@ -4773,9 +4829,16 @@ function Refresh-Panels {
         try {
             $rtD = [System.IO.Path]::GetPathRoot($global:dirD).Substring(0,2)
             $driveD = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='$rtD'" -ErrorAction SilentlyContinue
-            $lblD.Text = if ($driveD -ne $null) { (T 'panel_free' @((T 'panel_main'), ([string][Math]::Round($driveD.FreeSpace / 1GB, 2)), (T 'unit_gb'))) } else { (T 'panel_main') }
-        } catch { $lblD.Text = (T 'panel_main') }
-        $lblPathD.Text = (T 'path_prefix') + $global:dirD
+            # Вместо общего названия "Папка" показываем имя тома, как это делает Steam/Total Commander.
+            # Если у диска нет метки, оставляем букву диска.
+            $driveNameD = if ($driveD -ne $null -and -not [string]::IsNullOrWhiteSpace([string]$driveD.VolumeName)) {
+                "$($driveD.VolumeName) ($rtD)"
+            } else { $rtD }
+            $lblD.Text = if ($driveD -ne $null) { (T 'panel_free' @($driveNameD, ([string][Math]::Round($driveD.FreeSpace / 1GB, 2)), (T 'unit_gb'))) } else { $driveNameD }
+        } catch {
+            try { $lblD.Text = [System.IO.Path]::GetPathRoot($global:dirD).Substring(0,2) } catch { $lblD.Text = (T 'panel_main') }
+        }
+        $lblPathD.Text = $global:dirD
         $lblEmptyD.Visible = $false
         $listBoxD.Visible = $true
     } else {
@@ -4805,18 +4868,19 @@ function Refresh-Panels {
         $userDataPath = Get-ConfiguredSteamUserDataPath
         
         # ИСТОЧНИК 1: нестимовские ярлыки (shortcuts.vdf) — например, добавленные
-        # этой же программой. РАНЬШЕ имя игры "угадывалось" по третьему по счёту
-        # сегменту пути StartDir — это давало сбой при любой другой глубине
-        # вложенности папок. Затем стали брать поле AppName — но его пользователь
-        # может переименовать прямо в Steam (это лишь отображаемое имя), и тогда
-        # оно перестаёт совпадать с именем папки на диске. Поэтому теперь берём
-        # ВСЕ доступные источники сразу:
-        #  1) AppName — для случаев, когда он совпадает с именем папки;
-        #  2) Exe и StartDir, сопоставленные с известными корнями $dirC/$dirD —
-        #     находим, какая именно подпапка SSD- или HDD-библиотеки является
-        #     началом этого пути (см. Get-TopLevelFolderUnderRoot). Это работает
-        #     даже если .exe лежит на 3-4 уровня глубже (Binaries\Win64\...) и
-        #     совершенно не зависит от того, как называется сама игра.
+        # этой же программой.
+        # ВАЖНО: раньше здесь ЕЩЁ запоминали AppName ярлыка как признак "игра
+        # установлена" — но AppName это просто отображаемое название, никак не
+        # привязанное к конкретной папке на диске. Из-за этого папка с тем же
+        # названием, что и уже добавленная игра (но реально лежащая в другом
+        # месте, например на другом диске), ошибочно получала зелёную галочку
+        # "уже в библиотеке". Поэтому единственный источник теперь — Exe и
+        # StartDir, сопоставленные с известными корнями $dirC/$dirD: находим,
+        # какая именно подпапка SSD- или HDD-библиотеки является началом этого
+        # пути (см. Get-TopLevelFolderUnderRoot), и запоминаем ПОЛНЫЙ путь к ней
+        # (а не просто имя) — это работает даже если .exe лежит на 3-4 уровня
+        # глубже (Binaries\Win64\...), и при этом не путает две разные папки с
+        # одинаковым именем.
         if (Test-Path $userDataPath) {
             # Раз мы дошли до реального сканирования shortcuts.vdf (файл userdata
             # найден и доступен), результат можно считать достоверным — даже если
@@ -4839,22 +4903,16 @@ function Refresh-Panels {
                                     $liveShortcutIds[[string]$appidField.Value] = $true
                                 }
 
-                                $appNameField = $entry.Body.Children | Where-Object { $_.Key -eq "AppName" } | Select-Object -First 1
-                                if ($appNameField -ne $null) {
-                                    $normalizedAppName = Get-NormalizedGameKey $appNameField.Value
-                                    if (-not [string]::IsNullOrEmpty($normalizedAppName)) {
-                                        $global:installedSteamGames[$normalizedAppName] = $true
-                                    }
-                                }
-
                                 $exeField = $entry.Body.Children | Where-Object { $_.Key -eq "Exe" } | Select-Object -First 1
                                 $startDirField = $entry.Body.Children | Where-Object { $_.Key -eq "StartDir" } | Select-Object -First 1
                                 foreach ($pathField in @($exeField, $startDirField)) {
                                     if ($pathField -eq $null -or [string]::IsNullOrEmpty($pathField.Value)) { continue }
+                                    $cleanFieldValue = ([string]$pathField.Value).Trim('"')
                                     foreach ($rootPath in @($global:dirC, $global:dirD)) {
-                                        $topFolder = Get-TopLevelFolderUnderRoot $pathField.Value $rootPath
+                                        $topFolder = Get-TopLevelFolderUnderRoot $cleanFieldValue $rootPath
                                         if (-not [string]::IsNullOrEmpty($topFolder)) {
-                                            $global:installedSteamGames[(Get-NormalizedGameKey $topFolder)] = $true
+                                            $topFolderPath = Join-Path $rootPath $topFolder
+                                            $global:installedSteamGames[(Get-NormalizedGamePathKey $topFolderPath)] = $true
                                         }
                                     }
                                 }
@@ -4957,11 +5015,6 @@ function Find-SteamShortcutRecord ($gameName, $gamePath = $null, $exePath = $nul
     $userDataPath = Get-ConfiguredSteamUserDataPath
     if (-not (Test-Path $userDataPath)) { return $null }
 
-    $targetNameKey = Get-NormalizedGameKey $gameName
-    $targetFolderKey = if (-not [string]::IsNullOrEmpty($gamePath)) {
-        Get-NormalizedGameKey ([System.IO.Path]::GetFileName($gamePath.TrimEnd('\')))
-    } else { "" }
-
     $pathMatch = $null
     foreach ($shortcutsFile in (Get-ChildItem -Path $userDataPath -Filter "shortcuts.vdf" -Recurse -File -ErrorAction SilentlyContinue)) {
         try {
@@ -4997,29 +5050,27 @@ function Find-SteamShortcutRecord ($gameName, $gamePath = $null, $exePath = $nul
                     LaunchOptions=$launchOptions
                 }
 
-                if (-not [string]::IsNullOrEmpty($targetNameKey) -and
-                    (Get-NormalizedGameKey $appName) -eq $targetNameKey) {
-                    return $record
-                }
-
+                # ВАЖНО: раньше здесь было ещё и совпадение по одному лишь имени
+                # (AppName ярлыка == искомое имя игры, без всякой проверки пути) —
+                # из-за этого две РАЗНЫЕ папки с одинаковым названием (например,
+                # вручную созданная тестовая папка на другом диске с тем же именем,
+                # что и уже добавленная игра) считались одной и той же игрой.
+                # Теперь совпадение ищем строго по реальному расположению на диске:
+                # точный путь к .exe (если он передан) или сама папка игры должна
+                # быть тем же путём (или содержать тот же путь), что Exe/StartDir
+                # уже существующего ярлыка. Имя тут ни при чём.
                 if (-not [string]::IsNullOrEmpty($exePath) -and -not [string]::IsNullOrEmpty($cleanExe) -and
                     [string]::Equals($cleanExe, ([string]$exePath).Trim('"'), [System.StringComparison]::OrdinalIgnoreCase)) {
                     return $record
                 }
 
-                if (-not [string]::IsNullOrEmpty($targetFolderKey)) {
-                    $exeFolderKey = ""; $startFolderKey = ""
-                    try { $exeFolderKey = Get-NormalizedGameKey ([System.IO.Path]::GetFileName([System.IO.Path]::GetDirectoryName($cleanExe))) } catch {}
-                    try { $startFolderKey = Get-NormalizedGameKey ([System.IO.Path]::GetFileName($cleanStart.TrimEnd('\'))) } catch {}
-                    if ($exeFolderKey -eq $targetFolderKey -or $startFolderKey -eq $targetFolderKey) {
-                        $pathMatch = $record
-                    } else {
-                        try {
-                            $gamePrefix = $gamePath.TrimEnd('\') + '\'
-                            if ($cleanExe -and $cleanExe.StartsWith($gamePrefix,[System.StringComparison]::OrdinalIgnoreCase)) { $pathMatch=$record }
-                            elseif ($cleanStart -and $cleanStart.StartsWith($gamePrefix,[System.StringComparison]::OrdinalIgnoreCase)) { $pathMatch=$record }
-                        } catch {}
-                    }
+                if (-not [string]::IsNullOrEmpty($gamePath)) {
+                    try {
+                        $gamePrefix = $gamePath.TrimEnd('\') + '\'
+                        $gameExact = $gamePath.TrimEnd('\')
+                        if ($cleanExe -and ($cleanExe.StartsWith($gamePrefix,[System.StringComparison]::OrdinalIgnoreCase) -or [string]::Equals($cleanExe.TrimEnd('\'), $gameExact, [System.StringComparison]::OrdinalIgnoreCase))) { $pathMatch=$record }
+                        elseif ($cleanStart -and ($cleanStart.TrimEnd('\').Equals($gameExact,[System.StringComparison]::OrdinalIgnoreCase) -or $cleanStart.StartsWith($gamePrefix,[System.StringComparison]::OrdinalIgnoreCase))) { $pathMatch=$record }
+                    } catch {}
                 }
             }
         } catch {}
@@ -5028,16 +5079,19 @@ function Find-SteamShortcutRecord ($gameName, $gamePath = $null, $exePath = $nul
 }
 
 function Test-GameAlreadyInSteamLibrary ($gameName, $gamePath = $null) {
-    if (Find-SteamShortcutRecord $gameName $gamePath) { return $true }
-    $key = Get-NormalizedGameKey $gameName
-    if ($key -and $global:installedSteamGames.ContainsKey($key)) { return $true }
-    if ($gamePath) {
-        try {
-            $folderKey = Get-NormalizedGameKey ([System.IO.Path]::GetFileName($gamePath.TrimEnd('\')))
-            if ($folderKey -and $global:installedSteamGames.ContainsKey($folderKey)) { return $true }
-        } catch {}
-    }
-    return $false
+    # ВАЖНО: раньше тут ещё проверялось совпадение по одному лишь нормализованному
+    # имени через $global:installedSteamGames (без проверки реального пути) — это
+    # тот самый набор, что используется для зелёной галочки "в библиотеке" в
+    # списках слева/справа (см. Register-ListBoxDrawEvent, Test-PanelItemInLibrary):
+    # он специально нестрогий, по имени, чтобы подсвечивать "похоже, уже
+    # добавлено" даже при небольших расхождениях в названии. Для решения
+    # "пропустить при добавлении / это дубликат" такая нестрогая проверка не
+    # годится — из-за неё вручную созданная папка с названием, совпадающим с
+    # именем уже добавленной игры (но реально лежащая в другом месте), считалась
+    # "уже в Steam". Теперь здесь используется только Find-SteamShortcutRecord,
+    # которая проверяет действительное расположение на диске (Exe/StartDir
+    # существующего ярлыка), а не совпадение имён.
+    return [bool](Find-SteamShortcutRecord $gameName $gamePath)
 }
 
 function Set-VdfStringField ($entry, $key, $value) {
@@ -5998,10 +6052,72 @@ function Get-BitmapFromIcoFile ([string]$path) {
 }
 
 
+# Ищет именно ту маленькую иконку, которую уже закэшировал клиент Steam.
+# Для лицензионных игр Steam использует appcache\librarycache. В новых
+# версиях встречается вложенная папка <AppID> с JPG-файлом из 40 hex-символов,
+# в старых/других установках — плоский <AppID>_icon.jpg.
+# Важно: это локальный кэш самого клиента, а не Steam CDN и не SteamGridDB.
+function Get-LocalSteamLibraryIconPath ([string]$appId) {
+    if ([string]::IsNullOrWhiteSpace($appId) -or $appId -notmatch '^\d+$') { return $null }
+    try {
+        $steamRoot = Get-ConfiguredSteamInstallPath
+        if ([string]::IsNullOrWhiteSpace($steamRoot) -or -not (Test-Path -LiteralPath $steamRoot -PathType Container)) { return $null }
+        $cache = Join-Path $steamRoot 'appcache\librarycache'
+        if (-not (Test-Path -LiteralPath $cache -PathType Container)) { return $null }
+        $id = $appId.Trim()
+
+        # Старый/плоский формат — самый однозначный.
+        foreach ($name in @($id + '_icon.jpg', $id + '_icon.png', $id + '_icon.ico')) {
+            $p = Join-Path $cache $name
+            if (Test-Path -LiteralPath $p -PathType Leaf) {
+                try { if ((Get-Item -LiteralPath $p).Length -ge 64) { return $p } } catch {}
+            }
+        }
+
+        # Новый формат Steam: appcache\librarycache\<appid>\<40hex>.jpg.
+        $appDir = Join-Path $cache $id
+        if (Test-Path -LiteralPath $appDir -PathType Container) {
+            try {
+                $exact = Get-ChildItem -LiteralPath $appDir -File -ErrorAction SilentlyContinue |
+                    Where-Object { $_.Name -match '^[0-9a-fA-F]{40}\.jpe?g$' -and $_.Length -ge 64 } |
+                    Select-Object -First 1
+                if ($null -ne $exact) { return [string]$exact.FullName }
+            } catch {}
+
+            # Резерв для промежуточных форматов Steam: ищем маленький квадратный
+            # JPG/PNG/ICO, исключая header/capsule/hero/logo.
+            $icons = New-Object System.Collections.Generic.List[object]
+            try {
+                Get-ChildItem -LiteralPath $appDir -File -ErrorAction SilentlyContinue | ForEach-Object {
+                    if ($_.Length -lt 64) { return }
+                    if ($_.Name -notmatch '\.(jpe?g|png|ico)$') { return }
+                    if ($_.Name -match 'header|capsule|hero|logo|600x900|blur') { return }
+                    try {
+                        $img = [System.Drawing.Image]::FromFile($_.FullName)
+                        try {
+                            $ratio = if ($img.Height -gt 0) { $img.Width / [double]$img.Height } else { 99 }
+                            if ($ratio -ge 0.75 -and $ratio -le 1.33) {
+                                [void]$icons.Add([PSCustomObject]@{ Path=$_.FullName; Area=([int64]$img.Width * [int64]$img.Height); Size=[int64]$_.Length })
+                            }
+                        } finally { $img.Dispose() }
+                    } catch {}
+                }
+            } catch {}
+            if ($icons.Count -gt 0) {
+                $best = $icons | Sort-Object Area, @{Expression='Size';Descending=$true} | Select-Object -First 1
+                if ($null -ne $best) { return [string]$best.Path }
+            }
+        }
+    } catch {}
+    return $null
+}
+
 # Скачивает clienticon/icon в temp и всегда делает temp_icon.png для превью.
 # $force — перезаписать даже если файл уже есть (иначе при открытии карточки
 # остаётся старый чёрный png, сохранённый ранее в grid).
-function Download-SteamIconToTemp ([string]$appId, [bool]$force = $false) {
+# $preferLocalCache — для лицензионной игры сначала взять иконку из локального
+# кэша самого клиента Steam; к сети/CDN и SteamGridDB в этом случае не обращаемся.
+function Download-SteamIconToTemp ([string]$appId, [bool]$force = $false, [bool]$preferLocalCache = $false) {
     if ([string]::IsNullOrWhiteSpace($appId) -or $appId -notmatch '^\d+$') { return $false }
     if (-not (Test-Path $global:tempCovers)) { New-Item -ItemType Directory -Path $global:tempCovers -Force | Out-Null }
     if ($force) {
@@ -6012,6 +6128,18 @@ function Download-SteamIconToTemp ([string]$appId, [bool]$force = $false) {
         return $true
     }
     try {
+        # Для лицензионной игры источник №1 — уже загруженная Steam-клиентом
+        # иконка. Это именно та картинка, которую сам клиент использует в
+        # библиотеке. Если кэша ещё нет, продолжаем обычным Steam CDN-путём.
+        if ($preferLocalCache) {
+            $localIcon = Get-LocalSteamLibraryIconPath $appId
+            if (-not [string]::IsNullOrWhiteSpace($localIcon) -and (Test-Path -LiteralPath $localIcon -PathType Leaf)) {
+                $ext = [System.IO.Path]::GetExtension($localIcon).ToLowerInvariant()
+                $dest = Join-Path $global:tempCovers ('temp_icon' + $(if ($ext -in @('.jpg','.jpeg')) { '.jpg' } elseif ($ext -eq '.ico') { '.ico' } else { '.png' }))
+                try { Copy-Item -LiteralPath $localIcon -Destination $dest -Force -ErrorAction Stop; return $true } catch {}
+            }
+        }
+
         $commonIcon = Get-SteamPicsCommon $appId
         $hosts = @(
             'https://cdn.cloudflare.steamstatic.com/steamcommunity/public/images/apps',
@@ -8376,57 +8504,126 @@ function Get-EditorMissingPlaceholderBitmap([string]$source) {
 }
 
 function Get-SteamSourceIconBitmap {
+    # Иконка именно Steam-клиента. Ищем steam.exe не только в стандартной
+    # папке, но и по настройке/реестру — Steam у пользователя может быть
+    # установлен на другом диске.
+    $candidates = New-Object System.Collections.Generic.List[string]
     try {
-        $steamExe = [string](Get-ConfiguredSteamExePath)
-        if ([string]::IsNullOrWhiteSpace($steamExe) -or -not (Test-Path $steamExe)) {
-            $steamExe = "C:\Program Files (x86)\Steam\steam.exe"
-        }
-        if (Test-Path $steamExe) {
-            $ico = [System.Drawing.Icon]::ExtractAssociatedIcon($steamExe)
-            if ($null -ne $ico) {
-                # Нормализуем и уменьшаем иконку до 22x22 с прозрачным полем,
-                # чтобы исходная иконка Steam никогда не обрезалась.
-                $bmp = New-Object System.Drawing.Bitmap 22,22
-                $g = [System.Drawing.Graphics]::FromImage($bmp)
-                try {
-                    $g.Clear([System.Drawing.Color]::Transparent)
-                    $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
-                    $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
-                    $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
-                    $icoBmp = $ico.ToBitmap()
-                    try {
-                        $g.DrawImage($icoBmp, 2, 2, 18, 18)
-                    } finally {
-                        $icoBmp.Dispose()
-                    }
-                } finally {
-                    $g.Dispose()
-                    $ico.Dispose()
-                }
-                return $bmp
-            }
-        }
+        $configured = [string](Get-ConfiguredSteamExePath)
+        if (-not [string]::IsNullOrWhiteSpace($configured)) { [void]$candidates.Add($configured) }
     } catch {}
-
-    # Резервный узнаваемый Steam-знак, если steam.exe ещё не найден.
     try {
-        $bmp = New-Object System.Drawing.Bitmap 28,28
+        $reg = (Get-ItemProperty -Path 'HKCU:\Software\Valve\Steam' -Name 'SteamExe' -ErrorAction SilentlyContinue).SteamExe
+        if (-not [string]::IsNullOrWhiteSpace([string]$reg)) { [void]$candidates.Add([string]$reg) }
+    } catch {}
+    foreach ($p in @(
+        'C:\Program Files (x86)\Steam\steam.exe',
+        'C:\Program Files\Steam\steam.exe'
+    )) { [void]$candidates.Add($p) }
+
+    foreach ($steamExe in $candidates) {
+        try {
+            if (-not (Test-Path -LiteralPath $steamExe -PathType Leaf)) { continue }
+            $ico = [System.Drawing.Icon]::ExtractAssociatedIcon((Resolve-Path -LiteralPath $steamExe).Path)
+            if ($null -eq $ico) { continue }
+            try {
+                # Отдельная Bitmap с прозрачным полем. Не возвращаем сам Icon,
+                # чтобы кнопка гарантированно могла отрисовать его после выхода
+                # из функции.
+                $src = $ico.ToBitmap()
+                try {
+                    $bmp = New-Object System.Drawing.Bitmap 20,20
+                    $g = [System.Drawing.Graphics]::FromImage($bmp)
+                    try {
+                        $g.Clear([System.Drawing.Color]::Transparent)
+                        $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+                        $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
+                        $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+                        $g.DrawImage($src, 1, 1, 18, 18)
+                    } finally { $g.Dispose() }
+                    return $bmp
+                } catch {}
+                finally { }
+            } finally { $ico.Dispose() }
+        } catch {}
+    }
+
+    # Резервный Steam-знак, если steam.exe недоступен.
+    try {
+        $bmp = New-Object System.Drawing.Bitmap 20,20
         $g = [System.Drawing.Graphics]::FromImage($bmp)
         try {
             $g.Clear([System.Drawing.Color]::Transparent)
             $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
-            $pen = New-Object System.Drawing.Pen([System.Drawing.Color]::White, 3)
+            $pen = New-Object System.Drawing.Pen([System.Drawing.Color]::White, 1.7)
             $brush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(45,118,180))
-            $g.FillEllipse($brush, 1, 1, 26, 26)
-            $g.DrawEllipse($pen, 1, 1, 26, 26)
-            $g.DrawEllipse($pen, 14, 5, 8, 8)
-            $g.DrawLine($pen, 14, 12, 9, 17)
-            $g.DrawLine($pen, 9, 17, 6, 15)
+            $g.FillEllipse($brush, 1, 1, 18, 18)
+            $g.DrawEllipse($pen, 1, 1, 18, 18)
+            $g.DrawEllipse($pen, 10, 4, 5, 5)
+            $g.DrawLine($pen, 10, 9, 7, 13)
+            $g.DrawLine($pen, 7, 13, 4, 11)
             $pen.Dispose(); $brush.Dispose()
         } finally { $g.Dispose() }
         return $bmp
     } catch { return $null }
 }
+
+# Повторно назначаем иконки ПОСЛЕ полной инициализации формы. Для каждой кнопки
+# создаём отдельную Bitmap: один и тот же Image в WinForms-кнопках иногда ведёт
+# к неожиданной перерисовке/замене при обновлении текста.
+function Set-SteamButtonIcons {
+    try {
+        if ($null -eq $script:steamAddButtonIcon) {
+            $script:steamAddButtonIcon = Get-SteamSourceIconBitmap
+        }
+        if ($null -eq $script:steamLibraryButtonIcon) {
+            $script:steamLibraryButtonIcon = Get-SteamSourceIconBitmap
+        }
+        if ($null -ne $btnAddToSteam) { $btnAddToSteam.Invalidate() }
+        if ($null -ne $btnSteamLibrary) { $btnSteamLibrary.Invalidate() }
+    } catch {}
+}
+
+# WinForms ImageBeforeText центрирует Image и Text не как единый блок.
+# Поэтому содержимое этих двух кнопок рисуем вручную как единый блок:
+# иконка Steam + (для добавления) плюсик + текст, строго по центру кнопки.
+$drawSteamButtonContent = {
+    param($sender, $e)
+    try {
+        $btn = $sender
+        $g = $e.Graphics
+        $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::ClearTypeGridFit
+        $icon = if ($btn -eq $btnAddToSteam) { $script:steamAddButtonIcon } else { $script:steamLibraryButtonIcon }
+        $text = [string]$btn.Tag
+        if ([string]::IsNullOrWhiteSpace($text)) { return }
+
+        $font = $btn.Font
+        $plus = if ($btn -eq $btnAddToSteam -and -not $script:batchInProgress) { '＋' } else { '' }
+        $mainText = $text
+
+        $plusFont = $font
+        $plusSize = if ($plus) { $g.MeasureString($plus, $plusFont) } else { [System.Drawing.SizeF]::new(0,0) }
+        $textSize = $g.MeasureString($mainText, $font)
+        $gap1 = if ($icon) { 7 } else { 0 }
+        $gap2 = if ($plus) { 5 } else { 0 }
+        $iconW = if ($icon) { 20 } else { 0 }
+        $totalW = $iconW + $gap1 + $plusSize.Width + $gap2 + $textSize.Width
+        $x = ($btn.ClientSize.Width - $totalW) / 2.0
+        $yIcon = ($btn.ClientSize.Height - 20) / 2.0
+        $yText = ($btn.ClientSize.Height - $textSize.Height) / 2.0
+        $brush = New-Object System.Drawing.SolidBrush($btn.ForeColor)
+        try {
+            if ($icon) { $g.DrawImage($icon, [float]$x, [float]$yIcon, 20.0, 20.0); $x += $iconW + $gap1 }
+            if ($plus) {
+                $g.DrawString($plus, $plusFont, $brush, [float]$x, [float]$yText)
+                $x += $plusSize.Width + $gap2
+            }
+            $g.DrawString($mainText, $font, $brush, [float]$x, [float]$yText)
+        } finally { $brush.Dispose() }
+    } catch {}
+}
+$btnAddToSteam.Add_Paint($drawSteamButtonContent)
+$btnSteamLibrary.Add_Paint($drawSteamButtonContent)
 
 function Get-SteamGridDbSourceIconBitmap {
     try {
@@ -9031,7 +9228,7 @@ function Reload-EditorSteamCoversForLanguage($appId, $slots, $statusLabel, [stri
     return [int]$replaced
 }
 
-function Load-EditorSteamPreviews($appId, $slots, $statusLabel) {
+function Load-EditorSteamPreviews($appId, $slots, $statusLabel, [bool]$preferLocalIcon = $false) {
     foreach($s in $slots.Values){ try { $s.ExpectedSource = 'Steam' } catch {} }
     if ([string]::IsNullOrWhiteSpace([string]$appId) -or [string]$appId -notmatch '^\d+$') {
         foreach($s in $slots.Values){ Set-EditorPreviewFile $s $null | Out-Null }
@@ -9048,6 +9245,11 @@ function Load-EditorSteamPreviews($appId, $slots, $statusLabel) {
         # только отдельной кнопкой; при отсутствии ресурсов показываем
         # встроенную заглушку Steam.
         Download-CoversToTemp $appId $false
+        if ($preferLocalIcon) {
+            # Перезаписываем только иконку: остальные четыре ассета остаются
+            # официальными Steam-ресурсами.
+            Download-SteamIconToTemp $appId $true $true | Out-Null
+        }
         $ok = 0
         if (Set-EditorPreviewFile $slots.Vertical (Join-Path $global:tempCovers 'temp_p.jpg')) { Set-EditorSourceBadge $slots.Vertical 'Steam'; $ok++ }
         if (Set-EditorPreviewFile $slots.Horizontal (Join-Path $global:tempCovers 'temp_header.jpg')) { Set-EditorSourceBadge $slots.Horizontal 'Steam'; $ok++ }
@@ -11732,7 +11934,29 @@ function Show-SteamLibraryBrowser {
     $dlg.BackColor = $steamUi.Bg
     $dlg.ForeColor = $steamUi.Text
     $dlg.Font = New-Object System.Drawing.Font('Segoe UI', 9)
-    try { $dlg.Icon = $form.Icon } catch {}
+    # В окне библиотеки используем именно значок Steam, а не значок самого приложения.
+    # Если steam.exe недоступен, оставляем штатную иконку программы как безопасный fallback.
+    try {
+        $librarySteamIcon = $null
+        $steamIconCandidates = New-Object System.Collections.Generic.List[string]
+        try {
+            $configuredSteamExe = [string](Get-ConfiguredSteamExePath)
+            if (-not [string]::IsNullOrWhiteSpace($configuredSteamExe)) { [void]$steamIconCandidates.Add($configuredSteamExe) }
+        } catch {}
+        try {
+            $regSteamExe = (Get-ItemProperty -Path 'HKCU:\Software\Valve\Steam' -Name 'SteamExe' -ErrorAction SilentlyContinue).SteamExe
+            if (-not [string]::IsNullOrWhiteSpace([string]$regSteamExe)) { [void]$steamIconCandidates.Add([string]$regSteamExe) }
+        } catch {}
+        foreach ($steamIconPath in @('C:\Program Files (x86)\Steam\steam.exe','C:\Program Files\Steam\steam.exe')) { [void]$steamIconCandidates.Add($steamIconPath) }
+        foreach ($steamIconPath in $steamIconCandidates) {
+            try {
+                if (-not (Test-Path -LiteralPath $steamIconPath -PathType Leaf)) { continue }
+                $librarySteamIcon = [System.Drawing.Icon]::ExtractAssociatedIcon((Resolve-Path -LiteralPath $steamIconPath).Path)
+                if ($null -ne $librarySteamIcon) { break }
+            } catch {}
+        }
+        if ($null -ne $librarySteamIcon) { $dlg.Icon = $librarySteamIcon } else { $dlg.Icon = $form.Icon }
+    } catch { try { $dlg.Icon = $form.Icon } catch {} }
     # Не показываем пустой кадр: окно появляется только после первой раскладки сетки.
     $dlg.Opacity = 0
     try {
@@ -14402,7 +14626,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
             $_.SuppressKeyPress=$true
             if($txtId.Text.Trim() -match '^\d+$'){
                 if($editorState.SearchSource -eq 'Steam') {
-                    Load-EditorSteamPreviews $txtId.Text.Trim() $slots $status
+                    Load-EditorSteamPreviews $txtId.Text.Trim() $slots $status $licensedMode
                 } else {
                     [void](Load-EditorSgdbPreviews -gameName $txtTitle.Text.Trim() -steamAppId '' -slots $slots -statusLabel $status -sgdbGameId ([int]$txtId.Text.Trim()))
                 }
@@ -14629,7 +14853,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
             Stop-EditorLoading $slots $dlg
         } elseif($txtId.Text -match '^\d+$'){
             if($editorState.SearchSource -eq 'Steam') {
-                Load-EditorSteamPreviews $txtId.Text.Trim() $slots $status
+                Load-EditorSteamPreviews $txtId.Text.Trim() $slots $status $licensedMode
             } else {
                 [void](Load-EditorSgdbPreviews -gameName $txtTitle.Text.Trim() -steamAppId '' -slots $slots -statusLabel $status -sgdbGameId ([int]$txtId.Text.Trim()))
             }
@@ -15030,6 +15254,78 @@ $btnSettings.Add_Click({
     }
 })
 
+function Set-PanelPathFromText($panelId, $pathText) {
+    $path = [string]$pathText
+    if ($null -eq $path) { $path = '' }
+    $path = $path.Trim().Trim('"')
+    if ([string]::IsNullOrWhiteSpace($path)) { return $false }
+
+    try {
+        $full = [System.IO.Path]::GetFullPath($path)
+    } catch {
+        [System.Media.SystemSounds]::Beep.Play()
+        return $false
+    }
+
+    if (-not (Test-Path -LiteralPath $full -PathType Container)) {
+        [System.Media.SystemSounds]::Beep.Play()
+        return $false
+    }
+
+    if ($panelId -eq 'C') { $global:dirC = $full; $lblPathC.Text = $full }
+    else { $global:dirD = $full; $lblPathD.Text = $full }
+    Refresh-Panels
+    Save-Configuration
+    return $true
+}
+
+$lblPathC.Add_KeyDown({
+    if ($_.KeyCode -eq [System.Windows.Forms.Keys]::Enter) {
+        $_.SuppressKeyPress = $true
+        $_.Handled = $true
+        [void](Set-PanelPathFromText 'C' $lblPathC.Text)
+    }
+})
+$lblPathD.Add_KeyDown({
+    if ($_.KeyCode -eq [System.Windows.Forms.Keys]::Enter) {
+        $_.SuppressKeyPress = $true
+        $_.Handled = $true
+        [void](Set-PanelPathFromText 'D' $lblPathD.Text)
+    }
+})
+
+
+# Поля пути не должны получать фокус автоматически.
+# Пользователь получает фокус только обычным кликом по самому TextBox.
+$lblPathC.TabStop = $false
+$lblPathD.TabStop = $false
+
+function Remove-PathFocus {
+    try {
+        if ($lblPathC.Focused -or $lblPathD.Focused) {
+            # Только снимаем текущий ActiveControl. Никаких Focus()/Select() здесь нет.
+            $form.ActiveControl = $null
+        }
+    } catch {}
+}
+
+function Install-PathFocusDismissHandlers {
+    function Add-DismissHandler([System.Windows.Forms.Control]$control) {
+        if ($null -eq $control) { return }
+        if ($control -ne $lblPathC -and $control -ne $lblPathD) {
+            $control.Add_MouseDown({ Remove-PathFocus })
+        }
+        foreach ($child in @($control.Controls)) {
+            Add-DismissHandler $child
+        }
+    }
+
+    foreach ($control in @($form.Controls)) {
+        Add-DismissHandler $control
+    }
+    $form.Add_MouseDown({ Remove-PathFocus })
+}
+
 $btnSelectC.Add_Click({
     $res = Show-CenteredFolderDialog (T 'pick_extra_folder') $global:dirC
     if ($res -ne $null) { $global:dirC = $res; Refresh-Panels; Save-Configuration }
@@ -15280,8 +15576,9 @@ function Apply-Localization {
         }
         $btnSettings.AccessibleName = (T 'settings_title')
         $btnSettings.AccessibleDescription = (T 'settings_desc')
-        $btnAddToSteam.Text = (T 'btn_add_batch')
-        $btnSteamLibrary.Text = (T 'btn_steam_library')
+        $btnAddToSteam.Tag = (T 'btn_add_batch')
+$btnAddToSteam.Text = ''
+        $btnSteamLibrary.Tag = (T 'btn_steam_library')
     } catch {}
     try { Update-SortHeaderUI 'C'; Update-SortHeaderUI 'D' } catch {}
     try { Update-MainLibraryButtonState } catch {}
@@ -15293,20 +15590,39 @@ function Update-MainLibraryButtonState {
     try { Update-SelectAllCheckbox 'C'; Update-SelectAllCheckbox 'D' } catch {}
     try {
         if ($script:batchInProgress) { return }
+
+        # Общее количество отмеченных используется для кнопки "Перенести игру".
+        # Для "Добавить в библиотеку" считаем только те игры, которых ещё нет
+        # в Steam. Именно это поведение было в рабочей версии до правок кнопки.
         $totalChecked = [int]$global:checkedC.Count + [int]$global:checkedD.Count
         $ready = [bool]$global:foldersReady
         $btnMoveGame.Enabled = ($ready -and $totalChecked -ge 1)
+
+        $addableCount = 0
         if ($ready -and $totalChecked -ge 1) {
-            $btnAddToSteam.Text = (T 'btn_add_batch_n' @($totalChecked))
+            foreach ($game in @(Get-CheckedGames)) {
+                $key = Get-NormalizedGamePathKey $game.Path
+                if (-not ($key -and $global:installedSteamGames.ContainsKey($key))) {
+                    $addableCount++
+                }
+            }
+        }
+
+        if ($ready -and $totalChecked -ge 1 -and $addableCount -ge 1) {
+            $btnAddToSteam.Tag = (T 'btn_add_batch_n' @($addableCount))
             $btnAddToSteam.Visible = $true
             $btnAddToSteam.Enabled = $true
             $btnSteamLibrary.Visible = $false
         } else {
+            # Если отмечены только игры, которые уже есть в Steam, кнопки
+            # добавления вообще быть не должно — показываем библиотеку.
             $btnAddToSteam.Visible = $false
             $btnSteamLibrary.Visible = $true
             $btnSteamLibrary.Enabled = $true
-            $btnSteamLibrary.Text = (T 'btn_steam_library')
+            $btnSteamLibrary.Tag = (T 'btn_steam_library')
         }
+
+        try { $btnAddToSteam.Invalidate(); $btnSteamLibrary.Invalidate() } catch {}
     } catch {
         try { $btnAddToSteam.Visible = $false; $btnSteamLibrary.Visible = $true } catch {}
     }
@@ -15671,7 +15987,7 @@ $script:batchCardMode = $false
 # играми внутри Invoke-SmartBatchAdd, поэтому уже начатая обработка текущей
 # (последней перед остановкой) игры спокойно доходит до конца.
 $script:batchInProgress = $false
-$script:btnAddToSteamDefaultText = $btnAddToSteam.Text
+$script:btnAddToSteamDefaultText = [string]$btnAddToSteam.Tag
 $btnAddToSteam.Add_Click({
     if($script:batchInProgress){
         $script:batchCardCancelRequested = $true
@@ -15709,7 +16025,7 @@ $btnAddToSteam.Add_Click({
         $btnMoveGame.Enabled=$false;$btnRefreshLibrary.Enabled=$false
         $listBoxC.Enabled=$false;$listBoxD.Enabled=$false
         $script:batchInProgress=$true
-        $btnAddToSteam.Text=(T 'btn_cancel_batch')
+        $btnAddToSteam.Tag=(T 'btn_cancel_batch')
         try{
             $labelHeader.Text=(T 'hd_autofill' @($selectedGames.Count))
             [System.Windows.Forms.Application]::DoEvents()
@@ -15724,7 +16040,7 @@ $btnAddToSteam.Add_Click({
         }catch{$labelHeader.Text=(T 'hd_autofill_err' @([string]$_.Exception.Message))}
         finally{
             $script:batchInProgress=$false
-            $btnAddToSteam.Text=$script:btnAddToSteamDefaultText
+            $btnAddToSteam.Tag=$script:btnAddToSteamDefaultText
             $btnMoveGame.Enabled=$true;$btnRefreshLibrary.Enabled=$true;$btnAddToSteam.Enabled=$true
             $listBoxC.Enabled=$true;$listBoxD.Enabled=$true
             # Пакетное автозаполнение по отмеченным играм завершено (или
@@ -15800,4 +16116,10 @@ if (-not (Test-ConfiguredSteamPathValid) -or -not (Test-ConfiguredSteamProfileVa
 }
 
 Refresh-Panels
+Set-SteamButtonIcons
+Install-PathFocusDismissHandlers
+$form.Add_Shown({
+    try { $form.ActiveControl = $null } catch {}
+})
+[System.Windows.Forms.Application]::DoEvents()
 $form.ShowDialog() | Out-Null
