@@ -6,6 +6,38 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [2.0.0] - 2026-10-04
+
+Major feature release: launcher import, ROMs/emulation, upscaler management, built-in Steam database, and large-scale UI/architecture improvements.
+
+### Added
+* **Launcher import (Library / Import)** — detect and import installed games from Epic Games, GOG Galaxy, Ubisoft Connect, EA App, Battle.net and Xbox into Steam as non-Steam shortcuts. Dedicated tabs, filters (“From launchers”), auto-import option, launcher-specific badges, covers and launch handling (including silent client start / cleanup for Ubisoft and Battle.net).
+* **ROMs mode** — browse folders and ROM files filtered by the active emulator’s extensions. Adding a ROM creates a Steam shortcut that launches it through the selected emulator.
+* **Emulator profiles** — full manager in Settings (add / edit / remove). Custom launch-argument templates, ROM extensions, archive-extraction options and per-emulator icons.
+* **RetroArch integration** — core picker (default core stored per emulator profile), detection of cores that can read archives natively, smart temporary extraction when needed.
+* **ROM archive support** — zip / 7z / rar / tar / gz / bz2 / xz via 7-Zip (optional download). Temporary extraction + cleanup after the emulator exits. Generated **SCLauncher.exe** helper for archive and complex launcher wrappers.
+* **Upscaler libraries** — download and version management of DLSS / FSR / XeSS / XeLL. Replace libraries inside selected games (originals kept as `.sc_orig`), restore later, and filter the library view to games that contain upscaler DLLs.
+* **Built-in Steam apps database** — gzip+base64 snapshot of the Steam application list is embedded and extracted on first run. Title/AppID search works immediately without a Steam Web API key; users can still refresh the database with their own key.
+* **Startup splash screen** — animated loading screen with progress while types are compiled, libraries loaded and configuration read.
+* **Small-screen / high-DPI adaptation** — fixed-layout windows shrink to the working area and become scrollable when necessary; sizable windows are constrained to the screen. Correct behaviour under Windows display scaling (e.g. 150 %).
+* **External / community language files** — localisation can be overridden or extended via editable files in the `lang` folder (format validation + fallback to built-in strings).
+* **Library preheating** — background loading of Steam library and launcher data while the main window is idle, so the Library/Import browser opens faster.
+
+### Improved
+* Steam Library browser completely reworked: multi-source view (Steam + launchers), filters, upscaler actions, seamless transition from the main window, performance and visual polish.
+* Batch-add flow (progress, cancellation, status text) and overall UI responsiveness during long network / file operations.
+* Game card editor extended for ROM entries, launcher-style shortcuts and upscaler controls.
+* Settings dialog reorganised to host Emulators (ROMs) and Upscaler libraries sections.
+* Path handling, free-space checks and inter-panel move operations.
+* Local Steam database search (in-memory index, tier/junk scoring).
+* Overall stability, localisation coverage and consistency across all supported languages.
+
+### Changed
+* Main “Steam Library” button renamed to **Library / Import** to reflect the new multi-source capabilities.
+* Application version bumped to 2.0.0 (major version for the new launcher-import, ROMs and upscaler feature set and the corresponding architectural growth).
+
+---
+
 ## [1.2.2] - 2026-09-26
 ### Fixes
 * Fixed detection of games already added to Steam
