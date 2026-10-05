@@ -6,6 +6,14 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [2.0.1] - 2026-10-05
+
+### Fixed
+* The **Only with upscaler libraries** filter in Library / Import now also hides ROM shortcuts that have no libraries. Previously ROMs were always shown.
+* Upscaler libraries (DLSS, DLSS RR, DLSS FG, FSR, XeSS, XeLL) located deep inside a game folder were not detected, for example Unreal Engine games with `Engine\Plugins\Runtime\Nvidia\DLSS\Binaries\ThirdParty\Win64`. The folder scan depth is increased from 6 to 12 levels in all scanners: tile version, `.sc_orig` backup search, game folder walk and the game card.
+
+---
+
 ## [2.0.0] - 2026-10-04
 
 Major feature release: launcher import, ROMs/emulation, upscaler management, built-in Steam database, and large-scale UI/architecture improvements.
