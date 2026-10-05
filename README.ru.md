@@ -69,7 +69,7 @@ Epic Games, GOG Galaxy, Ubisoft Connect, EA App, Battle.net, Xbox. Импорт 
 Скачивание и выбор версий DLSS / FSR / XeSS / XeLL. Замена библиотек в выбранных играх либо во всех добавленных одной кнопкой. Оригиналы сохраняются как `.sc_orig`, восстановление одним действием.
 
 <p align="center">
-  <img src="assets/screenshots/upscalers.gif" width="700" alt="Библиотеки апскейлеров">
+  <img src="assets/screenshots/swap_upscaler.gif" width="700" alt="Библиотеки апскейлеров">
 </p>
 
 ### Двухпанельный браузер
