@@ -51,7 +51,7 @@ The panels show folders and ROM files filtered by the extensions of the active e
 
 Download and choose versions of DLSS / FSR / XeSS / XeLL. Replace the libraries in selected games, or in all added games, with a single button. Originals are saved as `.sc_orig` and can be restored in one action.
 
-![Upscaler libraries](assets/screenshots/upscalers.gif)
+![Upscaler libraries](assets/screenshots/swap_upscaler.gif)
 
 ### Two-panel browser
 
