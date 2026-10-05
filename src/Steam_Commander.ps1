@@ -882,7 +882,7 @@ Set-SplashProgress 0.52
 # Единая версия приложения — используется в заголовке главного окна, в
 # подписи внизу окна настроек и в User-Agent HTTP-запросов. Меняйте только
 # здесь при выпуске новой версии.
-$global:appVersion = "2.0.0"
+$global:appVersion = "2.0.1"
 $global:appTitle = "Steam Commander"
 # Ссылки на исходный код и поддержку автора (окно «Поддержать» в настройках). Меняйте только здесь.
 $global:appRepoUrl = "https://github.com/Hetfield1985/Steam-Commander"
@@ -26920,7 +26920,7 @@ function Get-GameFolderForEntry ($Entry) {
 
 # ===================== ВЕРСИЯ DLSS НА ПЛИТКАХ БИБЛИОТЕКИ =====================
 # Внизу каждой плитки на вкладке Steam рисуется полоса «DLSS ........ v310.7.129».
-# Версия берётся из nvngx_dlss.dll в папке игры (поиск в фоновом потоке, глубина до 6 папок);
+# Версия берётся из nvngx_dlss.dll в папке игры (поиск в фоновом потоке, глубина до 12 папок);
 # если файла нет или версия не читается — «N/A». Хвостовые нули версии не показываются
 # (310.7.129.0 -> v310.7.129, 310.7.0.0 -> v310.7).
 $script:libDlssState = $null
@@ -27279,7 +27279,7 @@ function Start-LibDlssScan ($Entries) {
                                     try { if ([System.IO.File]::Exists([System.IO.Path]::Combine($dir, [string]$ln))) { $anyLib = $true; break } } catch {}
                                 }
                             }
-                            if ($depth -lt 6) {
+                            if ($depth -lt 12) {
                                 try {
                                     foreach ($sd in [System.IO.Directory]::EnumerateDirectories($dir)) {
                                         $skip = $false
@@ -27323,7 +27323,7 @@ function Start-LibDlssScan ($Entries) {
                                 try { if ([System.IO.File]::Exists([System.IO.Path]::Combine($dir, ([string]$ln + '.sc_orig')))) { $hasOrig = $true; break } } catch {}
                             }
                             if ($hasOrig) { break }
-                            if ($depth -lt 6) {
+                            if ($depth -lt 12) {
                                 try {
                                     foreach ($sd in [System.IO.Directory]::EnumerateDirectories($dir)) {
                                         $skip = $false
@@ -27390,7 +27390,7 @@ function Get-DllFullVersion ([string]$Path) {
     } catch { return (New-Object System.Version(0, 0, 0, 0)) }
 }
 
-# Обход папки игры (глубина до 6, ссылки-junction пропускаем): все копии DLL апскейлеров.
+# Обход папки игры (глубина до 12, ссылки-junction пропускаем): все копии DLL апскейлеров.
 function Find-GameUpscalerFiles ([string]$Root, [string[]]$Names) {
     $res = @{}
     foreach ($nm in $Names) { $res[$nm] = New-Object System.Collections.ArrayList }
@@ -27408,7 +27408,7 @@ function Find-GameUpscalerFiles ([string]$Root, [string[]]$Names) {
                 if ([System.IO.File]::Exists($cand)) { [void]$res[$nm].Add($cand) }
             } catch {}
         }
-        if ($depth -lt 6) {
+        if ($depth -lt 12) {
             try {
                 foreach ($sd in [System.IO.Directory]::EnumerateDirectories($dir)) {
                     $skip = $false
@@ -27936,8 +27936,8 @@ function Show-SteamLibraryBrowser {
             if (($null -eq $off -or $off.Count -eq 0) -and -not $onlyLibs) { return $true }
             $cat = [string](& $getEntryFilterCat $en)
             if ($cat -and $null -ne $off -and $off.ContainsKey($cat)) { return $false }
-            # «Только с библиотеками апскейлеров» — по результату фонового поиска; ROM-ярлыков это не касается.
-            if ($onlyLibs -and $cat -ne 'rom') {
+            # «Только с библиотеками апскейлеров» — по результату фонового поиска; касается и ROM-ярлыков.
+            if ($onlyLibs) {
                 if (-not [bool](& $getEntryHasLibs $en)) { return $false }
             }
             return $true
@@ -33152,7 +33152,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
         try { $c.Combo.Invalidate() } catch {}
     }
 
-    # Фоновый обход папки игры (глубина до 6, ссылки-junction пропускаем): собираем ВСЕ копии
+    # Фоновый обход папки игры (глубина до 12, ссылки-junction пропускаем): собираем ВСЕ копии
     # трёх DLL с их версиями — копий в игре бывает несколько, они понадобятся при замене.
     $dlssWorker = {
         param($root, $state)
@@ -33177,7 +33177,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
                         if ([System.IO.File]::Exists($cand)) { [void]$res[$nm].Add($cand) }
                     } catch {}
                 }
-                if ($depth -lt 6) {
+                if ($depth -lt 12) {
                     try {
                         foreach ($sd in [System.IO.Directory]::EnumerateDirectories($dir)) {
                             $skip = $false
