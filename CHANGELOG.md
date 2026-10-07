@@ -6,6 +6,21 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [2.0.2] - 2026-10-08
+
+### Added
+* **Background and logo composition in the game card** — the hero background and the logo are now one preview slot, like in Steam: the logo is drawn over the background. Drag the logo to move it (it snaps to the five positions Steam supports: top left, top center, center, bottom left, bottom center) and use the mouse wheel or the slider to resize it from 10 to 100 %. 
+* **Logo position is saved to Steam** — position and size are written to the Steam config of every profile for new shortcuts, edited shortcuts and licensed games, and are read back when the card is opened again.
+* **Default logo position and size** — new checkbox under the scale slider in the *Background & logo* slot. When it is on, the current logo position and size are saved as the default and applied to every card (new games, existing shortcuts and ROMs) and to auto-import / batch add, including games added without covers. Turning it off returns to per-game values. The setting is stored in `config.ini`.
+
+### Fixed
+* **Silent ROM auto-import** 
+
+### Changed
+* The game card layout: the vertical cover stays on the left, the horizontal cover moves under it, and the hero slot is widened and shows the background with the logo. The separate logo slot is hidden but still holds the logo image, source and alternatives.
+
+---
+
 ## [2.0.1] - 2026-10-05
 
 ### Fixed
