@@ -11,6 +11,8 @@ $script:SplashState = [hashtable]::Synchronized(@{ Close = $false; Closed = $fal
 $script:SplashPs = $null
 $script:SplashRs = $null
 $script:SplashRu = $false
+# Композиция «Hero + логотип» в карточке (как в Steam). $false - вернуть прежнюю раскладку и поведение.
+$script:LogoComposeEnabled = $true
 try { $script:SplashRu = ([System.Globalization.CultureInfo]::CurrentUICulture.TwoLetterISOLanguageName -eq 'ru') } catch {}
 
 function Set-SplashText ([string]$Text) {
@@ -882,7 +884,7 @@ Set-SplashProgress 0.52
 # Единая версия приложения — используется в заголовке главного окна, в
 # подписи внизу окна настроек и в User-Agent HTTP-запросов. Меняйте только
 # здесь при выпуске новой версии.
-$global:appVersion = "2.0.1"
+$global:appVersion = "2.0.2"
 $global:appTitle = "Steam Commander"
 # Ссылки на исходный код и поддержку автора (окно «Поддержать» в настройках). Меняйте только здесь.
 $global:appRepoUrl = "https://github.com/Hetfield1985/Steam-Commander"
@@ -941,7 +943,7 @@ $script:I18n = @{
         btn_move = 'Перенести игру'
         btn_refresh = 'Обновить'
         batch_auto = 'Автоимпорт'
-        batch_auto_tip = 'Если включено: при пакетном добавлении игры с уверенно определёнными названием и exe добавляются в библиотеку автоматически, без показа карточки. Карточка откроется только для игр, которые программа не смогла определить однозначно.'
+        batch_auto_tip = 'Если включено: при пакетном добавлении игры с уверенно определёнными названием и exe добавляются в библиотеку автоматически, без показа карточки. Карточка откроется только для игр, которые программа не смогла определить однозначно. В режиме ROMs (эмуляторы) карточка тоже не показывается, если название, эмулятор и ROM определены уверенно.'
         btn_add_batch = 'Добавить выбранные игры в библиотеку'
         btn_add_batch_n = 'Добавить выбранные игры в библиотеку ({0})'
         btn_steam_library = 'Библиотека / Импорт'
@@ -1207,6 +1209,22 @@ $script:I18n = @{
         slot_vertical = '1. Вертикальная'
         slot_horizontal = '2. Горизонтальная'
         slot_hero = '3. Hero / фон'
+        slot_herologo = '3. Фон и логотип'
+        logo_eye_hide = 'Скрыть логотип на превью'
+        logo_eye_show = 'Показать логотип на превью'
+        logo_btn_bg = 'Сменить фон'
+        logo_btn_logo = 'Сменить логотип'
+        logo_scale_label = 'Размер логотипа: {0}%'
+        logo_chk_default = 'По умолчанию для всех игр'
+        logo_tip_default = 'Положение и размер логотипа сохраняются как значения по умолчанию для всех карточек, ромов и автоимпорта'
+        logo_tip_preview_logo = 'Клик — выбрать другой логотип. Перетащите, чтобы переместить; колесо мыши — размер'
+        logo_tip_preview_bg = 'Клик — выбрать другой фон'
+        logo_tip_btn_bg = 'Выбрать другой фон (hero)'
+        logo_tip_btn_logo = 'Выбрать другой логотип'
+        logo_tip_slider = 'Размер логотипа (10–100%)'
+        logo_tip_busy = 'Идёт загрузка — управление временно недоступно'
+        logo_src_bg = 'Фон'
+        logo_src_logo = 'Логотип'
         slot_logo = '4. Логотип'
         slot_icon = '5. Иконка'
         card_info = 'Steam — основной источник. Клик по любой миниатюре открывает варианты SteamGridDB только для этого типа, не переключая источник целиком.'
@@ -1417,7 +1435,7 @@ $script:I18n = @{
         btn_move = 'Move game'
         btn_refresh = 'Refresh'
         batch_auto = 'Auto-import'
-        batch_auto_tip = 'If enabled: when adding several games at once, games whose name and exe are detected with confidence are added to the library automatically, without showing the card. The card opens only for games the program could not identify unambiguously.'
+        batch_auto_tip = 'If enabled: when adding several games at once, games whose name and exe are detected with confidence are added to the library automatically, without showing the card. The card opens only for games the program could not identify unambiguously. In ROMs (emulator) mode the card is also skipped when the title, emulator and ROM are detected with confidence.'
         btn_add_batch = 'Add selected games to library'
         btn_add_batch_n = 'Add selected games to library ({0})'
         btn_steam_library = 'Library / Import'
@@ -1683,6 +1701,22 @@ $script:I18n = @{
         slot_vertical = '1. Vertical'
         slot_horizontal = '2. Horizontal'
         slot_hero = '3. Hero / background'
+        slot_herologo = '3. Background & logo'
+        logo_eye_hide = 'Hide logo in preview'
+        logo_eye_show = 'Show logo in preview'
+        logo_btn_bg = 'Change background'
+        logo_btn_logo = 'Change logo'
+        logo_scale_label = 'Logo size: {0}%'
+        logo_chk_default = 'Default for all games'
+        logo_tip_default = 'Logo position and size are saved as the default for all cards, ROMs and auto-import'
+        logo_tip_preview_logo = 'Click to choose another logo. Drag to move it; mouse wheel changes its size'
+        logo_tip_preview_bg = 'Click to choose another background'
+        logo_tip_btn_bg = 'Choose another background (hero)'
+        logo_tip_btn_logo = 'Choose another logo'
+        logo_tip_slider = 'Logo size (10–100%)'
+        logo_tip_busy = 'Loading — controls are temporarily unavailable'
+        logo_src_bg = 'Background'
+        logo_src_logo = 'Logo'
         slot_logo = '4. Logo'
         slot_icon = '5. Icon'
         card_info = 'Steam is the primary source. Clicking any thumbnail opens SteamGridDB options for that type only, without switching the whole source.'
@@ -2146,6 +2180,22 @@ $script:I18n = @{
         slot_vertical = '1. 竖版'
         slot_horizontal = '2. 横版'
         slot_hero = '3. Hero / 背景'
+        slot_herologo = '3. 背景与徽标'
+        logo_eye_hide = '在预览中隐藏徽标'
+        logo_eye_show = '在预览中显示徽标'
+        logo_btn_bg = '更换背景'
+        logo_btn_logo = '更换徽标'
+        logo_scale_label = '徽标大小：{0}%'
+        logo_chk_default = '设为所有游戏的默认值'
+        logo_tip_default = '徽标的位置和大小将保存为所有卡片、ROM 和自动导入的默认值'
+        logo_tip_preview_logo = '点击更换徽标。拖动可移动位置，滚动鼠标滚轮可调整大小'
+        logo_tip_preview_bg = '点击更换背景'
+        logo_tip_btn_bg = '更换背景（hero）'
+        logo_tip_btn_logo = '更换徽标'
+        logo_tip_slider = '徽标大小（10–100%）'
+        logo_tip_busy = '正在加载 — 暂时无法操作'
+        logo_src_bg = '背景'
+        logo_src_logo = '徽标'
         slot_logo = '4. 徽标'
         slot_icon = '5. 图标'
         card_info = 'Steam 为主要来源。点击任意缩略图只会打开该类型的 SteamGridDB 可选项，而不会切换整个来源。'
@@ -2623,6 +2673,22 @@ $script:I18n = @{
         slot_vertical = '1. Vertical'
         slot_horizontal = '2. Horizontal'
         slot_hero = '3. Hero / fondo'
+        slot_herologo = '3. Fondo y logotipo'
+        logo_eye_hide = 'Ocultar logotipo en la vista previa'
+        logo_eye_show = 'Mostrar logotipo en la vista previa'
+        logo_btn_bg = 'Cambiar fondo'
+        logo_btn_logo = 'Cambiar logotipo'
+        logo_scale_label = 'Tamaño del logotipo: {0}%'
+        logo_chk_default = 'Predeterminado para todos los juegos'
+        logo_tip_default = 'La posición y el tamaño del logotipo se guardan como valor predeterminado para todas las fichas, ROM e importación automática'
+        logo_tip_preview_logo = 'Clic para elegir otro logotipo. Arrastra para moverlo; la rueda del ratón cambia el tamaño'
+        logo_tip_preview_bg = 'Clic para elegir otro fondo'
+        logo_tip_btn_bg = 'Elegir otro fondo (hero)'
+        logo_tip_btn_logo = 'Elegir otro logotipo'
+        logo_tip_slider = 'Tamaño del logotipo (10–100%)'
+        logo_tip_busy = 'Cargando: los controles no están disponibles por ahora'
+        logo_src_bg = 'Fondo'
+        logo_src_logo = 'Logotipo'
         slot_logo = '4. Logotipo'
         slot_icon = '5. Icono'
         card_info = 'Steam es la fuente principal. Al hacer clic en cualquier miniatura se abren las opciones de SteamGridDB solo para ese tipo, sin cambiar toda la fuente.'
@@ -3100,6 +3166,22 @@ $script:I18n = @{
         slot_vertical = '1. Vertical'
         slot_horizontal = '2. Horizontal'
         slot_hero = '3. Hero / plano de fundo'
+        slot_herologo = '3. Plano de fundo e logotipo'
+        logo_eye_hide = 'Ocultar logotipo na pré-visualização'
+        logo_eye_show = 'Mostrar logotipo na pré-visualização'
+        logo_btn_bg = 'Alterar fundo'
+        logo_btn_logo = 'Alterar logotipo'
+        logo_scale_label = 'Tamanho do logotipo: {0}%'
+        logo_chk_default = 'Padrão para todos os jogos'
+        logo_tip_default = 'A posição e o tamanho do logotipo são salvos como padrão para todos os cartões, ROMs e importação automática'
+        logo_tip_preview_logo = 'Clique para escolher outro logotipo. Arraste para mover; a roda do mouse altera o tamanho'
+        logo_tip_preview_bg = 'Clique para escolher outro plano de fundo'
+        logo_tip_btn_bg = 'Escolher outro plano de fundo (hero)'
+        logo_tip_btn_logo = 'Escolher outro logotipo'
+        logo_tip_slider = 'Tamanho do logotipo (10–100%)'
+        logo_tip_busy = 'Carregando: os controles estão indisponíveis por enquanto'
+        logo_src_bg = 'Plano de fundo'
+        logo_src_logo = 'Logotipo'
         slot_logo = '4. Logotipo'
         slot_icon = '5. Ícone'
         card_info = 'A Steam é a fonte principal. Ao clicar em qualquer miniatura, abrem-se as opções do SteamGridDB apenas para aquele tipo, sem trocar a fonte inteira.'
@@ -3577,6 +3659,22 @@ $script:I18n = @{
         slot_vertical = '1. Hochformat'
         slot_horizontal = '2. Querformat'
         slot_hero = '3. Hero / Hintergrund'
+        slot_herologo = '3. Hintergrund & Logo'
+        logo_eye_hide = 'Logo in der Vorschau ausblenden'
+        logo_eye_show = 'Logo in der Vorschau einblenden'
+        logo_btn_bg = 'Hintergrund ändern'
+        logo_btn_logo = 'Logo ändern'
+        logo_scale_label = 'Logogröße: {0}%'
+        logo_chk_default = 'Standard für alle Spiele'
+        logo_tip_default = 'Position und Größe des Logos werden als Standard für alle Karten, ROMs und den automatischen Import gespeichert'
+        logo_tip_preview_logo = 'Klicken, um ein anderes Logo zu wählen. Zum Verschieben ziehen; das Mausrad ändert die Größe'
+        logo_tip_preview_bg = 'Klicken, um einen anderen Hintergrund zu wählen'
+        logo_tip_btn_bg = 'Anderen Hintergrund (Hero) wählen'
+        logo_tip_btn_logo = 'Anderes Logo wählen'
+        logo_tip_slider = 'Logogröße (10–100%)'
+        logo_tip_busy = 'Wird geladen – Steuerung vorübergehend nicht verfügbar'
+        logo_src_bg = 'Hintergrund'
+        logo_src_logo = 'Logo'
         slot_logo = '4. Logo'
         slot_icon = '5. Symbol'
         card_info = 'Steam ist die Hauptquelle. Ein Klick auf ein beliebiges Vorschaubild öffnet die SteamGridDB-Optionen nur für diesen Typ, ohne die gesamte Quelle zu wechseln.'
@@ -4065,6 +4163,12 @@ $global:suggestGameLaunchers = $false
 # Если включено, иконка игры берётся из её EXE (а не из Steam). Кнопка EXE на
 # миниатюре иконки в карточке игры переключает иконку туда и обратно.
 $global:useExeIcons = $false
+# Положение и размер логотипа «по умолчанию» (галочка в слоте «Фон и логотип» карточки игры).
+# Пока logoDefaultEnabled = $true, эти значения применяются ко всем карточкам, ромам и автоимпорту.
+$global:logoDefaultEnabled = $false
+$global:logoDefaultPosition = 'BottomLeft'
+$global:logoDefaultWidthPct = 50.0
+$global:logoDefaultHeightPct = 50.0
 # Регион обложек Steam (API-имя: english, russian, …). Задаётся в «Настройках»
 # и используется как язык ассетов по умолчанию (кнопки EN/РУ на карточке,
 # загрузка официальных обложек). Пустое значение = брать из языка интерфейса.
@@ -5179,6 +5283,16 @@ function Load-Configuration {
                 if ($line.StartsWith("steamGridDbApiKey=")) { $global:steamGridDbApiKey = $line.Substring(18).Trim() }
                 if ($line.StartsWith("suggestGameLaunchers=")) { $global:suggestGameLaunchers = ([string]$line.Substring(21).Trim()).ToLowerInvariant() -eq "true" }
                 if ($line.StartsWith("useExeIcons=")) { $global:useExeIcons = ([string]$line.Substring(12).Trim()).ToLowerInvariant() -eq "true" }
+                if ($line.StartsWith("logoDefaultEnabled=")) { $global:logoDefaultEnabled = ([string]$line.Substring("logoDefaultEnabled=".Length).Trim()).ToLowerInvariant() -eq "true" }
+                if ($line.StartsWith("logoDefaultPosition=")) { $global:logoDefaultPosition = [string]$line.Substring("logoDefaultPosition=".Length).Trim() }
+                if ($line.StartsWith("logoDefaultWidthPct=")) {
+                    $ldw = 0.0
+                    if ([double]::TryParse([string]$line.Substring("logoDefaultWidthPct=".Length).Trim(), [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$ldw)) { $global:logoDefaultWidthPct = $ldw }
+                }
+                if ($line.StartsWith("logoDefaultHeightPct=")) {
+                    $ldh = 0.0
+                    if ([double]::TryParse([string]$line.Substring("logoDefaultHeightPct=".Length).Trim(), [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$ldh)) { $global:logoDefaultHeightPct = $ldh }
+                }
                 if ($line.StartsWith("steamApiKey=")) { $global:steamApiKey = $line.Substring(12).Trim() }
                 if ($line.StartsWith("backupFolderPath=")) { $global:backupFolderPath = $line.Substring(17).Trim() }
                 if ($line.StartsWith("language=")) { $global:language = $line.Substring(9).Trim() }
@@ -7576,7 +7690,7 @@ $form.Font = New-Object System.Drawing.Font("Segoe UI", 9)
 # сохраняется как ядро по умолчанию активного профиля эмулятора ($profile.Core,
 # то же поле, что редактируется в Настройках) — поэтому дальше, при обычном
 # добавлении игры через карточку и при автопакетном добавлении (оно тоже
-# в режиме ROMs всегда открывает карточку — см. Invoke-SmartBatchAdd),
+# в режиме ROMs карточка открывается скрыто и добавляет игру сама, если всё определено уверенно — см. Invoke-SmartBatchAdd),
 # аргумент запуска будет собран уже под это ядро (Get-RetroArchArgsTemplate),
 # без необходимости открывать Настройки заново.
 #
@@ -9310,7 +9424,11 @@ function Save-Configuration {
             "steamApiKey=$($global:steamApiKey)",
             "backupFolderPath=$($global:backupFolderPath)",
             "language=$($global:language)",
-            "steamCoverRegion=$($global:steamCoverRegion)"
+            "steamCoverRegion=$($global:steamCoverRegion)",
+            "logoDefaultEnabled=$([bool]$global:logoDefaultEnabled)",
+            "logoDefaultPosition=$($global:logoDefaultPosition)",
+            "logoDefaultWidthPct=$(([double]$global:logoDefaultWidthPct).ToString([System.Globalization.CultureInfo]::InvariantCulture))",
+            "logoDefaultHeightPct=$(([double]$global:logoDefaultHeightPct).ToString([System.Globalization.CultureInfo]::InvariantCulture))"
         )
         try {
             if ($global:emulatorProfiles -and @($global:emulatorProfiles).Count -gt 0) {
@@ -13105,6 +13223,12 @@ function Add-GameToSteamQuietly ($game) {
                 }
                 Save-CoverSourcesMetadata ([string]$newId) $quietSlots $coverLang | Out-Null
             } catch {}
+        } else {
+            # Обложек нет, но положение логотипа «по умолчанию» всё равно записываем.
+            try {
+                $defLogoPos = Get-LogoDefaultPosition
+                if ($null -ne $defLogoPos) { [void](Set-SteamLogoPositionForAllProfiles ([string]$newId) $defLogoPos) }
+            } catch {}
         }
         $global:folderDisplayNameCache[$game.Path.ToUpper()] = $displayName
         $result.Success = $true
@@ -14831,10 +14955,288 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
     return $dialogState.Result
 }
 
+# ===================== ПОЛОЖЕНИЕ ЛОГОТИПА В STEAM (этап 4: запись и чтение) =====================
+# Steam хранит положение/размер логотипа в userdata\<account>\config\librarycache\<appid>.json:
+#   [["achievements",{...}],["customimage",{"version":1,"data":{"nVersion":1,"logoPosition":{"pinnedPosition":"BottomLeft","nWidthPct":50,"nHeightPct":50}}}]]
+# Файл может содержать и другие поля, поэтому запись всегда идёт слиянием: читаем, меняем только
+# нужные ключи, пишем обратно. Если положение не трогали - в json ничего не пишем (поведение Steam).
+
+function Get-LogoDefaultPosition {
+    # Положение/размер логотипа «по умолчанию» (галочка в слоте «Фон и логотип»).
+    # $null - галочка не включена, тогда у каждой игры своё положение, как раньше.
+    try {
+        if (-not [bool]$global:logoDefaultEnabled) { return $null }
+        $pos = [string]$global:logoDefaultPosition
+        if ($script:EditorLogoPositions -notcontains $pos) { $pos = 'BottomLeft' }
+        $w = [math]::Max(1.0, [math]::Min(100.0, [double]$global:logoDefaultWidthPct))
+        $h = [math]::Max(1.0, [math]::Min(100.0, [double]$global:logoDefaultHeightPct))
+        return [PSCustomObject]@{ Position = $pos; WidthPct = $w; HeightPct = $h }
+    } catch { return $null }
+}
+
+function Sync-LogoDefaultFromState($state) {
+    # Вызывается при сохранении карточки. Галочка включена - текущие положение и размер логотипа становятся
+    # значением по умолчанию (config.ini); галочку сняли - значение по умолчанию отключается
+    # (числа в config.ini остаются, но не применяются).
+    try {
+        if ($null -eq $state) { return }
+        if ([bool]$state.LogoUseDefault) {
+            $pos = [string]$state.LogoPosition
+            if ($script:EditorLogoPositions -notcontains $pos) { $pos = 'BottomLeft' }
+            $w = [double]$state.LogoWidthPct
+            $h = [double]$state.LogoHeightPct
+            if ([bool]$global:logoDefaultEnabled -and [string]$global:logoDefaultPosition -eq $pos -and [double]$global:logoDefaultWidthPct -eq $w -and [double]$global:logoDefaultHeightPct -eq $h) { return }
+            $global:logoDefaultEnabled = $true
+            $global:logoDefaultPosition = $pos
+            $global:logoDefaultWidthPct = $w
+            $global:logoDefaultHeightPct = $h
+        } else {
+            if (-not [bool]$global:logoDefaultEnabled) { return }
+            $global:logoDefaultEnabled = $false
+        }
+        Save-Configuration
+    } catch {}
+}
+
+function Get-WrappedTipText([string]$text, [int]$width = 52) {
+    # ToolTip сам длинную строку не переносит: разбиваем по словам, текст без пробелов (китайский) - кусками.
+    $lines = New-Object System.Collections.Generic.List[string]
+    $cur = ''
+    foreach ($word in ($text -split ' ')) {
+        while ($word.Length -gt $width) {
+            if ($cur.Length -gt 0) { $lines.Add($cur); $cur = '' }
+            $cut = [math]::Max(8, [int]($width / 2))
+            $lines.Add($word.Substring(0, $cut)); $word = $word.Substring($cut)
+        }
+        if ($cur.Length -gt 0 -and ($cur.Length + 1 + $word.Length) -gt $width) { $lines.Add($cur); $cur = $word }
+        elseif ($cur.Length -gt 0) { $cur = $cur + ' ' + $word }
+        else { $cur = $word }
+    }
+    if ($cur.Length -gt 0) { $lines.Add($cur) }
+    return ($lines.ToArray() -join "`n")
+}
+
+function Get-EditorLogoSignature($state) {
+    # Строка-отпечаток положения/размера логотипа: по ней понимаем, трогали ли положение.
+    try {
+        $ci = [System.Globalization.CultureInfo]::InvariantCulture
+        $w = [math]::Round([double]$state.LogoWidthPct, 1)
+        $h = [math]::Round([double]$state.LogoHeightPct, 1)
+        # Галочка «по умолчанию» входит в отпечаток: её переключение тоже считается изменением карточки.
+        $dflag = ''
+        try { if ([bool]$state.LogoUseDefault) { $dflag = '|D' } } catch {}
+        return ([string]$state.LogoPosition + '|' + $w.ToString($ci) + '|' + $h.ToString($ci) + $dflag)
+    } catch { return ('?' + [guid]::NewGuid().ToString('N')) }
+}
+
+function Get-EditorLogoPositionToSave($state, [bool]$ForceIfFromCache = $false) {
+    # Что писать в json: $null, если положение не менялось (тогда ничего не пишем).
+    # $ForceIfFromCache - перенос уже сохранённого положения на новый id (ярлык переименовали).
+    try {
+        $touched = ((Get-EditorLogoSignature $state) -ne [string]$state.LogoSig0)
+        $carry = ($ForceIfFromCache -and [bool]$state.LogoFromCache)
+        # Галочка «по умолчанию»: сохраняем значения как общие и всегда пишем положение в Steam для этой игры.
+        Sync-LogoDefaultFromState $state
+        $forceDefault = $false
+        try { $forceDefault = [bool]$state.LogoUseDefault } catch {}
+        if (-not $touched -and -not $carry -and -not $forceDefault) { return $null }
+        $pos = [string]$state.LogoPosition
+        if ($script:EditorLogoPositions -notcontains $pos) { $pos = 'BottomLeft' }
+        return [PSCustomObject]@{ Position = $pos; WidthPct = [double]$state.LogoWidthPct; HeightPct = [double]$state.LogoHeightPct }
+    } catch { return $null }
+}
+
+function Merge-SteamLibraryCacheJson([string]$Path, [System.Collections.IDictionary]$Set = $null, [System.Collections.IDictionary]$SetIfMissing = $null) {
+    # Слияние в librarycache\<id>.json: остальные поля сохраняются. $Set перезаписывает ключи,
+    # $SetIfMissing добавляет только отсутствующие. Нечитаемый файл сначала копируется в .bak.
+    try {
+        $obj = $null
+        $existed = [System.IO.File]::Exists($Path)
+        if ($existed) {
+            $raw = ''
+            try { $raw = [System.IO.File]::ReadAllText($Path, [System.Text.Encoding]::UTF8) } catch {}
+            # Реальный формат Steam - массив пар [ключ, {version,data}]. Старые поля appid/Count туда не добавляем.
+            if ($raw.TrimStart().StartsWith('[')) { return $true }
+            if (-not [string]::IsNullOrWhiteSpace($raw)) {
+                $parsed = $null
+                try { $parsed = $raw | ConvertFrom-Json -ErrorAction Stop } catch { $parsed = $null }
+                if ($parsed -is [System.Management.Automation.PSCustomObject]) { $obj = $parsed }
+                else { try { [System.IO.File]::Copy($Path, ($Path + '.bak'), $true) } catch {} }
+            }
+        }
+        if ($null -eq $obj) { $obj = [PSCustomObject]@{} }
+        if ($null -ne $SetIfMissing) {
+            foreach ($k in @($SetIfMissing.Keys)) {
+                if ($null -eq $obj.PSObject.Properties[[string]$k]) { $obj | Add-Member -NotePropertyName ([string]$k) -NotePropertyValue $SetIfMissing[$k] }
+            }
+        }
+        if ($null -ne $Set) {
+            foreach ($k in @($Set.Keys)) { $obj | Add-Member -NotePropertyName ([string]$k) -NotePropertyValue $Set[$k] -Force }
+        }
+        $json = ConvertTo-Json -InputObject $obj -Depth 10 -Compress
+        $tmp = $Path + '.tmp'
+        try {
+            [System.IO.File]::WriteAllText($tmp, $json, (New-Object System.Text.UTF8Encoding($false)))
+            if ($existed) { [System.IO.File]::Copy($tmp, $Path, $true) } else { [System.IO.File]::Move($tmp, $Path) }
+        } finally {
+            if ([System.IO.File]::Exists($tmp)) { try { [System.IO.File]::Delete($tmp) } catch {} }
+        }
+        return $true
+    } catch { return $false }
+}
+
+function Set-SteamCacheEntryJson([string]$Path, [string]$Key, [System.Collections.IDictionary]$DataPatch) {
+    # Реальный формат librarycache\<id>.json:
+    #   [["achievements",{"version":2,"data":{...}}],["customimage",{"version":1,"data":{"nVersion":1,"logoPosition":{...}}}]]
+    # Меняем только data записи $Key (ключи из $DataPatch), остальные записи и поля сохраняются.
+    # Старый формат-объект (его раньше писал сам скрипт) заменяется массивом. Нечитаемый файл -> .bak.
+    try {
+        $pairs = New-Object System.Collections.ArrayList
+        $existed = [System.IO.File]::Exists($Path)
+        if ($existed) {
+            $raw = ''
+            try { $raw = [System.IO.File]::ReadAllText($Path, [System.Text.Encoding]::UTF8) } catch {}
+            if (-not [string]::IsNullOrWhiteSpace($raw)) {
+                $parsed = $null; $okParse = $true
+                try { $parsed = @($raw | ConvertFrom-Json -ErrorAction Stop) } catch { $okParse = $false }
+                if (-not $okParse) { try { [System.IO.File]::Copy($Path, ($Path + '.bak'), $true) } catch {} }
+                else {
+                    foreach ($el in $parsed) {
+                        if ($el -is [System.Array] -and $el.Count -ge 2 -and $el[0] -is [string]) { [void]$pairs.Add([object[]]@([string]$el[0], $el[1])) }
+                        # PSCustomObject = старый формат скрипта: пропускаем
+                    }
+                }
+            }
+        }
+        # Нового файла у Steam без записи achievements не бывает: добавляем такую же, как пишет сам Steam
+        # для не-Steam игры, иначе при запуске Steam пересоздаёт файл и теряет нашу запись.
+        $hasAch = $false
+        for ($k = 0; $k -lt $pairs.Count; $k++) { if ([string]$pairs[$k][0] -eq 'achievements') { $hasAch = $true; break } }
+        if (-not $hasAch -and $Key -ne 'achievements') {
+            $achData = [PSCustomObject]@{ vecHighlight = [object[]]@(); vecUnachieved = [object[]]@(); vecAchievedHidden = [object[]]@(); nTotal = 0; nAchieved = 0 }
+            $achWrap = [PSCustomObject]@{ version = 2; data = $achData }
+            $pairs.Insert(0, [object[]]@('achievements', $achWrap))
+        }
+        $idx = -1
+        for ($k = 0; $k -lt $pairs.Count; $k++) { if ([string]$pairs[$k][0] -eq $Key) { $idx = $k; break } }
+        $wrapper = $null
+        if ($idx -ge 0) { $wrapper = $pairs[$idx][1] }
+        if ($wrapper -isnot [System.Management.Automation.PSCustomObject]) {
+            $wrapper = [PSCustomObject]@{ version = 1; data = [PSCustomObject]@{ nVersion = 1 } }
+        }
+        $data = $null
+        try { $data = $wrapper.data } catch {}
+        if ($data -isnot [System.Management.Automation.PSCustomObject]) { $data = [PSCustomObject]@{ nVersion = 1 } }
+        foreach ($pk in @($DataPatch.Keys)) { $data | Add-Member -NotePropertyName ([string]$pk) -NotePropertyValue $DataPatch[$pk] -Force }
+        $wrapper | Add-Member -NotePropertyName 'data' -NotePropertyValue $data -Force
+        if ($null -eq $wrapper.PSObject.Properties['version']) { $wrapper | Add-Member -NotePropertyName 'version' -NotePropertyValue 1 }
+        $entry = [object[]]@($Key, $wrapper)
+        if ($idx -ge 0) { $pairs[$idx] = $entry } else { [void]$pairs.Add($entry) }
+
+        $json = ConvertTo-Json -InputObject ([object[]]$pairs.ToArray()) -Depth 12 -Compress
+        $tmp = $Path + '.tmp'
+        try {
+            [System.IO.File]::WriteAllText($tmp, $json, (New-Object System.Text.UTF8Encoding($false)))
+            if ($existed) { [System.IO.File]::Copy($tmp, $Path, $true) } else { [System.IO.File]::Move($tmp, $Path) }
+        } finally {
+            if ([System.IO.File]::Exists($tmp)) { try { [System.IO.File]::Delete($tmp) } catch {} }
+        }
+        return $true
+    } catch { return $false }
+}
+
+function Set-SteamLogoPositionInDir([string]$cacheDir, [string]$appId, $pos) {
+    # Steam хранит положение логотипа не-Steam игры в <профиль>\config\grid\<appId>.json:
+    #   {"nVersion":1,"logoPosition":{"pinnedPosition":...,"nWidthPct":...,"nHeightPct":...}}
+    # (librarycache\<id>.json - лишь производный кэш Steam, его Steam пересоздаёт). $cacheDir - папка
+    # config\librarycache профиля; рядом лежит config\grid.
+    if ($null -eq $pos -or [string]::IsNullOrWhiteSpace($appId)) { return $false }
+    try {
+        $gridDir = Join-Path (Split-Path -Path $cacheDir -Parent) 'grid'
+        if (-not (Test-Path -LiteralPath $gridDir)) { New-Item -ItemType Directory -Path $gridDir -Force | Out-Null }
+        $lp = [ordered]@{
+            pinnedPosition = [string]$pos.Position
+            nWidthPct      = [math]::Round([double]$pos.WidthPct, 2)
+            nHeightPct     = [math]::Round([double]$pos.HeightPct, 2)
+        }
+        $f = Join-Path $gridDir ($appId + '.json')
+        return [bool](Merge-SteamLibraryCacheJson $f ([ordered]@{ logoPosition = [PSCustomObject]$lp }) ([ordered]@{ nVersion = 1 }))
+    } catch { return $false }
+}
+
+function Set-SteamLogoPositionForAllProfiles([string]$appId, $pos) {
+    # Запись положения логотипа во все профили Steam. Возвращает число успешно записанных профилей.
+    if ($null -eq $pos) { return 0 }
+    $ok = 0
+    foreach ($pr in @(Get-ConfiguredSteamProfileDirectories)) {
+        try { if (Set-SteamLogoPositionInDir (Join-Path ([string]$pr.FullName) 'config\librarycache') $appId $pos) { $ok++ } } catch {}
+    }
+    return $ok
+}
+
+function Get-SteamLogoPositionFromCache([string]$appId) {
+    # Читает сохранённое положение логотипа: config\grid\<id>.json (основной источник Steam), затем
+    # config\librarycache\<id>.json (запасной). Из нескольких профилей берётся самый свежий файл.
+    # Нет данных / неизвестное значение - $null (карточка останется по умолчанию).
+    if ($appId -notmatch '^\d+$') { return $null }
+    $best = $null; $bestTime = [datetime]::MinValue
+    foreach ($pr in @(Get-ConfiguredSteamProfileDirectories)) {
+        foreach ($rel in @('config\grid\', 'config\librarycache\')) {
+            try {
+                $f = Join-Path ([string]$pr.FullName) ($rel + $appId + '.json')
+                if (-not [System.IO.File]::Exists($f)) { continue }
+                $raw = [System.IO.File]::ReadAllText($f, [System.Text.Encoding]::UTF8)
+                if ([string]::IsNullOrWhiteSpace($raw)) { continue }
+                $lp = $null
+                $items = @($raw | ConvertFrom-Json -ErrorAction Stop)
+                foreach ($el in $items) {
+                    if ($el -is [System.Array] -and $el.Count -ge 2 -and [string]$el[0] -eq 'customimage') {
+                        try { $lp = $el[1].data.logoPosition } catch {}
+                    } elseif ($el -is [System.Management.Automation.PSCustomObject]) {
+                        try { $lp = $el.logoPosition } catch {}
+                    }
+                }
+                if ($null -eq $lp) { continue }
+                $pp = [string]$lp.pinnedPosition
+                if ($script:EditorLogoPositions -notcontains $pp) { continue }
+                $w = 50.0; $h = 50.0
+                try { if ($null -ne $lp.nWidthPct) { $w = [double]$lp.nWidthPct } } catch {}
+                try { if ($null -ne $lp.nHeightPct) { $h = [double]$lp.nHeightPct } } catch {}
+                $w = [math]::Max(1.0, [math]::Min(100.0, $w)); $h = [math]::Max(1.0, [math]::Min(100.0, $h))
+                $wt = [System.IO.File]::GetLastWriteTime($f)
+                if ($null -eq $best -or $wt -gt $bestTime) {
+                    $best = [PSCustomObject]@{ Position = $pp; WidthPct = $w; HeightPct = $h }
+                    $bestTime = $wt
+                }
+            } catch {}
+        }
+    }
+    return $best
+}
+
+function Set-EditorLogoStateFromCache($hs, $pos) {
+    # Подставляет сохранённое положение в карточку (состояние, ползунок, превью).
+    if ($null -eq $hs -or $null -eq $pos) { return }
+    $st = $hs.EditorState
+    $st.LogoPosition = [string]$pos.Position
+    $st.LogoWidthPct = [double]$pos.WidthPct
+    $st.LogoHeightPct = [double]$pos.HeightPct
+    $st.LogoFromCache = $true
+    try {
+        $v = [int][math]::Round([double]$pos.WidthPct)
+        $v = [math]::Max($script:EditorLogoScaleMin, [math]::Min($script:EditorLogoScaleMax, $v))
+        if ($hs.Slider.Value -ne $v) { $hs.Slider.Value = $v }
+    } catch {}
+    try { Update-EditorComposeView $hs } catch {}
+    try { $hs.Picture.Invalidate() } catch {}
+}
+
 # ===================== ПРЯМОЕ ПРИМЕНЕНИЕ СВЕЖЕСКАЧАННЫХ ОБЛОЖЕК =====================
 # Используется автоматическим потоком "Добавить выбранные игры в Steam":
 # копирует обложки НАПРЯМУЮ из temp-папки в config\grid.
-function Copy-TempCoversDirectlyToGrid ($shortcutId) {
+function Copy-TempCoversDirectlyToGrid ($shortcutId, $logoPosition = $null) {
+    # Положение логотипа не передано (автоимпорт, ромы и т.п.) - берём «по умолчанию», если галочка включена.
+    if ($null -eq $logoPosition) { try { $logoPosition = Get-LogoDefaultPosition } catch {} }
     $steamPathProperty = Get-ConfiguredSteamExePath
     $steamPath = Get-ConfiguredSteamInstallPath
     $userDataPath = Get-ConfiguredSteamUserDataPath
@@ -14843,8 +15245,14 @@ function Copy-TempCoversDirectlyToGrid ($shortcutId) {
     Get-ConfiguredSteamProfileDirectories | ForEach-Object {
         $cacheDir = Join-Path $_.FullName "config\librarycache"
         if (-not (Test-Path $cacheDir)) { New-Item -ItemType Directory -Path $cacheDir -Force | Out-Null }
-        $jsonContent = "{`"appid`":$shortcutId,`"Count`":1}"
-        $jsonContent | Out-File (Join-Path $cacheDir ($shortcutId + ".json")) -Encoding ascii -Force
+        # Раньше json перезаписывался целиком ({"appid":..,"Count":1}) и затирал всё остальное, в том числе
+        # logoPosition. Теперь недостающие appid/Count только добавляются, остальные поля остаются.
+        $sidNum = [int64]0
+        $sidFields = [ordered]@{}
+        if ([int64]::TryParse([string]$shortcutId, [ref]$sidNum)) { $sidFields['appid'] = $sidNum; $sidFields['Count'] = 1 }
+        [void](Merge-SteamLibraryCacheJson (Join-Path $cacheDir ($shortcutId + ".json")) $null $sidFields)
+        # Положение логотипа: $logoPosition = $null, если его не трогали - тогда ничего не пишем.
+        if ($null -ne $logoPosition) { [void](Set-SteamLogoPositionInDir $cacheDir ([string]$shortcutId) $logoPosition) }
 
         $gridDir = Join-Path $_.FullName "config\grid"
         if (-not (Test-Path $gridDir)) { New-Item -ItemType Directory -Path $gridDir | Out-Null }
@@ -15760,12 +16168,15 @@ function Set-EditorSourceBadge($slot, [string]$source) {
                 $slot.SourceBadge.Tag = $tt
             }
             $tipText = if ($source -eq 'Steam') { (T 'src_tip_steam') } elseif ($source -eq 'Local') { (T 'src_tip_local') } else { (T 'src_tip_sgdb') }
+            # В композиции у фона и логотипа свои значки: в подсказке указываем, к чему относится источник.
+            $pfxProp = $slot.PSObject.Properties['BadgeTipPrefix']
+            if ($null -ne $pfxProp -and -not [string]::IsNullOrWhiteSpace([string]$pfxProp.Value)) { $tipText = [string]$pfxProp.Value + ': ' + $tipText }
             $slot.SourceBadge.Tag.SetToolTip($slot.SourceBadge, $tipText)
         } catch {}
     } catch {}
 }
 
-function Set-EditorMissingState($slot, [bool]$missing) {
+function Set-EditorMissingStateCore($slot, [bool]$missing) {
     if ($null -eq $slot) { return }
     try { $slot.PendingMissing = $missing } catch {}
     try {
@@ -15810,7 +16221,642 @@ function Set-EditorMissingState($slot, [bool]$missing) {
     } catch {}
 }
 
+# ===================== КОМПОЗИЦИЯ «HERO + ЛОГОТИП» (этапы 2-3: отрисовка и управление) =====================
+# Картинка Hero рисуется по центру с сохранением пропорций, логотип - поверх. Положение/размер
+# логотипа лежат в $editorState (LogoPosition / LogoWidthPct / LogoHeightPct), по умолчанию
+# BottomLeft и 50/50 - как у Steam. Слот Logo скрыт, но по-прежнему хранит саму картинку логотипа.
+# Отступ логотипа от края фона (доля ширины фона); сверить со Steam на этапе 7.
+$script:EditorLogoPadFraction = 0.03
+
+function Get-EditorComposeBackRect($heroImage, $clientSize) {
+    # Прямоугольник фона внутри PictureBox: вписан по центру, пропорции сохранены.
+    # Нет hero - рабочая заглушка с пропорциями hero Steam (3840x1240).
+    $ar = 3840.0 / 1240.0
+    try { if ($null -ne $heroImage -and $heroImage.Height -gt 0) { $ar = [double]$heroImage.Width / [double]$heroImage.Height } } catch {}
+    $cw = [double]$clientSize.Width; $ch = [double]$clientSize.Height
+    if ($cw -le 0 -or $ch -le 0) { return [System.Drawing.RectangleF]::Empty }
+    $w = $cw; $h = $w / $ar
+    if ($h -gt $ch) { $h = $ch; $w = $h * $ar }
+    return [System.Drawing.RectangleF]::new([single](($cw - $w) / 2.0), [single](($ch - $h) / 2.0), [single]$w, [single]$h)
+}
+
+function Get-EditorLogoRect($logoImage, $backRect, $state) {
+    # Реальные границы логотипа (в координатах PictureBox). Пустой прямоугольник - логотипа нет.
+    # Эту же функцию использует проверка попадания клика на этапе 3.
+    if ($null -eq $logoImage -or $logoImage.Width -le 0 -or $logoImage.Height -le 0 -or $backRect.Width -le 0) { return [System.Drawing.RectangleF]::Empty }
+    $wp = 50.0; $hp = 50.0; $pos = 'BottomLeft'
+    try { $wp = [double]$state.LogoWidthPct; $hp = [double]$state.LogoHeightPct; $pos = [string]$state.LogoPosition } catch {}
+    $wp = [math]::Max(1.0, [math]::Min(100.0, $wp)); $hp = [math]::Max(1.0, [math]::Min(100.0, $hp))
+    $bw = [double]$backRect.Width * $wp / 100.0; $bh = [double]$backRect.Height * $hp / 100.0
+    $sc = [math]::Min($bw / [double]$logoImage.Width, $bh / [double]$logoImage.Height)
+    $lw = [double]$logoImage.Width * $sc; $lh = [double]$logoImage.Height * $sc
+    $pad = [double]$backRect.Width * $script:EditorLogoPadFraction
+    $x = [double]$backRect.X + $pad
+    if ($pos -match 'Center') { $x = [double]$backRect.X + ([double]$backRect.Width - $lw) / 2.0 }
+    $y = [double]$backRect.Y + $pad
+    if ($pos -like 'Bottom*') { $y = [double]$backRect.Y + [double]$backRect.Height - $pad - $lh }
+    elseif ($pos -eq 'CenterCenter') { $y = [double]$backRect.Y + ([double]$backRect.Height - $lh) / 2.0 }
+    return [System.Drawing.RectangleF]::new([single]$x, [single]$y, [single]$lw, [single]$lh)
+}
+
+# Положения логотипа, которые поддерживает Steam (в порядке перебора при «прилипании»).
+$script:EditorLogoPositions = @('UpperLeft','UpperCenter','CenterCenter','BottomLeft','BottomCenter')
+# Порог в пикселях, после которого нажатие на логотипе считается перетаскиванием, а не кликом.
+$script:EditorLogoDragThreshold = 4
+$script:EditorLogoScaleMin = 10
+$script:EditorLogoScaleMax = 100
+$script:EditorLogoScaleStep = 5
+
+function Invoke-EditorControlClick($ctl) {
+    # Вызывает уже подключённые обработчики Click элемента (выбор hero / логотипа), не дублируя их код.
+    try {
+        if ($null -eq $ctl) { return }
+        $m = [System.Windows.Forms.Control].GetMethod('OnClick', [System.Reflection.BindingFlags]'NonPublic,Instance')
+        if ($null -ne $m) { [void]$m.Invoke($ctl, @([System.EventArgs]::Empty)) }
+    } catch {}
+}
+
+function Test-EditorComposeHidden($hs) {
+    # Скрытая карточка (автодобавление ромов открывает её с Opacity = 0): композицию не рисуем и не обновляем,
+    # это впустую тратит время очереди. Когда карточку показывают, композиция обновляется заново.
+    try { $f = $hs.Picture.FindForm(); return ($null -ne $f -and [double]$f.Opacity -eq 0) } catch { return $false }
+}
+
+function Test-EditorComposeBusy($hs) {
+    # Пока грузится фон или логотип, управление композицией заблокировано.
+    try { if ($hs.IsLoading) { return $true } } catch {}
+    try { if ($hs.ComposeLogo.IsLoading) { return $true } } catch {}
+    return $false
+}
+
+function Get-EditorComposeGeometry($hs) {
+    # Текущие прямоугольники композиции в координатах PictureBox: фон и логотип (пустой, если логотипа нет или он скрыт).
+    $pb = $hs.Picture
+    $hidden = $false
+    try { $hidden = [bool]$hs.EditorState.LogoHidden } catch {}
+    $logoImg = $null
+    if (-not $hidden) { try { $logoImg = $hs.ComposeLogo.Picture.Image } catch {} }
+    $back = Get-EditorComposeBackRect $pb.Image $pb.ClientSize
+    $lr = [System.Drawing.RectangleF]::Empty
+    if ($null -ne $logoImg -and $back.Width -gt 0) { $lr = Get-EditorLogoRect $logoImg $back $hs.EditorState }
+    return [PSCustomObject]@{ Back = $back; Logo = $lr; LogoImage = $logoImg }
+}
+
+function Get-EditorLogoSnapPosition($logoImage, $back, $state, $dragRect) {
+    # Ближайшая из пяти позиций Steam: сравниваются центры логотипа в каждой позиции и перетаскиваемого логотипа.
+    $cx = [double]$dragRect.X + [double]$dragRect.Width / 2.0
+    $cy = [double]$dragRect.Y + [double]$dragRect.Height / 2.0
+    $best = [string]$state.LogoPosition
+    $bestDist = [double]::MaxValue
+    foreach ($pos in $script:EditorLogoPositions) {
+        $tmp = [PSCustomObject]@{ LogoWidthPct = $state.LogoWidthPct; LogoHeightPct = $state.LogoHeightPct; LogoPosition = $pos }
+        $r = Get-EditorLogoRect $logoImage $back $tmp
+        if ($r.Width -le 0) { continue }
+        $dx = ([double]$r.X + [double]$r.Width / 2.0) - $cx
+        $dy = ([double]$r.Y + [double]$r.Height / 2.0) - $cy
+        $d = $dx * $dx + $dy * $dy
+        if ($d -lt $bestDist) { $bestDist = $d; $best = $pos }
+    }
+    return $best
+}
+
+function Set-EditorLogoScale($hs, [int]$percent) {
+    # Масштаб логотипа: ширина и высота рамки в процентах от фона меняются вместе.
+    $v = [math]::Max($script:EditorLogoScaleMin, [math]::Min($script:EditorLogoScaleMax, $percent))
+    $st = $hs.EditorState
+    $st.LogoWidthPct = $v
+    $st.LogoHeightPct = $v
+    try { if ($hs.Slider.Value -ne $v) { $hs.Slider.Value = $v } } catch {}
+    Update-EditorComposeScaleLabel $hs
+    $hs.Picture.Invalidate()
+}
+
+function New-EditorComposeHeaderButton([string]$text, $tag) {
+    $btn = New-Object System.Windows.Forms.Button
+    $font = New-Object System.Drawing.Font('Segoe UI', 8.5)
+    $w = 90
+    try { $w = [System.Windows.Forms.TextRenderer]::MeasureText($text, $font).Width + 20 } catch {}
+    $btn.Font = $font
+    $btn.Size = New-Object System.Drawing.Size($w, 24)
+    $btn.FlatStyle = 'Flat'
+    $btn.FlatAppearance.BorderColor = $steamUi.Border
+    $btn.FlatAppearance.MouseOverBackColor = $steamUi.Selected
+    $btn.BackColor = $steamUi.Panel
+    $btn.ForeColor = $steamUi.Text
+    $btn.Padding = New-Object System.Windows.Forms.Padding(0)
+    $btn.Text = $text
+    $btn.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $btn.TabStop = $false
+    $btn.Tag = $tag
+    return $btn
+}
+
+function Set-EditorComposeTip($hs, [string]$kind) {
+    # Подсказка над превью зависит от того, что под курсором (логотип / фон / идёт загрузка).
+    # Текст переустанавливается только при смене области, иначе ToolTip мерцает.
+    try {
+        $ui = $hs.ComposeUi
+        if ($null -eq $ui -or [string]$ui.TipKind -eq $kind) { return }
+        $ui.TipKind = $kind
+        $key = 'logo_tip_preview_bg'
+        if ($kind -eq 'logo') { $key = 'logo_tip_preview_logo' } elseif ($kind -eq 'busy') { $key = 'logo_tip_busy' }
+        $text = T $key
+        $hs.EyeTip.SetToolTip($hs.Picture, $text)
+        $hs.EyeTip.SetToolTip($hs.Missing, $text)
+    } catch {}
+}
+
+function Update-EditorComposeScaleLabel($hs) {
+    # Подпись у ползунка: «Размер логотипа: N%». Приглушена, пока ползунок недоступен.
+    try {
+        $v = 50
+        try { $v = [int][math]::Round([double]$hs.EditorState.LogoWidthPct) } catch {}
+        $hs.ScaleLabel.Text = (T 'logo_scale_label' @($v))
+        if ($hs.Slider.Enabled) { $hs.ScaleLabel.ForeColor = $steamUi.Text } else { $hs.ScaleLabel.ForeColor = $steamUi.Muted }
+    } catch {}
+}
+
+function New-EditorScaledBitmap($img, [int]$w, [int]$h) {
+    # Копия картинки нужного размера в формате PArgb: такую картинку GDI+ рисует без пересчёта пикселей.
+    $bmp = New-Object System.Drawing.Bitmap($w, $h, [System.Drawing.Imaging.PixelFormat]::Format32bppPArgb)
+    $g = [System.Drawing.Graphics]::FromImage($bmp)
+    $ia = New-Object System.Drawing.Imaging.ImageAttributes
+    try {
+        $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+        $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+        $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
+        $ia.SetWrapMode([System.Drawing.Drawing2D.WrapMode]::TileFlipXY)
+        $g.DrawImage($img, (New-Object System.Drawing.Rectangle(0, 0, $w, $h)), 0, 0, [int]$img.Width, [int]$img.Height, [System.Drawing.GraphicsUnit]::Pixel, $ia)
+    } finally { $ia.Dispose(); $g.Dispose() }
+    return $bmp
+}
+
+function Get-EditorComposeBitmap($ui, [string]$slot, $img, [int]$w, [int]$h) {
+    # Кэш для Paint: тяжёлое бикубическое масштабирование делается один раз на (картинка, размер),
+    # а при перетаскивании рисуется готовый битмап 1:1. Большие исходники (логотипы SGDB бывают 2-3 тыс. px)
+    # один раз уменьшаются до промежуточной копии <= 1024 px, с неё же пересчитывается масштаб колесом/ползунком.
+    if ($null -eq $img -or $w -le 0 -or $h -le 0) { return $null }
+    $c = $ui.Cache[$slot]
+    if ($null -eq $c) { $c = @{ Src = $null; W = 0; H = 0; Bmp = $null; Proxy = $null }; $ui.Cache[$slot] = $c }
+    if ([object]::ReferenceEquals($c.Src, $img) -and $c.W -eq $w -and $c.H -eq $h -and $null -ne $c.Bmp) { return $c.Bmp }
+    if (-not [object]::ReferenceEquals($c.Src, $img)) {
+        if ($null -ne $c.Proxy) { try { $c.Proxy.Dispose() } catch {}; $c.Proxy = $null }
+        $c.Src = $img
+        $long = [math]::Max([int]$img.Width, [int]$img.Height)
+        if ($long -gt 1024) {
+            $k = 1024.0 / $long
+            $c.Proxy = New-EditorScaledBitmap $img ([math]::Max(1, [int][math]::Round($img.Width * $k))) ([math]::Max(1, [int][math]::Round($img.Height * $k)))
+        }
+    }
+    $from = $img
+    if ($null -ne $c.Proxy) { $from = $c.Proxy }
+    if ($null -ne $c.Bmp) { try { $c.Bmp.Dispose() } catch {} }
+    $c.Bmp = New-EditorScaledBitmap $from $w $h
+    $c.W = $w; $c.H = $h
+    return $c.Bmp
+}
+
+function Update-EditorComposeView($slot) {
+    # Вызывается после смены картинки/состояния hero или logo (и начала/конца загрузки): переключает заглушку,
+    # глаз, кнопки и ползунок и перерисовывает превью.
+    try {
+        if ($null -eq $slot) { return }
+        $hero = $null
+        if ($null -ne $slot.PSObject.Properties['ComposeLogo']) { $hero = $slot }
+        elseif ($null -ne $slot.PSObject.Properties['ComposeHero']) { $hero = $slot.ComposeHero }
+        if ($null -eq $hero) { return }
+        if (Test-EditorComposeHidden $hero) { return }
+        $logo = $hero.ComposeLogo
+        $hasHero = ($null -ne $hero.Picture.Image)
+        $hasLogo = ($null -ne $logo -and $null -ne $logo.Picture.Image)
+        if ($hasHero -or $hasLogo) {
+            # Есть что показывать: обычную заглушку «нет обложки» убираем, композиция рисуется сама.
+            $hero.Missing.Visible = $false
+            $hero.Picture.Visible = $true
+        }
+        elseif (-not $hero.IsLoading -and $null -ne $hero.Missing.Image) {
+            # Нет ни фона, ни логотипа: обычная заглушка источника.
+            $hero.Missing.Visible = $true
+            $hero.Picture.Visible = $false
+        }
+        $busy = Test-EditorComposeBusy $hero
+        if ($busy) { Set-EditorComposeTip $hero 'busy' } elseif ([string]$hero.ComposeUi.TipKind -eq 'busy') { Set-EditorComposeTip $hero 'bg' }
+        $hidden = $false
+        try { $hidden = [bool]$hero.EditorState.LogoHidden } catch {}
+        $eye = $null
+        try { $eye = $hero.EyeButton } catch {}
+        if ($null -ne $eye) {
+            $eye.Visible = $hasLogo
+            $eye.Enabled = -not $busy
+            $eye.Text = [string][char]$(if ($hidden) { 0xED1A } else { 0xE7B3 })
+            try { $hero.EyeTip.SetToolTip($eye, (T $(if ($hidden) { 'logo_eye_show' } else { 'logo_eye_hide' }))) } catch {}
+            if ($hasLogo) { $eye.BringToFront() }
+        }
+        try { $hero.BtnBackground.Enabled = -not $busy } catch {}
+        try { $hero.BtnLogo.Enabled = -not $busy } catch {}
+        try {
+            $sl = $hero.Slider
+            if ($null -ne $sl) {
+                $v = 50
+                try { $v = [int][math]::Round([double]$hero.EditorState.LogoWidthPct) } catch {}
+                $v = [math]::Max($script:EditorLogoScaleMin, [math]::Min($script:EditorLogoScaleMax, $v))
+                if ($sl.Value -ne $v) { $sl.Value = $v }
+                $sl.Enabled = ($hasLogo -and -not $hidden -and -not $busy)
+            }
+        } catch {}
+        Update-EditorComposeScaleLabel $hero
+        if ($busy) { try { $hero.Picture.Cursor = [System.Windows.Forms.Cursors]::Default } catch {} }
+        else { try { $hero.Picture.Cursor = [System.Windows.Forms.Cursors]::Hand } catch {} }
+        $hero.Picture.Invalidate()
+    } catch {}
+}
+
+function Initialize-EditorCompose($heroSlot, $logoSlot) {
+    # Подключает к слоту Hero отрисовку композиции и управление: клики, перетаскивание, масштаб, «глаз»,
+    # кнопки смены фона/логотипа в заголовке и ползунок масштаба под превью.
+    if ($null -eq $heroSlot -or $null -eq $logoSlot) { return }
+    $heroSlot | Add-Member -NotePropertyName ComposeLogo -NotePropertyValue $logoSlot -Force
+    $logoSlot | Add-Member -NotePropertyName ComposeHero -NotePropertyValue $heroSlot -Force
+    $heroSlot | Add-Member -NotePropertyName ComposeUi -NotePropertyValue ([hashtable]@{
+        Down = $false; HitLogo = $false; Dragging = $false; TipKind = ''; Cache = @{}
+        StartX = 0; StartY = 0; GrabX = 0.0; GrabY = 0.0
+        DragRect = [System.Drawing.RectangleF]::Empty
+    }) -Force
+    $heroSlot.Picture.Tag = $heroSlot
+    # У фона и логотипа источники независимы (например, hero из Steam, логотип из SteamGridDB), поэтому показываем два значка:
+    # значок скрытого слота Logo переносим на панель Hero, левее значка фона. Вся прежняя логика значков работает как раньше.
+    try {
+        $heroSlot | Add-Member -NotePropertyName BadgeTipPrefix -NotePropertyValue (T 'logo_src_bg') -Force
+        $logoSlot | Add-Member -NotePropertyName BadgeTipPrefix -NotePropertyValue (T 'logo_src_logo') -Force
+        $logoBadge = $logoSlot.SourceBadge
+        $logoSlot.Panel.Controls.Remove($logoBadge)
+        $heroSlot.Panel.Controls.Add($logoBadge)
+        $logoBadge.Location = New-Object System.Drawing.Point(([int]$heroSlot.Panel.Width - 58), 7)
+        $logoBadge.BringToFront()
+    } catch {}
+    # Двойная буферизация убирает мерцание при перетаскивании (свойство DoubleBuffered у PictureBox закрытое).
+    try { [System.Windows.Forms.Control].GetProperty('DoubleBuffered', [System.Reflection.BindingFlags]'NonPublic,Instance').SetValue($heroSlot.Picture, $true, $null) } catch {}
+    $heroSlot.Picture.Add_Disposed({
+        try {
+            $hs = $this.Tag
+            foreach ($ck in @($hs.ComposeUi.Cache.Keys)) {
+                $c = $hs.ComposeUi.Cache[$ck]
+                try { if ($null -ne $c.Bmp) { $c.Bmp.Dispose() } } catch {}
+                try { if ($null -ne $c.Proxy) { $c.Proxy.Dispose() } } catch {}
+            }
+        } catch {}
+    })
+
+    # Превью немного ниже по высоте: под ним остаётся свободная полоса для ползунка масштаба.
+    $picH = 180
+    # Нижняя строка (подпись, «глаз», ползунок) - в одну линию по центру свободной полосы между низом превью и нижним краем слота.
+    $scaleLblW = 170
+    # Под превью две строки: ползунок масштаба (28 px) и ниже галочка «по умолчанию» (22 px).
+    $rowY = [int](35 + $picH + 4)
+    $heroSlot.Picture.Size = New-Object System.Drawing.Size([int]$heroSlot.Picture.Width, $picH)
+    $heroSlot.Missing.Size = New-Object System.Drawing.Size([int]$heroSlot.Missing.Width, $picH)
+
+    $heroSlot.Picture.Add_Paint({
+        param($sender, $e)
+        try {
+            $hs = $sender.Tag
+            if ($null -eq $hs) { return }
+            if (Test-EditorComposeHidden $hs) { return }
+            $g = $e.Graphics
+            $bgBrush = New-Object System.Drawing.SolidBrush($sender.BackColor)
+            try { $g.FillRectangle($bgBrush, $sender.ClientRectangle) } finally { $bgBrush.Dispose() }
+            $heroImg = $sender.Image
+            $logoImg = $null
+            $hidden = $false
+            try { $hidden = [bool]$hs.EditorState.LogoHidden } catch {}
+            if (-not $hidden) { $logoImg = $hs.ComposeLogo.Picture.Image }
+            if ($null -eq $heroImg -and $null -eq $logoImg) { return }
+            $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+            $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
+            $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+            $back = Get-EditorComposeBackRect $heroImg $sender.ClientSize
+            if ($back.Width -le 0) { return }
+            $ui = $hs.ComposeUi
+            $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::Default
+            if ($null -ne $heroImg) {
+                $bx = [int][math]::Round($back.X); $by = [int][math]::Round($back.Y); $bw = [int][math]::Round($back.Width); $bh = [int][math]::Round($back.Height)
+                $hb = Get-EditorComposeBitmap $ui 'Hero' $heroImg $bw $bh
+                if ($null -ne $hb) { $g.DrawImage($hb, $bx, $by, $bw, $bh) }
+            }
+            else {
+                $stubBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 18, 22, 29))
+                try { $g.FillRectangle($stubBrush, $back) } finally { $stubBrush.Dispose() }
+            }
+            if ($null -ne $logoImg) {
+                $lr = Get-EditorLogoRect $logoImg $back $hs.EditorState
+                # Во время перетаскивания логотип рисуется там, где его держит курсор.
+                if ($null -ne $ui -and $ui.Dragging -and $ui.DragRect.Width -gt 0) { $lr = $ui.DragRect }
+                if ($lr.Width -gt 0) {
+                    $lw = [math]::Max(1, [int][math]::Round($lr.Width)); $lh = [math]::Max(1, [int][math]::Round($lr.Height))
+                    $lb = Get-EditorComposeBitmap $ui 'Logo' $logoImg $lw $lh
+                    if ($null -ne $lb) { $g.DrawImage($lb, [int][math]::Round($lr.X), [int][math]::Round($lr.Y), $lw, $lh) }
+                }
+            }
+        } catch {}
+    })
+
+    # --- Управление мышью: нажатие, перетаскивание с порогом, отпускание (клик), колесо ---
+    $heroSlot.Picture.Add_MouseDown({
+        param($sender, $e)
+        try {
+            $hs = $sender.Tag
+            if ($null -eq $hs -or $e.Button -ne [System.Windows.Forms.MouseButtons]::Left) { return }
+            if (Test-EditorComposeBusy $hs) { return }
+            $ui = $hs.ComposeUi
+            $geo = Get-EditorComposeGeometry $hs
+            $ui.Down = $true
+            $ui.Dragging = $false
+            $ui.StartX = [int]$e.X
+            $ui.StartY = [int]$e.Y
+            $ui.HitLogo = ($geo.Logo.Width -gt 0 -and $geo.Logo.Contains([single]$e.X, [single]$e.Y))
+            $ui.GrabX = [double]$e.X - [double]$geo.Logo.X
+            $ui.GrabY = [double]$e.Y - [double]$geo.Logo.Y
+        } catch {}
+    })
+
+    $heroSlot.Picture.Add_MouseMove({
+        param($sender, $e)
+        try {
+            $hs = $sender.Tag
+            if ($null -eq $hs) { return }
+            $ui = $hs.ComposeUi
+            if (Test-EditorComposeBusy $hs) {
+                $sender.Cursor = [System.Windows.Forms.Cursors]::Default
+                Set-EditorComposeTip $hs 'busy'
+                $ui.Down = $false; $ui.Dragging = $false; $ui.DragRect = [System.Drawing.RectangleF]::Empty
+                return
+            }
+            if ($ui.Down) {
+                if (-not $ui.Dragging -and $ui.HitLogo) {
+                    $thr = [int]$script:EditorLogoDragThreshold
+                    if ([math]::Abs([int]$e.X - [int]$ui.StartX) -ge $thr -or [math]::Abs([int]$e.Y - [int]$ui.StartY) -ge $thr) { $ui.Dragging = $true }
+                }
+                if ($ui.Dragging) {
+                    $geo = Get-EditorComposeGeometry $hs
+                    if ($geo.Logo.Width -gt 0) {
+                        $lw = [double]$geo.Logo.Width; $lh = [double]$geo.Logo.Height
+                        $x = [double]$e.X - [double]$ui.GrabX
+                        $y = [double]$e.Y - [double]$ui.GrabY
+                        $x = [math]::Max([double]$geo.Back.X, [math]::Min([double]$geo.Back.X + [double]$geo.Back.Width - $lw, $x))
+                        $y = [math]::Max([double]$geo.Back.Y, [math]::Min([double]$geo.Back.Y + [double]$geo.Back.Height - $lh, $y))
+                        $prev = $ui.DragRect
+                        if ($prev.Width -le 0) { $prev = $geo.Logo }
+                        $ui.DragRect = [System.Drawing.RectangleF]::new([single]$x, [single]$y, [single]$lw, [single]$lh)
+                        $sender.Cursor = [System.Windows.Forms.Cursors]::SizeAll
+                        # Перерисовываем только объединение старого и нового положения логотипа, а не всё превью.
+                        $dirty = [System.Drawing.RectangleF]::Union($prev, $ui.DragRect)
+                        $sender.Invalidate([System.Drawing.Rectangle]::Ceiling([System.Drawing.RectangleF]::Inflate($dirty, 3, 3)))
+                    }
+                }
+                return
+            }
+            $geo = Get-EditorComposeGeometry $hs
+            if ($geo.Logo.Width -gt 0 -and $geo.Logo.Contains([single]$e.X, [single]$e.Y)) { $sender.Cursor = [System.Windows.Forms.Cursors]::SizeAll; Set-EditorComposeTip $hs 'logo' }
+            else { $sender.Cursor = [System.Windows.Forms.Cursors]::Hand; Set-EditorComposeTip $hs 'bg' }
+        } catch {}
+    })
+
+    $heroSlot.Picture.Add_MouseUp({
+        param($sender, $e)
+        try {
+            $hs = $sender.Tag
+            if ($null -eq $hs) { return }
+            $ui = $hs.ComposeUi
+            if (-not $ui.Down) { return }
+            $wasDrag = [bool]$ui.Dragging
+            $hit = [bool]$ui.HitLogo
+            $dragRect = $ui.DragRect
+            $ui.Down = $false; $ui.Dragging = $false; $ui.HitLogo = $false
+            $ui.DragRect = [System.Drawing.RectangleF]::Empty
+            if ($e.Button -ne [System.Windows.Forms.MouseButtons]::Left) { $sender.Invalidate(); return }
+            if ($wasDrag) {
+                # Отпустили после перетаскивания: логотип прилипает к ближайшей из пяти позиций Steam.
+                $geo = Get-EditorComposeGeometry $hs
+                if ($null -ne $geo.LogoImage -and $geo.Back.Width -gt 0 -and $dragRect.Width -gt 0) {
+                    $hs.EditorState.LogoPosition = (Get-EditorLogoSnapPosition $geo.LogoImage $geo.Back $hs.EditorState $dragRect)
+                }
+                $sender.Invalidate()
+                return
+            }
+            $sender.Invalidate()
+            if (Test-EditorComposeBusy $hs) { return }
+            if (-not $sender.ClientRectangle.Contains([int]$e.X, [int]$e.Y)) { return }
+            # Обычный клик: по логотипу - выбор логотипа, по фону - выбор hero (существующие обработчики слотов).
+            if ($hit) { Invoke-EditorControlClick $hs.ComposeLogo.Picture }
+            else { Invoke-EditorControlClick $hs.Missing }
+        } catch {}
+    })
+
+    $heroSlot.Picture.Add_MouseWheel({
+        param($sender, $e)
+        try {
+            $hs = $sender.Tag
+            if ($null -eq $hs) { return }
+            if (Test-EditorComposeBusy $hs) { return }
+            $geo = Get-EditorComposeGeometry $hs
+            if ($geo.Logo.Width -le 0 -or -not $geo.Logo.Contains([single]$e.X, [single]$e.Y)) { return }
+            $cur = 50.0
+            try { $cur = [double]$hs.EditorState.LogoWidthPct } catch {}
+            $step = [int]$script:EditorLogoScaleStep
+            if ($e.Delta -lt 0) { $step = -$step }
+            Set-EditorLogoScale $hs ([int][math]::Round($cur) + $step)
+            if ($e -is [System.Windows.Forms.HandledMouseEventArgs]) { $e.Handled = $true }
+        } catch {}
+    })
+
+    # --- «Глаз» (показать/скрыть логотип на превью): стоит в полосе под превью, сразу перед началом шкалы масштаба ---
+    $eye = New-Object System.Windows.Forms.Button
+    $eye.Size = New-Object System.Drawing.Size(26, 24)
+    $eye.Location = New-Object System.Drawing.Point((10 + $scaleLblW + 4), ($rowY + 2))
+    $eye.FlatStyle = 'Flat'
+    $eye.FlatAppearance.BorderColor = $steamUi.Border
+    $eye.BackColor = $steamUi.Panel
+    $eye.ForeColor = $steamUi.Text
+    $eye.Font = New-Object System.Drawing.Font('Segoe MDL2 Assets', 10)
+    $eye.Padding = New-Object System.Windows.Forms.Padding(0)
+    $eye.Text = [string][char]0xE7B3
+    $eye.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $eye.TabStop = $false
+    $eye.Visible = $false
+    $eye.Tag = $heroSlot
+    $eye.Add_Click({
+        try {
+            $hs = $this.Tag
+            if (Test-EditorComposeBusy $hs) { return }
+            $st = $hs.EditorState
+            $st.LogoHidden = -not [bool]$st.LogoHidden
+            Update-EditorComposeView $hs
+        } catch {}
+    })
+    $heroSlot.Panel.Controls.Add($eye)
+    $eye.BringToFront()
+    $heroSlot | Add-Member -NotePropertyName EyeButton -NotePropertyValue $eye -Force
+    $heroSlot | Add-Member -NotePropertyName EyeTip -NotePropertyValue (New-Object System.Windows.Forms.ToolTip) -Force
+
+    # --- Кнопки «Сменить логотип» / «Сменить фон» в заголовке слота (левее «глаза») ---
+    $btnLogo = New-EditorComposeHeaderButton (T 'logo_btn_logo') $heroSlot
+    $btnLogo.Add_Click({
+        try {
+            $hs = $this.Tag
+            if (Test-EditorComposeBusy $hs) { return }
+            Invoke-EditorControlClick $hs.ComposeLogo.Picture
+        } catch {}
+    })
+    $btnBg = New-EditorComposeHeaderButton (T 'logo_btn_bg') $heroSlot
+    $btnBg.Add_Click({
+        try {
+            $hs = $this.Tag
+            if (Test-EditorComposeBusy $hs) { return }
+            Invoke-EditorControlClick $hs.Missing
+        } catch {}
+    })
+    # Порядок слева направо: [Сменить логотип] (значок логотипа) [Сменить фон] (значок фона) [правый край].
+    # Значок стоит сразу после своей кнопки.
+    $badgeLogoCtl = $logoSlot.SourceBadge
+    $badgeHeroCtl = $heroSlot.SourceBadge
+    $badgeHeroCtl.Location = New-Object System.Drawing.Point(([int]$heroSlot.Panel.Width - 10 - [int]$badgeHeroCtl.Width), 8)
+    $btnBg.Location = New-Object System.Drawing.Point(([int]$badgeHeroCtl.Left - 4 - [int]$btnBg.Width), 7)
+    $badgeLogoCtl.Location = New-Object System.Drawing.Point(([int]$btnBg.Left - 6 - [int]$badgeLogoCtl.Width), 8)
+    $btnLogo.Location = New-Object System.Drawing.Point(([int]$badgeLogoCtl.Left - 4 - [int]$btnLogo.Width), 7)
+    $heroSlot.Panel.Controls.Add($btnLogo)
+    $heroSlot.Panel.Controls.Add($btnBg)
+    $btnLogo.BringToFront(); $btnBg.BringToFront()
+    try { $badgeHeroCtl.BringToFront(); $badgeLogoCtl.BringToFront() } catch {}
+    $heroSlot | Add-Member -NotePropertyName BtnLogo -NotePropertyValue $btnLogo -Force
+    $heroSlot | Add-Member -NotePropertyName BtnBackground -NotePropertyValue $btnBg -Force
+    # Подпись слота не должна заезжать под кнопки.
+    try { $heroSlot.Caption.AutoEllipsis = $true; $heroSlot.Caption.Width = [math]::Max(60, [int]$btnLogo.Left - 10 - 8) } catch {}
+    # Подсказки на кнопках заголовка (тот же ToolTip, что у «глаза», задержки как у главного окна).
+    try {
+        $heroTip = $heroSlot.EyeTip
+        $heroTip.AutoPopDelay = 8000; $heroTip.InitialDelay = 400; $heroTip.ReshowDelay = 200
+        $heroTip.SetToolTip($btnBg, (T 'logo_tip_btn_bg'))
+        $heroTip.SetToolTip($btnLogo, (T 'logo_tip_btn_logo'))
+    } catch {}
+
+    # --- Ползунок масштаба в свободной полосе под превью ---
+    $tb = New-Object System.Windows.Forms.TrackBar
+    $tb.AutoSize = $false
+    $tb.Minimum = [int]$script:EditorLogoScaleMin
+    $tb.Maximum = [int]$script:EditorLogoScaleMax
+    $tb.SmallChange = [int]$script:EditorLogoScaleStep
+    $tb.LargeChange = 10
+    $tb.TickStyle = [System.Windows.Forms.TickStyle]::None
+    $scaleLblW = 170
+    $lblScale = New-Object System.Windows.Forms.Label
+    $lblScale.AutoSize = $false
+    $lblScale.AutoEllipsis = $true
+    $lblScale.Font = New-Object System.Drawing.Font('Segoe UI', 8.5)
+    $lblScale.ForeColor = $steamUi.Muted
+    $lblScale.BackColor = [System.Drawing.Color]::Transparent
+    $lblScale.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
+    $lblScale.Location = New-Object System.Drawing.Point(10, ($rowY + 2))
+    $lblScale.Size = New-Object System.Drawing.Size($scaleLblW, 24)
+    $heroSlot.Panel.Controls.Add($lblScale)
+    $heroSlot | Add-Member -NotePropertyName ScaleLabel -NotePropertyValue $lblScale -Force
+    # Линия TrackBar рисуется выше середины его высоты, поэтому ползунок опущен на 4 px, чтобы линия шла по центру кнопки и подписи.
+    $tb.Location = New-Object System.Drawing.Point((10 + $scaleLblW + 4 + 26 + 4), ($rowY + 4))
+    $tb.Size = New-Object System.Drawing.Size(([int]$heroSlot.Panel.Width - 10 - (10 + $scaleLblW + 4 + 26 + 4)), 28)
+    $tb.BackColor = $heroSlot.Panel.BackColor
+    $tb.Value = 50
+    $tb.TabStop = $false
+    $tb.Enabled = $false
+    $tb.Tag = $heroSlot
+    $tb.Add_Scroll({
+        try {
+            $hs = $this.Tag
+            if (Test-EditorComposeBusy $hs) { return }
+            $v = [int]$this.Value
+            $st = $hs.EditorState
+            $st.LogoWidthPct = $v
+            $st.LogoHeightPct = $v
+            Update-EditorComposeScaleLabel $hs
+            $hs.Picture.Invalidate()
+        } catch {}
+    })
+    $heroSlot.Panel.Controls.Add($tb)
+    $heroSlot | Add-Member -NotePropertyName Slider -NotePropertyValue $tb -Force
+
+    # --- Галочка «по умолчанию» под шкалой масштаба: положение и размер логотипа для всех карточек, ромов и автоимпорта ---
+    # Рисуется так же, как галочки в остальных окнах программы (квадрат 14x14, Accent с белой птичкой).
+    $chkDef = New-Object System.Windows.Forms.CheckBox
+    $chkDef.Text = (T 'logo_chk_default')
+    $chkDef.AutoSize = $false
+    $chkDef.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
+    $chkDef.UseVisualStyleBackColor = $false
+    $chkDef.BackColor = $heroSlot.Panel.BackColor
+    $chkDef.ForeColor = $steamUi.Text
+    $chkDef.Font = New-Object System.Drawing.Font('Segoe UI', 8.5)
+    $chkDef.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    $chkDef.FlatAppearance.BorderSize = 0
+    $chkDef.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $chkDef.TabStop = $false
+    $chkDef.Location = New-Object System.Drawing.Point(10, ($rowY + 30))
+    $chkDef.Size = New-Object System.Drawing.Size(([int]$heroSlot.Panel.Width - 20), 22)
+    $chkDef.Tag = $heroSlot
+    $chkDef.Add_MouseEnter({ param($s, $e) $s.Invalidate() })
+    $chkDef.Add_MouseLeave({ param($s, $e) $s.Invalidate() })
+    $chkDef.Add_Paint({
+        param($s, $pe)
+        $g = $pe.Graphics
+        $bgBrush = New-Object System.Drawing.SolidBrush($s.BackColor)
+        $g.FillRectangle($bgBrush, $s.ClientRectangle)
+        $bgBrush.Dispose()
+        $boxRect = New-Object System.Drawing.Rectangle(0, [int](($s.ClientSize.Height - 14) / 2), 14, 14)
+        if ($s.Checked) {
+            $fillBrush = New-Object System.Drawing.SolidBrush($steamUi.Accent)
+            $g.FillRectangle($fillBrush, $boxRect)
+            $fillBrush.Dispose()
+            $markPen = New-Object System.Drawing.Pen([System.Drawing.Color]::White, 1.6)
+            $g.DrawLine($markPen, $boxRect.X + 3, $boxRect.Y + 7, $boxRect.X + 6, $boxRect.Y + 10)
+            $g.DrawLine($markPen, $boxRect.X + 6, $boxRect.Y + 10, $boxRect.X + 11, $boxRect.Y + 3)
+            $markPen.Dispose()
+        } else {
+            $hover = $false
+            try { $hover = $s.ClientRectangle.Contains($s.PointToClient([System.Windows.Forms.Cursor]::Position)) } catch {}
+            $borderColor = if ($hover) { [System.Drawing.Color]::White } else { $steamUi.Muted }
+            $borderPen = New-Object System.Drawing.Pen($borderColor, 1.2)
+            $g.DrawRectangle($borderPen, $boxRect)
+            $borderPen.Dispose()
+        }
+        $textRect = New-Object System.Drawing.Rectangle(22, 0, [Math]::Max(10, $s.ClientSize.Width - 22), $s.ClientSize.Height)
+        $flags = [System.Windows.Forms.TextFormatFlags]::Left -bor [System.Windows.Forms.TextFormatFlags]::VerticalCenter -bor [System.Windows.Forms.TextFormatFlags]::NoPrefix -bor [System.Windows.Forms.TextFormatFlags]::EndEllipsis
+        [System.Windows.Forms.TextRenderer]::DrawText($g, [string]$s.Text, $s.Font, $textRect, $s.ForeColor, $flags)
+    }.GetNewClosure())
+    $chkDef.Add_CheckedChanged({
+        try {
+            $hs = $this.Tag
+            $hs.EditorState.LogoUseDefault = [bool]$this.Checked
+        } catch {}
+    })
+    $heroSlot.Panel.Controls.Add($chkDef)
+    $heroSlot | Add-Member -NotePropertyName ChkDefault -NotePropertyValue $chkDef -Force
+    try { $heroSlot.EyeTip.SetToolTip($chkDef, (Get-WrappedTipText ([string](T 'logo_tip_default')))) } catch {}
+    try {
+        $heroSlot.EyeTip.SetToolTip($tb, (T 'logo_tip_slider'))
+        $heroSlot.EyeTip.SetToolTip($lblScale, (T 'logo_tip_slider'))
+    } catch {}
+    Set-EditorComposeTip $heroSlot 'bg'
+    try { Update-EditorComposeView $heroSlot } catch {}
+}
+
+function Set-EditorMissingState($slot, [bool]$missing) {
+    Set-EditorMissingStateCore $slot $missing
+    if ($script:LogoComposeEnabled) { try { Update-EditorComposeView $slot } catch {} }
+}
+
 function Set-EditorPreviewFile($slot, $filePath) {
+    $r = Set-EditorPreviewFileCore $slot $filePath
+    if ($script:LogoComposeEnabled) { try { Update-EditorComposeView $slot } catch {} }
+    return $r
+}
+
+function Set-EditorPreviewFileCore($slot, $filePath) {
     try {
         if ($slot.Stream -ne $null) { $slot.Stream.Dispose(); $slot.Stream = $null }
         if ($slot.Picture.Image -ne $null) { $slot.Picture.Image.Dispose(); $slot.Picture.Image = $null }
@@ -15920,6 +16966,7 @@ function New-EditorCoverSlot($parent, [string]$title, [int]$x, [int]$y, [int]$w,
     $pb.Cursor = [System.Windows.Forms.Cursors]::Hand
     return [PSCustomObject]@{
         Panel=$group
+        Caption=$caption
         Picture=$pb
         Missing=$missing
         Stream=$null
@@ -15963,6 +17010,8 @@ function Set-EditorSlotLoading($slot, [bool]$loading) {
             Set-CoverSpinnerState $slot.Loading 'done'
             try { if ($null -ne $slot.PSObject.Properties['ExeButton'] -and $null -ne $slot.ExeButton) { $slot.ExeButton.Visible = $true; $slot.ExeButton.BringToFront() } } catch {}
         }
+        # Идёт загрузка - управление композицией блокируется, закончилась - разблокируется.
+        if ($script:LogoComposeEnabled) { try { Update-EditorComposeView $slot } catch {} }
     } catch {}
 }
 
@@ -21481,6 +22530,8 @@ function New-ConfidenceBadge($parent, [int]$x, [int]$y) {
 function Set-ConfidenceBadge($pictureBox, [bool]$confident, [string]$confidentTip, [string]$unsureTip) {
     try {
         if ($null -eq $pictureBox) { return }
+        # Состояние значка читает автодобавление ROM (см. $autoRomSubmit в Show-GameEditorDialog).
+        try { $pictureBox.AccessibleDescription = $(if ($confident) { 'ok' } else { 'unsure' }) } catch {}
         $bmp = Get-ConfidenceBadgeBitmap $confident
         try { if ($null -ne $pictureBox.Image) { $pictureBox.Image.Dispose() } } catch {}
         $pictureBox.Image = $bmp
@@ -31256,7 +32307,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     # Каждая новая карточка начинает с чистого состояния отмены.
     # Предыдущая карточка могла быть закрыта во время сетевой загрузки.
     $global:editorLoadAbortRequested = $false
-    if($batchMode){ $script:batchCardCancelRequested = $false; $script:batchCardSkipRequested = $false }
+    if($batchMode){ if (-not $script:smartBatchActive) { $script:batchCardCancelRequested = $false }; $script:batchCardSkipRequested = $false }
     $editMode = $false
     $existingShortcut = $null
     $licensedMode = $false
@@ -31314,6 +32365,30 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     # Подписи центрируются относительно этой строки отдельной координатой Y=17.
     $dlg = New-Object System.Windows.Forms.Form
     $dlg.Text = (T 'card_title' @($originalCardName))
+    # Автоимпорт ROM: карточка открывается невидимой (Opacity = 0). Если название, эмулятор и ROM
+    # определены уверенно, в конце Add_Shown она сама нажимает «Добавить игру в библиотеку».
+    # Иначе показывается как обычно — пользователь проверяет и правит вручную.
+    $autoRomSubmit = ($batchMode -and $IsRomEntry -and ($null -eq $batchHost) -and [bool]$script:romAutoSubmitRequested)
+    if ($autoRomSubmit) { try { $dlg.Opacity = 0 } catch {} }
+    # Тихий проход по ромам (см. Invoke-SmartBatchAdd): невидимая карточка не должна
+    # блокировать главное окно — иначе кнопку «Отменить добавление» не нажать.
+    # Таймер закрывает скрытую карточку, как только отмена запрошена.
+    if ($autoRomSubmit -and [bool]$script:romAutoDeferOnly) {
+        try { $dlg.ShowInTaskbar = $false } catch {}
+        $romCancelTimer = New-Object System.Windows.Forms.Timer
+        $romCancelTimer.Interval = 150
+        $romCancelTimer.Add_Tick({
+            try {
+                if ($script:batchCardCancelRequested -and $dlg.Opacity -eq 0 -and -not $dlg.IsDisposed) {
+                    $global:editorLoadAbortRequested = $true
+                    $dlg.Close()
+                }
+            } catch {}
+        })
+        $romCancelTimer.Start()
+        $dlg.Add_FormClosed({ try { $romCancelTimer.Stop(); $romCancelTimer.Dispose() } catch {} })
+        $dlg.Add_Shown({ try { if ($null -ne $ownerWin -and $dlg.Opacity -eq 0) { $ownerWin.Enabled = $true } } catch {} })
+    }
     # В режиме ROMs между строкой "Эмулятор" и строкой "Параметры" добавляется
     # ещё одна строка — "ROM". Все контролы ниже неё (сами "Параметры",
     # статус-строка и слоты обложек) сдвигаются вниз на высоту этой строки,
@@ -31527,7 +32602,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
         elseif ($IsRomEntry) { 'rom:' + [string]$gamePath + '|' + [string]$originalCardName }
         elseif (-not [string]::IsNullOrWhiteSpace([string]$gamePath)) { 'path:' + [string]$gamePath }
         else { 'name:' + [string]$originalCardName }
-    $editorState = [PSCustomObject]@{ CoverKey = $coverKeyValue; IsRom = [bool]$IsRomEntry; GamePath = [string]$gamePath; SearchSource = $(if($IsRomEntry){'SteamGridDB'}else{'Steam'}); SwitchSerial = 0; OpDepth = 0; OriginalTitle = [string]$gameName; Baseline = $null; AutoTitle = ''; LastSuggestionField = ''; SuppressTitleSuggestionOnce = $false; SuppressLaunchOptionOnce = $false }
+    $editorState = [PSCustomObject]@{ CoverKey = $coverKeyValue; IsRom = [bool]$IsRomEntry; GamePath = [string]$gamePath; SearchSource = $(if($IsRomEntry){'SteamGridDB'}else{'Steam'}); SwitchSerial = 0; OpDepth = 0; OriginalTitle = [string]$gameName; Baseline = $null; AutoTitle = ''; LastSuggestionField = ''; SuppressTitleSuggestionOnce = $false; SuppressLaunchOptionOnce = $false; LogoPosition = 'BottomLeft'; LogoWidthPct = 50; LogoHeightPct = 50; LogoHidden = $false; LogoSig0 = 'BottomLeft|50|50'; LogoFromCache = $false; LogoUseDefault = $false }
     try { $dlg.Tag = $editorState } catch {}
 
     # Название и EXE используют один и тот же стиль ComboBox:
@@ -32413,16 +33488,25 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
 
     $slots = [ordered]@{}
     $slots.Vertical = New-EditorCoverSlot $dlg (T 'slot_vertical') 20 (138+$romRowOffset) 270 280
+    if ($script:LogoComposeEnabled) {
+        # Этап 1: Горизонтальная под Вертикальной, Hero растянут на место бывших «Горизонтальной» и «Hero».
+        # Панель Logo скрыта, но остаётся в $slots: на ней держатся загрузка, значок источника, альтернативы и сохранение.
+        $slots.Horizontal = New-EditorCoverSlot $dlg (T 'slot_horizontal') 20 (428+$romRowOffset) 270 170
+        $slots.Hero = New-EditorCoverSlot $dlg (T 'slot_herologo') 305 (138+$romRowOffset) 555 280
+        $slots.Logo = New-EditorCoverSlot $dlg (T 'slot_logo') 20 (428+$romRowOffset) 270 170
+        $slots.Logo.Panel.Visible = $false
+    } else {
     $slots.Horizontal = New-EditorCoverSlot $dlg (T 'slot_horizontal') 305 (138+$romRowOffset) 270 280
     $slots.Hero = New-EditorCoverSlot $dlg (T 'slot_hero') 590 (138+$romRowOffset) 270 280
     $slots.Logo = New-EditorCoverSlot $dlg (T 'slot_logo') 20 (428+$romRowOffset) 270 170
+    }
     # Иконка приложения (clienticon) — справа от логотипа, в свободной зоне.
     # Размер такой же, как у остальных слотов (270x170, как у Логотипа) —
     # раньше слот был уже (120px), из-за чего фон-заглушка "NO COVER" не
     # помещалась целиком и выглядела обрезанной по сравнению с другими слотами.
     # Окно иконки сужено до 234 px (сама миниатюра 125×125 не уменьшается — она по центру, как и раньше):
     # освободившееся место отдано сетке библиотек апскейлеров справа (см. $dlssGridLeft).
-    $slots.Icon = New-EditorCoverSlot $dlg (T 'slot_icon') 305 (428+$romRowOffset) 234 170
+    $slots.Icon = New-EditorCoverSlot $dlg $(if ($script:LogoComposeEnabled) { (T 'slot_icon') -replace '^5\.','4.' } else { (T 'slot_icon') }) 305 (428+$romRowOffset) 234 170
     # Для всех типов обложек фон карточки должен совпадать
     # с тёмным фоном области изображения внутри.
     $slots.Vertical.Panel.BackColor = $steamUi.Input
@@ -32435,6 +33519,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     foreach ($slotKey in @($slots.Keys)) {
         try { $slots[$slotKey] | Add-Member -NotePropertyName EditorState -NotePropertyValue $editorState -Force } catch {}
     }
+    if ($script:LogoComposeEnabled) { try { Initialize-EditorCompose $slots.Hero $slots.Logo } catch {} }
 
     # Клик по миниатюре открывает альтернативы ИМЕННО этого типа.
     # Если текущий источник Steam, варианты подгружаются напрямую из SGDB по
@@ -32474,7 +33559,8 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
         }
         Show-EditorAlternativeCover $slots.Hero (T 'slot_hero')
     }
-    $slots.Hero.Picture.Add_Click($onSlotHeroClick)
+    # В композиции клик по превью разбирает MouseUp (логотип или фон), см. Initialize-EditorCompose.
+    if (-not $script:LogoComposeEnabled -or $null -eq $slots.Hero.PSObject.Properties['ComposeLogo']) { $slots.Hero.Picture.Add_Click($onSlotHeroClick) }
     # Если обложки в источнике нет, поверх Picture лежит заглушка Missing —
     # клик по ней тоже должен открывать альтернативы (в т.ч. из SGDB).
     $slots.Hero.Missing.Add_Click($onSlotHeroClick)
@@ -34764,17 +35850,70 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
                 } catch {}
             }) | Out-Null
         } catch {}
+        # Положение логотипа: у готового ярлыка и лицензионной игры берём сохранённое в
+        # config\librarycache\<id>.json, чтобы карточка открывалась с прежними значениями.
+        # Снимок отпечатка берём после этого - «не трогали» значит «равно тому, что открылось».
+        try {
+            $logoCacheId = ''
+            if ($licensedMode) { $logoCacheId = [string]$licensedAppId }
+            elseif ($editMode -and $null -ne $existingShortcut) { $logoCacheId = [string]$existingShortcut.ShortcutId }
+            if ($logoCacheId -match '^\d+$' -and $script:LogoComposeEnabled -and $null -ne $slots.Hero.PSObject.Properties['ComposeLogo']) {
+                $savedLogoPos = Get-SteamLogoPositionFromCache $logoCacheId
+                if ($null -ne $savedLogoPos) { Set-EditorLogoStateFromCache $slots.Hero $savedLogoPos }
+            }
+        } catch {}
+        # Галочка «по умолчанию» включена - карточка (в том числе новая и для рома) открывается с общими
+        # положением и размером логотипа вместо сохранённых у конкретной игры.
+        try {
+            if ($script:LogoComposeEnabled -and $null -ne $slots.Hero.PSObject.Properties['ComposeLogo']) {
+                $logoDefOpen = Get-LogoDefaultPosition
+                if ($null -ne $logoDefOpen) {
+                    Set-EditorLogoStateFromCache $slots.Hero $logoDefOpen
+                    $editorState.LogoUseDefault = $true
+                    $slots.Hero.ChkDefault.Checked = $true
+                }
+            }
+        } catch {}
+        try { $editorState.LogoSig0 = [string](Get-EditorLogoSignature $editorState) } catch {}
         # Снимок состояния карточки сразу после загрузки: по нему при сохранении понимаем, менялось ли
         # что-то кроме библиотек (см. $hasOtherEditorChanges).
         try {
             $editorState.Baseline = [PSCustomObject]@{
                 Name = $txtTitle.Text.Trim(); Id = $txtId.Text.Trim(); Launch = $txtLaunchOptions.Text.Trim()
-                Exe = [string](& $getEditorExePathNow); Covers = [string](Get-EditorCoverFingerprint)
+                Exe = [string](& $getEditorExePathNow); Covers = [string](Get-EditorCoverFingerprint); Logo = [string](Get-EditorLogoSignature $editorState)
             }
         } catch {}
         } finally {
             $editorState.OpDepth = [Math]::Max(0, [int]$editorState.OpDepth - 1)
             Invoke-EditorPendingSwitch
+        }
+        if ($autoRomSubmit) {
+            $revealCard = $true
+            try {
+                if (-not ($global:editorLoadAbortRequested -or $dlg.IsDisposed -or $dlg.Disposing)) {
+                    $okTitle = ([string]$titleConfidenceBadge.AccessibleDescription -eq 'ok') -and ($txtId.Text.Trim() -match '^\d+$')
+                    $okRom   = ([string]$romConfidenceBadge.AccessibleDescription -eq 'ok') -and ($cmbRom.SelectedIndex -ge 0)
+                    $okEmu   = ($cmbEmulator.SelectedIndex -ge 0) -and ($cmbEmulator.SelectedIndex -lt @($emuProfiles).Count)
+                    $okOpt   = ([string]$launchOptConfidenceBadge.AccessibleDescription -ne 'unsure')
+                    $okCov   = [bool](Test-CoversValid)
+                    if ($okTitle -and $okRom -and $okEmu -and $okOpt -and $okCov -and $btnAdd.Enabled) {
+                        $script:editorSavedChanges = $false
+                        $btnAdd.PerformClick()
+                        if ($script:editorSavedChanges) { $script:romAutoSubmitDone = $true; $revealCard = $false }
+                    }
+                }
+            } catch {}
+            if ($revealCard) {
+                if ([bool]$script:romAutoDeferOnly) {
+                    # Тихий проход: неопознанный ром откладывается, карточка откроется после всех известных.
+                    $script:romAutoDeferred = $true
+                    try { if (-not $dlg.IsDisposed) { $dlg.Close() } } catch {}
+                } else {
+                    try { if (-not $dlg.IsDisposed) { $dlg.Opacity = 1; $dlg.Activate() } } catch {}
+                    # Пока карточка была скрыта, композицию не обновляли: перерисовываем её теперь.
+                    if ($script:LogoComposeEnabled) { try { Update-EditorComposeView $slots.Hero } catch {} }
+                }
+            }
         }
     })
 
@@ -34821,6 +35960,8 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
             $b = $editorState.Baseline
             if ($null -eq $b) { return $true }
             if ((Get-EditorCoverFingerprint) -ne [string]$b.Covers) { return $true }
+            # Изменение одного только положения/размера логотипа тоже считается изменением карточки.
+            if ((Get-EditorLogoSignature $editorState) -ne [string]$b.Logo) { return $true }
             if ($licensedMode) { return $false }
             if ($txtTitle.Text.Trim() -ne [string]$b.Name) { return $true }
             if ($txtId.Text.Trim() -ne [string]$b.Id) { return $true }
@@ -34970,6 +36111,11 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
                 $appIdSave = $licensedAppId
                 if ($appIdSave -notmatch '^\d+$') { $appIdSave = $txtId.Text.Trim() }
                 if ($appIdSave -notmatch '^\d+$') { throw 'App ID' }
+                # Положение логотипа - во все профили Steam, независимо от того, менялись ли картинки.
+                try {
+                    $logoPosLic = Get-EditorLogoPositionToSave $editorState $false
+                    if ($null -ne $logoPosLic) { [void](Set-SteamLogoPositionForAllProfiles ([string]$appIdSave) $logoPosLic) }
+                } catch {}
                 $hasCovers=$false
                 try { $hasCovers=Test-CoversValid } catch { $hasCovers=$false }
                 $coversSaved=$false
@@ -35025,6 +36171,14 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
                     }
                 }
 
+                # Положение логотипа - во все профили Steam (config\librarycache\<id>.json), независимо от того,
+                # менялись ли картинки. Если id ярлыка изменился (переименование), сохранённое положение переносится.
+                try {
+                    $logoIdChanged = ([string]$freshShortcutAfterSave.ShortcutId -ne [string]$existingShortcut.ShortcutId)
+                    $logoPosEdit = Get-EditorLogoPositionToSave $editorState $logoIdChanged
+                    if ($null -ne $logoPosEdit) { [void](Set-SteamLogoPositionForAllProfiles ([string]$freshShortcutAfterSave.ShortcutId) $logoPosEdit) }
+                } catch {}
+
                 # Сначала гарантированно закрываем карточку. Steam запускается
                 # внешним finally главного обработчика после возврата из ShowDialog.
                 $status.Text=if($coversSaved){(T 'st_done_saved_covers')}elseif($hasCovers){(T 'st_saved_no_covers')}else{(T 'st_done_saved')}
@@ -35072,9 +36226,13 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
             try { if(-not $IsRomEntry -and -not [string]::IsNullOrWhiteSpace([string]$gamePath)){ Set-GameFolderForShortcut $finalExe $finalLaunch ([string]$gamePath) } } catch {}
             $hasCovers=$false
             try { $hasCovers=Test-CoversValid } catch { $hasCovers=$false }
+            $logoPosNew = $null
+            try { $logoPosNew = Get-EditorLogoPositionToSave $editorState $false } catch {}
             if($hasCovers){
-                try { Copy-TempCoversDirectlyToGrid $newId | Out-Null } catch {}
+                try { Copy-TempCoversDirectlyToGrid $newId $logoPosNew | Out-Null } catch {}
                 try { Save-CoverSourcesMetadata ([string]$newId) $slots ([string]$btnCoverLang.Tag.Lang) | Out-Null } catch {}
+            } elseif ($null -ne $logoPosNew) {
+                try { [void](Set-SteamLogoPositionForAllProfiles ([string]$newId) $logoPosNew) } catch {}
             }
             $script:editorSavedChanges = $true
             if(-not $batchMode -and (Test-Path $steamPathProperty)){Start-Process -FilePath $steamPathProperty}
@@ -35260,7 +36418,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     try { Get-ChildItem -Path $global:tempCovers -Filter 'editor_*' -Directory -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue } catch {}
     # Перечитываем панели только если что-то сохранено (или это пакетный режим, где так было всегда).
     # Refresh-Panels тяжёлый: Get-CimInstance ×2, рекурсивный поиск shortcuts.vdf, скан обеих папок.
-    if ($batchMode -or $script:editorSavedChanges) { Refresh-Panels }
+    if (($batchMode -and -not $script:romAutoDeferred) -or $script:editorSavedChanges) { Refresh-Panels }
 }
 
 $btnSettings.Add_Click({
@@ -36407,6 +37565,9 @@ function Invoke-SmartBatchAdd ($selectedGames, [bool]$AutoFill = $true, $OwnerWi
     $script:batchProgressHook = $ProgressHook
     $script:batchCardCancelRequested = $false
     $script:batchCardSkipRequested = $false
+    $script:smartBatchActive = $true
+    $script:romAutoDeferOnly = $false
+    $script:romAutoDeferred = $false
     $script:batchResults = [PSCustomObject]@{ Ok=0; AutoAdded=0; Skipped=0; Failed=0 }
 
     $steamPathProperty = $null
@@ -36434,6 +37595,9 @@ function Invoke-SmartBatchAdd ($selectedGames, [bool]$AutoFill = $true, $OwnerWi
             $game = $selectedGames[$i]
             # Автоимпорт выключен: без классификации, все игры идут в очередь карточек.
             if (-not $AutoFill) { $cardList.Add($game); continue }
+            # Режим ROMs: проверка по Steam/exe к образам не применима, решение принимает
+            # сама карточка (см. $autoRomSubmit в Show-GameEditorDialog).
+            if ($script:romsModeEnabled -and -not (Test-IsLauncherEntry $game)) { $cardList.Add($game); continue }
             Set-BatchStatusText ([string]((T 'hd_classify_n' @($game.Name, ($i+1), $totalGames))))
             [System.Windows.Forms.Application]::DoEvents()
 
@@ -36514,6 +37678,49 @@ function Invoke-SmartBatchAdd ($selectedGames, [bool]$AutoFill = $true, $OwnerWi
             $global:uiPumpDuringDownload = $false
         }
 
+        # Фаза 2б (режим ROMs): тот же порядок, что и у обычных игр — сначала все уверенно
+        # определённые ромы добавляются тихо, неопознанные откладываются в конец очереди
+        # и открываются видимыми карточками уже после всех известных.
+        $romPassDone = $false
+        if ($AutoFill -and $script:romsModeEnabled -and -not $script:batchCardCancelRequested) {
+            $romQuick = @($cardList | Where-Object { -not (Test-IsLauncherEntry $_) })
+            $restList = New-Object System.Collections.Generic.List[object]
+            foreach ($g0 in $cardList) { if (Test-IsLauncherEntry $g0) { $restList.Add($g0) } }
+            $script:romAutoDeferOnly = $true
+            try {
+                for ($i = 0; $i -lt $romQuick.Count; $i++) {
+                    if ($script:batchCardCancelRequested) { break }
+                    $game = $romQuick[$i]
+                    Set-BatchStatusText ([string]((T 'hd_auto_n' @($game.Name, ($i+1), $romQuick.Count, $restList.Count))))
+                    Set-BatchProgressValue ([int]([Math]::Min(100, [int](($done / $totalGames) * 100))))
+                    [System.Windows.Forms.Application]::DoEvents()
+                    $script:romAutoSubmitRequested = $true
+                    $script:romAutoSubmitDone = $false
+                    $script:romAutoDeferred = $false
+                    try {
+                        Show-GameEditorDialog $game.Name $game.Source $game.Path $true $null $null $OwnerWin -IsRomEntry:$true
+                    } finally {
+                        $script:romAutoSubmitRequested = $false
+                    }
+                    if ($script:batchCardCancelRequested) { break }
+                    if ($script:romAutoDeferred) { $restList.Add($game); continue }
+                    if ($script:batchCardSkipRequested) { $script:batchResults.Skipped++ }
+                    else {
+                        $script:batchResults.Ok++
+                        if ($script:romAutoSubmitDone) { $script:batchResults.AutoAdded++ }
+                    }
+                    $done++
+                    Set-BatchProgressValue ([int]([Math]::Min(100, [int](($done / $totalGames) * 100))))
+                    [System.Windows.Forms.Application]::DoEvents()
+                }
+            } finally {
+                $script:romAutoDeferOnly = $false
+                $script:romAutoDeferred = $false
+            }
+            $cardList = $restList
+            $romPassDone = $true
+        }
+
         # Фаза 3: очередь карточек. Каждая карточка — отдельный диалог, ровно как
         # в обычном (не авто) пакетном добавлении, а не встроенная панель.
         $cardTotal = $cardList.Count
@@ -36528,12 +37735,21 @@ function Invoke-SmartBatchAdd ($selectedGames, [bool]$AutoFill = $true, $OwnerWi
             if (Test-IsLauncherEntry $game) {
                 Show-GameEditorDialog $game.Name 'Steam' $game.Path $true $null $null $OwnerWin -IsRomEntry:$false -LauncherEntry $game
             } else {
-                Show-GameEditorDialog $game.Name $game.Source $game.Path $true $null $null $OwnerWin -IsRomEntry:$script:romsModeEnabled
+                $script:romAutoSubmitRequested = ($AutoFill -and [bool]$script:romsModeEnabled -and -not $romPassDone)
+                $script:romAutoSubmitDone = $false
+                try {
+                    Show-GameEditorDialog $game.Name $game.Source $game.Path $true $null $null $OwnerWin -IsRomEntry:$script:romsModeEnabled
+                } finally {
+                    $script:romAutoSubmitRequested = $false
+                }
             }
 
             if ($script:batchCardCancelRequested) { break }
             elseif ($script:batchCardSkipRequested) { $script:batchResults.Skipped++ }
-            else { $script:batchResults.Ok++ }
+            else {
+                $script:batchResults.Ok++
+                if ($script:romAutoSubmitDone) { $script:batchResults.AutoAdded++ }
+            }
             $done++
             Set-BatchProgressValue ([int]([Math]::Min(100, [int](($done / $totalGames) * 100))))
             [System.Windows.Forms.Application]::DoEvents()
@@ -36556,6 +37772,8 @@ function Invoke-SmartBatchAdd ($selectedGames, [bool]$AutoFill = $true, $OwnerWi
         Set-BatchProgressValue ([int](0))
         $script:batchStatusHook = $null
         $script:batchProgressHook = $null
+        $script:smartBatchActive = $false
+        $script:romAutoDeferOnly = $false
     }
     return $script:batchResults
 }
