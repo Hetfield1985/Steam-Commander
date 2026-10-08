@@ -884,7 +884,7 @@ Set-SplashProgress 0.52
 # Единая версия приложения — используется в заголовке главного окна, в
 # подписи внизу окна настроек и в User-Agent HTTP-запросов. Меняйте только
 # здесь при выпуске новой версии.
-$global:appVersion = "2.0.2"
+$global:appVersion = "2.0.3"
 $global:appTitle = "Steam Commander"
 # Ссылки на исходный код и поддержку автора (окно «Поддержать» в настройках). Меняйте только здесь.
 $global:appRepoUrl = "https://github.com/Hetfield1985/Steam-Commander"
@@ -5350,7 +5350,7 @@ $script:SgdbKeyRawCheck = {
         try {
             $headers = @{ Authorization = "Bearer $(([string]$apiKey).Trim())" }
             $url = 'https://www.steamgriddb.com/api/v2/search/autocomplete/__steam_commander_key_check__'
-            $resp = Invoke-RestMethod -Uri $url -Headers $headers -TimeoutSec 10 -ErrorAction Stop
+            $resp = Invoke-RestMethod -Uri $url -Headers $headers -UserAgent 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) SteamCommander' -TimeoutSec 15 -ErrorAction Stop
             # ВАЖНО: SteamGridDB на этот эндпоинт может вернуть HTTP 200 с телом
             # {"success": false, ...} даже для неверного/испорченного ключа — то есть
             # исключения не будет. Раньше тело ответа полностью отбрасывалось
@@ -5371,6 +5371,8 @@ $script:SgdbKeyRawCheck = {
             try { $r.RawMsg = [string]$ex.Message } catch {}
         }
         if (-not ($r.StatusCode -eq 0 -or $r.StatusCode -ge 500 -or $r.StatusCode -eq 429)) { break }
+        # Пауза перед повтором: мгновенный повтор при сбое/429 почти всегда падает так же.
+        if ($attempt -lt $maxAttempts) { Start-Sleep -Milliseconds (1500 * $attempt) }
     }
     return $r
 }
@@ -5411,7 +5413,7 @@ function Get-SgdbKeyCheckResult([string]$apiKey) {
     if ([string]::IsNullOrWhiteSpace($apiKey)) {
         return (New-SgdbKeyCheckResult $false 'empty' 'none' 0 'key_empty')
     }
-    $raw = & $script:SgdbKeyRawCheck $apiKey 1
+    $raw = & $script:SgdbKeyRawCheck $apiKey 2
     return (ConvertTo-SgdbKeyCheckResult $raw)
 }
 
@@ -5579,7 +5581,7 @@ function Start-StartupKeyChecks {
     if (-not [string]::IsNullOrWhiteSpace($sgdbKey)) {
         # Два захода: на сетевом сбое/таймауте вторая попытка идёт уже в фоне и
         # ничего не задерживает.
-        if (-not (Start-StartupBackgroundJob 'Sgdb' $script:SgdbKeyRawCheck @($sgdbKey, 2))) {
+        if (-not (Start-StartupBackgroundJob 'Sgdb' $script:SgdbKeyRawCheck @($sgdbKey, 3))) {
             $check = Get-SgdbKeyCheckResult $sgdbKey
             $global:steamGridDbApiKeyCheck = $check
             $global:steamGridDbApiKeyValid = [bool]$check.Valid
@@ -7690,7 +7692,7 @@ $form.Font = New-Object System.Drawing.Font("Segoe UI", 9)
 # сохраняется как ядро по умолчанию активного профиля эмулятора ($profile.Core,
 # то же поле, что редактируется в Настройках) — поэтому дальше, при обычном
 # добавлении игры через карточку и при автопакетном добавлении (оно тоже
-# в режиме ROMs карточка открывается скрыто и добавляет игру сама, если всё определено уверенно — см. Invoke-SmartBatchAdd),
+# в режиме ROMs ром добавляется тихо, без карточки, если всё определено уверенно — см. Add-RomToSteamQuietly и Invoke-SmartBatchAdd),
 # аргумент запуска будет собран уже под это ядро (Get-RetroArchArgsTemplate),
 # без необходимости открывать Настройки заново.
 #
@@ -9720,7 +9722,11 @@ function Get-SevenZipPath([bool]$allowDownload) {
         $curl = Join-Path $env:SystemRoot 'System32\curl.exe'
         if (-not (Test-Path -LiteralPath $curl -PathType Leaf)) { $curl = 'curl.exe' }
         $p = Start-Process -FilePath $curl -ArgumentList @('-L', '-f', '-s', '--max-time', '90', '-o', ('"' + $tmp + '"'), 'https://www.7-zip.org/a/7zr.exe') -WindowStyle Hidden -PassThru
-        while (-not $p.HasExited) { [System.Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 80 }
+        while (-not $p.HasExited) {
+            [System.Windows.Forms.Application]::DoEvents()
+            if ($global:editorLoadAbortRequested) { try { $p.Kill() } catch {}; return '' }
+            Start-Sleep -Milliseconds 80
+        }
         if ($p.ExitCode -ne 0) { return '' }
         if (-not (Test-Path -LiteralPath $tmp -PathType Leaf)) { return '' }
         if ((Get-Item -LiteralPath $tmp).Length -lt 100000) { return '' }
@@ -9779,8 +9785,20 @@ function Get-RomArchiveEntries([string]$archive, [string]$szPath) {
         $psi.RedirectStandardError = $true
         $p = [System.Diagnostics.Process]::Start($psi)
         $errTask = $p.StandardError.ReadToEndAsync()
-        $out = $p.StandardOutput.ReadToEnd()
-        [void]$p.WaitForExit(60000)
+        $outTask = $p.StandardOutput.ReadToEndAsync()
+        # Пока 7z/rar читает архив, окно живое (DoEvents), а отмена пакета или закрытие карточки
+        # (см. $global:editorLoadAbortRequested) убивают процесс сразу, не дожидаясь таймаута.
+        $listDeadline = (Get-Date).AddSeconds(60)
+        $listAborted = $false
+        while (-not $p.HasExited) {
+            [System.Windows.Forms.Application]::DoEvents()
+            if ($global:editorLoadAbortRequested) { try { $p.Kill() } catch {}; $listAborted = $true; break }
+            Start-Sleep -Milliseconds 30
+            if ((Get-Date) -gt $listDeadline) { try { $p.Kill() } catch {}; $listAborted = $true; break }
+        }
+        try { [void]$p.WaitForExit(2000) } catch {}
+        if ($listAborted) { $r.Error = '7z, cancelled'; return $r }
+        $out = [string]$outTask.Result
         if ($p.ExitCode -gt 1) { $r.Error = ('7z, code ' + $p.ExitCode); return $r }
         $cur = $null; $isDir = $false
         foreach ($line in ($out -split "\r?\n")) {
@@ -10206,6 +10224,35 @@ function Apply-PanelView ([string]$source, [string[]]$forceSelectedNames = $null
     try { Update-SortHeaderUI $source } catch {}
 }
 
+# Файлы shortcuts.vdf: только userdata\config и userdata\<id>\config (так же, как в Get-LibDataFingerprint).
+# Раньше везде стоял Get-ChildItem -Recurse по всему userdata, а там тысячи файлов обложек (grid) —
+# после пакетного добавления это давало долгое зависание окна.
+function Get-ShortcutsVdfFiles ([string]$userDataPath) {
+    $res = New-Object System.Collections.Generic.List[System.IO.FileInfo]
+    try {
+        if ([string]::IsNullOrWhiteSpace($userDataPath) -or -not [System.IO.Directory]::Exists($userDataPath)) { return $res.ToArray() }
+        $cands = New-Object System.Collections.Generic.List[string]
+        [void]$cands.Add([System.IO.Path]::Combine($userDataPath, 'config', 'shortcuts.vdf'))
+        foreach ($sub in [System.IO.Directory]::EnumerateDirectories($userDataPath)) {
+            [void]$cands.Add([System.IO.Path]::Combine($sub, 'config', 'shortcuts.vdf'))
+        }
+        foreach ($c in $cands) {
+            $fi = New-Object System.IO.FileInfo($c)
+            if ($fi.Exists) { [void]$res.Add($fi) }
+        }
+    } catch {}
+    return $res.ToArray()
+}
+
+# Метка тома и свободное место без WMI (Get-CimInstance на каждом обновлении панелей занимал заметное время).
+function Get-DriveInfoQuick ([string]$root) {
+    try {
+        $di = New-Object System.IO.DriveInfo($root)
+        if ($di.IsReady) { return [PSCustomObject]@{ VolumeName = [string]$di.VolumeLabel; FreeSpace = [double]$di.TotalFreeSpace } }
+    } catch {}
+    return (Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='$root'" -ErrorAction SilentlyContinue)
+}
+
 function Refresh-Panels {
     # 1. Запоминаем имя выделенной игры на левой и правой панели перед очисткой.
     # Поиск и сортировку (панель, текст, режим) НЕ сбрасываем — «Обновить»
@@ -10243,7 +10290,7 @@ function Refresh-Panels {
     if ($hasC) {
         try {
             $rtC = [System.IO.Path]::GetPathRoot($global:dirC).Substring(0,2)
-            $driveC = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='$rtC'" -ErrorAction SilentlyContinue
+            $driveC = Get-DriveInfoQuick $rtC
             # Вместо общего названия "Папка" показываем имя тома, как это делает Steam/Total Commander.
             # Если у диска нет метки, оставляем букву диска.
             $driveNameC = if ($driveC -ne $null -and -not [string]::IsNullOrWhiteSpace([string]$driveC.VolumeName)) {
@@ -10267,7 +10314,7 @@ function Refresh-Panels {
     if ($hasD) {
         try {
             $rtD = [System.IO.Path]::GetPathRoot($global:dirD).Substring(0,2)
-            $driveD = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='$rtD'" -ErrorAction SilentlyContinue
+            $driveD = Get-DriveInfoQuick $rtD
             # Вместо общего названия "Папка" показываем имя тома, как это делает Steam/Total Commander.
             # Если у диска нет метки, оставляем букву диска.
             $driveNameD = if ($driveD -ne $null -and -not [string]::IsNullOrWhiteSpace([string]$driveD.VolumeName)) {
@@ -10327,7 +10374,7 @@ function Refresh-Panels {
             # найден и доступен), результат можно считать достоверным — даже если
             # ни одного shortcuts.vdf не нашлось (пустая библиотека нестимовских игр).
             $shortcutsScanOk = $true
-            Get-ChildItem -Path $userDataPath -Filter "shortcuts.vdf" -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+            Get-ShortcutsVdfFiles $userDataPath | ForEach-Object {
                 try {
                     $bytes = [System.IO.File]::ReadAllBytes($_.FullName)
                     if ($bytes.Length -gt 0) {
@@ -10505,7 +10552,6 @@ function Refresh-Panels {
     # Ярлыки/игры могли измениться: если снимок библиотеки устарел — готовим новый в фоне (если актуален — ничего не делает).
     try { Request-LibPreheat 2000 } catch {}
     try { Update-MainLibraryButtonState } catch {}
-
 }
 
 function Show-ExeSelectionDialog ($exeList, $rootPath, $gameName) {
@@ -10558,7 +10604,7 @@ function Find-SteamShortcutRecord ($gameName, $gamePath = $null, $exePath = $nul
     if (-not (Test-Path $userDataPath)) { return $null }
 
     $pathMatch = $null
-    foreach ($shortcutsFile in (Get-ChildItem -Path $userDataPath -Filter "shortcuts.vdf" -Recurse -File -ErrorAction SilentlyContinue)) {
+    foreach ($shortcutsFile in (Get-ShortcutsVdfFiles $userDataPath)) {
         try {
             $bytes = [System.IO.File]::ReadAllBytes($shortcutsFile.FullName)
             if ($bytes.Length -eq 0) { continue }
@@ -10639,6 +10685,79 @@ function Find-SteamShortcutRecord ($gameName, $gamePath = $null, $exePath = $nul
         } catch {}
     }
     return $pathMatch
+}
+
+# ------------------------------------------------------------------
+# Повторный поиск УЖЕ ИЗВЕСТНОГО ярлыка строго по его ID (поле appid в shortcuts.vdf).
+# Нужен при сохранении карточки в режиме редактирования: между открытием карточки и
+# сохранением Steam закрывается (taskkill), и запись надо перечитать с диска. Раньше для
+# этого использовался Find-SteamShortcutRecord по ИМЕНИ и ПАПКЕ игры. У ROM-ярлыков
+# «папка игры» - это общая папка с ромами, поэтому поиск возвращал ПЕРВЫЙ ярлык с ромом
+# из этой папки - не обязательно редактируемый. Правки (имя, эмулятор, параметры, обложки)
+# записывались в чужой ярлык: он превращался в копию, а оригинал оставался нетронутым.
+# Если несколько записей имеют один и тот же appid (одинаковые эмулятор и название),
+# выбирается та, у которой совпадают Exe и LaunchOptions с исходным ярлыком.
+# ------------------------------------------------------------------
+function Find-SteamShortcutRecordById ($reference) {
+    if ($null -eq $reference) { return $null }
+    $wantId = [string]$reference.ShortcutId
+    if ([string]::IsNullOrWhiteSpace($wantId)) { return $null }
+    $wantExe = ([string]$reference.Exe).Trim('"')
+    $wantLaunch = ([string]$reference.LaunchOptions).Trim()
+    $wantName = [string]$reference.AppName
+
+    $files = @()
+    $refFile = [string]$reference.FilePath
+    if (-not [string]::IsNullOrWhiteSpace($refFile) -and (Test-Path -LiteralPath $refFile)) {
+        $files = @(Get-Item -LiteralPath $refFile)
+    } else {
+        $userDataPath = Get-ConfiguredSteamUserDataPath
+        if (-not (Test-Path $userDataPath)) { return $null }
+        $files = @(Get-ShortcutsVdfFiles $userDataPath)
+    }
+
+    $best = $null; $bestScore = -1
+    foreach ($shortcutsFile in $files) {
+        try {
+            $bytes = [System.IO.File]::ReadAllBytes($shortcutsFile.FullName)
+            if ($bytes.Length -eq 0) { continue }
+            $shortcutsNode = Get-ShortcutsNode $bytes
+            if ($shortcutsNode -eq $null) { continue }
+            foreach ($entry in $shortcutsNode.Body.Children) {
+                if ($entry.Type -ne 0x00) { continue }
+                $fields = @{}
+                foreach ($field in $entry.Body.Children) {
+                    if ($field.Type -eq 0x01 -or $field.Type -eq 0x02) { $fields[$field.Key] = $field }
+                }
+                $entryId = if ($fields.ContainsKey("appid")) { [string]$fields["appid"].Value } else { "" }
+                if ($entryId -ne $wantId) { continue }
+
+                $appName = if ($fields.ContainsKey("AppName")) { [string]$fields["AppName"].Value } else { "" }
+                $exe = if ($fields.ContainsKey("Exe")) { [string]$fields["Exe"].Value } else { "" }
+                $startDir = if ($fields.ContainsKey("StartDir")) { [string]$fields["StartDir"].Value } else { "" }
+                $launchOptions = if ($fields.ContainsKey("LaunchOptions")) { [string]$fields["LaunchOptions"].Value } else { "" }
+                $cleanExe = $exe.Trim('"')
+
+                $score = 0
+                if ([string]::Equals($cleanExe, $wantExe, [System.StringComparison]::OrdinalIgnoreCase)) { $score += 2 }
+                if ([string]::Equals($launchOptions.Trim(), $wantLaunch, [System.StringComparison]::OrdinalIgnoreCase)) { $score += 4 }
+                if ([string]::Equals($appName, $wantName, [System.StringComparison]::OrdinalIgnoreCase)) { $score += 1 }
+                if ($score -le $bestScore) { continue }
+                $bestScore = $score
+                $best = [PSCustomObject]@{
+                    FilePath=[string]$shortcutsFile.FullName
+                    UserDataDir=[string]$shortcutsFile.Directory.Parent.FullName
+                    Entry=$entry
+                    ShortcutId=$entryId
+                    AppName=$appName
+                    Exe=$cleanExe
+                    StartDir=$startDir.Trim('"')
+                    LaunchOptions=$launchOptions
+                }
+            }
+        } catch {}
+    }
+    return $best
 }
 
 # ------------------------------------------------------------------
@@ -10725,20 +10844,72 @@ function Get-RomPathFromLaunchOptions ($entry) {
     return ''
 }
 
+# Лёгкий индекс ярлыков (Exe/StartDir/LaunchOptions) по каждому shortcuts.vdf. Файл разбирается один раз и
+# кэшируется по размеру и времени изменения: раньше проверка «уже в Steam» заново разбирала весь файл для
+# КАЖДОЙ отмеченной игры (~1 с на игру), и окно висело до появления первой карточки.
+$script:shortcutLightIndexCache = @{}
+function Get-ShortcutLightIndex {
+    $all = New-Object System.Collections.Generic.List[object]
+    $userDataPath = Get-ConfiguredSteamUserDataPath
+    if ([string]::IsNullOrWhiteSpace([string]$userDataPath) -or -not (Test-Path $userDataPath)) { return $all.ToArray() }
+    foreach ($f in (Get-ShortcutsVdfFiles $userDataPath)) {
+        $sig = [string]$f.Length + '|' + [string]$f.LastWriteTimeUtc.Ticks
+        $cached = $script:shortcutLightIndexCache[[string]$f.FullName]
+        if ($null -ne $cached -and [string]$cached.Sig -eq $sig) {
+            $all.AddRange([object[]]$cached.Rows)
+            continue
+        }
+        $rows = New-Object System.Collections.Generic.List[object]
+        try {
+            $bytes = [System.IO.File]::ReadAllBytes($f.FullName)
+            if ($bytes.Length -gt 0) {
+                $node = Get-ShortcutsNode $bytes
+                if ($null -ne $node) {
+                    foreach ($entry in $node.Body.Children) {
+                        if ($entry.Type -ne 0x00) { continue }
+                        $fields = @{}
+                        foreach ($field in $entry.Body.Children) {
+                            if ($field.Type -eq 0x01 -or $field.Type -eq 0x02) { $fields[$field.Key] = $field }
+                        }
+                        $exe = if ($fields.ContainsKey('Exe')) { ([string]$fields['Exe'].Value).Trim('"') } else { '' }
+                        $startDir = if ($fields.ContainsKey('StartDir')) { ([string]$fields['StartDir'].Value).Trim('"') } else { '' }
+                        $lo = if ($fields.ContainsKey('LaunchOptions')) { [string]$fields['LaunchOptions'].Value } else { '' }
+                        $quoted = New-Object System.Collections.Generic.List[string]
+                        if (-not [string]::IsNullOrEmpty($lo)) {
+                            foreach ($qm in [regex]::Matches($lo, '"([^"]+)"')) {
+                                [void]$quoted.Add((Get-NormalizedGamePathKey ([string]$qm.Groups[1].Value).Replace('/', '\')))
+                            }
+                        }
+                        [void]$rows.Add([PSCustomObject]@{ Exe = $exe; StartDir = $startDir; Quoted = $quoted.ToArray() })
+                    }
+                }
+            }
+        } catch {}
+        $script:shortcutLightIndexCache[[string]$f.FullName] = [PSCustomObject]@{ Sig = $sig; Rows = $rows.ToArray() }
+        $all.AddRange([object[]]$rows.ToArray())
+    }
+    return $all.ToArray()
+}
+
 function Test-GameAlreadyInSteamLibrary ($gameName, $gamePath = $null) {
-    # ВАЖНО: раньше тут ещё проверялось совпадение по одному лишь нормализованному
-    # имени через $global:installedSteamGames (без проверки реального пути) — это
-    # тот самый набор, что используется для зелёной галочки "в библиотеке" в
-    # списках слева/справа (см. Register-ListBoxDrawEvent, Test-PanelItemInLibrary):
-    # он специально нестрогий, по имени, чтобы подсвечивать "похоже, уже
-    # добавлено" даже при небольших расхождениях в названии. Для решения
-    # "пропустить при добавлении / это дубликат" такая нестрогая проверка не
-    # годится — из-за неё вручную созданная папка с названием, совпадающим с
-    # именем уже добавленной игры (но реально лежащая в другом месте), считалась
-    # "уже в Steam". Теперь здесь используется только Find-SteamShortcutRecord,
-    # которая проверяет действительное расположение на диске (Exe/StartDir
-    # существующего ярлыка), а не совпадение имён.
-    return [bool](Find-SteamShortcutRecord $gameName $gamePath)
+    # Только реальное расположение на диске (как в Find-SteamShortcutRecord), имя не учитывается.
+    if ([string]::IsNullOrEmpty($gamePath)) { return $false }
+    try {
+        $gpKey = Get-NormalizedGamePathKey $gamePath
+        $gamePrefix = ([string]$gamePath).TrimEnd('\') + '\'
+        $gameExact = ([string]$gamePath).TrimEnd('\')
+        foreach ($r in @(Get-ShortcutLightIndex)) {
+            foreach ($qKey in @($r.Quoted)) {
+                if ($qKey -eq $gpKey -or ($gpKey -and $qKey.StartsWith($gpKey + '\'))) { return $true }
+            }
+            $ex = [string]$r.Exe; $sd = [string]$r.StartDir
+            if ($ex -and ($ex.StartsWith($gamePrefix, [System.StringComparison]::OrdinalIgnoreCase) -or [string]::Equals($ex.TrimEnd('\'), $gameExact, [System.StringComparison]::OrdinalIgnoreCase))) { return $true }
+            if ($sd -and ($sd.TrimEnd('\').Equals($gameExact, [System.StringComparison]::OrdinalIgnoreCase) -or $sd.StartsWith($gamePrefix, [System.StringComparison]::OrdinalIgnoreCase))) { return $true }
+        }
+        return $false
+    } catch {
+        return [bool](Find-SteamShortcutRecord $gameName $gamePath)
+    }
 }
 
 function Set-VdfStringField ($entry, $key, $value) {
@@ -10808,11 +10979,20 @@ function Update-ExistingSteamShortcut ($shortcutRecord, $newName, $newExePath, $
         $shortcutsNode=$root.Children | Where-Object { $_.Key -eq "shortcuts" } | Select-Object -First 1
         if ($shortcutsNode -eq $null) { throw (T 'sc_no_node') }
 
-        $targetEntry=$null
+        # appid у ярлыков считается по Exe+названию, поэтому у двух ROM одного эмулятора
+        # с одинаковым названием он может совпасть. Тогда берём ту запись, у которой
+        # совпадают Exe и LaunchOptions с редактируемым ярлыком, а не первую попавшуюся.
+        $targetEntry=$null; $targetScore=-1
         foreach($entry in $shortcutsNode.Body.Children){
             if($entry.Type -ne 0x00){continue}
             $appidField=$entry.Body.Children | Where-Object { $_.Key -eq "appid" } | Select-Object -First 1
-            if($appidField -ne $null -and [string]$appidField.Value -eq [string]$shortcutRecord.ShortcutId){$targetEntry=$entry;break}
+            if($appidField -eq $null -or [string]$appidField.Value -ne [string]$shortcutRecord.ShortcutId){continue}
+            $score=0
+            $exeField=$entry.Body.Children | Where-Object { $_.Key -eq "Exe" } | Select-Object -First 1
+            $loField=$entry.Body.Children | Where-Object { $_.Key -eq "LaunchOptions" } | Select-Object -First 1
+            if($exeField -ne $null -and [string]::Equals(([string]$exeField.Value).Trim('"'),([string]$shortcutRecord.Exe).Trim('"'),[System.StringComparison]::OrdinalIgnoreCase)){$score+=2}
+            if($loField -ne $null -and [string]::Equals(([string]$loField.Value).Trim(),([string]$shortcutRecord.LaunchOptions).Trim(),[System.StringComparison]::OrdinalIgnoreCase)){$score+=4}
+            if($score -gt $targetScore){$targetScore=$score;$targetEntry=$entry}
         }
         if($targetEntry -eq $null){throw (T 'sc_target_gone')}
 
@@ -11013,6 +11193,37 @@ function Add-ShortcutToSteam ($gameName, $exePath, $startDir, $launchOptions = "
     
     $exePathNormalized = $exePath.ToUpper(); $startDirNormalized = $startDir.ToUpper()
     $global:lastShortcutError = $null
+
+    # ID ярлыка (он же имя файлов обложек в config\grid) считается по Exe + названию. У ROM
+    # это ломалось: второй диск той же игры (Disc 2) или другой ром с тем же названием на том
+    # же эмуляторе получал ТОЧНО ТАКОЙ ЖЕ ID, как уже добавленный. Steam хранит игры и обложки
+    # по этому ID, поэтому две записи с одним ID сливались: второй образ оставался без обложек
+    # (а правка обложки у одного меняла и другой). Если такой ID уже занят в любом профиле,
+    # подбираем свободный, подмешивая в хеш параметры запуска (путь к конкретному образу).
+    # Считаем один раз для всех профилей, чтобы обложки лежали под одним и тем же ID.
+    $sharedIdStr = [string](Get-SteamShortcutID $exePathNormalized $gameName)
+    $usedIds = @{}
+    foreach ($pd in @(Get-ConfiguredSteamProfileDirectories)) {
+        try {
+            $sf0 = Join-Path (Join-Path $pd.FullName "config") "shortcuts.vdf"
+            if (-not (Test-Path -LiteralPath $sf0)) { continue }
+            $b0 = [System.IO.File]::ReadAllBytes($sf0)
+            if ($b0.Length -eq 0) { continue }
+            $n0 = Get-ShortcutsNode $b0
+            if ($null -eq $n0) { continue }
+            foreach ($e0 in $n0.Body.Children) {
+                if ($e0.Type -ne 0x00) { continue }
+                foreach ($f0 in $e0.Body.Children) { if ($f0.Key -eq "appid") { $usedIds[[string]$f0.Value] = $true } }
+            }
+        } catch {}
+    }
+    if ($usedIds.ContainsKey($sharedIdStr)) {
+        for ($salt = 1; $salt -le 100; $salt++) {
+            $candId = [string](Get-SteamShortcutID $exePathNormalized ($gameName + "|" + [string]$launchOptions + "|" + $salt))
+            if (-not $usedIds.ContainsKey($candId)) { $sharedIdStr = $candId; break }
+        }
+    }
+
     Get-ConfiguredSteamProfileDirectories | ForEach-Object {
         $configDir = Join-Path $_.FullName "config"
         if (-not (Test-Path $configDir)) { New-Item -ItemType Directory -Path $configDir -Force | Out-Null }
@@ -11040,7 +11251,7 @@ function Add-ShortcutToSteam ($gameName, $exePath, $startDir, $launchOptions = "
             # сам придумывает id для ярлыка (неизвестным нам способом), из-за чего
             # обложки, посчитанные нашей формулой, не совпадали с тем, что ждёт Steam.
             # Теперь мы пишем id САМИ — Steam обязан использовать именно его.
-            $shortcutIdValue = [uint32](Get-SteamShortcutID $exePathNormalized $gameName)
+            $shortcutIdValue = [uint32]$sharedIdStr
             $bAppId = [BitConverter]::GetBytes($shortcutIdValue)
 
             $bytes = $null; $insertPos = 0
@@ -12691,23 +12902,44 @@ function Invoke-SgdbApiRequest ($url, [hashtable]$headers, [int]$timeoutSec = 20
     $requestBlock = {
         param($requestUrl, $requestHeaders, $requestTimeout)
         try {
-            return (Invoke-RestMethod -Uri $requestUrl -Headers $requestHeaders -TimeoutSec $requestTimeout -ErrorAction Stop)
+            return (Invoke-RestMethod -Uri $requestUrl -Headers $requestHeaders -UserAgent 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) SteamCommander' -TimeoutSec $requestTimeout -ErrorAction Stop)
         } catch {
-            return [PSCustomObject]@{ __RequestError = [string]$_.Exception.Message; __Response = $_.Exception.Response }
+            $st = 0; try { $st = [int]$_.Exception.Response.StatusCode.value__ } catch {}
+            return [PSCustomObject]@{ __RequestError = [string]$_.Exception.Message; __Response = $_.Exception.Response; __Status = $st }
         }
     }
-    try {
-        $bg = Invoke-BackgroundJsonRequest $requestBlock @($url,$headers,$timeoutSec) ([Math]::Max(1,$timeoutSec + 2))
-        if ($bg -and $bg.PSObject.Properties['__RequestError']) {
-            $errMsg = [string]$bg.__RequestError
-            $is401 = $false
-            try { $is401 = ($bg.__Response -ne $null -and $bg.__Response.StatusCode.value__ -eq 401) } catch {}
-            $resp = $null
-        } else {
-            $resp = $bg
+    # SteamGridDB стоит за Cloudflare и периодически отвечает 429/5xx, обрывает соединение
+    # или не успевает за таймаут. Раньше любой такой сбой сразу превращался в «обложки не
+    # загрузились» (и «ключ не проверен»), а через минуту тот же запрос проходил. Теперь
+    # временные сбои (нет ответа, 429, 5xx) повторяются с нарастающей паузой; окончательные
+    # ответы (401, 404 и т.п.) не повторяются.
+    $maxAttempts = 3
+    for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+        $errMsg = $null; $resp = $null; $is401 = $false; $httpStatus = 0
+        try {
+            $bg = Invoke-BackgroundJsonRequest $requestBlock @($url,$headers,$timeoutSec) ([Math]::Max(1,$timeoutSec + 2))
+            if ($bg -and $bg.PSObject.Properties['__RequestError']) {
+                $errMsg = [string]$bg.__RequestError
+                try { $httpStatus = [int]$bg.__Status } catch {}
+                $is401 = ($httpStatus -eq 401)
+                $resp = $null
+            } else {
+                $resp = $bg
+            }
+        } catch {
+            $errMsg = [string]$_.Exception.Message
         }
-    } catch {
-        $errMsg = [string]$_.Exception.Message
+        if ($null -ne $resp -or $is401) { break }
+        if ($global:editorLoadAbortRequested) { break }
+        $transient = ($httpStatus -eq 0 -or $httpStatus -eq 429 -or $httpStatus -ge 500)
+        if (-not $transient -or $attempt -ge $maxAttempts) { break }
+        $pauseMs = if ($httpStatus -eq 429) { 2000 * $attempt } else { 700 * $attempt }
+        $pauseUntil = (Get-Date).AddMilliseconds($pauseMs)
+        while ((Get-Date) -lt $pauseUntil) {
+            [System.Windows.Forms.Application]::DoEvents()
+            if ($global:editorLoadAbortRequested) { break }
+            Start-Sleep -Milliseconds 40
+        }
     }
 
     if ($is401) {
@@ -12737,6 +12969,8 @@ function Invoke-SgdbApiRequest ($url, [hashtable]$headers, [int]$timeoutSec = 20
     }
 
     $ok = ($resp -ne $null -and $resp.success -eq $true -and $resp.data -ne $null)
+    # Рабочий ответ API = ключ действительно принят, даже если проверка при запуске упала из-за сети.
+    if ($resp -ne $null -and $resp.success -eq $true) { $global:steamGridDbApiKeyValid = $true }
     return [PSCustomObject]@{
         Success         = $ok
         Data            = if ($ok) { $resp.data } else { $null }
@@ -13238,6 +13472,228 @@ function Add-GameToSteamQuietly ($game) {
     }
     return $result
 }
+# ===================== ТИХОЕ ДОБАВЛЕНИЕ РОМА (без карточки) =====================
+# Загрузка обложек рома из SteamGridDB без карточки: те же правила выбора, что у
+# Load-EditorSgdbPreviews (лучший по score вариант каждого типа, файлы в
+# $global:tempCovers), но без слотов и строки статуса. Возвращает число
+# загруженных картинок. Между картинками проверяется отмена пакета.
+function Get-RomSgdbCoversQuiet ([int]$sgdbGameId) {
+    if ($sgdbGameId -le 0) { return 0 }
+    if (-not (Test-InternetConnectivity)) { return 0 }
+    $apiKey = [string](Ensure-SteamGridDbApiKey)
+    if ([string]::IsNullOrWhiteSpace($apiKey)) { return 0 }
+    $headers = @{ Authorization = "Bearer $apiKey" }
+
+    $assets = $null
+    try { $assets = Get-SgdbAssetsForGame $sgdbGameId $headers } catch { $assets = $null }
+    if ($null -eq $assets) { return 0 }
+
+    $vertical   = @($assets.GridsVertical)
+    $horizontal = @($assets.GridsHorizontal)
+    $heroes     = @($assets.Heroes)
+    $logos      = @($assets.Logos)
+    $icons = @()
+    try { $icons = @($assets.Icons) } catch { $icons = @() }
+
+    $iconUrl = if ($icons.Count -gt 0) { [string]$icons[0].url } else { $null }
+    $iconFile = Join-Path $global:tempCovers 'temp_icon.png'
+    if (-not [string]::IsNullOrWhiteSpace($iconUrl) -and $iconUrl -match '\.ico(\?|$)') { $iconFile = Join-Path $global:tempCovers 'temp_icon.ico' }
+    elseif (-not [string]::IsNullOrWhiteSpace($iconUrl) -and $iconUrl -match '\.jpe?g(\?|$)') { $iconFile = Join-Path $global:tempCovers 'temp_icon.jpg' }
+
+    $urls = @(
+        [PSCustomObject]@{ Key='Vertical';   Url=$(if ($vertical.Count -gt 0)   { [string]$vertical[0].url }   else { $null }); File=(Join-Path $global:tempCovers 'temp_p.jpg') },
+        [PSCustomObject]@{ Key='Horizontal'; Url=$(if ($horizontal.Count -gt 0) { [string]$horizontal[0].url } else { $null }); File=(Join-Path $global:tempCovers 'temp_header.jpg') },
+        [PSCustomObject]@{ Key='Hero';       Url=$(if ($heroes.Count -gt 0)     { [string]$heroes[0].url }     else { $null }); File=(Join-Path $global:tempCovers 'temp_hero.jpg') },
+        [PSCustomObject]@{ Key='Logo';       Url=$(if ($logos.Count -gt 0)      { [string]$logos[0].url }      else { $null }); File=(Join-Path $global:tempCovers 'temp_logo.png') },
+        [PSCustomObject]@{ Key='Icon';       Url=$iconUrl; File=$iconFile }
+    )
+
+    $loaded = 0
+    foreach ($u in $urls) {
+        if ($script:batchCardCancelRequested) { break }
+        if ([string]::IsNullOrWhiteSpace([string]$u.Url)) { continue }
+        if (Download-RemoteImage ([string]$u.Url) ([string]$u.File)) {
+            if ($u.Key -eq 'Icon') { try { [void](Repair-IconFileExtension ([string]$u.File)) } catch {} }
+            $loaded++
+        }
+        [System.Windows.Forms.Application]::DoEvents()
+    }
+    return $loaded
+}
+
+# Тихое добавление рома: тот же контракт {Handled, Success, Reason}, что у
+# Add-GameToSteamQuietly. Повторяет то, что делает карточка рома (Show-GameEditorDialog),
+# но без окна: название и обложки из SteamGridDB, файл рома по правилу уверенности
+# карточки, активный эмулятор, параметры запуска, обёртка для архивов.
+# Handled = $false — что-то определено неуверенно, до любых изменений в Steam:
+# ром нужно показать в обычной видимой карточке.
+function Add-RomToSteamQuietly ($game) {
+    $result = [PSCustomObject]@{ Handled=$false; Success=$false; Reason='' }
+
+    $gamePath = [string]$game.Path
+    if ([string]::IsNullOrWhiteSpace($gamePath) -or -not (Test-Path -LiteralPath $gamePath)) {
+        $result.Reason = (T 'rom_file_gone')
+        return $result
+    }
+
+    # Название: имя файла без расширения (как в начале Show-GameEditorDialog).
+    $title = [string]$game.Name
+    if (Test-Path -LiteralPath $gamePath -PathType Leaf) {
+        try { $title = [string](Get-RomFileTitle $gamePath) } catch {}
+    }
+    if ([string]::IsNullOrWhiteSpace($title)) { $title = [string]$game.Name }
+
+    # Эмулятор: активный профиль, его exe и рабочая папка должны существовать.
+    $emu = Get-ActiveEmulatorProfile
+    if ($null -eq $emu) {
+        $result.Reason = (T 'st_pick_emulator')
+        return $result
+    }
+    $emuExe = [string]$emu.ExePath
+    if ([string]::IsNullOrWhiteSpace($emuExe) -or -not (Test-Path -LiteralPath $emuExe)) {
+        $result.Reason = (T 'st_emulator_gone')
+        return $result
+    }
+    $startDir = ''
+    try { $startDir = [System.IO.Path]::GetDirectoryName($emuExe) } catch {}
+    if ([string]::IsNullOrWhiteSpace($startDir) -or -not (Test-Path -LiteralPath $startDir -PathType Container)) {
+        $result.Reason = (T 'st_no_workdir')
+        return $result
+    }
+
+    # Файл рома: кандидаты и правило уверенности те же, что в $populateRomCandidates карточки.
+    $exts = [string]$emu.Extensions
+    $extractOn = Test-EmulatorExtractArchives $emu
+    $romCands = @(Get-EditorRomCandidates $gamePath $exts ([bool]$extractOn))
+    if ($extractOn) { try { $romCands = @(Expand-RomArchiveCandidates $romCands $exts) } catch {} }
+    if ($romCands.Count -eq 0) {
+        $result.Reason = (T 'rom_badge_none')
+        return $result
+    }
+    $bestIdx = 0
+    for ($i = 0; $i -lt $romCands.Count; $i++) { if ([bool]$romCands[$i].IsKnown) { $bestIdx = $i; break } }
+    $bestRom = $romCands[$bestIdx]
+    $knownRoms = @($romCands | Where-Object { [bool]$_.IsKnown })
+    $baseRoms = @($knownRoms | Where-Object { [int]$_.RomPriority -eq -100 })
+    $romConfident = [bool]$bestRom.IsKnown -and (($knownRoms.Count -le 1) -or ($baseRoms.Count -eq 1 -and [int]$bestRom.RomPriority -eq -100))
+    $pec = $bestRom.PSObject.Properties['EntryConfident']
+    if ($null -ne $pec -and -not [bool]$pec.Value) { $romConfident = $false }
+    if (-not $romConfident) {
+        $result.Reason = (T 'rom_badge_unsure')
+        return $result
+    }
+    $romFile = [string]$bestRom.FullName
+    $romEntry = ''
+    $pae = $bestRom.PSObject.Properties['ArchiveEntry']
+    if ($null -ne $pae -and $null -ne $pae.Value) { $romEntry = [string]$pae.Value }
+
+    if ($script:batchCardCancelRequested) { return $result }
+
+    # Название в SteamGridDB: берём лучший вариант поиска, как карточка при открытии.
+    $sgdbCands = @()
+    try { $sgdbCands = @(Get-EditorSgdbCandidates $title '') } catch { $sgdbCands = @() }
+    if ($sgdbCands.Count -eq 0 -or [string]::IsNullOrWhiteSpace([string]$sgdbCands[0].Name) -or [int]$sgdbCands[0].Id -le 0) {
+        $result.Reason = (T 'badge_title_fail_auto')
+        return $result
+    }
+    # Автоматически не берём другую часть серии: пусть пользователь выберет в карточке.
+    if ((Get-TitleSeqKey $title) -ne (Get-TitleSeqKey ([string]$sgdbCands[0].Name))) {
+        $result.Reason = (T 'badge_title_fail_auto')
+        return $result
+    }
+    $sgdbId = [int]$sgdbCands[0].Id
+    $displayName = [string]$sgdbCands[0].Name
+
+    if ($script:batchCardCancelRequested) { return $result }
+
+    # Параметры запуска: шаблон эмулятора (для RetroArch — с ядром профиля) с путём к рому.
+    $launch = ''
+    try {
+        $argsTemplate = [string]$emu.Args
+        if (Test-IsRetroArchProfile ([string]$emu.Name) $emuExe) {
+            $argsTemplate = Merge-RetroArchCoreArgs $argsTemplate ([string]$emu.Core)
+        }
+        $launch = [string](Format-EmulatorLaunchArgs $argsTemplate $romFile)
+    } catch { $launch = '' }
+
+    # Архив, который эмулятор сам не откроет: ярлык = SCLauncher.exe с параметрами.
+    # Неудача — не молчаливое добавление ярлыка на архив, а передача в карточку.
+    $wrapExe = ''
+    $wrapArgs = ''
+    if ($extractOn) {
+        $romWrap = $null
+        try {
+            if (Test-IsRetroArchProfile ([string]$emu.Name) $emuExe) {
+                $romWrap = Get-RomArchiveWrapPlan $romFile $emuExe $launch $romEntry
+            } else {
+                $romWrap = Get-EmulatorArchiveWrapPlan $romFile $emuExe $launch $exts $romEntry
+            }
+        } catch {
+            try { Write-LauncherLog ('rom wrap plan failed: ' + [string]$_.Exception.Message) } catch {}
+            $romWrap = [PSCustomObject]@{ Wrapped = $false; Ok = $false; Exe = ''; Args = ''; Reason = (T 'st_launcher_wrap_fail') }
+        }
+        if ($null -ne $romWrap) {
+            if (-not $romWrap.Ok) {
+                $result.Reason = [string]$romWrap.Reason
+                return $result
+            }
+            if ($romWrap.Wrapped) { $wrapExe = [string]$romWrap.Exe; $wrapArgs = [string]$romWrap.Args }
+        }
+    }
+
+    if ($script:batchCardCancelRequested) { return $result }
+
+    # Обложки: скачиваем во временную папку неблокирующим способом (curl.exe + DoEvents).
+    # Если ни капсулы, ни заголовка нет — карточка, где обложки можно выбрать вручную.
+    $prevUiPump = $global:uiPumpDuringDownload
+    $global:uiPumpDuringDownload = $true
+    try {
+        Clear-TempCoverFiles
+        [void](Get-RomSgdbCoversQuiet $sgdbId)
+    } finally {
+        $global:uiPumpDuringDownload = $prevUiPump
+    }
+    if ($script:batchCardCancelRequested) { return $result }
+    if (-not (Test-CoversValid)) {
+        $result.Reason = (T 'sl_sg_imgfail')
+        return $result
+    }
+
+    # С этого момента решение принято: всё определено уверенно — пишем ярлык без карточки.
+    $result.Handled = $true
+    try {
+        $finalExe = $emuExe
+        $finalLaunch = $launch
+        if ($wrapExe) { $finalExe = $wrapExe; $finalLaunch = $wrapArgs }
+
+        $global:folderDisplayNameCache[$gamePath.ToUpper()] = $displayName
+        $newId = Add-ShortcutToSteam $displayName $finalExe $startDir $finalLaunch
+        if (-not $newId) {
+            $result.Success = $false
+            $result.Reason = if ($global:lastShortcutError) { [string]$global:lastShortcutError } else { (T 'reason_shortcut_fail') }
+            return $result
+        }
+
+        # Положение логотипа по умолчанию подставит сама Copy-TempCoversDirectlyToGrid.
+        Copy-TempCoversDirectlyToGrid $newId | Out-Null
+        try {
+            $quietSlots = [PSCustomObject]@{
+                Vertical   = [PSCustomObject]@{ Source = 'SteamGridDB' }
+                Horizontal = [PSCustomObject]@{ Source = 'SteamGridDB' }
+                Hero       = [PSCustomObject]@{ Source = 'SteamGridDB' }
+                Logo       = [PSCustomObject]@{ Source = 'SteamGridDB' }
+                Icon       = [PSCustomObject]@{ Source = 'SteamGridDB' }
+            }
+            Save-CoverSourcesMetadata ([string]$newId) $quietSlots '' | Out-Null
+        } catch {}
+        $result.Success = $true
+    } catch {
+        $result.Success = $false
+        $result.Reason = $_.Exception.Message
+    }
+    return $result
+}
+
 # Вынесено из btnAddToSteam, чтобы этой же логикой мог пользоваться btnApplyCoversNow
 # (иначе им пришлось бы искать exe по-разному и получать разные ID)
 #
@@ -13876,6 +14332,23 @@ function Ensure-SteamGridDbApiKey {
 # первые доступные hero/logo) напрямую в $global:tempCovers. Возвращает
 # объект с полями Name/Id/SkipDownload=$true (готовые обложки уже лежат в
 # temp, повторно скачивать их с CDN Steam не нужно) либо $null при отмене.
+# Номер части в названии, приведённый к арабским цифрам: «II», «2», «Part 2» дают один и тот же ключ.
+# Скобки «(USA)», «(2023)», «[v1.1]» не учитываются, годы (4 цифры) тоже. Нужен, чтобы
+# «Dead to Rights II» не получал обложку/название первой части «Dead to Rights».
+function Get-TitleSeqKey ([string]$title) {
+    if ([string]::IsNullOrWhiteSpace($title)) { return '' }
+    $romans = @{ 'ii'='2'; 'iii'='3'; 'iv'='4'; 'v'='5'; 'vi'='6'; 'vii'='7'; 'viii'='8'; 'ix'='9'; 'x'='10'; 'xi'='11'; 'xii'='12'; 'xiii'='13'; 'xiv'='14'; 'xv'='15' }
+    $x = $title.ToLowerInvariant()
+    $x = $x -replace '\([^)]*\)|\[[^\]]*\]', ' '
+    $x = $x -replace '[^\p{L}\p{Nd}]+', ' '
+    $list = New-Object System.Collections.Generic.List[string]
+    foreach ($w in @($x.Trim() -split ' ' | Where-Object { $_ })) {
+        if ($romans.ContainsKey($w)) { [void]$list.Add([string]$romans[$w]) }
+        elseif ($w -match '^\d{1,3}$') { [void]$list.Add([string][int]$w) }
+    }
+    return (($list | Sort-Object -Unique) -join ',')
+}
+
 function Get-SgdbNameScore ($query, $candidate) {
     $q = ([string]$query).ToLowerInvariant().Trim()
     $c = ([string]$candidate.name).ToLowerInvariant().Trim()
@@ -13919,7 +14392,14 @@ function Get-SgdbNameScore ($query, $candidate) {
     $containsBonus = if ($nc.Contains($nq) -or $nq.Contains($nc)) { 18 } else { 0 }
     $typeBonus = if (@($candidate.types) -contains 'steam') { 8 } else { 0 }
     $verifiedBonus = if ($candidate.verified -eq $true) { 6 } else { 0 }
-    return [Math]::Round(($tokenScore*0.52)+($lev*0.30)+$containsBonus+$typeBonus+$verifiedBonus,2)
+    # Разные номера части (или номер есть только с одной стороны) — это другая игра серии.
+    # Без этого «Dead to Rights» (3 общих слова + бонус «содержит») обгонял
+    # «Dead to Rights II: Hell to Pay» из-за длинного подзаголовка.
+    $seqQ = Get-TitleSeqKey $q
+    $seqC = Get-TitleSeqKey $c
+    $seqAdj = 0
+    if ($seqQ -ne $seqC) { $seqAdj = -60 } elseif ($seqQ) { $seqAdj = 12 }
+    return [Math]::Round(($tokenScore*0.52)+($lev*0.30)+$containsBonus+$typeBonus+$verifiedBonus+$seqAdj,2)
 }
 
 function Get-SgdbAssetsForGame ($gameId, $headers) {
@@ -17613,7 +18093,7 @@ function Get-SteamShortcutsFiles {
         $userDataPath = Get-ConfiguredSteamUserDataPath
         if (-not (Test-Path $userDataPath)) { return @() }
 
-        foreach ($f in (Get-ChildItem -Path $userDataPath -Filter "shortcuts.vdf" -Recurse -File -ErrorAction SilentlyContinue)) {
+        foreach ($f in (Get-ShortcutsVdfFiles $userDataPath)) {
             try {
                 if ($f.Length -gt 0) { $files.Add($f) }
             } catch {}
@@ -22530,7 +23010,6 @@ function New-ConfidenceBadge($parent, [int]$x, [int]$y) {
 function Set-ConfidenceBadge($pictureBox, [bool]$confident, [string]$confidentTip, [string]$unsureTip) {
     try {
         if ($null -eq $pictureBox) { return }
-        # Состояние значка читает автодобавление ROM (см. $autoRomSubmit в Show-GameEditorDialog).
         try { $pictureBox.AccessibleDescription = $(if ($confident) { 'ok' } else { 'unsure' }) } catch {}
         $bmp = Get-ConfidenceBadgeBitmap $confident
         try { if ($null -ne $pictureBox.Image) { $pictureBox.Image.Dispose() } } catch {}
@@ -22663,7 +23142,7 @@ function Get-SteamLibraryEntries {
     try {
         $userDataPath = Get-ConfiguredSteamUserDataPath
         if (Test-Path $userDataPath) {
-            Get-ChildItem -Path $userDataPath -Filter 'shortcuts.vdf' -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object {
+            Get-ShortcutsVdfFiles $userDataPath | ForEach-Object {
                 try {
                     $bytes = [System.IO.File]::ReadAllBytes($_.FullName)
                     if ($bytes.Length -eq 0) { return }
@@ -32365,30 +32844,6 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     # Подписи центрируются относительно этой строки отдельной координатой Y=17.
     $dlg = New-Object System.Windows.Forms.Form
     $dlg.Text = (T 'card_title' @($originalCardName))
-    # Автоимпорт ROM: карточка открывается невидимой (Opacity = 0). Если название, эмулятор и ROM
-    # определены уверенно, в конце Add_Shown она сама нажимает «Добавить игру в библиотеку».
-    # Иначе показывается как обычно — пользователь проверяет и правит вручную.
-    $autoRomSubmit = ($batchMode -and $IsRomEntry -and ($null -eq $batchHost) -and [bool]$script:romAutoSubmitRequested)
-    if ($autoRomSubmit) { try { $dlg.Opacity = 0 } catch {} }
-    # Тихий проход по ромам (см. Invoke-SmartBatchAdd): невидимая карточка не должна
-    # блокировать главное окно — иначе кнопку «Отменить добавление» не нажать.
-    # Таймер закрывает скрытую карточку, как только отмена запрошена.
-    if ($autoRomSubmit -and [bool]$script:romAutoDeferOnly) {
-        try { $dlg.ShowInTaskbar = $false } catch {}
-        $romCancelTimer = New-Object System.Windows.Forms.Timer
-        $romCancelTimer.Interval = 150
-        $romCancelTimer.Add_Tick({
-            try {
-                if ($script:batchCardCancelRequested -and $dlg.Opacity -eq 0 -and -not $dlg.IsDisposed) {
-                    $global:editorLoadAbortRequested = $true
-                    $dlg.Close()
-                }
-            } catch {}
-        })
-        $romCancelTimer.Start()
-        $dlg.Add_FormClosed({ try { $romCancelTimer.Stop(); $romCancelTimer.Dispose() } catch {} })
-        $dlg.Add_Shown({ try { if ($null -ne $ownerWin -and $dlg.Opacity -eq 0) { $ownerWin.Enabled = $true } } catch {} })
-    }
     # В режиме ROMs между строкой "Эмулятор" и строкой "Параметры" добавляется
     # ещё одна строка — "ROM". Все контролы ниже неё (сами "Параметры",
     # статус-строка и слоты обложек) сдвигаются вниз на высоту этой строки,
@@ -32564,7 +33019,12 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     })
     $updateSgdbButtonState = {
         try { Complete-StartupKeyChecks } catch {}
-        $isValid = ([bool]$global:steamGridDbApiKeyValid -and -not [string]::IsNullOrWhiteSpace([string]$global:steamGridDbApiKey))
+        # Сетевой сбой/429/5xx при проверке ключа на старте НЕ означает, что ключ плохой:
+        # раньше из-за этого кнопка SGDB была серой до перезапуска программы. Блокируем её
+        # только когда сервер реально отверг ключ (401/403/«invalid»).
+        $sgdbCheckNow = $global:steamGridDbApiKeyCheck
+        $sgdbTransient = ($null -ne $sgdbCheckNow -and [bool]$sgdbCheckNow.NetworkError)
+        $isValid = (([bool]$global:steamGridDbApiKeyValid -or $sgdbTransient) -and -not [string]::IsNullOrWhiteSpace([string]$global:steamGridDbApiKey))
         $isSgdb = ($editorState -ne $null -and $editorState.SearchSource -eq 'SteamGridDB')
         # Кнопка всегда показывает ТЕКУЩИЙ источник. Из Steam в SGDB можно перейти
         # только с валидным API-ключом (иначе кнопка серая и неактивная), а из SGDB
@@ -35887,34 +36347,6 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
             $editorState.OpDepth = [Math]::Max(0, [int]$editorState.OpDepth - 1)
             Invoke-EditorPendingSwitch
         }
-        if ($autoRomSubmit) {
-            $revealCard = $true
-            try {
-                if (-not ($global:editorLoadAbortRequested -or $dlg.IsDisposed -or $dlg.Disposing)) {
-                    $okTitle = ([string]$titleConfidenceBadge.AccessibleDescription -eq 'ok') -and ($txtId.Text.Trim() -match '^\d+$')
-                    $okRom   = ([string]$romConfidenceBadge.AccessibleDescription -eq 'ok') -and ($cmbRom.SelectedIndex -ge 0)
-                    $okEmu   = ($cmbEmulator.SelectedIndex -ge 0) -and ($cmbEmulator.SelectedIndex -lt @($emuProfiles).Count)
-                    $okOpt   = ([string]$launchOptConfidenceBadge.AccessibleDescription -ne 'unsure')
-                    $okCov   = [bool](Test-CoversValid)
-                    if ($okTitle -and $okRom -and $okEmu -and $okOpt -and $okCov -and $btnAdd.Enabled) {
-                        $script:editorSavedChanges = $false
-                        $btnAdd.PerformClick()
-                        if ($script:editorSavedChanges) { $script:romAutoSubmitDone = $true; $revealCard = $false }
-                    }
-                }
-            } catch {}
-            if ($revealCard) {
-                if ([bool]$script:romAutoDeferOnly) {
-                    # Тихий проход: неопознанный ром откладывается, карточка откроется после всех известных.
-                    $script:romAutoDeferred = $true
-                    try { if (-not $dlg.IsDisposed) { $dlg.Close() } } catch {}
-                } else {
-                    try { if (-not $dlg.IsDisposed) { $dlg.Opacity = 1; $dlg.Activate() } } catch {}
-                    # Пока карточка была скрыта, композицию не обновляли: перерисовываем её теперь.
-                    if ($script:LogoComposeEnabled) { try { Update-EditorComposeView $slots.Hero } catch {} }
-                }
-            }
-        }
     })
 
     # После создания всех остальных контролов ещё раз поднимаем поле ввода.
@@ -36140,7 +36572,8 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
                 taskkill.exe /F /T /IM steam.exe 2>$null | Out-Null
                 Start-Sleep -Seconds 2
                 $script:steamWasKilledThisSession = $true
-                $freshShortcut=Find-SteamShortcutRecord $existingShortcut.AppName $gamePath
+                # Ярлык уже известен - перечитываем его строго по ID, а не по имени/папке (см. Find-SteamShortcutRecordById).
+                $freshShortcut=Find-SteamShortcutRecordById $existingShortcut
                 if($freshShortcut -eq $null){$freshShortcut=$existingShortcut}
                 # Ром из архива через SCLauncher.exe: в ярлык пишется обёртка, а не сам эмулятор.
                 $editExe = $exePath; $editLaunch = $launchOptions
@@ -36154,7 +36587,12 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
                 try { Move-GameFolderMapEntry ([string]$freshShortcut.Exe) ([string]$freshShortcut.LaunchOptions) ([string]$editExe) ([string]$editLaunch) '' } catch {}
                 # Обложки сохраняем именно в userdata\<account>\config\grid
                 # того же Steam-профиля, в котором лежит изменяемый shortcuts.vdf.
-                $freshShortcutAfterSave=Find-SteamShortcutRecord $name $gamePath
+                $freshShortcutAfterSave=$null
+                try {
+                    $freshShortcutAfterSave=Find-SteamShortcutRecordById ([PSCustomObject]@{
+                        ShortcutId=[string]$shortcutId; FilePath=[string]$freshShortcut.FilePath
+                        Exe=[string]$editExe; LaunchOptions=[string]$editLaunch; AppName=[string]$name })
+                } catch {}
                 if($freshShortcutAfterSave -eq $null){$freshShortcutAfterSave=$freshShortcut}
                 $hasCovers=$false
                 try { $hasCovers=Test-CoversValid } catch { $hasCovers=$false }
@@ -36418,7 +36856,10 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     try { Get-ChildItem -Path $global:tempCovers -Filter 'editor_*' -Directory -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue } catch {}
     # Перечитываем панели только если что-то сохранено (или это пакетный режим, где так было всегда).
     # Refresh-Panels тяжёлый: Get-CimInstance ×2, рекурсивный поиск shortcuts.vdf, скан обеих папок.
-    if (($batchMode -and -not $script:romAutoDeferred) -or $script:editorSavedChanges) { Refresh-Panels }
+    if ($batchMode -and $null -eq $ownerWin) {
+        # Пакет из главного окна: панели один раз перечитает вызывающий обработчик кнопки в конце
+        # (раньше перечитывание шло после каждой карточки, ~1 с на игру).
+    } elseif ($batchMode -or $script:editorSavedChanges) { Refresh-Panels }
 }
 
 $btnSettings.Add_Click({
@@ -37560,24 +38001,47 @@ function Set-BatchProgressValue ([int]$Value) {
 # Отмена кнопкой на самой карточке (см. $btnCancel в Show-GameEditorDialog)
 # работает так же, как и в обычном пакетном добавлении — через тот же
 # $script:batchCardCancelRequested.
+# Закрыть Steam, не замораживая окно: taskkill ждём с прокачкой сообщений, затем те же 2 секунды паузы.
+function Stop-SteamProcessResponsive {
+    try {
+        $psi = New-Object System.Diagnostics.ProcessStartInfo('taskkill.exe', '/F /T /IM steam.exe')
+        $psi.CreateNoWindow = $true
+        $psi.UseShellExecute = $false
+        $psi.RedirectStandardOutput = $true
+        $psi.RedirectStandardError = $true
+        $p = [System.Diagnostics.Process]::Start($psi)
+        $sw = [System.Diagnostics.Stopwatch]::StartNew()
+        while ($null -ne $p -and -not $p.HasExited -and $sw.ElapsedMilliseconds -lt 20000) {
+            [System.Windows.Forms.Application]::DoEvents()
+            Start-Sleep -Milliseconds 30
+        }
+    } catch {
+        try { taskkill.exe /F /T /IM steam.exe 2>$null | Out-Null } catch {}
+    }
+    $sw2 = [System.Diagnostics.Stopwatch]::StartNew()
+    while ($sw2.ElapsedMilliseconds -lt 2000) {
+        [System.Windows.Forms.Application]::DoEvents()
+        Start-Sleep -Milliseconds 30
+    }
+}
+
 function Invoke-SmartBatchAdd ($selectedGames, [bool]$AutoFill = $true, $OwnerWin = $null, [scriptblock]$StatusHook = $null, [scriptblock]$ProgressHook = $null) {
     $script:batchStatusHook = $StatusHook
     $script:batchProgressHook = $ProgressHook
     $script:batchCardCancelRequested = $false
     $script:batchCardSkipRequested = $false
     $script:smartBatchActive = $true
-    $script:romAutoDeferOnly = $false
-    $script:romAutoDeferred = $false
+    $script:quietRomActive = $false
+    $global:editorLoadAbortRequested = $false
     $script:batchResults = [PSCustomObject]@{ Ok=0; AutoAdded=0; Skipped=0; Failed=0 }
 
     $steamPathProperty = $null
     try {
         $steamPathProperty = (Get-ItemProperty -Path 'HKCU:\Software\Valve\Steam' -Name 'SteamExe' -ErrorAction SilentlyContinue).SteamExe
         if ([string]::IsNullOrEmpty($steamPathProperty)) { $steamPathProperty = 'C:\Program Files (x86)\Steam\steam.exe' }
-        taskkill.exe /F /T /IM steam.exe 2>$null | Out-Null
-        Start-Sleep -Seconds 2
+        Stop-SteamProcessResponsive
 
-        # Двухфазный пакет (без лагов на карточке):
+        # Трёхфазный пакет (без лагов на карточке):
         #  1) Быстрая классификация: авто vs нужна карточка.
         #  2) Все авто-добавления подряд (карточка ещё не открыта).
         #  3) Очередь карточек — каждая отдельным диалогом, как в обычном пакете.
@@ -37595,9 +38059,10 @@ function Invoke-SmartBatchAdd ($selectedGames, [bool]$AutoFill = $true, $OwnerWi
             $game = $selectedGames[$i]
             # Автоимпорт выключен: без классификации, все игры идут в очередь карточек.
             if (-not $AutoFill) { $cardList.Add($game); continue }
-            # Режим ROMs: проверка по Steam/exe к образам не применима, решение принимает
-            # сама карточка (см. $autoRomSubmit в Show-GameEditorDialog).
-            if ($script:romsModeEnabled -and -not (Test-IsLauncherEntry $game)) { $cardList.Add($game); continue }
+            # Режим ROMs: проверка по Steam/exe к образам не применима. Ром сразу идёт в
+            # тихое добавление (Add-RomToSteamQuietly), а если там что-то определено
+            # неуверенно, возвращается Handled = $false и ром уходит в очередь карточек.
+            if ($script:romsModeEnabled -and -not (Test-IsLauncherEntry $game)) { $autoList.Add($game); continue }
             Set-BatchStatusText ([string]((T 'hd_classify_n' @($game.Name, ($i+1), $totalGames))))
             [System.Windows.Forms.Application]::DoEvents()
 
@@ -37659,7 +38124,14 @@ function Invoke-SmartBatchAdd ($selectedGames, [bool]$AutoFill = $true, $OwnerWi
                 Set-BatchProgressValue ([int]([Math]::Min(100, [int](($done / $totalGames) * 100))))
                 [System.Windows.Forms.Application]::DoEvents()
 
-                $quiet = Add-GameToSteamQuietly $game
+                if ($script:romsModeEnabled -and -not (Test-IsLauncherEntry $game)) {
+                    $script:quietRomActive = $true
+                    try { $quiet = Add-RomToSteamQuietly $game } finally { $script:quietRomActive = $false }
+                } else {
+                    $quiet = Add-GameToSteamQuietly $game
+                }
+                # Отмена посреди добавления: до записи в Steam ничего не сделано, в карточки не отправляем.
+                if ($script:batchCardCancelRequested -and -not $quiet.Handled) { break }
                 if ($quiet.Handled -and $quiet.Success) {
                     $script:batchResults.Ok++
                     $script:batchResults.AutoAdded++
@@ -37678,49 +38150,6 @@ function Invoke-SmartBatchAdd ($selectedGames, [bool]$AutoFill = $true, $OwnerWi
             $global:uiPumpDuringDownload = $false
         }
 
-        # Фаза 2б (режим ROMs): тот же порядок, что и у обычных игр — сначала все уверенно
-        # определённые ромы добавляются тихо, неопознанные откладываются в конец очереди
-        # и открываются видимыми карточками уже после всех известных.
-        $romPassDone = $false
-        if ($AutoFill -and $script:romsModeEnabled -and -not $script:batchCardCancelRequested) {
-            $romQuick = @($cardList | Where-Object { -not (Test-IsLauncherEntry $_) })
-            $restList = New-Object System.Collections.Generic.List[object]
-            foreach ($g0 in $cardList) { if (Test-IsLauncherEntry $g0) { $restList.Add($g0) } }
-            $script:romAutoDeferOnly = $true
-            try {
-                for ($i = 0; $i -lt $romQuick.Count; $i++) {
-                    if ($script:batchCardCancelRequested) { break }
-                    $game = $romQuick[$i]
-                    Set-BatchStatusText ([string]((T 'hd_auto_n' @($game.Name, ($i+1), $romQuick.Count, $restList.Count))))
-                    Set-BatchProgressValue ([int]([Math]::Min(100, [int](($done / $totalGames) * 100))))
-                    [System.Windows.Forms.Application]::DoEvents()
-                    $script:romAutoSubmitRequested = $true
-                    $script:romAutoSubmitDone = $false
-                    $script:romAutoDeferred = $false
-                    try {
-                        Show-GameEditorDialog $game.Name $game.Source $game.Path $true $null $null $OwnerWin -IsRomEntry:$true
-                    } finally {
-                        $script:romAutoSubmitRequested = $false
-                    }
-                    if ($script:batchCardCancelRequested) { break }
-                    if ($script:romAutoDeferred) { $restList.Add($game); continue }
-                    if ($script:batchCardSkipRequested) { $script:batchResults.Skipped++ }
-                    else {
-                        $script:batchResults.Ok++
-                        if ($script:romAutoSubmitDone) { $script:batchResults.AutoAdded++ }
-                    }
-                    $done++
-                    Set-BatchProgressValue ([int]([Math]::Min(100, [int](($done / $totalGames) * 100))))
-                    [System.Windows.Forms.Application]::DoEvents()
-                }
-            } finally {
-                $script:romAutoDeferOnly = $false
-                $script:romAutoDeferred = $false
-            }
-            $cardList = $restList
-            $romPassDone = $true
-        }
-
         # Фаза 3: очередь карточек. Каждая карточка — отдельный диалог, ровно как
         # в обычном (не авто) пакетном добавлении, а не встроенная панель.
         $cardTotal = $cardList.Count
@@ -37735,20 +38164,13 @@ function Invoke-SmartBatchAdd ($selectedGames, [bool]$AutoFill = $true, $OwnerWi
             if (Test-IsLauncherEntry $game) {
                 Show-GameEditorDialog $game.Name 'Steam' $game.Path $true $null $null $OwnerWin -IsRomEntry:$false -LauncherEntry $game
             } else {
-                $script:romAutoSubmitRequested = ($AutoFill -and [bool]$script:romsModeEnabled -and -not $romPassDone)
-                $script:romAutoSubmitDone = $false
-                try {
-                    Show-GameEditorDialog $game.Name $game.Source $game.Path $true $null $null $OwnerWin -IsRomEntry:$script:romsModeEnabled
-                } finally {
-                    $script:romAutoSubmitRequested = $false
-                }
+                Show-GameEditorDialog $game.Name $game.Source $game.Path $true $null $null $OwnerWin -IsRomEntry:$script:romsModeEnabled
             }
 
             if ($script:batchCardCancelRequested) { break }
             elseif ($script:batchCardSkipRequested) { $script:batchResults.Skipped++ }
             else {
                 $script:batchResults.Ok++
-                if ($script:romAutoSubmitDone) { $script:batchResults.AutoAdded++ }
             }
             $done++
             Set-BatchProgressValue ([int]([Math]::Min(100, [int](($done / $totalGames) * 100))))
@@ -37773,7 +38195,8 @@ function Invoke-SmartBatchAdd ($selectedGames, [bool]$AutoFill = $true, $OwnerWi
         $script:batchStatusHook = $null
         $script:batchProgressHook = $null
         $script:smartBatchActive = $false
-        $script:romAutoDeferOnly = $false
+        $script:quietRomActive = $false
+        $global:editorLoadAbortRequested = $false
     }
     return $script:batchResults
 }
@@ -37795,6 +38218,11 @@ $script:btnAddToSteamDefaultText = [string]$btnAddToSteam.Tag
 $btnAddToSteam.Add_Click({
     if($script:batchInProgress){
         $script:batchCardCancelRequested = $true
+        # Идёт тихое добавление рома: прерываем его долгие операции (чтение архива, запросы к
+        # SteamGridDB, скачивание обложек). Ром при этом не добавляется вовсе — Add-RomToSteamQuietly
+        # возвращает Handled = $false до записи в Steam. У обычных игр флаг не трогаем: начатая
+        # игра, как и раньше, спокойно доходит до конца.
+        if ($script:quietRomActive) { $global:editorLoadAbortRequested = $true }
         $labelHeader.Text = (T 'hd_cancelling')
         return
     }
@@ -37860,8 +38288,7 @@ $btnAddToSteam.Add_Click({
     try{
         $steamPathProperty=(Get-ItemProperty -Path 'HKCU:\Software\Valve\Steam' -Name 'SteamExe' -ErrorAction SilentlyContinue).SteamExe
         if([string]::IsNullOrEmpty($steamPathProperty)){$steamPathProperty='C:\Program Files (x86)\Steam\steam.exe'}
-        taskkill.exe /F /T /IM steam.exe 2>$null | Out-Null
-        Start-Sleep -Seconds 2
+        Stop-SteamProcessResponsive
         [System.Windows.Forms.Application]::DoEvents()
 
         $manualTotal=[Math]::Max(1,@($selectedGames).Count)
