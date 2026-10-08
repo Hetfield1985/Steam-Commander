@@ -6,6 +6,25 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [2.0.3] - 2026-10-09
+
+### Fixed
+* **The window froze ("Not responding") after pressing *Add selected games to library*, before the first card appeared.** The "already in Steam" check re-parsed the whole `shortcuts.vdf` for every selected game, and Steam was closed with a call that did not let the window process messages. The file is now parsed once and cached (it is re-read only when it changes), and Steam is closed without blocking the window.
+* **Silent ROM import: a sequel could get the title and covers of the first game** (for example *Dead to Rights II* was matched to *Dead to Rights*, so both shortcuts ended up with the same name and cover). Part numbers (`2`, `II`, `Part 2`) are now taken into account when ranking SteamGridDB results, and if the best match is a different part, the ROM is opened in the regular card instead of being added automatically.
+* Two ROMs with the same title on the same emulator (for example *Disc 2* of a game) could get the same shortcut ID, so Steam merged them and the second one lost its covers. A free ID is now chosen automatically.
+* Editing a ROM shortcut could change another shortcut that uses the same emulator and ROM folder. The shortcut is now re-read by its ID before saving.
+* SteamGridDB temporary failures (429, 5xx, timeouts, dropped connections) are retried with a growing delay instead of immediately showing "covers failed to load". A network error while checking the API key at startup no longer greys out the SteamGridDB button until the app is restarted.
+* Cancelling a batch or closing a card now stops reading a 7z / rar archive right away.
+
+### Improved
+* Refreshing the panels is faster: `shortcuts.vdf` is looked up only in the Steam profile folders instead of scanning the whole `userdata` folder (thousands of cover images), and the drive label and free space no longer go through WMI. This is noticeable after adding games and with *Refresh* / `F5`.
+* A batch started from the main window refreshes the panels once at the end instead of after every card.
+
+### Changed
+* Silent ROM import adds a shortcut directly, without opening a hidden card, when everything is detected confidently; otherwise the ROM goes to the regular card queue.
+
+---
+
 ## [2.0.2] - 2026-10-08
 
 ### Added
