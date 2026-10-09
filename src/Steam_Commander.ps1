@@ -884,7 +884,7 @@ Set-SplashProgress 0.52
 # Единая версия приложения — используется в заголовке главного окна, в
 # подписи внизу окна настроек и в User-Agent HTTP-запросов. Меняйте только
 # здесь при выпуске новой версии.
-$global:appVersion = "2.0.3"
+$global:appVersion = "2.0.4"
 $global:appTitle = "Steam Commander"
 # Ссылки на исходный код и поддержку автора (окно «Поддержать» в настройках). Меняйте только здесь.
 $global:appRepoUrl = "https://github.com/Hetfield1985/Steam-Commander"
@@ -1177,7 +1177,7 @@ $script:I18n = @{
         sl_sg_nogames = 'SteamGridDB: подходящих игр не найдено.'
         sl_sg_found_fetch = 'SteamGridDB: найдена «{0}», получаю варианты…'
         sl_sg_loading = 'SteamGridDB: загружаю {0}…'
-        sl_sg_done = 'SteamGridDB: готово — {0} из 4. Игра: «{1}».'
+        sl_sg_done = 'SteamGridDB: готово — {0} из 5. Игра: «{1}».'
         sl_sg_imgfail = 'SteamGridDB: изображения не загрузились.'
         sl_sg_alts = 'SteamGridDB: загружаю альтернативы для {0}…'
         sl_sg_noalts = 'SteamGridDB: альтернативы для этого типа не найдены.'
@@ -1669,7 +1669,7 @@ $script:I18n = @{
         sl_sg_nogames = 'SteamGridDB: no matching games found.'
         sl_sg_found_fetch = 'SteamGridDB: found “{0}”, fetching options…'
         sl_sg_loading = 'SteamGridDB: loading {0}…'
-        sl_sg_done = 'SteamGridDB: done — {0} of 4. Game: “{1}”.'
+        sl_sg_done = 'SteamGridDB: done — {0} of 5. Game: “{1}”.'
         sl_sg_imgfail = 'SteamGridDB: images failed to load.'
         sl_sg_alts = 'SteamGridDB: loading alternatives for {0}…'
         sl_sg_noalts = 'SteamGridDB: no alternatives found for this type.'
@@ -2148,7 +2148,7 @@ $script:I18n = @{
         sl_sg_nogames = 'SteamGridDB：未找到匹配的游戏。'
         sl_sg_found_fetch = 'SteamGridDB：已找到“{0}”，正在获取可选项…'
         sl_sg_loading = 'SteamGridDB：正在加载 {0}…'
-        sl_sg_done = 'SteamGridDB：完成 — {0}/4。游戏：“{1}”。'
+        sl_sg_done = 'SteamGridDB：完成 — {0}/5。游戏：“{1}”。'
         sl_sg_imgfail = 'SteamGridDB：图片加载失败。'
         sl_sg_alts = 'SteamGridDB：正在加载 {0} 的备选项…'
         sl_sg_noalts = 'SteamGridDB：未找到该类型的备选项。'
@@ -2641,7 +2641,7 @@ $script:I18n = @{
         sl_sg_nogames = 'SteamGridDB: no se encontraron juegos coincidentes.'
         sl_sg_found_fetch = 'SteamGridDB: encontrado “{0}”, obteniendo opciones…'
         sl_sg_loading = 'SteamGridDB: cargando {0}…'
-        sl_sg_done = 'SteamGridDB: listo — {0} de 4. Juego: “{1}”.'
+        sl_sg_done = 'SteamGridDB: listo — {0} de 5. Juego: “{1}”.'
         sl_sg_imgfail = 'SteamGridDB: no se pudieron cargar las imágenes.'
         sl_sg_alts = 'SteamGridDB: cargando alternativas para {0}…'
         sl_sg_noalts = 'SteamGridDB: no se encontraron alternativas para este tipo.'
@@ -3134,7 +3134,7 @@ $script:I18n = @{
         sl_sg_nogames = 'SteamGridDB: nenhum jogo correspondente encontrado.'
         sl_sg_found_fetch = 'SteamGridDB: “{0}” encontrado, obtendo opções…'
         sl_sg_loading = 'SteamGridDB: carregando {0}…'
-        sl_sg_done = 'SteamGridDB: pronto — {0} de 4. Jogo: “{1}”.'
+        sl_sg_done = 'SteamGridDB: pronto — {0} de 5. Jogo: “{1}”.'
         sl_sg_imgfail = 'SteamGridDB: falha ao carregar as imagens.'
         sl_sg_alts = 'SteamGridDB: carregando alternativas para {0}…'
         sl_sg_noalts = 'SteamGridDB: nenhuma alternativa encontrada para este tipo.'
@@ -3627,7 +3627,7 @@ $script:I18n = @{
         sl_sg_nogames = 'SteamGridDB: Keine passenden Spiele gefunden.'
         sl_sg_found_fetch = 'SteamGridDB: „{0}“ gefunden, Optionen werden abgerufen…'
         sl_sg_loading = 'SteamGridDB: {0} wird geladen…'
-        sl_sg_done = 'SteamGridDB: Fertig — {0} von 4. Spiel: „{1}“.'
+        sl_sg_done = 'SteamGridDB: Fertig — {0} von 5. Spiel: „{1}“.'
         sl_sg_imgfail = 'SteamGridDB: Bilder konnten nicht geladen werden.'
         sl_sg_alts = 'SteamGridDB: Alternativen für {0} werden geladen…'
         sl_sg_noalts = 'SteamGridDB: Keine Alternativen für diesen Typ gefunden.'
@@ -4783,6 +4783,40 @@ function Draw-RomTypeIcon ($g, [int]$x, [int]$y, [string]$name, [bool]$isDir, $b
     $g.SmoothingMode = $prevSm
 }
 
+# Подсказка с полным именем при наведении на колонку «Имя»: длинные имена (ромы вида
+# «Alone in the Dark - The New Nightmare (USA) (Disc 1).cue») обрезаются многоточием.
+# Обработчики без GetNewClosure: внутри closure $script:colWidths указывал бы на другой scope.
+function Register-ListBoxNameTip ($listBox) {
+    if ($null -eq $global:listNameTip) {
+        $global:listNameTip = New-Object System.Windows.Forms.ToolTip
+        $global:listNameTipIdx = @{}
+    }
+    $listBox.Add_MouseMove({
+        try {
+            $lb = $this
+            $key = [string]$lb.Tag
+            $idx = $lb.IndexFromPoint($_.Location)
+            $w = $script:colWidths[$key]
+            $w0 = if ($null -ne $w) { [int]$w[0] } else { 238 }
+            if ($idx -lt 0 -or $_.X -gt $w0) {
+                if ($global:listNameTipIdx[$key] -ne -1) { $global:listNameTip.Hide($lb); $global:listNameTipIdx[$key] = -1 }
+                return
+            }
+            if ($global:listNameTipIdx[$key] -eq $idx) { return }
+            $global:listNameTipIdx[$key] = $idx
+            $text = [string]$lb.Items[$idx]
+            $textW = [System.Windows.Forms.TextRenderer]::MeasureText($text, $lb.Font).Width
+            if ($textW + 66 -gt $w0) {
+                $global:listNameTip.Show($text, $lb, ($_.X + 14), ($_.Y + 20), 12000)
+            } else {
+                $global:listNameTip.Hide($lb)
+            }
+        } catch {}
+    })
+    $listBox.Add_MouseLeave({
+        try { $global:listNameTip.Hide($this); $global:listNameTipIdx[[string]$this.Tag] = -1 } catch {}
+    })
+}
 function Register-ListBoxDrawEvent ($listBox) {
     $listBox.Add_DrawItem({
         param([object]$sender, [System.Windows.Forms.DrawItemEventArgs]$e)
@@ -7992,6 +8026,7 @@ $listBoxC.ForeColor = $steamUi.Text
 $listBoxC.Font = New-Object System.Drawing.Font("Segoe UI", 9.5)
 $listBoxC.Tag = 'C'
 Register-ListBoxDrawEvent $listBoxC
+Register-ListBoxNameTip $listBoxC
 $form.Controls.Add($listBoxC)
 
 # Заглушка-подсказка поверх левой панели: те же размеры и рамка, что у списка,
@@ -8079,6 +8114,7 @@ $listBoxD.ForeColor = $steamUi.Text
 $listBoxD.Font = New-Object System.Drawing.Font("Segoe UI", 9.5)
 $listBoxD.Tag = 'D'
 Register-ListBoxDrawEvent $listBoxD
+Register-ListBoxNameTip $listBoxD
 $form.Controls.Add($listBoxD)
 
 # Заглушка-подсказка поверх правой панели — тот же приём, что и слева.
@@ -9848,6 +9884,21 @@ function Test-RomArchiveNeedsExtract([string]$romPath, [string]$exePath, [string
     return $res
 }
 
+# Расширения дисковых/архивных ромов, где «(v1.1)» после региона — ревизия самой игры (имена No-Intro/Redump),
+# а не патч. Switch (nsp/xci/nsz/xcz) и прочие форматы сюда намеренно не входят: там vN — обновление.
+function Test-RomRevisionTag([string]$baseName, [string]$ext) {
+    $e = ([string]$ext).TrimStart('.').ToLowerInvariant()
+    if (@('7z','zip','rar','iso','bin','img','cue','chd','ccd','mds','gdi','cso','pbp','m3u','rvz','wbfs') -notcontains $e) { return $false }
+    if ([string]$baseName -match '\[0100[0-9A-Fa-f]{12}\]') { return $false }
+    if ([string]$baseName -match '(?i)\([^()]+\)\s*\(v\d+(?:\.\d+)*\)') { return $true }
+    # «Micro Machines V3 (USA)»: vN вне скобок и без точки — часть названия игры, а не версия патча.
+    # Если есть вторая версия в скобках/скобочная «[v..]», это по-прежнему версия.
+    $stripped = ([string]$baseName -replace '\([^)]*\)|\[[^\]]*\]', ' ')
+    $inBrackets = ([string]$baseName -match '(?i)[\(\[]\s*v\d')
+    if (-not $inBrackets -and $stripped -match '(?i)(?:^|\s)v\d+(?![.\d])(?:\s|$)') { return $true }
+    return $false
+}
+
 # Оценка файла внутри архива: чем меньше, тем лучше. Приоритет: оригинальный дамп, затем регион USA.
 # Не оригинал (+1000): хаки, плохие/пере-дампы, переводы, трейнеры, пиратки ([b] [h] [o] [f] [t] [p] [T+..], (Hack) и т.п.).
 # Бета/прото/демо/альтернативы (+500). Перевыпуски (+20), ревизии (+5). Регион: USA 0, World 10, Europe 20, Japan 30, прочие 40.
@@ -9923,6 +9974,26 @@ function Expand-RomArchiveCandidates($candidates, [string]$extsCsv) {
                     $list = Get-RomArchiveEntries ([string]$c.FullName) $sz
                     if ($list.Ok) {
                         $entries = @(Get-RomArchiveRomEntries @($list.Files) $extsCsv)
+                        # Архив с одним ромом внутри (напр. .cue + .bin-части): если имя архива похоже на патч (vN),
+                        # уверенность определяет файл внутри. Поле «Файл» остаётся скрытым, запуск не меняется.
+                        if ($entries.Count -eq 1 -and [int]$c.RomPriority -ge 300) {
+                            $e1 = $entries[0]
+                            $x1 = [System.IO.Path]::GetExtension([string]$e1.Path)
+                            $b1 = [System.IO.Path]::GetFileNameWithoutExtension([string]$e1.Path)
+                            $discOk = (@('cue','gdi','m3u','ccd','mds','iso','chd','pbp','cso','img','bin') -contains $x1.TrimStart('.').ToLowerInvariant())
+                            $junk1 = ($b1 -match '(?i)(?:^|[\s._\-\[\]()])(?:patch(?:es)?|update|upd|dlc|demo|beta|proto(?:type)?)(?:$|[\s._\-\[\]()])')
+                            $ver1 = (($b1 -match '(?i)(?:^|[\s._\-\[\]()])v[1-9]\d*(?:$|[\s._\-\[\]()])') -and -not (Test-RomRevisionTag $b1 $x1))
+                            if ($discOk -and -not $junk1 -and -not $ver1 -and ([int]$e1.Score -lt 500)) {
+                                $out.Add([PSCustomObject]@{
+                                    FullName = [string]$c.FullName
+                                    Name = [string]$c.Name
+                                    IsKnown = $true
+                                    RomPriority = -100
+                                    IsPreferredExtension = $true
+                                })
+                                $added = $true
+                            }
+                        }
                         if ($entries.Count -gt 1) {
                             $best = [int]$entries[0].Score
                             $unique = ([int]$entries[1].Score -gt $best)
@@ -10401,6 +10472,21 @@ function Refresh-Panels {
                                 $loField = $entry.Body.Children | Where-Object { $_.Key -eq "LaunchOptions" } | Select-Object -First 1
                                 $romIconField = $entry.Body.Children | Where-Object { $_.Key -eq "icon" } | Select-Object -First 1
                                 $romIconVal = if ($romIconField -ne $null) { [string]$romIconField.Value } else { '' }
+                                # ROM без значка в поле icon (ярлык создан без temp_icon, либо поле пустое): ищем файл <appid>_icon.* в config\grid
+                                # рядом с shortcuts.vdf — именно туда Copy-TempCoversDirectlyToGrid кладёт иконку игры.
+                                if ([string]::IsNullOrWhiteSpace(($romIconVal.Trim().Trim('"'))) -or -not (Test-Path -LiteralPath ($romIconVal.Trim().Trim('"')) -PathType Leaf)) {
+                                    try {
+                                        $romAppIdRaw = if ($appidField -ne $null) { [int64]$appidField.Value } else { 0 }
+                                        if ($romAppIdRaw -ne 0) {
+                                            $romAppIdU = [string]($romAppIdRaw -band 0xFFFFFFFF)
+                                            $romGridDir = Join-Path (Split-Path -Parent $_.FullName) 'grid'
+                                            foreach ($romIcoExt in @('png','ico','jpg','jpeg')) {
+                                                $romIcoCand = Join-Path $romGridDir ($romAppIdU + '_icon.' + $romIcoExt)
+                                                if (Test-Path -LiteralPath $romIcoCand -PathType Leaf) { $romIconVal = $romIcoCand; break }
+                                            }
+                                        }
+                                    } catch {}
+                                }
                                 if ($loField -ne $null -and -not [string]::IsNullOrEmpty([string]$loField.Value)) {
                                     foreach ($qm in [regex]::Matches([string]$loField.Value, '"([^"]+)"')) {
                                         $romCand = ([string]$qm.Groups[1].Value).Replace('/', '\')
@@ -13088,7 +13174,7 @@ function Try-FillMissingIconFromSteamGridDB ($steamAppId) {
             elseif ($url -match '\.jpe?g(\?|$)') { $ext = '.jpg' }
         } catch {}
         $dest = Join-Path $global:tempCovers ("temp_icon" + $ext)
-        if (Download-RemoteImage $url $dest) { Repair-IconFileExtension $dest | Out-Null; return $true }
+        if (Download-RemoteImage $url $dest 64) { Repair-IconFileExtension $dest | Out-Null; return $true }
     }
     return $false
 }
@@ -13477,7 +13563,246 @@ function Add-GameToSteamQuietly ($game) {
 # Load-EditorSgdbPreviews (лучший по score вариант каждого типа, файлы в
 # $global:tempCovers), но без слотов и строки статуса. Возвращает число
 # загруженных картинок. Между картинками проверяется отмена пакета.
-function Get-RomSgdbCoversQuiet ([int]$sgdbGameId) {
+# ===================== ПЛАТФОРМА ОБЛОЖКИ ДЛЯ РОМОВ (SteamGridDB) =====================
+# У SteamGridDB нет фильтра по платформе: по названию игры приходят обложки всех
+# версий вперемешку (Game Boy, GBA, SNES, PS1 ...). Автор обложки может указать
+# платформу в описании (поле notes: «SNES», «GBA», «Sega Dreamcast»), но делает
+# это далеко не всегда. Поэтому платформа — только ПРИОРИТЕТ, а не фильтр:
+#   0 — в описании названа нужная платформа (такие обложки идут первыми);
+#   1 — описания нет или платформа в нём не названа (середина списка);
+#   2 — в описании названа другая платформа (в конец списка).
+# Внутри каждой группы порядок прежний (по score SteamGridDB).
+#
+# Key    — внутренний ключ платформы;  Label — подпись для окна выбора;
+# Preset — имя платформы в Get-EmulatorPlatformPresets (связь с профилем эмулятора);
+# Exts   — расширения, однозначно указывающие на платформу (iso/bin/cue/chd/zip
+#          и т. п. сюда не входят — они у многих систем, платформу тогда
+#          определяет эмулятор, ядро RetroArch или папка);
+# Rx     — регулярное выражение для описания обложки.
+function Get-SgdbPlatformDefs {
+    if ($null -ne $script:sgdbPlatformDefsCache) { return $script:sgdbPlatformDefsCache }
+    $list = New-Object System.Collections.ArrayList
+    $add = {
+        param([string]$Key, [string]$Label, [string]$Preset, [string]$Exts, [string]$Rx)
+        [void]$list.Add([PSCustomObject]@{
+            Key = $Key; Label = $Label; Preset = $Preset
+            Exts = @($Exts -split ',' | Where-Object { $_ })
+            Rx = $Rx
+        })
+    }
+    & $add 'nes'       'NES / Famicom'      'NES / Famicom'              'nes,fds,unf,unif' '\bnes\b|nintendo entertainment system|(?<!super\s)\bfamicom\b'
+    & $add 'snes'      'SNES'               'SNES / Super Famicom'       'sfc,smc,fig,swc'  '\bsnes\b|super\s?nes\b|super nintendo|super famicom|\bsfc\b'
+    & $add 'n64'       'Nintendo 64'        'Nintendo 64'                'n64,z64,v64'      '\bn64\b|nintendo 64'
+    & $add 'gamecube'  'GameCube'           'GameCube'                   'gcm,ciso'         'game\s?cube|\bgcn\b'
+    & $add 'wii'       'Wii'                'Wii'                        'wbfs,wia'         '\bwii\b(?!\s?u\b)'
+    & $add 'wiiu'      'Wii U'              'Wii U'                      'wud,wux,rpx'      '\bwii\s?u\b'
+    & $add 'switch'    'Nintendo Switch'    'Nintendo Switch'            'nsp,xci'          'nintendo switch|\bnsw\b|\bswitch\b'
+    & $add 'gb'        'Game Boy'           'Game Boy / Color'           'gb'               '\bgame\s?boy\b(?!\s?(advance|colou?r))|\bgb\b'
+    & $add 'gbc'       'Game Boy Color'     'Game Boy / Color'           'gbc'              'game\s?boy\s?colou?r|\bgbc\b'
+    & $add 'gba'       'Game Boy Advance'   'Game Boy Advance'           'gba'              'game\s?boy\s?advance|\bgba\b'
+    & $add 'nds'       'Nintendo DS'        'Nintendo DS'                'nds,dsi'          'nintendo\s?ds\b|\bnds\b'
+    & $add '3ds'       'Nintendo 3DS'       'Nintendo 3DS'               '3ds,cia,cxi'      '\b3ds\b'
+    & $add 'vb'        'Virtual Boy'        'Virtual Boy'                'vb'               'virtual\s?boy'
+    & $add 'ps1'       'PlayStation'        'PlayStation (PS1)'          'ecm'              '\bps1\b|\bpsx\b|\bpsone\b|ps\s?one\b|\bplaystation\s?1\b|\bplaystation\b(?!\s?(2|3|4|5|portable|vita|network))'
+    & $add 'ps2'       'PlayStation 2'      'PlayStation 2'              ''                 '\bps2\b|\bplaystation\s?2\b'
+    & $add 'psp'       'PSP'                'PlayStation Portable'       'cso'              '\bpsp\b|playstation\s?portable'
+    & $add 'vita'      'PS Vita'            'PlayStation Vita'           'vpk'              '\bps\s?vita\b|\bvita\b|\bpsv\b'
+    & $add 'genesis'   'Sega Genesis / Mega Drive' 'Sega Genesis / Mega Drive' 'md,gen,smd' 'genesis|mega\s?drive'
+    & $add 'sms'       'Sega Master System' 'Sega Master System'         'sms'              'master\s?system|\bsms\b'
+    & $add 'gg'        'Sega Game Gear'     'Sega Game Gear'             'gg'               'game\s?gear'
+    & $add '32x'       'Sega 32X'           'Sega 32X'                   '32x'              '\b32x\b'
+    & $add 'saturn'    'Sega Saturn'        'Sega Saturn'                'mds'              '\bsaturn\b'
+    & $add 'dreamcast' 'Sega Dreamcast'     'Sega Dreamcast'             'gdi,cdi'          'dreamcast'
+    & $add 'a2600'     'Atari 2600'         'Atari 2600'                 'a26'              'atari\s?2600|\b2600\b'
+    & $add 'a7800'     'Atari 7800'         'Atari 7800'                 'a78'              'atari\s?7800|\b7800\b'
+    & $add 'lynx'      'Atari Lynx'         'Atari Lynx'                 'lnx'              '\blynx\b'
+    & $add 'jaguar'    'Atari Jaguar'       'Atari Jaguar'               'j64,jag'          '\bjaguar\b'
+    & $add 'neogeo'    'Neo Geo'            'Neo Geo'                    'neo'              'neo[\s-]?geo(?!\s?pocket)'
+    & $add 'ngp'       'Neo Geo Pocket'     'Neo Geo Pocket'             'ngp,ngc'          'neo[\s-]?geo\s?pocket|\bngpc?\b'
+    & $add 'pce'       'PC Engine'          'PC Engine / TurboGrafx-16'  'pce'              'pc\s?engine|turbo\s?grafx|\btg-?16\b'
+    & $add 'wswan'     'WonderSwan'         'WonderSwan'                 'ws,wsc'           'wonderswan'
+    & $add 'c64'       'Commodore 64'       'Commodore 64'               'd64,t64,prg,crt'  'commodore\s?64|\bc64\b'
+    & $add 'amiga'     'Amiga'              'Amiga'                      'adf,lha,ipf'      '\bamiga\b'
+    & $add 'msx'       'MSX'                'MSX'                        'cas'              '\bmsx\b'
+    & $add 'coleco'    'ColecoVision'       'ColecoVision'               'col'              'colecovision'
+    & $add '3do'       '3DO'                '3DO'                        ''                 '\b3do\b'
+    & $add 'xbox'      'Xbox'               'Xbox'                       'xbe'              '\bxbox\b(?!\s?360)'
+    & $add 'x360'      'Xbox 360'           'Xbox 360'                   'xex,god'          'xbox\s?360'
+    & $add 'arcade'    'Arcade'             ''                           ''                 '\barcade\b|\bmame\b'
+    $script:sgdbPlatformDefsCache = @($list)
+    return $script:sgdbPlatformDefsCache
+}
+
+# Ядро RetroArch (имя файла) -> ключи платформ. Берётся первое совпадение.
+function Get-SgdbPlatformKeysFromCore([string]$core) {
+    $c = ([string]$core).ToLowerInvariant()
+    if ([string]::IsNullOrWhiteSpace($c)) { return @() }
+    $map = @(
+        @('mesen-s|snes9x|bsnes|higan|supafaust',                       @('snes')),
+        @('fceumm|nestopia|mesen|quicknes|fceux',                       @('nes')),
+        @('mupen64plus|parallel_n64',                                   @('n64')),
+        @('mgba|vbam|vba_next',                                         @('gb','gbc','gba')),
+        @('gpsp',                                                       @('gba')),
+        @('gambatte|sameboy|gearboy|tgbdual',                           @('gb','gbc')),
+        @('melonds|desmume',                                            @('nds')),
+        @('citra',                                                      @('3ds')),
+        @('dolphin',                                                    @('gamecube','wii')),
+        @('pcsx_rearmed|beetle_psx|mednafen_psx|swanstation|duckstation|pcsx1', @('ps1')),
+        @('pcsx2|lrps2',                                                @('ps2')),
+        @('ppsspp',                                                     @('psp')),
+        @('picodrive',                                                  @('genesis','32x','sms')),
+        @('genesis_plus_gx|blastem|clownmdemu',                         @('genesis','sms','gg')),
+        @('mednafen_saturn|beetle_saturn|yabause|kronos|yabasanshiro',  @('saturn')),
+        @('flycast|redream',                                            @('dreamcast')),
+        @('stella',                                                     @('a2600')),
+        @('prosystem',                                                  @('a7800')),
+        @('handy',                                                      @('lynx')),
+        @('virtualjaguar',                                              @('jaguar')),
+        @('pce',                                                        @('pce')),
+        @('wswan|cygne',                                                @('wswan')),
+        @('mame|fbneo|fbalpha',                                         @('arcade','neogeo')),
+        @('vice',                                                       @('c64')),
+        @('puae|uae4arm',                                               @('amiga')),
+        @('bluemsx|fmsx',                                               @('msx')),
+        @('opera|4do',                                                  @('3do'))
+    )
+    foreach ($m in $map) {
+        if ([regex]::IsMatch($c, [string]$m[0])) { return @($m[1]) }
+    }
+    return @()
+}
+
+# Определяет платформу(ы) ROM — массив ключей из Get-SgdbPlatformDefs (пустой, если
+# определить не удалось; тогда порядок обложек не меняется). Порядок источников:
+#   1) однозначное расширение файла рома (.sfc, .gba, ...);
+#   2) известный эмулятор по названию профиля (Flycast, snes9x, Dolphin ...),
+#      при неоднозначном расширении (iso/bin/cue) — только платформы, где оно бывает;
+#   3) ядро профиля RetroArch;
+#   4) расширения профиля, если все они однозначны и их немного;
+#   5) названия папок рядом с ромом («...\SNES\Casper.zip»).
+function Get-RomPlatformKeys {
+    param([string]$RomPath, $Emu = $null, [string]$RomEntry = '')
+    try {
+        $defs = @(Get-SgdbPlatformDefs)
+        $archiveExts = @(Get-RomArchiveExtensions)
+
+        # 1) Расширение: у архива — расширение файла внутри (RomEntry), если оно известно.
+        $ext = ''
+        foreach ($cand in @($RomEntry, $RomPath)) {
+            if ([string]::IsNullOrWhiteSpace([string]$cand)) { continue }
+            $e = ''
+            try { $e = [System.IO.Path]::GetExtension([string]$cand).TrimStart('.').ToLowerInvariant() } catch {}
+            if ($e -and ($archiveExts -notcontains $e)) { $ext = $e; break }
+        }
+        if ($ext) {
+            $byExt = @($defs | Where-Object { @($_.Exts) -contains $ext })
+            if ($byExt.Count -gt 0) { return @($byExt | ForEach-Object { [string]$_.Key }) }
+        }
+
+        if ($null -ne $Emu) {
+            # 2) Известный эмулятор по названию профиля.
+            $emuName = ([string]$Emu.Name).ToLowerInvariant()
+            if (-not [string]::IsNullOrWhiteSpace($emuName)) {
+                $presetNames = New-Object System.Collections.ArrayList
+                foreach ($kp in @(Get-KnownEmulatorPresets)) {
+                    $kn = ([string]$kp.Name).ToLowerInvariant()
+                    if ([string]::IsNullOrWhiteSpace($kn)) { continue }
+                    if ([regex]::IsMatch($emuName, '(^|[^a-z0-9])' + [regex]::Escape($kn) + '($|[^a-z0-9])')) {
+                        foreach ($pn in @($kp.Platforms)) { if (-not $presetNames.Contains([string]$pn)) { [void]$presetNames.Add([string]$pn) } }
+                    }
+                }
+                if ($presetNames.Count -gt 0) {
+                    # Расширение неоднозначное (iso/bin/cue/chd): оставляем платформы, где оно бывает.
+                    if ($ext) {
+                        $withExt = @(Get-EmulatorPlatformPresets | Where-Object {
+                            @([string]$_.Ext -split ',') -contains $ext -and $presetNames.Contains([string]$_.Name)
+                        } | ForEach-Object { [string]$_.Name })
+                        if ($withExt.Count -gt 0) {
+                            $narrowed = New-Object System.Collections.ArrayList
+                            foreach ($wn in $withExt) { [void]$narrowed.Add([string]$wn) }
+                            $presetNames = $narrowed
+                        }
+                    }
+                    $k = @($defs | Where-Object { $presetNames.Contains([string]$_.Preset) } | ForEach-Object { [string]$_.Key })
+                    if ($k.Count -gt 0) { return $k }
+                }
+            }
+
+            # 3) Ядро RetroArch.
+            $coreKeys = @(Get-SgdbPlatformKeysFromCore ([string]$Emu.Core))
+            if ($coreKeys.Count -gt 0) { return $coreKeys }
+
+            # 4) Расширения профиля.
+            $profKeys = New-Object System.Collections.ArrayList
+            foreach ($pe in @(([string]$Emu.Extensions) -split '[,;\s]+')) {
+                $pe = $pe.Trim().TrimStart('.').ToLowerInvariant()
+                if (-not $pe -or ($archiveExts -contains $pe)) { continue }
+                foreach ($d in @($defs | Where-Object { @($_.Exts) -contains $pe })) {
+                    if (-not $profKeys.Contains([string]$d.Key)) { [void]$profKeys.Add([string]$d.Key) }
+                }
+            }
+            if ($profKeys.Count -gt 0 -and $profKeys.Count -le 3) { return @($profKeys) }
+        }
+
+        # 5) Названия двух ближайших папок.
+        if (-not [string]::IsNullOrWhiteSpace($RomPath)) {
+            $dir = $RomPath
+            $names = @()
+            for ($i = 0; $i -lt 2; $i++) {
+                try { $dir = [System.IO.Path]::GetDirectoryName($dir) } catch { $dir = $null }
+                if ([string]::IsNullOrWhiteSpace($dir)) { break }
+                $names += [System.IO.Path]::GetFileName($dir)
+            }
+            $folderText = ($names -join ' ').ToLowerInvariant()
+            if ($folderText.Trim()) {
+                $fk = @($defs | Where-Object { [regex]::IsMatch($folderText, [string]$_.Rx) } | ForEach-Object { [string]$_.Key })
+                if ($fk.Count -gt 0 -and $fk.Count -le 3) { return $fk }
+            }
+        }
+    } catch {
+        try { Write-LauncherLog ('Get-RomPlatformKeys failed: ' + [string]$_.Exception.Message) } catch {}
+    }
+    return @()
+}
+
+# Платформы, названные в описании (notes) обложки SteamGridDB. Ссылки в описании
+# вырезаются: в «[White Dreamcast Template](https://...)» нужен только текст.
+function Get-SgdbGridPlatformKeys($grid) {
+    $notes = ''
+    try { $notes = [string]$grid.notes } catch { $notes = '' }
+    if ([string]::IsNullOrWhiteSpace($notes)) { return @() }
+    $t = $notes.ToLowerInvariant()
+    $t = [regex]::Replace($t, '\]\([^)]*\)', ' ')
+    $t = [regex]::Replace($t, 'https?://\S+', ' ')
+    $found = New-Object System.Collections.ArrayList
+    foreach ($d in @(Get-SgdbPlatformDefs)) {
+        if ([regex]::IsMatch($t, [string]$d.Rx)) { [void]$found.Add([string]$d.Key) }
+    }
+    return @($found)
+}
+
+# 0 — описание называет нужную платформу, 1 — платформа не названа, 2 — названа только чужая.
+function Get-SgdbGridPlatformRank($grid, [string[]]$Keys) {
+    $gk = @(Get-SgdbGridPlatformKeys $grid)
+    if ($gk.Count -eq 0) { return 1 }
+    foreach ($k in $gk) { if (@($Keys) -contains $k) { return 0 } }
+    return 2
+}
+
+# Устойчивая сортировка: сначала нужная платформа, затем «неизвестно», затем чужая;
+# внутри группы остаётся исходный порядок (по score). Без ключей — список как есть.
+function Sort-SgdbGridsByPlatform($Grids, [string[]]$Keys) {
+    $src = @($Grids)
+    if ($src.Count -le 1 -or @($Keys).Count -eq 0) { return $src }
+    $i = 0
+    $tagged = @(foreach ($g in $src) {
+        [PSCustomObject]@{ G = $g; R = [int](Get-SgdbGridPlatformRank $g $Keys); I = $i }
+        $i++
+    })
+    return @($tagged | Sort-Object R, I | ForEach-Object { $_.G })
+}
+
+function Get-RomSgdbCoversQuiet ([int]$sgdbGameId, [string[]]$PlatformKeys = @()) {
     if ($sgdbGameId -le 0) { return 0 }
     if (-not (Test-InternetConnectivity)) { return 0 }
     $apiKey = [string](Ensure-SteamGridDbApiKey)
@@ -13490,6 +13815,11 @@ function Get-RomSgdbCoversQuiet ([int]$sgdbGameId) {
 
     $vertical   = @($assets.GridsVertical)
     $horizontal = @($assets.GridsHorizontal)
+    # Платформа рома: обложки с нужной платформой в описании — первыми (SGDB не умеет фильтровать по платформе).
+    if (@($PlatformKeys).Count -gt 0) {
+        $vertical   = @(Sort-SgdbGridsByPlatform $vertical $PlatformKeys)
+        $horizontal = @(Sort-SgdbGridsByPlatform $horizontal $PlatformKeys)
+    }
     $heroes     = @($assets.Heroes)
     $logos      = @($assets.Logos)
     $icons = @()
@@ -13512,7 +13842,8 @@ function Get-RomSgdbCoversQuiet ([int]$sgdbGameId) {
     foreach ($u in $urls) {
         if ($script:batchCardCancelRequested) { break }
         if ([string]::IsNullOrWhiteSpace([string]$u.Url)) { continue }
-        if (Download-RemoteImage ([string]$u.Url) ([string]$u.File)) {
+        $dlMin = if ($u.Key -eq 'Icon') { 64 } else { 512 }   # иконки бывают крошечными (< 512 байт)
+        if (Download-RemoteImage ([string]$u.Url) ([string]$u.File) $dlMin) {
             if ($u.Key -eq 'Icon') { try { [void](Repair-IconFileExtension ([string]$u.File)) } catch {} }
             $loaded++
         }
@@ -13649,7 +13980,9 @@ function Add-RomToSteamQuietly ($game) {
     $global:uiPumpDuringDownload = $true
     try {
         Clear-TempCoverFiles
-        [void](Get-RomSgdbCoversQuiet $sgdbId)
+        $romPlatKeys = @()
+        try { $romPlatKeys = @(Get-RomPlatformKeys $romFile $emu $romEntry) } catch { $romPlatKeys = @() }
+        [void](Get-RomSgdbCoversQuiet $sgdbId $romPlatKeys)
     } finally {
         $global:uiPumpDuringDownload = $prevUiPump
     }
@@ -15472,6 +15805,10 @@ function Sync-LogoDefaultFromState($state) {
             $global:logoDefaultHeightPct = $h
         } else {
             if (-not [bool]$global:logoDefaultEnabled) { return }
+            # Галочка снята автоматически из-за отклонения положения в этой карточке: общее значение не трогаем.
+            $dev = $false
+            try { $dev = [bool]$state.LogoDefaultDeviated } catch {}
+            if ($dev) { return }
             $global:logoDefaultEnabled = $false
         }
         Save-Configuration
@@ -15494,6 +15831,34 @@ function Get-WrappedTipText([string]$text, [int]$width = 52) {
     }
     if ($cur.Length -gt 0) { $lines.Add($cur) }
     return ($lines.ToArray() -join "`n")
+}
+
+function Get-EditorLogoGeomSig($state) {
+    # Отпечаток только положения/размера логотипа (без галочки «по умолчанию»).
+    try {
+        $ci = [System.Globalization.CultureInfo]::InvariantCulture
+        $w = [math]::Round([double]$state.LogoWidthPct, 1)
+        $h = [math]::Round([double]$state.LogoHeightPct, 1)
+        return ([string]$state.LogoPosition + '|' + $w.ToString($ci) + '|' + $h.ToString($ci))
+    } catch { return '' }
+}
+
+function Update-EditorLogoDefaultCheck($hs) {
+    # Галочка «по умолчанию» стоит, только пока положение/размер совпадают с теми, что были при её установке
+    # (или с общими при открытии карточки). Любое отклонение снимает галочку; новое значение по умолчанию
+    # появится, только если пользователь поставит галочку заново.
+    try {
+        if ($null -eq $hs -or $null -eq $hs.ChkDefault) { return }
+        if (-not [bool]$hs.ChkDefault.Checked) { return }
+        $st = $hs.EditorState
+        $ref = ''
+        try { $ref = [string]$st.LogoDefaultSig } catch {}
+        if ([string]::IsNullOrEmpty($ref)) { return }
+        if ((Get-EditorLogoGeomSig $st) -ne $ref) {
+            $st | Add-Member -NotePropertyName LogoDefaultDeviated -NotePropertyValue $true -Force
+            $hs.ChkDefault.Checked = $false
+        }
+    } catch {}
 }
 
 function Get-EditorLogoSignature($state) {
@@ -15889,7 +16254,7 @@ function Get-EditorRomCandidates ($gamePath, [string]$preferredExtensions = '', 
         if ($versionMatch.Success) {
             [int]::TryParse($versionMatch.Groups['n'].Value, [ref]$versionNumber) | Out-Null
         }
-        if ($versionNumber -ge 1) { $isAutoCandidate = $false }
+        if ($versionNumber -ge 1 -and -not (Test-RomRevisionTag ([string]$f.BaseName) $ext)) { $isAutoCandidate = $false }
 
         # Дисковые образы: .m3u (мультидиск) и .cue — то, что реально запускает
         # ядро; .bin/.img лежат рядом как данные и не должны выбираться первыми.
@@ -16806,6 +17171,7 @@ function Set-EditorLogoScale($hs, [int]$percent) {
     $st = $hs.EditorState
     $st.LogoWidthPct = $v
     $st.LogoHeightPct = $v
+    Update-EditorLogoDefaultCheck $hs
     try { if ($hs.Slider.Value -ne $v) { $hs.Slider.Value = $v } } catch {}
     Update-EditorComposeScaleLabel $hs
     $hs.Picture.Invalidate()
@@ -17119,6 +17485,7 @@ function Initialize-EditorCompose($heroSlot, $logoSlot) {
                 $geo = Get-EditorComposeGeometry $hs
                 if ($null -ne $geo.LogoImage -and $geo.Back.Width -gt 0 -and $dragRect.Width -gt 0) {
                     $hs.EditorState.LogoPosition = (Get-EditorLogoSnapPosition $geo.LogoImage $geo.Back $hs.EditorState $dragRect)
+                    Update-EditorLogoDefaultCheck $hs
                 }
                 $sender.Invalidate()
                 return
@@ -17255,6 +17622,7 @@ function Initialize-EditorCompose($heroSlot, $logoSlot) {
             $st = $hs.EditorState
             $st.LogoWidthPct = $v
             $st.LogoHeightPct = $v
+            Update-EditorLogoDefaultCheck $hs
             Update-EditorComposeScaleLabel $hs
             $hs.Picture.Invalidate()
         } catch {}
@@ -17312,6 +17680,11 @@ function Initialize-EditorCompose($heroSlot, $logoSlot) {
         try {
             $hs = $this.Tag
             $hs.EditorState.LogoUseDefault = [bool]$this.Checked
+            if ([bool]$this.Checked) {
+                # Опорное положение для проверки отклонений: то, что в карточке в момент установки галочки.
+                $hs.EditorState | Add-Member -NotePropertyName LogoDefaultSig -NotePropertyValue (Get-EditorLogoGeomSig $hs.EditorState) -Force
+                $hs.EditorState | Add-Member -NotePropertyName LogoDefaultDeviated -NotePropertyValue $false -Force
+            }
         } catch {}
     })
     $heroSlot.Panel.Controls.Add($chkDef)
@@ -17975,6 +18348,17 @@ function Load-EditorSgdbPreviews($gameName, $steamAppId, $slots, $statusLabel, $
         # ------------------------------------------------------------
         $vertical = @($assets.GridsVertical)
         $horizontal = @($assets.GridsHorizontal)
+        # Карточка рома: обложки с платформой выбранного эмулятора/рома — первыми
+        # (ключи платформы даёт PlatformKeysFn слота, см. Show-GameEditorDialog).
+        $platKeys = @()
+        try {
+            $pkf = $slots.Vertical.PSObject.Properties['PlatformKeysFn']
+            if ($null -ne $pkf -and $null -ne $pkf.Value) { $platKeys = @(& $pkf.Value) }
+        } catch { $platKeys = @() }
+        if ($platKeys.Count -gt 0) {
+            $vertical = @(Sort-SgdbGridsByPlatform $vertical $platKeys)
+            $horizontal = @(Sort-SgdbGridsByPlatform $horizontal $platKeys)
+        }
         $heroes = @($assets.Heroes)
         $logos = @($assets.Logos)
         $icons = @()
@@ -18040,7 +18424,8 @@ function Load-EditorSgdbPreviews($gameName, $steamAppId, $slots, $statusLabel, $
 
             # Используем старый проверенный Download-RemoteImage:
             # Invoke-WebRequest -> fallback curl, с таймаутом.
-            if (Download-RemoteImage ([string]$u.Url) ([string]$u.File)) {
+            $dlMin = if ($u.Key -eq 'Icon') { 64 } else { 512 }   # иконки бывают крошечными (< 512 байт)
+            if (Download-RemoteImage ([string]$u.Url) ([string]$u.File) $dlMin) {
                 # Источник переключили во время скачивания — старый результат
                 # не должен попасть в слот.
                 if (Test-EditorLoadCancelled) { return $false }
@@ -18403,7 +18788,7 @@ function Get-KnownEmulatorPresets {
         [PSCustomObject]@{ Name = 'Eden';                Platforms = @('Nintendo Switch');                                                            Args = '-f -g {rom}' }
         [PSCustomObject]@{ Name = 'Ryujinx';             Platforms = @('Nintendo Switch');                                                            Args = '' }
         [PSCustomObject]@{ Name = 'Ryubing';             Platforms = @('Nintendo Switch');                                                            Args = '' }
-        [PSCustomObject]@{ Name = 'ePSXe';               Platforms = @('PlayStation (PS1)');                                                          Args = '' }
+        [PSCustomObject]@{ Name = 'ePSXe';               Platforms = @('PlayStation (PS1)');                                                          Args = '-f -nogui -loadbin {rom}' }
         [PSCustomObject]@{ Name = 'PCSX2';               Platforms = @('PlayStation 2');                                                               Args = '-fullscreen -batch -- {rom}' }
         [PSCustomObject]@{ Name = 'RPCS3';               Platforms = @();                                                                              Args = '' }
         [PSCustomObject]@{ Name = 'shadPS4';             Platforms = @();                                                                              Args = '' }
@@ -22482,6 +22867,8 @@ function Get-EditorSgdbCandidates([string]$query, [string]$steamAppId = "") {
     try {
         $q = ([string]$query).Trim()
         if ($q.Length -lt 2) { return @() }
+        # Имена No-Intro/Redump: «Mummy, The (USA)» -> «The Mummy (USA)», иначе SteamGridDB находит другую игру.
+        $q = ($q -replace '^([^,()\[\]]+?),\s*(The|A|An)(\s*(?:[(\[:\-].*)?)$', '$2 $1$3').Trim()
 
         $apiKey = [string](Ensure-SteamGridDbApiKey)
         if ([string]::IsNullOrWhiteSpace($apiKey)) { return @() }
@@ -22744,6 +23131,16 @@ function Prepare-EditorSgdbGameAlternatives($slot, [string]$title, [string]$sgdb
             return $false
         }
         $items = @($items | Sort-Object @{Expression={ $v=0.0; try{$v=[double]$_.score}catch{}; $v }; Descending=$true})
+        # Карточка рома: в списке вариантов обложки нужной платформы идут первыми (только сетки 1./2.).
+        if ($title -match '^\s*[12]\.') {
+            try {
+                $pkf = $slot.PSObject.Properties['PlatformKeysFn']
+                if ($null -ne $pkf -and $null -ne $pkf.Value) {
+                    $altKeys = @(& $pkf.Value)
+                    if ($altKeys.Count -gt 0) { $items = @(Sort-SgdbGridsByPlatform $items $altKeys) }
+                }
+            } catch {}
+        }
         $slot.SgdbItems = $items
         if ($null -ne $statusLabel) { $statusLabel.Text = '' }
         return $true
@@ -22903,7 +23300,15 @@ function Show-EditorAlternativeCover($slot, [string]$title) {
         $global:uiPumpDuringDownload = $true
         try { if ($null -ne $slotForm) { $slotForm.Cursor = [System.Windows.Forms.Cursors]::WaitCursor } } catch {}
         try {
-            if (-not $downloadedOk) { $downloadedOk = [bool](Download-RemoteImage ([string]$chosen) $target) }
+            if (-not $downloadedOk) {
+                # Иконки бывают крошечными (пиксель-арт < 512 байт) — для слота иконки порог ниже.
+                $minSz = if ($title -match '^\s*5\.') { 64 } else { 512 }
+                $downloadedOk = [bool](Download-RemoteImage ([string]$chosen) $target $minSz)
+            }
+            # Полный файл не скачался, но миниатюра из окна выбора уже есть — берём её, а не сбрасываем слот в заглушку.
+            if (-not $downloadedOk -and $haveThumb) {
+                try { [System.IO.File]::WriteAllBytes($target, [byte[]]$pickedBytes); $downloadedOk = $true } catch {}
+            }
             if (-not $downloadedOk -and $interimShown) {
                 # Полное изображение не скачалось — возвращаем слот в состояние, соответствующее файлу на диске.
                 try { [void](Set-EditorPreviewFile $slot $target) } catch {}
@@ -24004,7 +24409,7 @@ function Get-EpicLauncherSource ($SteamShortcuts) {
 # процесс игры не виден, окно открывается позади. Поэтому в ярлык вместо игры пишется
 # маленький exe в %APPDATA%\Steam Commander\launcher: он открывает ссылку, ждёт процесс
 # из папки игры, выводит его окно вперёд и живёт, пока игра запущена.
-$script:scLauncherVersion = '33'
+$script:scLauncherVersion = '34'
 $script:scLauncherSource = @'
 using System;
 using System.Collections.Generic;
@@ -24017,6 +24422,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
+using System.Drawing;
 using System.Windows.Forms;
 
 namespace SCLauncherNS
@@ -25462,6 +25868,182 @@ namespace SCLauncherNS
             catch (Exception ex) { Log("roms: cleanup failed: " + ex.Message); }
         }
 
+        // ---- Окно прогресса распаковки ----
+        // Показывается только если распаковка длится дольше ~1,2 с (маленькие архивы - без мелькания окна).
+        // Живёт в собственном STA-потоке; основной поток только обновляет ExtractProgress.
+        class BarPanel : Panel
+        {
+            public int Value = -1;      // 0..100, -1 - неизвестно (бегущий блок)
+            public int Phase = 0;
+            public BarPanel()
+            {
+                SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
+            }
+            protected override void OnPaint(PaintEventArgs e)
+            {
+                Graphics g = e.Graphics;
+                using (SolidBrush track = new SolidBrush(Color.FromArgb(40, 52, 68)))
+                using (SolidBrush fill = new SolidBrush(Color.FromArgb(102, 192, 244)))
+                {
+                    g.FillRectangle(track, 0, 0, Width, Height);
+                    if (Value >= 0)
+                    {
+                        g.FillRectangle(fill, 0, 0, (int)(Width * (long)Math.Min(100, Value) / 100L), Height);
+                    }
+                    else
+                    {
+                        int bw = Math.Max(20, Width / 4);
+                        int span = Width + bw;
+                        int x = (Phase * 12) % span - bw;
+                        g.SetClip(new Rectangle(0, 0, Width, Height));
+                        g.FillRectangle(fill, x, 0, bw, Height);
+                    }
+                }
+            }
+        }
+
+        class ExtractForm : Form
+        {
+            Label lblHead;
+            Label lblName;
+            Label lblPct;
+            Label lblHint;
+            BarPanel bar;
+            Button btn;
+            System.Windows.Forms.Timer tm;
+
+            static string FmtSize(long b)
+            {
+                if (b >= 1024L * 1024 * 1024) return (b / (1024.0 * 1024 * 1024)).ToString("0.0") + " GB";
+                return ((b + 1048575) / 1048576).ToString() + " MB";
+            }
+
+            public ExtractForm(string archiveName, string lang)
+            {
+                int li = 1;
+                switch (lang) { case "ru": li = 0; break; case "zh": li = 2; break; case "es": li = 3; break; case "pt": li = 4; break; case "de": li = 5; break; }
+                string[] head = new string[] { "\u0420\u0430\u0441\u043f\u0430\u043a\u043e\u0432\u043a\u0430 \u0430\u0440\u0445\u0438\u0432\u0430\u2026", "Unpacking the archive\u2026", "\u6b63\u5728\u89e3\u538b\u538b\u7f29\u5305\u2026", "Extrayendo el archivo\u2026", "Extraindo o arquivo\u2026", "Archiv wird entpackt\u2026" };
+                string[] hint = new string[] { "\u0418\u0433\u0440\u0430 \u0437\u0430\u043f\u0443\u0441\u0442\u0438\u0442\u0441\u044f \u0430\u0432\u0442\u043e\u043c\u0430\u0442\u0438\u0447\u0435\u0441\u043a\u0438 \u043f\u043e\u0441\u043b\u0435 \u0440\u0430\u0441\u043f\u0430\u043a\u043e\u0432\u043a\u0438.", "The game will start automatically when unpacking is finished.", "\u89e3\u538b\u5b8c\u6210\u540e\u6e38\u620f\u5c06\u81ea\u52a8\u542f\u52a8\u3002", "El juego se iniciar\u00e1 autom\u00e1ticamente al terminar.", "O jogo ser\u00e1 iniciado automaticamente ap\u00f3s a extra\u00e7\u00e3o.", "Das Spiel startet automatisch nach dem Entpacken." };
+                string[] cancel = new string[] { "\u041e\u0442\u043c\u0435\u043d\u0430", "Cancel", "\u53d6\u6d88", "Cancelar", "Cancelar", "Abbrechen" };
+
+                Text = "Steam Commander";
+                FormBorderStyle = FormBorderStyle.FixedDialog;
+                MaximizeBox = false;
+                MinimizeBox = false;
+                StartPosition = FormStartPosition.CenterScreen;
+                TopMost = true;
+                ShowInTaskbar = true;
+                BackColor = Color.FromArgb(23, 29, 37);
+                ForeColor = Color.FromArgb(220, 226, 232);
+                Font = new Font("Segoe UI", 9.5f);
+                ClientSize = new Size(480, 170);
+                try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
+
+                lblHead = new Label();
+                lblHead.Text = head[li];
+                lblHead.Font = new Font("Segoe UI Semibold", 11f);
+                lblHead.AutoSize = false;
+                lblHead.SetBounds(18, 14, 444, 24);
+                Controls.Add(lblHead);
+
+                lblName = new Label();
+                lblName.Text = archiveName;
+                lblName.ForeColor = Color.FromArgb(150, 160, 172);
+                lblName.AutoEllipsis = true;
+                lblName.AutoSize = false;
+                lblName.SetBounds(18, 40, 444, 20);
+                Controls.Add(lblName);
+
+                bar = new BarPanel();
+                bar.SetBounds(18, 70, 444, 14);
+                Controls.Add(bar);
+
+                lblPct = new Label();
+                lblPct.Text = "";
+                lblPct.AutoSize = false;
+                lblPct.SetBounds(18, 90, 444, 20);
+                Controls.Add(lblPct);
+
+                lblHint = new Label();
+                lblHint.Text = hint[li];
+                lblHint.ForeColor = Color.FromArgb(150, 160, 172);
+                lblHint.AutoSize = false;
+                lblHint.SetBounds(18, 124, 340, 34);
+                Controls.Add(lblHint);
+
+                btn = new Button();
+                btn.Text = cancel[li];
+                btn.FlatStyle = FlatStyle.Flat;
+                btn.BackColor = Color.FromArgb(40, 52, 68);
+                btn.ForeColor = Color.FromArgb(220, 226, 232);
+                btn.SetBounds(366, 126, 96, 30);
+                btn.Click += delegate (object s, EventArgs ev) { Program.StopRequested = true; };
+                Controls.Add(btn);
+
+                FormClosing += delegate (object s, FormClosingEventArgs ev)
+                {
+                    if (ev.CloseReason == CloseReason.UserClosing && !ExtractUi.Finished) Program.StopRequested = true;
+                };
+                Shown += delegate (object s, EventArgs ev) { try { Activate(); } catch { } };
+
+                tm = new System.Windows.Forms.Timer();
+                tm.Interval = 120;
+                tm.Tick += delegate (object s, EventArgs ev)
+                {
+                    if (ExtractUi.Finished || Program.StopRequested) { tm.Stop(); Close(); return; }
+                    long d, tt;
+                    int pct = ExtractProgress.Get(out d, out tt);
+                    bar.Value = pct;
+                    bar.Phase++;
+                    string txt = pct >= 0 ? (pct + "%") : "";
+                    if (tt > 0) txt += "   (" + FmtSize(d) + " / " + FmtSize(tt) + ")";
+                    if (lblPct.Text != txt) lblPct.Text = txt;
+                    bar.Invalidate();
+                };
+                tm.Start();
+            }
+        }
+
+        static class ExtractUi
+        {
+            static Thread th;
+            static volatile bool done;
+            public static bool Finished { get { return done; } }
+
+            public static void Begin(string archive, string lang)
+            {
+                try
+                {
+                    done = false;
+                    string name = Path.GetFileName(archive);
+                    th = new Thread(delegate () { Run(name, lang); });
+                    th.SetApartmentState(ApartmentState.STA);
+                    th.IsBackground = true;
+                    th.Start();
+                }
+                catch (Exception ex) { Log("extract ui start: " + ex.Message); }
+            }
+
+            public static void End()
+            {
+                done = true;
+                try { if (th != null) th.Join(3000); } catch { }
+                th = null;
+            }
+
+            static void Run(string name, string lang)
+            {
+                try
+                {
+                    DateTime t0 = DateTime.UtcNow;
+                    while (!done && !StopRequested && (DateTime.UtcNow - t0).TotalMilliseconds < 1200) Thread.Sleep(50);
+                    if (done || StopRequested) return;
+                    using (ExtractForm f = new ExtractForm(name, lang)) Application.Run(f);
+                }
+                catch (Exception ex) { Log("extract ui: " + ex.Message); }
+            }
+        }
+
         static string FindSevenZip(string baseDir)
         {
             List<string> c = new List<string>();
@@ -25475,11 +26057,56 @@ namespace SCLauncherNS
             return "";
         }
 
+        // ---- Прогресс распаковки (читает окно ExtractForm) ----
+        // Total > 0: известен общий размер, Done - сколько байт уже записано (zip).
+        // Total == 0: процент сообщает внешний распаковщик (Percent), -1 - неизвестно.
+        static class ExtractProgress
+        {
+            public static long Total;
+            public static long Done;
+            public static volatile int Percent = -1;
+            public static void StartPass(long total)
+            {
+                Interlocked.Exchange(ref Done, 0);
+                Interlocked.Exchange(ref Total, total);
+                Percent = -1;
+            }
+            public static void Add(long n) { Interlocked.Add(ref Done, n); }
+            public static int Get(out long done, out long total)
+            {
+                done = Interlocked.Read(ref Done);
+                total = Interlocked.Read(ref Total);
+                if (total > 0) return (int)Math.Min(100L, done * 100L / total);
+                return Percent;
+            }
+        }
+
+        // Копирует запись zip кусками по 1 МБ и обновляет счётчик (ExtractToFile прогресса не даёт).
+        static void CopyZipEntry(ZipArchiveEntry e, string target)
+        {
+            using (Stream s = e.Open())
+            using (FileStream d = new FileStream(target, FileMode.Create, FileAccess.Write, FileShare.None))
+            {
+                byte[] buf = new byte[1024 * 1024];
+                int n;
+                while ((n = s.Read(buf, 0, buf.Length)) > 0)
+                {
+                    if (StopRequested) return;
+                    d.Write(buf, 0, n);
+                    ExtractProgress.Add(n);
+                }
+            }
+            try { File.SetLastWriteTime(target, e.LastWriteTime.DateTime); } catch { }
+        }
+
         static bool ExtractZipBuiltin(string archive, string dest)
         {
             string destFull = Path.GetFullPath(dest).TrimEnd('\\') + "\\";
             using (ZipArchive za = ZipFile.OpenRead(archive))
             {
+                long total = 0;
+                foreach (ZipArchiveEntry e in za.Entries) total += e.Length;
+                ExtractProgress.StartPass(total);
                 foreach (ZipArchiveEntry e in za.Entries)
                 {
                     if (StopRequested) return false;
@@ -25488,35 +26115,93 @@ namespace SCLauncherNS
                     string target = Path.GetFullPath(Path.Combine(dest, name));
                     if (!target.StartsWith(destFull, StringComparison.OrdinalIgnoreCase)) continue;
                     Directory.CreateDirectory(Path.GetDirectoryName(target));
-                    e.ExtractToFile(target, true);
+                    CopyZipEntry(e, target);
                 }
             }
             return true;
         }
 
-        static bool ExtractExternal(string tool, string archive, string dest)
+        static bool IsRarTool(string toolFileName)
+        {
+            return toolFileName.StartsWith("winrar") || toolFileName.StartsWith("unrar") || toolFileName == "rar.exe";
+        }
+
+        // 7-Zip с ключом -bsp1 пишет в stdout строки вида " 45% 3 - file": берём последний процент.
+        static void ReadSevenZipProgress(StreamReader r)
+        {
+            try
+            {
+                char[] buf = new char[256];
+                string carry = "";
+                int n;
+                while ((n = r.Read(buf, 0, buf.Length)) > 0)
+                {
+                    string s = carry + new string(buf, 0, n);
+                    MatchCollection mc = Regex.Matches(s, "(\\d{1,3})%");
+                    if (mc.Count > 0)
+                    {
+                        int v;
+                        if (int.TryParse(mc[mc.Count - 1].Groups[1].Value, out v) && v >= 0 && v <= 100) ExtractProgress.Percent = v;
+                    }
+                    carry = s.Length > 6 ? s.Substring(s.Length - 6) : s;
+                }
+            }
+            catch { }
+        }
+
+        // namesArg - список файлов в кавычках через пробел (с пробелом в начале) или пустая строка.
+        static bool RunExtractor(string tool, string archive, string dest, string namesArg)
         {
             string n = Path.GetFileName(tool).ToLowerInvariant();
-            ProcessStartInfo psi = new ProcessStartInfo();
-            psi.FileName = tool;
-            psi.UseShellExecute = false;
-            psi.CreateNoWindow = true;
-            if (n.StartsWith("winrar") || n.StartsWith("unrar") || n == "rar.exe")
+            bool rar = IsRarTool(n);
+            ExtractProgress.StartPass(0);
+            // Попытка 0: 7-Zip с -bsp1 (процент в stdout). Старые 7zr без -bs завершаются с кодом 7 - тогда без процента.
+            for (int attempt = 0; attempt < 2; attempt++)
             {
-                psi.Arguments = "x -y -ibck -o+ \"" + archive + "\"";
-                psi.WorkingDirectory = dest;
+                bool withProgress = !rar && attempt == 0;
+                ProcessStartInfo psi = new ProcessStartInfo();
+                psi.FileName = tool;
+                psi.UseShellExecute = false;
+                psi.CreateNoWindow = true;
+                if (rar)
+                {
+                    psi.Arguments = "x -y -ibck -o+ \"" + archive + "\"" + namesArg;
+                    psi.WorkingDirectory = dest;
+                }
+                else
+                {
+                    psi.Arguments = "x -y " + (withProgress ? "-bsp1 -bso0" : "-bd") + " -o\"" + dest.TrimEnd('\\') + "\" \"" + archive + "\"" + namesArg;
+                }
+                if (withProgress) psi.RedirectStandardOutput = true;
+                Process p = Process.Start(psi);
+                Thread rd = null;
+                if (withProgress)
+                {
+                    StreamReader sr = p.StandardOutput;
+                    rd = new Thread(delegate () { ReadSevenZipProgress(sr); });
+                    rd.IsBackground = true;
+                    rd.Start();
+                }
+                while (!p.WaitForExit(300))
+                {
+                    if (StopRequested) { try { p.Kill(); } catch { } return false; }
+                }
+                if (rd != null) rd.Join(1500);
+                Log("rom: extractor exit code " + p.ExitCode);
+                if (withProgress && p.ExitCode == 7)
+                {
+                    Log("rom: extractor has no -bsp support, retry without progress");
+                    ExtractProgress.StartPass(0);
+                    continue;
+                }
+                return p.ExitCode <= 1;
             }
-            else
-            {
-                psi.Arguments = "x -y -bd -o\"" + dest.TrimEnd('\\') + "\" \"" + archive + "\"";
-            }
-            Process p = Process.Start(psi);
-            while (!p.WaitForExit(300))
-            {
-                if (StopRequested) { try { p.Kill(); } catch { } return false; }
-            }
-            Log("rom: extractor exit code " + p.ExitCode);
-            return p.ExitCode <= 1;
+            return false;
+        }
+
+        static bool ExtractExternal(string tool, string archive, string dest)
+        {
+            return RunExtractor(tool, archive, dest, "");
         }
 
         // Главный файл образа: .cue -> .gdi -> .m3u -> .iso (если ядро их поддерживает),
@@ -25650,6 +26335,19 @@ namespace SCLauncherNS
                     if (!byLeaf.ContainsKey(leaf)) byLeaf[leaf] = new List<ZipArchiveEntry>();
                     byLeaf[leaf].Add(e);
                 }
+                long totalNames = 0;
+                foreach (string name0 in names)
+                {
+                    string key0 = name0.Replace('/', '\\').TrimStart('\\');
+                    ZipArchiveEntry z0;
+                    if (!byPath.TryGetValue(key0.ToLowerInvariant(), out z0))
+                    {
+                        List<ZipArchiveEntry> l0;
+                        if (byLeaf.TryGetValue(Path.GetFileName(key0).ToLowerInvariant(), out l0) && l0.Count == 1) z0 = l0[0];
+                    }
+                    if (z0 != null) totalNames += z0.Length;
+                }
+                ExtractProgress.StartPass(totalNames);
                 foreach (string name in names)
                 {
                     if (StopRequested) return;
@@ -25665,36 +26363,16 @@ namespace SCLauncherNS
                     string target = Path.GetFullPath(Path.Combine(dest, rel));
                     if (!target.StartsWith(destFull, StringComparison.OrdinalIgnoreCase)) continue;
                     Directory.CreateDirectory(Path.GetDirectoryName(target));
-                    ze.ExtractToFile(target, true);
+                    CopyZipEntry(ze, target);
                 }
             }
         }
 
         static bool ExtractExternalNames(string tool, string archive, string dest, List<string> names)
         {
-            string n = Path.GetFileName(tool).ToLowerInvariant();
-            ProcessStartInfo psi = new ProcessStartInfo();
-            psi.FileName = tool;
-            psi.UseShellExecute = false;
-            psi.CreateNoWindow = true;
             StringBuilder sb = new StringBuilder();
             foreach (string name in names) sb.Append(" \"").Append(name.Replace('/', '\\').TrimStart('\\')).Append("\"");
-            if (n.StartsWith("winrar") || n.StartsWith("unrar") || n == "rar.exe")
-            {
-                psi.Arguments = "x -y -ibck -o+ \"" + archive + "\"" + sb.ToString();
-                psi.WorkingDirectory = dest;
-            }
-            else
-            {
-                psi.Arguments = "x -y -bd -o\"" + dest.TrimEnd('\\') + "\" \"" + archive + "\"" + sb.ToString();
-            }
-            Process p = Process.Start(psi);
-            while (!p.WaitForExit(300))
-            {
-                if (StopRequested) { try { p.Kill(); } catch { } return false; }
-            }
-            Log("rom: extractor exit code " + p.ExitCode);
-            return p.ExitCode <= 1;
+            return RunExtractor(tool, archive, dest, sb.ToString());
         }
 
         static bool ExtractNames(string tool, string archive, string dest, List<string> names)
@@ -25960,7 +26638,10 @@ namespace SCLauncherNS
                 Directory.CreateDirectory(dir);
                 File.WriteAllText(Path.Combine(dir, ".sc_pid"), RomMarkerText());
                 int perr; string pdetail;
-                string main = PrepareRomFromArchive(archive, sz, extList, entry, baseDir, dir, out perr, out pdetail);
+                string main;
+                ExtractUi.Begin(archive, lang);
+                try { main = PrepareRomFromArchive(archive, sz, extList, entry, baseDir, dir, out perr, out pdetail); }
+                finally { ExtractUi.End(); }
                 if (main.Length == 0)
                 {
                     if (perr != 0 && generic) ShowRomError(lang, perr, pdetail);
@@ -26488,7 +27169,7 @@ function Ensure-SCLauncherExe {
         $tmp = Join-Path $dir ('SCLauncher.' + $tag + '.tmp.exe')
         $src = $script:scLauncherSource.Replace('SCLauncherNS', ('SCLauncherNS_' + $tag))
         try {
-            Add-Type -TypeDefinition $src -Language CSharp -ReferencedAssemblies @('System.Windows.Forms.dll', 'System.Management.dll', 'System.IO.Compression.dll', 'System.IO.Compression.FileSystem.dll') -OutputAssembly $tmp -OutputType WindowsApplication -ErrorAction Stop
+            Add-Type -TypeDefinition $src -Language CSharp -ReferencedAssemblies @('System.Windows.Forms.dll', 'System.Drawing.dll', 'System.Management.dll', 'System.IO.Compression.dll', 'System.IO.Compression.FileSystem.dll') -OutputAssembly $tmp -OutputType WindowsApplication -ErrorAction Stop
         } catch {
             $detail = [string]$_.Exception.Message
             try {
@@ -33978,6 +34659,21 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     # определяет ключ хранилища своих картинок и EXE игры.
     foreach ($slotKey in @($slots.Keys)) {
         try { $slots[$slotKey] | Add-Member -NotePropertyName EditorState -NotePropertyValue $editorState -Force } catch {}
+    }
+    # Карточка рома: платформа для выбора обложки SteamGridDB. Считается в момент вызова
+    # по ТЕКУЩЕМУ эмулятору и ром в карточке (см. Get-RomPlatformKeys), поэтому смена
+    # эмулятора или рома учитывается при следующей загрузке/открытии вариантов.
+    if ($IsRomEntry) {
+        $romPlatformKeysFn = {
+            try {
+                $emuSel = $null
+                if ($cmbEmulator.SelectedIndex -ge 0 -and $cmbEmulator.SelectedIndex -lt $emuProfiles.Count) { $emuSel = $emuProfiles[$cmbEmulator.SelectedIndex] }
+                return @(Get-RomPlatformKeys ([string](& $getSelectedRomPath)) $emuSel ([string](& $getSelectedRomEntry)))
+            } catch { return @() }
+        }.GetNewClosure()
+        foreach ($slotKey in @($slots.Keys)) {
+            try { $slots[$slotKey] | Add-Member -NotePropertyName PlatformKeysFn -NotePropertyValue $romPlatformKeysFn -Force } catch {}
+        }
     }
     if ($script:LogoComposeEnabled) { try { Initialize-EditorCompose $slots.Hero $slots.Logo } catch {} }
 
