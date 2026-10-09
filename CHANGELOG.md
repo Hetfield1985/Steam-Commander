@@ -6,6 +6,31 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [2.0.4] - 2026-10-09
+
+### Added
+* **Platform-aware SteamGridDB covers for ROMs.** SteamGridDB cannot filter covers by platform, so a game used to get covers from every release (Game Boy, GBA, SNES, PS1, ...) mixed together. The ROM's platform is now detected from the file extension (including the file inside an archive), the emulator profile (known emulators such as Flycast, snes9x, Dolphin), the RetroArch core, the emulator's extensions, or the names of the nearest folders. Covers whose description names that platform go first, covers with no platform mentioned stay in the middle, and covers for another platform go last. It is a priority, not a filter, so nothing is hidden. Applies to silent ROM import, the ROM card (loading and the alternatives list of the vertical and horizontal covers) and follows a change of emulator or ROM in the card.
+* **Archive extraction progress window.** If unpacking a ROM archive takes longer than about a second, a small window with a progress bar, percentage, unpacked / total size and a **Cancel** button is shown (zip: exact size; 7z / rar: percent reported by 7-Zip). Small archives unpack without the window flashing. `SCLauncher.exe` is regenerated automatically (helper version 34).
+* **Full file names on hover.** In both panels, hovering over a name that does not fit into the *Name* column shows a tooltip with the full name (useful for ROMs like `Alone in the Dark - The New Nightmare (USA) (Disc 1).cue`).
+
+### Fixed
+* **A ROM archive was marked as "not sure" and opened in the card although there was only one correct file:**
+  * `(v1.1)` after the region (`Dino Crisis (USA) (v1.1).7z`) was treated as a patch version. Revisions in No-Intro / Redump style are now recognised as the game itself.
+  * A numeral that is part of the title (`Micro Machines V3 (USA)`) was treated as a version.
+  * An archive that contains a single disc image (`.cue` + `.bin` parts) is now judged by the file inside, not by the archive name.
+  * Nintendo Switch is not affected: `[vN]` in `.nsp` / `.xci` names is still an update and is never picked automatically.
+* **Wrong game and no covers for titles with a trailing article** (`Mummy, The (USA)` found *Mummy on the run*). `Name, The` / `A` / `An` is now turned into `The Name` before searching SteamGridDB, in the card, batch add and the autocomplete list.
+* **The logo "default for all games" checkbox stayed on for every next card**, and changing the logo in a card silently replaced the saved default. The checkbox is now unchecked as soon as the logo position or size differs from the default (dragging, slider, scale). A new default is saved only when the checkbox is ticked again. Saving a card where the checkbox was unchecked because of a deviation no longer turns the saved default off for other games; unchecking it by hand without changing anything still disables the default.
+* **ROM shortcuts without an icon in Library / Import:** if the shortcut has no icon path, the icon is now looked up in `config\grid` (`<appid>_icon.*`) next to `shortcuts.vdf`.
+* **Tiny icons from SteamGridDB (pixel art under 512 bytes) were rejected as a failed download.** The size threshold for icons is lowered; covers keep the old one.
+* If the full-size cover could not be downloaded but its thumbnail from the picker window was loaded, the thumbnail is used instead of resetting the slot to the placeholder.
+* The status line showed **"5 of 4"** after loading covers from SteamGridDB (there are five slots including the icon). Now "5 of 5" in all languages.
+
+### Changed
+* The ePSXe preset now has default launch arguments `-f -nogui -loadbin {rom}`.
+
+---
+
 ## [2.0.3] - 2026-10-09
 
 ### Fixed
