@@ -6,6 +6,34 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [2.0.6] - 2026-10-11
+
+### Added
+* **A logo hidden with the eye button is no longer saved to Steam.** Before, the eye only hid the logo in the card preview, and `<id>_logo.png` was still copied to `config\grid`. Now, if the logo is hidden when you press *Add* / *Save*, the file is not left in Steam: it is removed from `config\grid` of all Steam profiles (for an edited shortcut, under both the old and the new id after a rename; for a licensed game, the custom logo is removed and Steam falls back to its own). Works for a new shortcut, an edited shortcut and a licensed game, including ROMs opened in the card. Toggling the eye counts as a change of the card, so saving works even if nothing else was touched. Silent import and batch adding have no eye and behave as before: they only use the "default for all games" lock.
+* **A game in SteamGridDB is found by its Steam App ID.** When the card title is localized (for example a Steam region name), SteamGridDB knows the game under the original name and the search by the localized title found nothing. Switching the source to SteamGridDB now first looks the game up by the Steam App ID and keeps the title in the card unchanged. For a game added earlier, whose SGDB ID is not saved, the ID is resolved by name when you click a cover slot and is put into the SGDB ID field.
+
+### Changed
+* **"Default for all games" is now a lock button instead of a checkbox.** It has the same size and look as the eye and stands next to it in the row under the preview: *open lock* = off, *closed lock on the accent colour* = the logo position and size are saved as the defaults for all cards, ROMs and import. The old checkbox label is now the first line of the tooltip. The bottom row of the slot (label, eye, lock, slider) is centred in the free strip under the preview.
+* **Moving games no longer keeps Steam closed during the copy.** `shortcuts.vdf` is not touched while files are being copied, so it always points to existing files and no rollback is needed. Steam is closed once, at the end, and only if at least one game was actually moved; the shortcuts of the moved games are fixed in one pass, then Steam is started again.
+* **Battle.net games are launched by the client.** The shortcut sends the launch command to Battle.net (like the *Play* button), so Hearthstone and other games log in through the Blizzard service. If the client was not running, it is started first and the command is sent after about 12 s; the command is repeated up to 3 times every 25 s until the game appears. A direct start of the exe is only a fallback, after 75 s. `SCLauncher.exe` is regenerated automatically (helper version 35).
+* Application version is now 2.0.6.
+
+### Improved
+* **Cover thumbnails download in parallel.** All images of a game (cover, header, background, logo, icon) are downloaded at the same time, one `curl.exe` per file, and each thumbnail appears in its slot as soon as its file is ready. Before, the files were downloaded one after another and their delays added up (a full set took about 10 s). The whole download is limited to 55 s, and a switch of the source or closing the card stops all running downloads.
+* **SteamGridDB requests (grids, heroes, logos, icons) are sent together** instead of one by one for a game by Steam App ID and by SGDB ID, so their delays no longer add up. The `curl.exe` connect timeout is 5 s instead of 8 s.
+* **SteamGridDB works for users whose `curl.exe` cannot reach `www.steamgriddb.com`.** After the first failure of `curl.exe` the requests go through the built-in .NET client (the mode is shared by all threads); if .NET stops reaching the server too, requests start with `curl.exe` again.
+* **The loading animation of the thumbnails starts at once** when you switch the source (Steam / SteamGridDB), not after the network search of the game. If the search finishes without starting the loader (nothing found, error), the spinners are removed and the placeholders are shown.
+* **Switching back to Steam from SteamGridDB** restores the remembered Steam App ID, the cover region and the title (including a localized one) if you did not edit the title yourself, with no search by name. The highlighted region button matches the region that was really loaded.
+* **For a game already in the library, the full list of cover regions is loaded in the background right after the card opens** (when it is not saved in `cover_sources`), not by a click on the single button. Without a network the list stays pending and the click on the button retries.
+* In the switch of the SGDB title the dropdown of title variants is filled after the covers are shown, so the covers and the *Add* button are no longer delayed by the search.
+
+### Fixed
+* **The progress bar of a game move was frozen at 100 % and reset while files were still copying**, and the percentage was rounded up before the move was finished. The percentage is now rounded down and cannot reach 100 % until the file is done; the progress bar is not hidden while the move is in progress. The size of the games to move is counted with a faster function.
+* **The error window when adding an emulator no longer shows a debugging text** (exception text and script position); it shows the normal message again.
+* Temporary timing code of the library opening (`Write-Tm` and counters) is removed; it only slowed the library down.
+
+---
+
 ## [2.0.5] - 2026-10-10
 
 ### Fixed
@@ -23,6 +51,9 @@ and the project follows [Semantic Versioning](https://semver.org/).
 * ROM archive listing is cached (path + size + date), so reopening a card no longer runs 7-Zip again; the 7-Zip location is cached too.
 * Picking the main file in a ROM folder is faster for folders with many files (the check for a neighbouring `.cue` / `.m3u` / `.ccd` / `.mds` / `.toc` is done once per folder).
 * The delay before the autocomplete search starts after typing in the name field is 300 ms instead of 150 ms, so it fires less often while you are still typing.
+
+### Changed
+* Application version is now 2.0.5.
 
 ---
 
