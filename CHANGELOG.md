@@ -24,9 +24,6 @@ and the project follows [Semantic Versioning](https://semver.org/).
 * Picking the main file in a ROM folder is faster for folders with many files (the check for a neighbouring `.cue` / `.m3u` / `.ccd` / `.mds` / `.toc` is done once per folder).
 * The delay before the autocomplete search starts after typing in the name field is 300 ms instead of 150 ms, so it fires less often while you are still typing.
 
-### Changed
-* Application version is now 2.0.5.
-
 ---
 
 ## [2.0.4] - 2026-10-09
