@@ -6,6 +6,29 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [2.0.5] - 2026-10-10
+
+### Fixed
+* **Steam app icons were not found for newer games** (for example *Gears of War: E-Day*): the slot stayed empty. Steam now serves community / client icons from `shared.fastly.steamstatic.com` and `shared.akamai.steamstatic.com` under `/community_assets/images/apps/<appid>/<hash>`, while the old hosts (`cdn.cloudflare.steamstatic.com`, `cdn.akamai.steamstatic.com`, `media.steampowered.com`, `steamcdn-a.akamaihd.net`) return 404 for such games. The new hosts are tried first, the old ones stay as a fallback for older games.
+* **SteamGridDB requests could hang until the timeout** although the site answered instantly in a browser. Requests (including the API key check) now go through the system `curl.exe` and fall back to the built-in .NET client only if it is missing. The .NET connection limit per host (2 by default) is raised to 32, `Expect: 100-continue` is turned off and idle connections are dropped after 15 s. After an aborted request or a network error the SteamGridDB connections are closed, so one stuck request no longer blocks all the following ones (cards, key check). Stopping a background request no longer waits for the blocking network call to return.
+* **The Settings window opened only after the API keys had been checked** (up to 25 s for SteamGridDB and as long again for the Steam Web API when a service did not answer). The window now opens at once; the badge next to a key appears as soon as its check finishes. Changing the key text cancels the check of the old text, and *Cancel* restores the real state of the checks instead of "not checked yet".
+* **The logo could stick out of the background preview** at 100 % size. The logo together with its margins is now kept inside the background.
+* **A card showed the shared default logo position instead of the game's own saved one** when the "default for all games" checkbox was on, and saving then overwrote the game's own value. The saved position of a game / ROM is now shown first; the default is used only when the game has none yet.
+* **ROMs launched from an archive (through `SCLauncher.exe`) showed the launcher's icon instead of the emulator's** in Library, on hover and in the list. The emulator is now taken from the `--emu` launch argument, such shortcuts are recognised as ROMs, the card opens the archive as the ROM and "open location" points to the file itself.
+
+### Improved
+* **Cards of games that are already in the library open without the network.** The name comes from the shortcut, covers from `config\grid`, App ID and the list of cover regions from `cover_sources\<id>.json`; for licensed games the official images are taken from the local Steam client cache (`appcache\librarycache`: capsule, header, hero, logo, icon). Nothing is downloaded until you change something: the Steam launch-exe hint is skipped, and the full list of regions is loaded when you click the region button. If a saved Steam icon is missing or completely black (a broken old `.ico` → `.png`), it is replaced with the icon from the local Steam cache.
+* **App ID, its source (Steam / SteamGridDB) and the list of regions are now saved** in `cover_sources\<id>.json` when a game is added (including silent import) or a card is saved. The values already written are kept if a new save does not provide them.
+* For games added before this metadata existed, the card looks up the App ID in the local Steam apps database (*Settings → Steam Web API*), using the game folder name, then the shortcut name, then the card title. Only an exact match is used; if several games share the name, nothing is guessed and the App ID field stays empty. The region of such games is taken as English and the source badge as Steam.
+* ROM archive listing is cached (path + size + date), so reopening a card no longer runs 7-Zip again; the 7-Zip location is cached too.
+* Picking the main file in a ROM folder is faster for folders with many files (the check for a neighbouring `.cue` / `.m3u` / `.ccd` / `.mds` / `.toc` is done once per folder).
+* The delay before the autocomplete search starts after typing in the name field is 300 ms instead of 150 ms, so it fires less often while you are still typing.
+
+### Changed
+* Application version is now 2.0.5.
+
+---
+
 ## [2.0.4] - 2026-10-09
 
 ### Added
