@@ -905,7 +905,7 @@ Set-SplashProgress 0.52
 # Единая версия приложения — используется в заголовке главного окна, в
 # подписи внизу окна настроек и в User-Agent HTTP-запросов. Меняйте только
 # здесь при выпуске новой версии.
-$global:appVersion = "2.0.5"
+$global:appVersion = "2.0.6"
 $global:appTitle = "Steam Commander"
 # Ссылки на исходный код и поддержку автора (окно «Поддержать» в настройках). Меняйте только здесь.
 $global:appRepoUrl = "https://github.com/Hetfield1985/Steam-Commander"
@@ -5407,7 +5407,7 @@ $script:SgdbKeyRawCheck = {
             if (-not (Test-Path -LiteralPath $exe)) { $res.NoCurl = $true; return $res }
             $tm = [Math]::Max(5, $t)
             $a = New-Object System.Collections.Generic.List[string]
-            foreach ($x in @('-s', '-S', '--connect-timeout', '8', '--max-time', [string]$tm)) { [void]$a.Add($x) }
+            foreach ($x in @('-s', '-S', '--connect-timeout', '5', '--max-time', [string]$tm)) { [void]$a.Add($x) }
             if ($hdrs) {
                 foreach ($k in @($hdrs.Keys)) {
                     $v = ([string]$hdrs[$k]) -replace '["\r\n]', ''
@@ -5450,6 +5450,7 @@ $script:SgdbKeyRawCheck = {
     $r = @{ Ok = $false; StatusCode = 0; WebStatus = ''; RawMsg = '' }
     for ($attempt = 1; $attempt -le [Math]::Max(1, $maxAttempts); $attempt++) {
         $r = @{ Ok = $false; StatusCode = 0; WebStatus = ''; RawMsg = '' }
+        $netFirst = ([string]$env:SC_SGDB_VIA_NET -eq '1')
         try {
             $headers = @{ Authorization = "Bearer $(([string]$apiKey).Trim())" }
             $url = 'https://www.steamgriddb.com/api/v2/search/autocomplete/__steam_commander_key_check__'
@@ -5457,9 +5458,15 @@ $script:SgdbKeyRawCheck = {
             # зависает до таймаута, хотя curl.exe в тот же момент отвечает за доли секунды.
             $resp = $null
             $curlErr = $false
-            $cg = & $sgCurlGet $url $headers 15
-            if ($cg.NoCurl) {
-                $resp = Invoke-RestMethod -Uri $url -Headers $headers -UserAgent 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) SteamCommander' -TimeoutSec 15 -ErrorAction Stop
+            # Если раньше curl.exe не смог подключиться, а .NET смог (у части пользователей curl.exe не доходит до
+            # www.steamgriddb.com, хотя .NET доходит), сразу идём через .NET: переменная окружения общая для всех потоков.
+            $cg = @{ Code = 0; Exit = -1; Body = ''; Err = ''; NoCurl = $true }
+            if (-not $netFirst) { $cg = & $sgCurlGet $url $headers 15 }
+            $curlNoConnect = (-not $cg.NoCurl -and [int]$cg.Code -eq 0 -and [int]$cg.Exit -ne 0)
+            if ($cg.NoCurl -or $curlNoConnect) {
+                $netTimeout = if ($curlNoConnect) { 8 } else { 15 }
+                $resp = Invoke-RestMethod -Uri $url -Headers $headers -UserAgent 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) SteamCommander' -TimeoutSec $netTimeout -ErrorAction Stop
+                if ($curlNoConnect) { $env:SC_SGDB_VIA_NET = '1' }
             } elseif ($cg.Exit -eq 0 -and $cg.Code -ge 200 -and $cg.Code -lt 400) {
                 $resp = $cg.Body | ConvertFrom-Json
             } else {
@@ -5500,6 +5507,8 @@ $script:SgdbKeyRawCheck = {
             try { $r.StatusCode = [int]$ex.Response.StatusCode.value__ } catch {}
             try { $r.WebStatus = [string]$ex.Status } catch {}
             try { $r.RawMsg = [string]$ex.Message } catch {}
+            # .NET тоже не дошёл до сервера - следующая попытка снова начнётся с curl.exe.
+            if ($netFirst -and $r.StatusCode -eq 0) { $env:SC_SGDB_VIA_NET = '' }
         }
         if (-not ($r.StatusCode -eq 0 -or $r.StatusCode -ge 500 -or $r.StatusCode -eq 429)) { break }
         # Пауза перед повтором: мгновенный повтор при сбое/429 почти всегда падает так же.
@@ -8614,7 +8623,7 @@ $progressPercentTimer.Add_Tick({
         $v = $progressBarFolder.Value
         $lblProgressPercent.Text = if ($v -gt 0 -and $v -lt 100) { "$v%" } else { "" }
         $wantVisible = ($v -gt 0)
-        if ($v -ge 100) {
+        if ($v -ge 100 -and -not $script:moveInProgress) {
             if ($null -eq $script:progressDoneSince) { $script:progressDoneSince = [DateTime]::UtcNow }
             elseif (([DateTime]::UtcNow - $script:progressDoneSince).TotalMilliseconds -gt 1200) {
                 $progressBarFolder.Value = 0
@@ -13127,16 +13136,9 @@ function Invoke-BackgroundJsonRequest ($scriptBlock, [object[]]$argumentList, [i
 #                      код может опираться на этот флаг, а не парсить текст
 #                      исключения самостоятельно.
 #   ErrorMessage    — текст последней ошибки, если Success -eq $false.
-function Invoke-SgdbApiRequest ($url, [hashtable]$headers, [int]$timeoutSec = 20, [switch]$NoKeyRetry) {
-    $wasUnauthorized = $false
-    $errMsg = $null
-    $resp = $null
-    $is401 = $false
-
-    # Сетевой запрос выполняем в отдельном runspace. UI при этом продолжает
-    # прокачиваться, поэтому крестик карточки и кнопки «Отмена/Пропустить»
-    # остаются нажимаемыми даже при медленном или зависшем сервере.
-    $requestBlock = {
+# Тело одиночного запроса к API SteamGridDB (выполняется в своём runspace). Вынесено из
+# Invoke-SgdbApiRequest, чтобы его же использовал пакетный Invoke-SgdbApiRequestBatch.
+$script:SgdbJsonRequestBlock = {
         param($requestUrl, $requestHeaders, $requestTimeout)
         $sgCurlGet = {
         param([string]$u, $hdrs, [int]$t)
@@ -13146,7 +13148,7 @@ function Invoke-SgdbApiRequest ($url, [hashtable]$headers, [int]$timeoutSec = 20
             if (-not (Test-Path -LiteralPath $exe)) { $res.NoCurl = $true; return $res }
             $tm = [Math]::Max(5, $t)
             $a = New-Object System.Collections.Generic.List[string]
-            foreach ($x in @('-s', '-S', '--connect-timeout', '8', '--max-time', [string]$tm)) { [void]$a.Add($x) }
+            foreach ($x in @('-s', '-S', '--connect-timeout', '5', '--max-time', [string]$tm)) { [void]$a.Add($x) }
             if ($hdrs) {
                 foreach ($k in @($hdrs.Keys)) {
                     $v = ([string]$hdrs[$k]) -replace '["\r\n]', ''
@@ -13188,18 +13190,61 @@ function Invoke-SgdbApiRequest ($url, [hashtable]$headers, [int]$timeoutSec = 20
     }
         try {
             # Через системный curl.exe (см. комментарий в проверке ключа): .NET-клиент у части пользователей зависает.
-            $cg = & $sgCurlGet $requestUrl $requestHeaders $requestTimeout
-            if (-not $cg.NoCurl) {
-                if ($cg.Exit -eq 0 -and $cg.Code -ge 200 -and $cg.Code -lt 400) { return ($cg.Body | ConvertFrom-Json) }
-                $cm = if ($cg.Code -ge 400) { 'HTTP ' + $cg.Code } elseif ($cg.Exit -eq 28) { 'Время ожидания завершения операции истекло.' } else { 'curl: (' + $cg.Exit + ') ' + $cg.Err }
-                return [PSCustomObject]@{ __RequestError = [string]$cm; __Response = $null; __Status = [int]$(if ($cg.Code -ge 400) { $cg.Code } else { 0 }) }
+            # Но у других curl.exe не доходит до www.steamgriddb.com (таймаут подключения), а .NET доходит: тогда после
+            # первой неудачи curl.exe запросы идут через .NET (переменная окружения общая для всех потоков),
+            # а если и .NET перестал доходить - возвращаемся к curl.exe.
+            $netFirst = ([string]$env:SC_SGDB_VIA_NET -eq '1')
+            $cg = $null
+            if (-not $netFirst) {
+                $cg = & $sgCurlGet $requestUrl $requestHeaders $requestTimeout
+                if (-not $cg.NoCurl) {
+                    if ($cg.Exit -eq 0 -and $cg.Code -ge 200 -and $cg.Code -lt 400) { return ($cg.Body | ConvertFrom-Json) }
+                    if ($cg.Code -ge 400 -or $cg.Exit -eq 0) {
+                        $cm = if ($cg.Code -ge 400) { 'HTTP ' + $cg.Code } else { 'curl: (' + $cg.Exit + ') ' + $cg.Err }
+                        return [PSCustomObject]@{ __RequestError = [string]$cm; __Response = $null; __Status = [int]$(if ($cg.Code -ge 400) { $cg.Code } else { 0 }) }
+                    }
+                    # curl.exe не смог подключиться (кода HTTP нет) - пробуем .NET ниже
+                }
             }
-            return (Invoke-RestMethod -Uri $requestUrl -Headers $requestHeaders -UserAgent 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) SteamCommander' -TimeoutSec $requestTimeout -ErrorAction Stop)
+            $netTimeout = if ($netFirst) { $requestTimeout } else { [Math]::Max(4, $requestTimeout - 6) }
+            $netResp = $null; $netErr = $null; $netGotHttp = $false
+            try {
+                $netResp = Invoke-RestMethod -Uri $requestUrl -Headers $requestHeaders -UserAgent 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) SteamCommander' -TimeoutSec $netTimeout -ErrorAction Stop
+            } catch {
+                $netErr = $_
+                try { $netGotHttp = ($null -ne $_.Exception.Response) } catch {}
+            }
+            if ($null -eq $netErr) {
+                if (-not $netFirst -and $null -ne $cg -and -not $cg.NoCurl) { $env:SC_SGDB_VIA_NET = '1' }
+                return $netResp
+            }
+            if ($netFirst -and -not $netGotHttp) {
+                # .NET не дошёл до сервера - возвращаемся к curl.exe.
+                $env:SC_SGDB_VIA_NET = ''
+                $cg = & $sgCurlGet $requestUrl $requestHeaders $requestTimeout
+                if (-not $cg.NoCurl) {
+                    if ($cg.Exit -eq 0 -and $cg.Code -ge 200 -and $cg.Code -lt 400) { return ($cg.Body | ConvertFrom-Json) }
+                    $cm = if ($cg.Code -ge 400) { 'HTTP ' + $cg.Code } elseif ($cg.Exit -eq 28) { 'Время ожидания завершения операции истекло.' } else { 'curl: (' + $cg.Exit + ') ' + $cg.Err }
+                    return [PSCustomObject]@{ __RequestError = [string]$cm; __Response = $null; __Status = [int]$(if ($cg.Code -ge 400) { $cg.Code } else { 0 }) }
+                }
+            }
+            throw $netErr
         } catch {
             $st = 0; try { $st = [int]$_.Exception.Response.StatusCode.value__ } catch {}
             return [PSCustomObject]@{ __RequestError = [string]$_.Exception.Message; __Response = $_.Exception.Response; __Status = $st }
         }
-    }
+}
+
+function Invoke-SgdbApiRequest ($url, [hashtable]$headers, [int]$timeoutSec = 20, [switch]$NoKeyRetry) {
+    $wasUnauthorized = $false
+    $errMsg = $null
+    $resp = $null
+    $is401 = $false
+
+    # Сетевой запрос выполняем в отдельном runspace. UI при этом продолжает
+    # прокачиваться, поэтому крестик карточки и кнопки «Отмена/Пропустить»
+    # остаются нажимаемыми даже при медленном или зависшем сервере.
+    $requestBlock = $script:SgdbJsonRequestBlock
     # SteamGridDB стоит за Cloudflare и периодически отвечает 429/5xx, обрывает соединение
     # или не успевает за таймаут. Раньше любой такой сбой сразу превращался в «обложки не
     # загрузились» (и «ключ не проверен»), а через минуту тот же запрос проходил. Теперь
@@ -13270,6 +13315,92 @@ function Invoke-SgdbApiRequest ($url, [hashtable]$headers, [int]$timeoutSec = 20
         WasUnauthorized = $wasUnauthorized
         ErrorMessage    = $errMsg
     }
+}
+
+# Пакетный вариант Invoke-SgdbApiRequest: все запросы стартуют одновременно (каждый в своём
+# runspace), UI при этом прокачивается. Раньше 4 запроса за ассетами игры (grids/heroes/logos/
+# icons) шли строго по очереди, и их задержки складывались. Результат — массив объектов той же
+# формы (Success/Data/WasUnauthorized/ErrorMessage) в порядке $urls.
+# Если запрос не удался из-за сети/таймаута/401, он повторяется обычным Invoke-SgdbApiRequest —
+# с его повторами и переполучением ключа. 404 и пустой ответ повторять не нужно.
+function Invoke-SgdbApiRequestBatch ([string[]]$urls, [hashtable]$headers, [int]$timeoutSec = 20) {
+    $urls = @($urls)
+    $n = $urls.Count
+    $jobs = New-Object 'object[]' $n
+    $out = New-Object 'object[]' $n
+    for ($i = 0; $i -lt $n; $i++) {
+        $ps = $null
+        try {
+            $ps = [System.Management.Automation.PowerShell]::Create()
+            [void]$ps.AddScript($script:SgdbJsonRequestBlock)
+            [void]$ps.AddArgument([string]$urls[$i])
+            [void]$ps.AddArgument($headers)
+            [void]$ps.AddArgument($timeoutSec)
+            $jobs[$i] = [PSCustomObject]@{ Ps = $ps; Async = $ps.BeginInvoke() }
+        } catch {
+            try { if ($ps) { $ps.Dispose() } } catch {}
+            $jobs[$i] = $null
+        }
+    }
+
+    $userAbort = $false
+    $timedOut = $false
+    try {
+        $deadline = (Get-Date).AddSeconds([Math]::Max(1, $timeoutSec + 2))
+        while ($true) {
+            $pending = 0
+            foreach ($j in $jobs) { if ($null -ne $j -and -not $j.Async.IsCompleted) { $pending++ } }
+            if ($pending -eq 0) { break }
+            [System.Windows.Forms.Application]::DoEvents()
+            if ($global:editorLoadAbortRequested) { $userAbort = $true; break }
+            Start-Sleep -Milliseconds 30
+            if ((Get-Date) -gt $deadline) { $timedOut = $true; break }
+        }
+        if ($userAbort -or $timedOut) {
+            foreach ($j in $jobs) { if ($null -ne $j -and -not $j.Async.IsCompleted) { try { $j.Ps.Stop() } catch {} } }
+            # Оборванные запросы держат соединения занятыми — закрываем их (как в Invoke-BackgroundJsonRequest).
+            try { Reset-SgdbConnectionPool } catch {}
+        }
+
+        for ($i = 0; $i -lt $n; $i++) {
+            $j = $jobs[$i]
+            $raw = $null
+            $failed = $false
+            $status = 0
+            $errMsg = $null
+            if ($null -ne $j) {
+                try {
+                    $items = @($j.Ps.EndInvoke($j.Async))
+                    if ($items.Count -ge 1) { $raw = $items[0] }
+                } catch { $raw = $null }
+            }
+            if ($null -ne $raw -and $raw.PSObject.Properties['__RequestError']) {
+                $failed = $true
+                $errMsg = [string]$raw.__RequestError
+                try { $status = [int]$raw.__Status } catch {}
+                $raw = $null
+            } elseif ($null -eq $raw) {
+                $failed = $true
+            }
+
+            if ($failed -and -not $userAbort -and $status -ne 404) {
+                $out[$i] = Invoke-SgdbApiRequest $urls[$i] $headers $timeoutSec
+                continue
+            }
+
+            $ok = ($raw -ne $null -and $raw.success -eq $true -and $raw.data -ne $null)
+            if ($raw -ne $null -and $raw.success -eq $true) { $global:steamGridDbApiKeyValid = $true }
+            $out[$i] = [PSCustomObject]@{
+                Success         = $ok
+                Data            = if ($ok) { $raw.data } else { $null }
+                WasUnauthorized = ($status -eq 401)
+                ErrorMessage    = $errMsg
+            }
+        }
+    } finally {
+        foreach ($j in $jobs) { if ($null -ne $j) { try { $j.Ps.Dispose() } catch {} } }
+    }
+    return $out
 }
 
 function Invoke-UiPumpingDownload ($url, $targetPath, [int]$maxSeconds = 40, [int]$minSize = 512) {
@@ -13343,10 +13474,13 @@ function Get-SteamGridDbAssetsBySteamAppId ($steamAppId) {
     if ([string]::IsNullOrWhiteSpace([string]$global:steamGridDbApiKey)) { return $null }
     $headers = @{ Authorization = "Bearer $($global:steamGridDbApiKey)" }
     $result = [ordered]@{ Grids = @(); Heroes = @(); Logos = @(); Icons = @() }
-    foreach ($kind in @('grids','heroes','logos','icons')) {
-        $url = "https://www.steamgriddb.com/api/v2/$kind/steam/$steamAppId"
-        $r = Invoke-SgdbApiRequest $url $headers 30
-        if ($r.Success) {
+    $kinds = @('grids','heroes','logos','icons')
+    # Четыре запроса уходят одновременно (раньше шли по очереди).
+    $batch = @(Invoke-SgdbApiRequestBatch @($kinds | ForEach-Object { "https://www.steamgriddb.com/api/v2/$_/steam/$steamAppId" }) $headers 30)
+    for ($ki = 0; $ki -lt $kinds.Count; $ki++) {
+        $kind = $kinds[$ki]
+        $r = $batch[$ki]
+        if ($null -ne $r -and $r.Success) {
             $prop = $kind.Substring(0,1).ToUpper() + $kind.Substring(1)
             $result[$prop] = @($r.Data)
         }
@@ -14952,8 +15086,15 @@ function Get-SgdbAssetsForGame ($gameId, $headers) {
     # стандартные размеры SGDB: 342x482 / 660x930 и 460x215.
     $result = [ordered]@{ GridsVertical=@(); GridsHorizontal=@(); Heroes=@(); Logos=@(); Icons=@() }
 
-    $gridsReq = Invoke-SgdbApiRequest "https://www.steamgriddb.com/api/v2/grids/game/$gameId" $headers 20
-    if ($gridsReq.Success) {
+    # Все четыре запроса (grids/heroes/logos/icons) уходят одновременно, а не по очереди.
+    $apiBatch = @(Invoke-SgdbApiRequestBatch @(
+        "https://www.steamgriddb.com/api/v2/grids/game/$gameId",
+        "https://www.steamgriddb.com/api/v2/heroes/game/$gameId",
+        "https://www.steamgriddb.com/api/v2/logos/game/$gameId",
+        "https://www.steamgriddb.com/api/v2/icons/game/$gameId"
+    ) $headers 20)
+    $gridsReq = $apiBatch[0]
+    if ($null -ne $gridsReq -and $gridsReq.Success) {
             $all=@($gridsReq.Data)
             $vertical=@($all | Where-Object {
                 $w=0;$h=0
@@ -14993,13 +15134,15 @@ function Get-SgdbAssetsForGame ($gameId, $headers) {
             $result.GridsHorizontal=@($horizontal | Sort-Object $sortByScore -Descending)
     }
 
+    $apiIdx = 0
     foreach($req in @(
-        @{ Name='Heroes'; Url="https://www.steamgriddb.com/api/v2/heroes/game/$gameId" },
-        @{ Name='Logos'; Url="https://www.steamgriddb.com/api/v2/logos/game/$gameId" },
-        @{ Name='Icons'; Url="https://www.steamgriddb.com/api/v2/icons/game/$gameId" }
+        @{ Name='Heroes' },
+        @{ Name='Logos' },
+        @{ Name='Icons' }
     )) {
-        $r = Invoke-SgdbApiRequest $req.Url $headers 20
-        if ($r.Success) {
+        $apiIdx++
+        $r = $apiBatch[$apiIdx]
+        if ($null -ne $r -and $r.Success) {
             $result[$req.Name]=@($r.Data | Sort-Object @{Expression={
                 $v=0.0;try{$v=[double]$_.score}catch{};$v
             };Descending=$true})
@@ -16077,8 +16220,24 @@ function Get-EditorLogoSignature($state) {
         # Галочка «по умолчанию» входит в отпечаток: её переключение тоже считается изменением карточки.
         $dflag = ''
         try { if ([bool]$state.LogoUseDefault) { $dflag = '|D' } } catch {}
+        # Скрытие логотипа «глазиком» тоже считается изменением карточки (логотип не будет сохранён в Steam).
+        try { if ([bool]$state.LogoHidden) { $dflag += '|H' } } catch {}
         return ([string]$state.LogoPosition + '|' + $w.ToString($ci) + '|' + $h.ToString($ci) + $dflag)
     } catch { return ('?' + [guid]::NewGuid().ToString('N')) }
+}
+
+function Remove-SteamGridLogoForAllProfiles($shortcutId) {
+    # Логотип скрыт «глазиком» в карточке: файл <id>_logo.png в config\grid не должен остаться в Steam
+    # (ни свежескопированный из temp, ни старый от прошлого сохранения).
+    try {
+        if ([string]::IsNullOrWhiteSpace([string]$shortcutId)) { return }
+        Get-ConfiguredSteamProfileDirectories | ForEach-Object {
+            try {
+                $lp = Join-Path (Join-Path $_.FullName 'config\grid') ([string]$shortcutId + '_logo.png')
+                if ([System.IO.File]::Exists($lp)) { Remove-Item -LiteralPath $lp -Force -ErrorAction SilentlyContinue }
+            } catch {}
+        }
+    } catch {}
 }
 
 function Get-EditorLogoPositionToSave($state, [bool]$ForceIfFromCache = $false) {
@@ -17876,52 +18035,34 @@ function Initialize-EditorCompose($heroSlot, $logoSlot) {
     $heroSlot | Add-Member -NotePropertyName Slider -NotePropertyValue $tb -Force
 
     # --- Галочка «по умолчанию» под шкалой масштаба: положение и размер логотипа для всех карточек, ромов и автоимпорта ---
-    # Рисуется так же, как галочки в остальных окнах программы (квадрат 14x14, Accent с белой птичкой).
+    # Вместо галочки — кнопка-переключатель того же размера и вида, что «глаз»: открытый замок = выключено,
+    # закрытый замок на цветном фоне = положение и размер логотипа сохраняются как значения по умолчанию.
     $chkDef = New-Object System.Windows.Forms.CheckBox
-    $chkDef.Text = (T 'logo_chk_default')
+    $chkDef.Appearance = [System.Windows.Forms.Appearance]::Button
     $chkDef.AutoSize = $false
-    $chkDef.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
+    $chkDef.Size = New-Object System.Drawing.Size(26, 24)
+    $chkDef.Location = New-Object System.Drawing.Point((10 + $scaleLblW + 4 + 30), ($rowY + 2))
+    $chkDef.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
     $chkDef.UseVisualStyleBackColor = $false
-    $chkDef.BackColor = $heroSlot.Panel.BackColor
-    $chkDef.ForeColor = $steamUi.Text
-    $chkDef.Font = New-Object System.Drawing.Font('Segoe UI', 8.5)
     $chkDef.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
-    $chkDef.FlatAppearance.BorderSize = 0
+    $chkDef.FlatAppearance.BorderColor = $steamUi.Border
+    $chkDef.FlatAppearance.BorderSize = 1
+    $chkDef.FlatAppearance.CheckedBackColor = $steamUi.Accent
+    $chkDef.BackColor = $steamUi.Panel
+    $chkDef.ForeColor = $steamUi.Text
+    $chkDef.Font = New-Object System.Drawing.Font('Segoe MDL2 Assets', 10)
+    $chkDef.Padding = New-Object System.Windows.Forms.Padding(0)
+    $chkDef.Text = [string][char]0xE785   # открытый замок
     $chkDef.Cursor = [System.Windows.Forms.Cursors]::Hand
     $chkDef.TabStop = $false
-    $chkDef.Location = New-Object System.Drawing.Point(10, ($rowY + 30))
-    $chkDef.Size = New-Object System.Drawing.Size(([int]$heroSlot.Panel.Width - 20), 22)
     $chkDef.Tag = $heroSlot
-    $chkDef.Add_MouseEnter({ param($s, $e) $s.Invalidate() })
-    $chkDef.Add_MouseLeave({ param($s, $e) $s.Invalidate() })
-    $chkDef.Add_Paint({
-        param($s, $pe)
-        $g = $pe.Graphics
-        $bgBrush = New-Object System.Drawing.SolidBrush($s.BackColor)
-        $g.FillRectangle($bgBrush, $s.ClientRectangle)
-        $bgBrush.Dispose()
-        $boxRect = New-Object System.Drawing.Rectangle(0, [int](($s.ClientSize.Height - 14) / 2), 14, 14)
-        if ($s.Checked) {
-            $fillBrush = New-Object System.Drawing.SolidBrush($steamUi.Accent)
-            $g.FillRectangle($fillBrush, $boxRect)
-            $fillBrush.Dispose()
-            $markPen = New-Object System.Drawing.Pen([System.Drawing.Color]::White, 1.6)
-            $g.DrawLine($markPen, $boxRect.X + 3, $boxRect.Y + 7, $boxRect.X + 6, $boxRect.Y + 10)
-            $g.DrawLine($markPen, $boxRect.X + 6, $boxRect.Y + 10, $boxRect.X + 11, $boxRect.Y + 3)
-            $markPen.Dispose()
-        } else {
-            $hover = $false
-            try { $hover = $s.ClientRectangle.Contains($s.PointToClient([System.Windows.Forms.Cursor]::Position)) } catch {}
-            $borderColor = if ($hover) { [System.Drawing.Color]::White } else { $steamUi.Muted }
-            $borderPen = New-Object System.Drawing.Pen($borderColor, 1.2)
-            $g.DrawRectangle($borderPen, $boxRect)
-            $borderPen.Dispose()
-        }
-        $textRect = New-Object System.Drawing.Rectangle(22, 0, [Math]::Max(10, $s.ClientSize.Width - 22), $s.ClientSize.Height)
-        $flags = [System.Windows.Forms.TextFormatFlags]::Left -bor [System.Windows.Forms.TextFormatFlags]::VerticalCenter -bor [System.Windows.Forms.TextFormatFlags]::NoPrefix -bor [System.Windows.Forms.TextFormatFlags]::EndEllipsis
-        [System.Windows.Forms.TextRenderer]::DrawText($g, [string]$s.Text, $s.Font, $textRect, $s.ForeColor, $flags)
-    }.GetNewClosure())
+    $lockOffFore = $steamUi.Text
     $chkDef.Add_CheckedChanged({
+        try {
+            # Значок и цвет: закрытый замок на акцентном фоне — включено.
+            if ([bool]$this.Checked) { $this.Text = [string][char]0xE72E; $this.ForeColor = [System.Drawing.Color]::White }
+            else { $this.Text = [string][char]0xE785; $this.ForeColor = $lockOffFore }
+        } catch {}
         try {
             $hs = $this.Tag
             $hs.EditorState.LogoUseDefault = [bool]$this.Checked
@@ -17931,14 +18072,37 @@ function Initialize-EditorCompose($heroSlot, $logoSlot) {
                 $hs.EditorState | Add-Member -NotePropertyName LogoDefaultDeviated -NotePropertyValue $false -Force
             }
         } catch {}
-    })
+    }.GetNewClosure())
     $heroSlot.Panel.Controls.Add($chkDef)
     $heroSlot | Add-Member -NotePropertyName ChkDefault -NotePropertyValue $chkDef -Force
-    try { $heroSlot.EyeTip.SetToolTip($chkDef, (Get-WrappedTipText ([string](T 'logo_tip_default')))) } catch {}
+    # Подсказка: прежняя подпись галочки, ниже — пояснение.
+    try { $heroSlot.EyeTip.SetToolTip($chkDef, ([string](T 'logo_chk_default') + "`n" + (Get-WrappedTipText ([string](T 'logo_tip_default'))))) } catch {}
     try {
         $heroSlot.EyeTip.SetToolTip($tb, (T 'logo_tip_slider'))
         $heroSlot.EyeTip.SetToolTip($lblScale, (T 'logo_tip_slider'))
     } catch {}
+
+    # --- Раскладка нижней строки: [подпись] [глаз] [замок] [ползунок] ---
+    # Строка целиком стоит по центру свободной полосы между низом превью и нижним краем слота.
+    $layoutRow = {
+        try {
+            $band = [int]$heroSlot.Panel.Height - (35 + $picH)
+            $y0 = [int](35 + $picH + [Math]::Max(2, [Math]::Floor(($band - 28) / 2)))
+            $xEye = 10 + $scaleLblW + 4
+            # Две кнопки одинакового размера (26x24) с зазором 6 px, затем ползунок: у TrackBar линия начинается
+            # примерно на 8 px правее его левого края, поэтому Left = конец замка + 4 даёт видимый зазор ~12 px.
+            $xChk = $xEye + 26 + 6
+            $xTb = $xChk + 26 + 4
+            $lblScale.Location = New-Object System.Drawing.Point(10, ($y0 + 2))
+            $chkDef.Location = New-Object System.Drawing.Point($xChk, ($y0 + 2))
+            $eye.Location = New-Object System.Drawing.Point($xEye, ($y0 + 2))
+            $tb.Location = New-Object System.Drawing.Point($xTb, ($y0 + 4))
+            $tb.Size = New-Object System.Drawing.Size([Math]::Max(40, ([int]$heroSlot.Panel.Width - 10 - $xTb)), 28)
+            try { $chkDef.BringToFront() } catch {}
+        } catch {}
+    }.GetNewClosure()
+    & $layoutRow
+    try { $heroSlot.Panel.Add_Resize($layoutRow) } catch {}
     Set-EditorComposeTip $heroSlot 'bg'
     try { Update-EditorComposeView $heroSlot } catch {}
 }
@@ -18656,31 +18820,81 @@ function Load-EditorSgdbPreviews($gameName, $steamAppId, $slots, $statusLabel, $
             Set-EditorPreviewFile $u.Slot $null | Out-Null
         }
 
+        # Все картинки качаются ОДНОВРЕМЕННО: по одному curl.exe на файл, UI прокачивается в цикле
+        # ожидания. Раньше они шли строго по очереди, и задержка каждого запроса (запуск curl,
+        # TLS-рукопожатие, крупный PNG фона/лого) складывалась — полный набор грузился ~10 секунд.
+        # Каждая миниатюра ставится в слот сразу, как только её файл готов.
         $loaded = 0
+        $dlJobs = New-Object System.Collections.ArrayList
         foreach($u in $urls) {
-            if (Test-EditorLoadCancelled) { return $false }
-            if ([string]::IsNullOrWhiteSpace([string]$u.Url)) {
-                [System.Windows.Forms.Application]::DoEvents()
-                continue
-            }
-
-            $statusLabel.Text = (T 'sl_sg_loading' @(((T ('slot_' + ([string]$u.Key).ToLower())) -replace '^\d+\.\s*', '')))
-            [System.Windows.Forms.Application]::DoEvents()
-
-            # Используем старый проверенный Download-RemoteImage:
-            # Invoke-WebRequest -> fallback curl, с таймаутом.
+            if ([string]::IsNullOrWhiteSpace([string]$u.Url)) { continue }
             $dlMin = if ($u.Key -eq 'Icon') { 64 } else { 512 }   # иконки бывают крошечными (< 512 байт)
-            if (Download-RemoteImage ([string]$u.Url) ([string]$u.File) $dlMin) {
-                # Источник переключили во время скачивания — старый результат
-                # не должен попасть в слот.
-                if (Test-EditorLoadCancelled) { return $false }
-                $actualFile = if ($u.Key -eq 'Icon') { Repair-IconFileExtension ([string]$u.File) } else { [string]$u.File }
-                if (Set-EditorPreviewFile $u.Slot $actualFile) {
-                    Set-EditorSourceBadge $u.Slot 'SteamGridDB'
-                    $loaded++
+            $proc = $null
+            try {
+                $psi = New-Object System.Diagnostics.ProcessStartInfo
+                $psi.FileName = 'curl.exe'
+                $psi.Arguments = '-L -s -S -f --connect-timeout 10 --max-time 40 -A "Mozilla/5.0" -o "{0}" "{1}"' -f ([string]$u.File), ([string]$u.Url)
+                $psi.UseShellExecute = $false
+                $psi.CreateNoWindow = $true
+                $proc = New-Object System.Diagnostics.Process
+                $proc.StartInfo = $psi
+                if (-not $proc.Start()) { $proc = $null }
+            } catch { $proc = $null }
+            [void]$dlJobs.Add([PSCustomObject]@{ Item = $u; Proc = $proc; Min = $dlMin; Done = $false })
+        }
+
+        $dlDeadline = (Get-Date).AddSeconds(55)
+        $dlAborted = $false
+        while ($true) {
+            $dlPending = 0
+            foreach($job in $dlJobs) {
+                if ($job.Done) { continue }
+                $u = $job.Item
+                # curl.exe не запустился — старый путь (Invoke-WebRequest -> curl), по одному.
+                if ($null -eq $job.Proc) {
+                    $job.Done = $true
+                    if (Test-EditorLoadCancelled) { $dlAborted = $true; break }
+                    $statusLabel.Text = (T 'sl_sg_loading' @(((T ('slot_' + ([string]$u.Key).ToLower())) -replace '^\d+\.\s*', '')))
+                    if (Download-RemoteImage ([string]$u.Url) ([string]$u.File) $job.Min) {
+                        $actualFile = if ($u.Key -eq 'Icon') { Repair-IconFileExtension ([string]$u.File) } else { [string]$u.File }
+                        if (Set-EditorPreviewFile $u.Slot $actualFile) { Set-EditorSourceBadge $u.Slot 'SteamGridDB'; $loaded++ }
+                    }
+                    continue
+                }
+                if (-not $job.Proc.HasExited) { $dlPending++; continue }
+
+                $job.Done = $true
+                $exitCode = 1
+                try { $job.Proc.WaitForExit(2000) | Out-Null; $exitCode = [int]$job.Proc.ExitCode } catch {}
+                try { $job.Proc.Dispose() } catch {}
+                # Источник переключили во время скачивания — старый результат в слот не попадает.
+                if (Test-EditorLoadCancelled) { $dlAborted = $true; break }
+                if ($exitCode -eq 0 -and (Test-Path -LiteralPath ([string]$u.File)) -and (Get-Item -LiteralPath ([string]$u.File) -ErrorAction SilentlyContinue).Length -ge $job.Min) {
+                    $actualFile = if ($u.Key -eq 'Icon') { Repair-IconFileExtension ([string]$u.File) } else { [string]$u.File }
+                    if (Set-EditorPreviewFile $u.Slot $actualFile) {
+                        Set-EditorSourceBadge $u.Slot 'SteamGridDB'
+                        $loaded++
+                    }
+                } else {
+                    Remove-Item -LiteralPath ([string]$u.File) -Force -ErrorAction SilentlyContinue
                 }
             }
+            if ($dlAborted -or $dlPending -eq 0) { break }
+
+            $statusLabel.Text = (T 'sl_sg_loading' @(((T ('slot_' + ([string](@($dlJobs | Where-Object { -not $_.Done })[0].Item.Key)).ToLower())) -replace '^\d+\.\s*', '')))
             [System.Windows.Forms.Application]::DoEvents()
+            if (Test-EditorLoadCancelled) { $dlAborted = $true; break }
+            Start-Sleep -Milliseconds 30
+            if ((Get-Date) -gt $dlDeadline) { $dlAborted = $true; break }
+        }
+        if ($dlAborted) {
+            # Прерываем всё, что ещё качается.
+            foreach($job in $dlJobs) {
+                if ($null -ne $job.Proc) {
+                    try { if (-not $job.Proc.HasExited) { $job.Proc.Kill() } } catch {}
+                    try { $job.Proc.Dispose() } catch {}
+                }
+            }
         }
         if (Test-EditorLoadCancelled) { return $false }
 
@@ -21057,10 +21271,7 @@ function Add-EmulatorsManagerControls ($owner, $container) {
                 try { Update-RomEmulatorIndicator } catch {}
             }
         } catch {
-            # ВРЕМЕННАЯ ДИАГНОСТИКА: раньше исключение здесь вылетало необработанным
-            # (крах всего приложения, окно JIT-отладки без номера строки). Показываем
-            # текст и место ошибки, чтобы найти точную причину, не гадая вслепую.
-            Show-AppMessageBox($owner, ((T 'emu_err_add') + "`r`n$($_.Exception.Message)`r`n`r`n$($_.InvocationInfo.PositionMessage)"), $global:appTitle, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
+            Show-AppMessageBox($owner, (T 'emu_err_add'), $global:appTitle, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
         }
     }.GetNewClosure())
     $container.Controls.Add($btnAddEmu)
@@ -23221,6 +23432,33 @@ function Get-EditorSgdbCandidates([string]$query, [string]$steamAppId = "") {
     }
 }
 
+# Игра в SteamGridDB по Steam App ID (GET /games/steam/<id>). Нужна, когда название в карточке
+# локализовано (регион Steam, например «ЛИХО ОДНОГЛАЗОЕ»): SGDB знает игру под оригинальным
+# названием, и поиск по локализованному ничего не находит. Возвращает кандидата в том же виде,
+# что Get-EditorSgdbCandidates, или $null.
+function Get-SgdbCandidateBySteamAppId([string]$steamAppId) {
+    try {
+        if ($steamAppId -notmatch '^\d+$') { return $null }
+        $apiKey = [string](Ensure-SteamGridDbApiKey)
+        if ([string]::IsNullOrWhiteSpace($apiKey)) { return $null }
+        $headers = @{ Authorization = "Bearer $apiKey" }
+        $req = Invoke-SgdbApiRequest ('https://www.steamgriddb.com/api/v2/games/steam/' + $steamAppId) $headers 12
+        if ($null -eq $req -or -not $req.Success -or $null -eq $req.Data) { return $null }
+        $g = $req.Data
+        if ($g -is [System.Array]) { $g = $g[0] }
+        $id = 0
+        try { $id = [int]$g.id } catch { $id = 0 }
+        if ($id -le 0) { return $null }
+        $nm = ''
+        try { $nm = [string]$g.name } catch {}
+        $types = @()
+        try { $types = @($g.types) } catch {}
+        $ver = $null
+        try { $ver = $g.verified } catch {}
+        return [PSCustomObject]@{ Id = $id; Name = $nm; Verified = $ver; Types = $types; MatchScore = 2.0 }
+    } catch { return $null }
+}
+
 # Кэши для альтернатив в режиме Steam: ответ SGDB по Steam App ID (чтобы не слать 4 запроса
 # при каждом клике по каждому слоту) и найденный по названию SGDB Game ID.
 $script:editorSteamSgdbAssetsCache = @{}
@@ -23357,7 +23595,7 @@ function Prepare-EditorSteamSgdbAlternatives($slot, [string]$title, [string]$ste
 $script:editorSgdbAltsBusy = $false
 $script:editorSgdbGridsCache = @{}
 
-function Prepare-EditorSgdbGameAlternatives($slot, [string]$title, [string]$sgdbGameId, $statusLabel = $null) {
+function Prepare-EditorSgdbGameAlternatives($slot, [string]$title, [string]$sgdbGameId, $statusLabel = $null, [string]$gameName = '', $idField = $null) {
     if ($script:editorSgdbAltsBusy) { return $false }
     $form = $null
     try {
@@ -23365,6 +23603,29 @@ function Prepare-EditorSgdbGameAlternatives($slot, [string]$title, [string]$sgdb
         try { if (@($slot.SgdbItems).Count -gt 0) { return $true } } catch {}
 
         $id = ([string]$sgdbGameId).Trim()
+        # У ранее добавленной игры SGDB ID может не быть в сохранённых данных (карточка открывается без
+        # обращения к сети). Тогда определяем его по названию в момент клика по обложке - как при выборе
+        # названия из списка - и кладём в поле SGDB ID, чтобы дальше всё работало как обычно.
+        if ($id -notmatch '^\d+$' -and -not [string]::IsNullOrWhiteSpace($gameName)) {
+            $nmResolve = $gameName.Trim()
+            if ($nmResolve.Length -ge 2) {
+                $nameKeyResolve = $nmResolve.ToLowerInvariant()
+                if ($script:editorSgdbNameIdCache.ContainsKey($nameKeyResolve)) {
+                    $id = [string]$script:editorSgdbNameIdCache[$nameKeyResolve]
+                } else {
+                    if ($null -ne $statusLabel) { $statusLabel.Text = (T 'sl_sg_searching' @($nmResolve)) }
+                    [System.Windows.Forms.Application]::DoEvents()
+                    $candsResolve = @(Get-EditorSgdbCandidates $nmResolve '')
+                    if ($candsResolve.Count -gt 0) {
+                        $pickResolve = $candsResolve | Where-Object { [string]::Equals([string]$_.Name, $nmResolve, [System.StringComparison]::OrdinalIgnoreCase) } | Select-Object -First 1
+                        if ($null -eq $pickResolve) { $pickResolve = $candsResolve[0] }
+                        $id = [string]$pickResolve.Id
+                        $script:editorSgdbNameIdCache[$nameKeyResolve] = $id
+                    }
+                }
+                if ($id -match '^\d+$' -and $null -ne $idField) { try { $idField.Text = $id } catch {} }
+            }
+        }
         if ($id -notmatch '^\d+$') {
             if ($null -ne $statusLabel) { $statusLabel.Text = (T 'st_noid_hint_sgdb') }
             return $false
@@ -24118,14 +24379,13 @@ function Get-LibraryCoverPath ([string]$appId) {
     if ($stamp) {
         $m = $script:coverPathMemo[$appId]
         if ($null -ne $m -and $m.Stamp -eq $stamp) {
-            if ([string]::IsNullOrEmpty($m.Path)) { Add-TmA 'pathMemoHit_n' 1; return $null }
+            if ([string]::IsNullOrEmpty($m.Path)) { return $null }
             try {
                 $fi = New-Object System.IO.FileInfo($m.Path)
-                if ($fi.Exists -and $fi.Length -eq $m.Len -and $fi.LastWriteTimeUtc.Ticks -eq $m.Ticks) { Add-TmA 'pathMemoHit_n' 1; return [string]$m.Path }
+                if ($fi.Exists -and $fi.Length -eq $m.Len -and $fi.LastWriteTimeUtc.Ticks -eq $m.Ticks) { return [string]$m.Path }
             } catch {}
         }
     }
-    Add-TmA 'pathMemoMiss_n' 1
     $res = Get-LibraryCoverPathCore $appId
     if ($stamp) {
         $len = [int64]0; $ticks = [int64]0
@@ -24709,7 +24969,7 @@ function Get-EpicLauncherSource ($SteamShortcuts) {
 # процесс игры не виден, окно открывается позади. Поэтому в ярлык вместо игры пишется
 # маленький exe в %APPDATA%\Steam Commander\launcher: он открывает ссылку, ждёт процесс
 # из папки игры, выводит его окно вперёд и живёт, пока игра запущена.
-$script:scLauncherVersion = '34'
+$script:scLauncherVersion = '35'
 $script:scLauncherSource = @'
 using System;
 using System.Collections.Generic;
@@ -27138,7 +27398,8 @@ namespace SCLauncherNS
                     // (клиент ещё входит в аккаунт и грузит список игр) - тогда ниже она отправляется повторно.
                     bool ubiCold = isUbi && FindPidsByName("UbisoftConnect.exe").Count == 0 && FindPidsByName("upc.exe").Count == 0;
                     bool ubiRetried = false;
-                    int bnetResends = 0;
+                    int bnetExecSent = 0;
+                    DateTime bnetNextExec = DateTime.MinValue;
                     bool bnetDirectTried = false;
                     int bnetDirectCount = 0;
                     DateTime bnetSeen = DateTime.MinValue;
@@ -27153,9 +27414,21 @@ namespace SCLauncherNS
                         }
                         else if (isBnet)
                         {
-                            // Клиент уже работает - игру запустим напрямую ниже (без показа страницы игры).
-                            if (bnetClientWasRunning) Log("bnet: client already running, direct start");
-                            else if (!LaunchBnetClientDetached(client)) { Log("bnet launch failed"); return 3; }
+                            // Игру должен запускать сам клиент (как кнопка "Играть"): тогда Hearthstone и другие игры
+                            // получают вход через службу Blizzard. Прямой запуск exe - только запасной вариант.
+                            if (bnetClientWasRunning)
+                            {
+                                Log("bnet: client already running, sending launch command");
+                                bnetExecSent++;
+                                bnetNextExec = DateTime.UtcNow.AddSeconds(25);
+                                if (!LaunchBattleNetDetached(bnetId, client, dir)) { Log("bnet launch failed"); return 3; }
+                            }
+                            else
+                            {
+                                if (!LaunchBnetClientDetached(client)) { Log("bnet launch failed"); return 3; }
+                                // Клиенту нужно время на вход в аккаунт: команду шлём не сразу.
+                                bnetNextExec = DateTime.UtcNow.AddSeconds(12);
+                            }
                         }
                         else LaunchUriDetached(uri);
                     }
@@ -27191,7 +27464,7 @@ namespace SCLauncherNS
                         // Battle.net: клиент часто открывает только страницу игры и ничего не запускает.
                         // Сразу (клиент уже работал) или через 10 с после холодного старта запускаем exe игры напрямую,
                         // а если и это не помогло - повторяем команду --exec через 45 с.
-                        if (isBnet && !bnetDirectTried && bnetDirectCount < 3 && DateTime.UtcNow >= bnetNextDirect && (DateTime.UtcNow - t0).TotalSeconds >= (bnetClientWasRunning ? 1 : 10)
+                        if (isBnet && !bnetDirectTried && bnetDirectCount < 3 && DateTime.UtcNow >= bnetNextDirect && (DateTime.UtcNow - t0).TotalSeconds >= 75
                             && (FindPidsByName("Battle.net.exe").Count > 0 || FindPidsByName("Battle.net Launcher.exe").Count > 0))
                         {
                             bnetDirectTried = true;
@@ -27199,11 +27472,14 @@ namespace SCLauncherNS
                             Log("bnet: game not started by client, trying direct exe start (attempt " + bnetDirectCount + ")");
                             LaunchBnetGameExeDirect(bnetId, dir, exePath);
                         }
-                        if (isBnet && bnetResends < 1 && (DateTime.UtcNow - t0).TotalSeconds >= 45)
+                        // Battle.net: команда запуска клиенту (до 3 раз с паузой 25 с, пока игра не появилась).
+                        if (isBnet && !bnetDirectTried && bnetExecSent < 3 && DateTime.UtcNow >= bnetNextExec
+                            && (FindPidsByName("Battle.net.exe").Count > 0 || FindPidsByName("Battle.net Launcher.exe").Count > 0))
                         {
-                            bnetResends++;
-                            Log("bnet: game still not started, resending command");
-                            try { LaunchBattleNetDetached(bnetId, client, dir); } catch (Exception ex) { Log("bnet retry failed: " + ex.Message); }
+                            bnetExecSent++;
+                            bnetNextExec = DateTime.UtcNow.AddSeconds(25);
+                            Log("bnet: sending launch command to client (attempt " + bnetExecSent + ")");
+                            try { LaunchBattleNetDetached(bnetId, client, dir); } catch (Exception ex) { Log("bnet launch command failed: " + ex.Message); }
                         }
                         // Ubisoft: игра не появилась - один раз повторяем ссылку (не чаще, чтобы не плодить окна).
                         if (isUbi && !ubiRetried && (DateTime.UtcNow - t0).TotalSeconds >= (ubiCold ? 45 : 30))
@@ -28296,25 +28572,6 @@ function Get-XboxLocalCover ($Entry, [string]$TargetPath) {
 }
 
 # Диагностика обнаружения лаунчеров (запись в файл отключена)
-# ---- ЗАМЕРЫ ВРЕМЕНИ ОТКРЫТИЯ БИБЛИОТЕКИ (временный код) ----
-$script:scTmSw = [System.Diagnostics.Stopwatch]::StartNew()
-$script:scTmLast = 0
-function Write-Tm ([string]$Label, [switch]$Reset) {
-    try {
-        $now = [int]$script:scTmSw.ElapsedMilliseconds
-        if ($Reset) { $script:scTmLast = $now }
-        $delta = $now - $script:scTmLast
-        $script:scTmLast = $now
-        # Запись замеров в файл в папке temp отключена.
-    } catch {}
-}
-
-$script:tmA = @{}
-function Get-TmNow { return [double]$script:scTmSw.Elapsed.TotalMilliseconds }
-function Add-TmA ([string]$k, [double]$v) {
-    try { if (-not $script:tmA.ContainsKey($k)) { $script:tmA[$k] = 0.0 }; $script:tmA[$k] += $v } catch {}
-}
-
 function Write-LauncherLog ([string]$Text) {
     try {
         # Запись журнала лаунчеров в файл в папке temp отключена.
@@ -28331,7 +28588,6 @@ function Get-InstalledLauncherSources ($SteamShortcuts = @()) {
     foreach ($fn in @($script:LauncherSourceFnNames)) {
         try {
             $src = & $fn $SteamShortcuts
-            Write-Tm ('   ' + $fn)
             if ($null -eq $src) { Write-LauncherLog ($fn + ': returned null'); continue }
             Write-LauncherLog ($fn + ': detected=' + $src.Detected + ' exe=' + $src.ExePath + ' games=' + @($src.Games).Count)
             if ([bool]$src.Detected -or @($src.Games).Count -gt 0) {
@@ -30097,11 +30353,9 @@ function Show-SteamLibraryBrowser {
     # Alt+F4 (это "верх" всего окна программы — такое закрытие должно завершать
     # программу целиком, а не только прятать библиотеку). См. $dlg.Add_FormClosing
     # ниже и $btnLibBack.Add_Click.
-    Write-Tm 'вход в Show-SteamLibraryBrowser'
     $script:libClosingViaBack = $false
     $script:libBottomReserve = 0
     try { Initialize-LibDlssNative } catch {}
-    Write-Tm 'Initialize-LibDlssNative (Add-Type и т.п.)'
     $dlg = New-Object System.Windows.Forms.Form
     $dlg.Text = (T 'lib_browser_title')
     $dlg.Size = New-Object System.Drawing.Size(980, 720)
@@ -31219,12 +31473,10 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
     $script:libBrowserEntries = @()
     $script:libCoverQueue = New-Object System.Collections.Queue
     $script:libLocalCoverQueue = New-Object System.Collections.Queue
-    $script:libLocalCoverT0 = 0.0
     $script:libTilePending = $null
     $script:libTileCountOverride = 0
     $script:libProgressiveOnce = $false
     $script:libLastTile = $null
-    $script:libFillT0 = 0.0
     # Кэш "appId -> путь к файлу" на время сессии диалога: без него каждая
     # пересборка сетки (в т.ч. при стирании символов в поиске) заново ставит
     # в очередь скачивание уже скачанной обложки, забивая параллельные слоты
@@ -31370,10 +31622,9 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
                 try { $cb = [System.IO.File]::ReadAllBytes($cfile) } catch { $cb = $null }
                 if ($null -ne $cb) {
                     & $applyCoverBytesToPic $pic $cb $true ''
-                    if ($script:libApplyOk) { Add-TmA 'tileCacheHit_n' 1; return }
+                    if ($script:libApplyOk) { return }
                 }
             }
-            Add-TmA 'tileCacheMiss_n' 1
             $bytes = [System.IO.File]::ReadAllBytes($fi.FullName)
             & $applyCoverBytesToPic $pic $bytes $false $cfile
         } catch {}
@@ -31591,7 +31842,6 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
                 $script:libTileAllKey = ([string]$pend.Tab + '|' + [string]$pend.Total)
                 try { & $syncLibraryFlowWidth } catch {}
                 try { & $updateSelectionUi } catch {}
-                try { Write-Tm ('ПЛИТКИ ДОСОЗДАНЫ: ' + [int]((Get-TmNow) - $script:libFillT0) + ' мс с запуска таймера') } catch {}
             }
         } catch {
             try { $script:libTilePending = $null; $script:libTileCountOverride = 0 } catch {}
@@ -31614,16 +31864,12 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
                 $lentry = $job.Entry
                 $lid = [string]$lentry.AppId
                 $applied = $false
-                $__lp0 = Get-TmNow
                 $lpath = $null
                 try { $lpath = Get-LibraryCoverPath $lid } catch { $lpath = $null }
-                Add-TmA 'lazy_path_ms' ((Get-TmNow) - $__lp0)
                 if ($lpath) {
-                    $__la0 = Get-TmNow
                     $script:libApplyOk = $false
                     try { & $applyCoverFileToPic $lpic $lpath } catch {}
                     $applied = [bool]$script:libApplyOk
-                    Add-TmA 'lazy_apply_ms' ((Get-TmNow) - $__la0)
                 }
                 if (-not $applied -and $script:libCoverMemCache.ContainsKey($lid)) {
                     $cachedPath = [string]$script:libCoverMemCache[$lid]
@@ -31645,10 +31891,6 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
                 try { $libLocalCoverTimer.Start() } catch {}
             } else {
                 try { Save-CoverPathMemo } catch {}
-                if ($null -eq $script:libTilePending) { try {
-                    Write-Tm ('ЛЕНИВЫЕ ОБЛОЖКИ ГОТОВЫ: ' + [int]((Get-TmNow) - $script:libLocalCoverT0) + ' мс с запуска таймера')
-                    foreach ($__k in @($script:tmA.Keys | Sort-Object)) { Write-Tm ('     ' + $__k + ' = ' + [int]$script:tmA[$__k]) }
-                } catch {} }
                 if ($script:libCoverQueue.Count -gt 0) { try { $libCoverTimer.Start() } catch {} }
             }
         } catch {}
@@ -32177,7 +32419,6 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
                     $script:libLastTile = $ltile
                     return
                 }
-                $__tt0 = Get-TmNow
                 $tile = New-Object System.Windows.Forms.Panel
                 $tile.Size = New-Object System.Drawing.Size([int]$script:libTileInnerW, [int]$script:libTileInnerH)
                 $m = [int]$script:libTileMargin
@@ -32278,7 +32519,6 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
 
                 $tile.Controls.Add($pic)
                 if (-not $hasCover) { $ph.BringToFront() }
-                $__b0 = Get-TmNow
                 if ([string]$entry.Kind -eq 'steam') {
                     # Только значок Steam в углу (без фона), как у лаунчеров.
                     # Если обложка уже применена, значок на ней уже нарисован (см. $applyCoverBytesToPic) — второй раз не рисуем.
@@ -32329,8 +32569,6 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
                         } catch {}
                     }
                 }
-                Add-TmA 'badge_ms' ((Get-TmNow) - $__b0)
-                $__s0 = Get-TmNow
                 # Галочка выбора (как на плитках лаунчеров) и рамка выбранной плитки — для кнопки
                 # «Обновить апскейлеры». Только у игр с известной папкой (иначе обновлять нечего).
                 if (& $isSteamEntrySelectable $entry) {
@@ -32358,10 +32596,8 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
                         & $setSteamTileCheck $tile $isSel
                     } catch {}
                 }
-                Add-TmA 'selFrame_ms' ((Get-TmNow) - $__s0)
                 [void]$script:libTileAll.Add($tile)
                 $script:libLastTile = $tile
-                Add-TmA 'tileTotal_ms' ((Get-TmNow) - $__tt0); Add-TmA 'tiles_n' 1
     }
 
     $buildTiles = {
@@ -32380,8 +32616,6 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
         # "хвосты" старых плиток при смене отступа/числа колонок). Скрытие и
         # повторный показ контрола форсируют полную чистую перерисовку без
         # этого артефакта — в отличие от одного Invalidate().
-        $script:tmA = @{}
-        $script:tmBT0 = Get-TmNow
         $flow.Visible = $false
         $flow.SuspendLayout()
         try {
@@ -32432,10 +32666,6 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
                 # Высоту сетки и полосу прокрутки считаем сразу под ВСЕ плитки — они появятся позже, но прокрутка не будет «прыгать».
                 $script:libTileCountOverride = [int]$shown
             }
-            try {
-                Write-Tm ('buildTiles: синхронная часть плиток завершена (' + $made + ' из ' + $allCount + '), всего ' + [int]((Get-TmNow) - $script:tmBT0) + ' мс')
-                foreach ($__k in @($script:tmA.Keys | Sort-Object)) { Write-Tm ('     ' + $__k + ' = ' + [int]$script:tmA[$__k]) }
-            } catch {}
             if ($null -eq $script:libTilePending) { $script:libTileAllKey = ([string]$script:libActiveTab + '|' + [string]$allCount) }
             $lblCount.Text = (T 'lib_count' @($shown))
             $script:libShownCount = [int]$shown
@@ -32455,14 +32685,10 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
             }
         } finally {
             $flow.ResumeLayout($true)
-            Write-Tm '   buildTiles finally: flow.ResumeLayout'
             try { & $syncLibraryFlowWidth } catch {}
             try { & $resetLibraryScroll 0 } catch {}
-            Write-Tm '   buildTiles finally: syncWidth + resetScroll'
             $flow.Visible = $true
-            Write-Tm '   buildTiles finally: flow.Visible = true'
             try { & $stabilizeLibraryGridWidth } catch {}
-            Write-Tm '   buildTiles finally: stabilizeGridWidth'
             # Страховка от гонки: ScrollableControl пересчитывает видимость
             # полос на СЛЕДУЮЩЕМ проходе Layout (после того как этот код уже
             # отработал), и горизонтальная полоса может появиться заново.
@@ -32477,12 +32703,10 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
             } catch {}
             # Недостающие плитки — порциями по таймеру, после показа окна.
             if ($null -ne $script:libTilePending) {
-                $script:libFillT0 = Get-TmNow
                 try { $libTileFillTimer.Start() } catch {}
             }
             # Локальные обложки — порциями по таймеру, уже после показа сетки.
             if ($script:libLocalCoverQueue.Count -gt 0) {
-                $script:libLocalCoverT0 = Get-TmNow
                 try { $libLocalCoverTimer.Start() } catch {}
             }
             # Обложки с CDN — после отрисовки сетки, пачками в фоне.
@@ -33569,21 +33793,17 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
             $flow.SuspendLayout()
             $lblCount.Text = (T 'lib_loading')
             $script:libShownCount = 0
-            Write-Tm 'Add_Shown: старт (окно показано)'
             # Прогретый снимок (см. Get-LibPreheatSnapshot): записи Steam и лаунчеры уже прочитаны, пока было открыто главное окно.
             $libSnap = $null
             try { $libSnap = Get-LibPreheatSnapshot } catch { $libSnap = $null }
             $libFpBefore = ''
             if ($null -ne $libSnap) {
                 $script:libBrowserEntries = @(Copy-LibObjectList $libSnap.Entries)
-                Write-Tm ('Get-SteamLibraryEntries ИЗ ПРОГРЕВА, записей: ' + @($script:libBrowserEntries).Count)
             } else {
                 try { $libFpBefore = Get-LibDataFingerprint } catch { $libFpBefore = '' }
                 $script:libBrowserEntries = @(Get-SteamLibraryEntries)
-                Write-Tm ('Get-SteamLibraryEntries, записей: ' + @($script:libBrowserEntries).Count)
             }
             try { Start-LibDlssScan $script:libBrowserEntries; $libDlssTimer.Start() } catch {}
-            Write-Tm 'Start-LibDlssScan (запуск фонового)'
             # Вкладки: Steam всегда первая, дальше — обнаруженные в системе лаунчеры.
             $script:libTabs.Clear()
             $script:libLauncherMap = @{}
@@ -33597,7 +33817,6 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
                 } catch {}
             }
             [void]$script:libTabs.Add([PSCustomObject]@{ Id = 'steam'; Name = (T 'lib_kind_steam'); Count = @($script:libBrowserEntries).Count; Icon = $steamTabIcon })
-            Write-Tm 'иконка вкладки Steam'
             $libStep = 'start'
             try {
                 # Non-Steam ярлыки — простым циклом (без Where-Object), для проверки "уже в Steam".
@@ -33612,10 +33831,8 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
                     $script:libFoundSources = New-Object System.Collections.ArrayList
                     foreach ($cs in @($libSnap.Sources)) { [void]$script:libFoundSources.Add((Copy-LibLauncherSource $cs)) }
                     Write-LauncherLog ('step scan from preheat: ' + $script:libFoundSources.Count + ' sources')
-                    Write-Tm 'Get-InstalledLauncherSources ИЗ ПРОГРЕВА'
                 } else {
                     [void](Get-InstalledLauncherSources $steamShortcuts.ToArray())
-                    Write-Tm 'Get-InstalledLauncherSources (ВСЕ лаунчеры)'
                     # Свежий результат сохраняем: повторное открытие библиотеки тоже будет быстрым.
                     if ($libFpBefore) { try { Set-LibPreheatSnapshot $libFpBefore $script:libBrowserEntries $script:libFoundSources } catch {} }
                 }
@@ -33637,22 +33854,18 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
                 try { Write-LauncherLog ($_.ScriptStackTrace) } catch {}
             }
             try { $tabBar.Invalidate() } catch {}
-            Write-Tm 'вкладки собраны'
             $script:libProgressiveOnce = $true
             & $buildTiles ''
             $script:libProgressiveOnce = $false
-            Write-Tm 'buildTiles'
             try { & $updateSelectionUi } catch {}
             try { & $syncLibraryFlowWidth } catch {}
             try { $coverTimer.Start() } catch {}
             try { & $resetLibraryScroll 0 } catch {}
-            Write-Tm 'updateSelectionUi / syncFlowWidth / resetScroll'
             # Уже созданный SCLauncher.exe обновляем при смене версии: ярлыки Steam
             # указывают на этот же файл, поэтому новая логика подхватится без повторного добавления игр.
             try {
                 if (Test-Path -LiteralPath (Join-Path (Join-Path $global:appDataDir 'launcher') 'SCLauncher.exe') -PathType Leaf) { [void](Ensure-SCLauncherExe) }
             } catch {}
-            Write-Tm 'Ensure-SCLauncherExe'
             # Папки распаковки ROM от убитых/прерванных запусков чистит сам SCLauncher.exe.
             try {
                 if (-not $script:romCleanupDone) {
@@ -33664,7 +33877,6 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
             $flow.ResumeLayout($true)
             $scroll.ResumeLayout($true)
             $dlg.ResumeLayout($true)
-            Write-Tm 'ResumeLayout x3 (раскладка плиток)'
             # Один финальный кадр — уже с сеткой, без промежуточных «пустых» отрисовок.
             $dlg.Opacity = 1
             # Библиотека перекрыла главное окно: делаем его невидимым, но НЕ прячем — Hide() владельца спрятал бы
@@ -33677,7 +33889,6 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
                 $dlg.BeginInvoke([Action]{
                     try { & $syncLibraryFlowWidth } catch {}
                     try { & $forceNoHScroll } catch {}
-                    Write-Tm '=== ГОТОВО ==='
                 }) | Out-Null
             } catch {}
         } catch {
@@ -33754,7 +33965,6 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
     })
 
     try { Initialize-FormForSmallScreen -Form $dlg -Owner $form } catch {}
-    Write-Tm 'окно построено, перед ShowDialog (создание всех контролов)'
     $dlg.ShowDialog($form) | Out-Null
 }
 
@@ -35150,7 +35360,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
             [void](Prepare-EditorSteamSgdbAlternatives $slots.Vertical (T 'slot_vertical') $txtId.Text.Trim() $txtTitle.Text.Trim() $status)
         }
         elseif($editorState.SearchSource -eq 'SteamGridDB' -and @($slots.Vertical.SgdbItems).Count -eq 0){
-            [void](Prepare-EditorSgdbGameAlternatives $slots.Vertical (T 'slot_vertical') $txtId.Text.Trim() $status)
+            [void](Prepare-EditorSgdbGameAlternatives $slots.Vertical (T 'slot_vertical') $txtId.Text.Trim() $status $txtTitle.Text.Trim() $txtId)
         }
         Show-EditorAlternativeCover $slots.Vertical (T 'slot_vertical')
     }
@@ -35163,7 +35373,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
             [void](Prepare-EditorSteamSgdbAlternatives $slots.Horizontal (T 'slot_horizontal') $txtId.Text.Trim() $txtTitle.Text.Trim() $status)
         }
         elseif($editorState.SearchSource -eq 'SteamGridDB' -and @($slots.Horizontal.SgdbItems).Count -eq 0){
-            [void](Prepare-EditorSgdbGameAlternatives $slots.Horizontal (T 'slot_horizontal') $txtId.Text.Trim() $status)
+            [void](Prepare-EditorSgdbGameAlternatives $slots.Horizontal (T 'slot_horizontal') $txtId.Text.Trim() $status $txtTitle.Text.Trim() $txtId)
         }
         Show-EditorAlternativeCover $slots.Horizontal (T 'slot_horizontal')
     }
@@ -35176,7 +35386,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
             [void](Prepare-EditorSteamSgdbAlternatives $slots.Hero (T 'slot_hero') $txtId.Text.Trim() $txtTitle.Text.Trim() $status)
         }
         elseif($editorState.SearchSource -eq 'SteamGridDB' -and @($slots.Hero.SgdbItems).Count -eq 0){
-            [void](Prepare-EditorSgdbGameAlternatives $slots.Hero (T 'slot_hero') $txtId.Text.Trim() $status)
+            [void](Prepare-EditorSgdbGameAlternatives $slots.Hero (T 'slot_hero') $txtId.Text.Trim() $status $txtTitle.Text.Trim() $txtId)
         }
         Show-EditorAlternativeCover $slots.Hero (T 'slot_hero')
     }
@@ -35190,7 +35400,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
             [void](Prepare-EditorSteamSgdbAlternatives $slots.Logo (T 'slot_logo') $txtId.Text.Trim() $txtTitle.Text.Trim() $status)
         }
         elseif($editorState.SearchSource -eq 'SteamGridDB' -and @($slots.Logo.SgdbItems).Count -eq 0){
-            [void](Prepare-EditorSgdbGameAlternatives $slots.Logo (T 'slot_logo') $txtId.Text.Trim() $status)
+            [void](Prepare-EditorSgdbGameAlternatives $slots.Logo (T 'slot_logo') $txtId.Text.Trim() $status $txtTitle.Text.Trim() $txtId)
         }
         Show-EditorAlternativeCover $slots.Logo (T 'slot_logo')
     }
@@ -35203,7 +35413,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
             [void](Prepare-EditorSteamSgdbAlternatives $slots.Icon (T 'slot_icon') $txtId.Text.Trim() $txtTitle.Text.Trim() $status)
         }
         elseif($editorState.SearchSource -eq 'SteamGridDB' -and @($slots.Icon.SgdbItems).Count -eq 0){
-            [void](Prepare-EditorSgdbGameAlternatives $slots.Icon (T 'slot_icon') $txtId.Text.Trim() $status)
+            [void](Prepare-EditorSgdbGameAlternatives $slots.Icon (T 'slot_icon') $txtId.Text.Trim() $status $txtTitle.Text.Trim() $txtId)
         }
         Show-EditorAlternativeCover $slots.Icon (T 'slot_icon')
     }
@@ -36263,6 +36473,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
         $serial = [int]$editorState.SwitchSerial
         $editorState.SearchSource = $newSource
         $editorState.OpDepth = [int]$editorState.OpDepth + 1
+        $spinHandedOff = $true   # $false только пока спиннер запущен самим переключателем
 
         try {
         try { $titleResults.Visible=$false } catch {}
@@ -36276,6 +36487,25 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
             $autoT = ([string]$editorState.AutoTitle).Trim()
             $origT = ([string]$editorState.OriginalTitle).Trim()
             if (-not [string]::IsNullOrWhiteSpace($autoT) -and -not [string]::IsNullOrWhiteSpace($origT) -and $query -eq $autoT) { $query = $origT }
+        } catch {}
+        # Steam App ID игры, пока он ещё в поле: при переходе на SteamGridDB по нему находится игра,
+        # даже если название в карточке локализовано. Отложенное переключение ($fromPending) поле уже
+        # могло сменить, поэтому там берём App ID, запомненный при обычном переключении.
+        $prevSteamAppId = ''
+        try {
+            if ($newSource -eq 'SteamGridDB') {
+                $tid = ([string]$txtId.Text).Trim()
+                if (-not $fromPending -and $tid -match '^\d+$') {
+                    $prevSteamAppId = $tid
+                    $editorState | Add-Member -NotePropertyName LastSteamAppId -NotePropertyValue $tid -Force
+                    $editorState | Add-Member -NotePropertyName LastSteamTitle -NotePropertyValue ([string]$txtTitle.Text).Trim() -Force
+                    $editorState | Add-Member -NotePropertyName LastSteamLang -NotePropertyValue ([string]$btnCoverLang.Tag.Lang) -Force
+                } elseif ($fromPending) {
+                    $lsa = ''
+                    try { $lsa = [string]$editorState.LastSteamAppId } catch {}
+                    if ($lsa -match '^\d+$') { $prevSteamAppId = $lsa }
+                }
+            }
         } catch {}
         $txtId.Text = ''
 
@@ -36304,6 +36534,12 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
         # пока карточка не получила обложки нового источника.
         $btnAdd.Enabled=$false
         $status.Text=if($newSource -eq 'Steam'){(T 'st_searching_steam')}else{(T 'st_searching_sgdb')}
+        # Анимацию загрузки миниатюр включаем сразу, а не после сетевого поиска игры:
+        # иначе на секунду-две висели заглушки «NO COVER». Загрузчики ниже сами
+        # вызывают Start/Stop-EditorLoading (повторный Start безопасен); если до
+        # загрузчика дело не дошло (не найдено, ошибка, перебит), спиннер снимает finally.
+        $spinHandedOff = $false
+        try { Start-EditorLoading $slots ($status.FindForm()) } catch {}
         [System.Windows.Forms.Application]::DoEvents()
 
         try {
@@ -36314,24 +36550,81 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
 
             $candidates=@()
             $chosen=$null
+            $keepTitleSgdb=$false
+            $deferCandidates=$false
+            $restoredLang=''
 
             if($newSource -eq 'Steam'){
-                # Собственный поиск вариантов Steam — без SGDB и без ключа.
-                # Каждый вариант уже несёт настоящий Steam App ID.
-                try { $candidates=@(Get-SteamStoreNameCandidates $query) } catch { $candidates=@() }
-                if([int]$editorState.SwitchSerial -ne $serial){ return }
-                # Раньше слепо бралась первая подсказка — для игры, которой нет в Steam
-                # (например StarCraft), это был случайный «почти-тёзка» (Star Crafter).
-                # Теперь берём только точное совпадение (скор >= 1.5) либо результат
-                # Find-SteamAppInfo, который проверяет похожесть названия.
-                if(@($candidates).Count -gt 0 -and [double]$candidates[0].MatchScore -ge 1.5){
-                    $chosen=$candidates[0]
-                } else {
-                    try { $chosen=Find-SteamAppInfo $query } catch { $chosen=$null }
+                # Возврат с SteamGridDB: если название не правили руками (оно то, с которого ушли
+                # в SGDB, подставленное SGDB или исходное), возвращаем запомненный Steam App ID и
+                # прежнее (в том числе локализованное) название без поиска по названию.
+                $lsId = ''; $lsTitle = ''
+                try { $lsId = [string]$editorState.LastSteamAppId; $lsTitle = ([string]$editorState.LastSteamTitle).Trim() } catch {}
+                if($lsId -match '^\d+$'){
+                    $origNow = ''
+                    try { $origNow = ([string]$editorState.OriginalTitle).Trim() } catch {}
+                    $untouched = ($query -eq $lsTitle) -or ($query -eq $origNow) -or ($query -eq ([string]$txtTitle.Text).Trim() -and $txtTitle.Text.Trim() -eq ([string]$editorState.AutoTitle).Trim())
+                    if($untouched){
+                        # Регион обложек, на котором ушли в SGDB; название — на языке этого региона
+                        # (как при открытии карточки), иначе прежнее.
+                        try { $restoredLang = [string]$editorState.LastSteamLang } catch { $restoredLang = '' }
+                        $restName = $lsTitle
+                        if(-not [string]::IsNullOrWhiteSpace($restoredLang)){
+                            try {
+                                $locNm = [string](Get-SteamLocalizedAppName $lsId $restoredLang)
+                                if(-not [string]::IsNullOrWhiteSpace($locNm)){ $restName = $locNm }
+                            } catch {}
+                        }
+                        if([string]::IsNullOrWhiteSpace($restName)){ $restName = $query }
+                        $chosen = [PSCustomObject]@{ Id = $lsId; Name = $restName; MatchScore = 2.0 }
+                    }
+                }
+                if($null -eq $chosen){
+                    # Собственный поиск вариантов Steam — без SGDB и без ключа.
+                    # Каждый вариант уже несёт настоящий Steam App ID.
+                    try { $candidates=@(Get-SteamStoreNameCandidates $query) } catch { $candidates=@() }
+                    if([int]$editorState.SwitchSerial -ne $serial){ return }
+                    # Раньше слепо бралась первая подсказка — для игры, которой нет в Steam
+                    # (например StarCraft), это был случайный «почти-тёзка» (Star Crafter).
+                    # Теперь берём только точное совпадение (скор >= 1.5) либо результат
+                    # Find-SteamAppInfo, который проверяет похожесть названия.
+                    if(@($candidates).Count -gt 0 -and [double]$candidates[0].MatchScore -ge 1.5){
+                        $chosen=$candidates[0]
+                    } else {
+                        try { $chosen=Find-SteamAppInfo $query } catch { $chosen=$null }
+                    }
                 }
             } else {
-                try { $candidates=@(Get-EditorSgdbCandidates $query '') } catch { $candidates=@() }
-                if(@($candidates).Count -gt 0){ $chosen=$candidates[0] }
+                # Сначала по Steam App ID: название могло быть локализованным (регион Steam), а SGDB
+                # знает игру под оригинальным. Если так нашли, название в карточке не меняем.
+                $byApp = $null
+                if(-not [string]::IsNullOrWhiteSpace($prevSteamAppId)){
+                    try { $byApp = Get-SgdbCandidateBySteamAppId $prevSteamAppId } catch { $byApp = $null }
+                }
+                if([int]$editorState.SwitchSerial -ne $serial){ return }
+                if($null -ne $byApp){
+                    # Игра уже найдена по Steam App ID. Поиск по названию нужен только для выпадающего
+                    # списка вариантов — обложкам он не нужен, а стоит отдельного запроса (~1-2 с).
+                    # Поэтому обложки грузим сразу, а список дополняем после (см. finally ниже).
+                    $candidates=@($byApp)
+                    $deferCandidates=$true
+                } else {
+                    try { $candidates=@(Get-EditorSgdbCandidates $query $prevSteamAppId) } catch { $candidates=@() }
+                }
+                # Не нашлось ни по App ID, ни по названию: пробуем английское название игры из Steam.
+                if($null -eq $byApp -and @($candidates).Count -eq 0 -and -not [string]::IsNullOrWhiteSpace($prevSteamAppId)){
+                    $enName = ''
+                    try { $enName = [string](Get-SteamLocalizedAppName $prevSteamAppId 'english') } catch {}
+                    if(-not [string]::IsNullOrWhiteSpace($enName) -and $enName.Trim() -ne $query){
+                        try { $candidates=@(Get-EditorSgdbCandidates $enName.Trim() $prevSteamAppId) } catch { $candidates=@() }
+                    }
+                    if([int]$editorState.SwitchSerial -ne $serial){ return }
+                }
+                if($null -ne $byApp){
+                    $candidates = @($byApp) + @($candidates | Where-Object { [int]$_.Id -ne [int]$byApp.Id })
+                    $chosen = $byApp
+                    $keepTitleSgdb = $true
+                } elseif(@($candidates).Count -gt 0){ $chosen=$candidates[0] }
             }
 
             if([int]$editorState.SwitchSerial -ne $serial){ return }
@@ -36384,9 +36677,11 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
                 $titleResults.SelectedIndex=-1
             }
 
-            $txtTitle.Text=[string]$chosen.Name
-            $editorState.AutoTitle=[string]$chosen.Name
-            $txtTitle.SelectionStart=$txtTitle.Text.Length
+            if(-not $keepTitleSgdb){
+                $txtTitle.Text=[string]$chosen.Name
+                $editorState.AutoTitle=[string]$chosen.Name
+                $txtTitle.SelectionStart=$txtTitle.Text.Length
+            }
             $txtId.Text=[string]$chosenId
 
             if([int]$editorState.SwitchSerial -ne $serial){ return }
@@ -36395,8 +36690,32 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
             # загрузчики. После возврата с SGDB Steam снова проходит именно
             # Load-EditorSteamPreviews, а SGDB — только Load-EditorSgdbPreviews.
             # Оба загрузчика прерываются кликом по другому источнику.
+            $spinHandedOff = $true
             if($newSource -eq 'Steam'){
                 Load-EditorSteamPreviews ([string]$chosenId) $slots $status
+                # Загрузчик грузит обложки на языке из «Настроек», а кнопки регионов могли остаться
+                # от прежнего состояния: язык загруженных обложек и подсветка расходились (на «EN»
+                # появлялись русские обложки). Здесь возвращаем регион, на котором ушли в SGDB,
+                # и подсвечиваем тот, что реально загружен.
+                try {
+                    if([int]$editorState.SwitchSerial -eq $serial -and -not $global:editorLoadAbortRequested -and -not $dlg.IsDisposed -and -not $dlg.Disposing){
+                        $availSw = @(Get-SteamPicsAvailableLanguages ([string]$chosenId))
+                        if($availSw.Count -gt 0){
+                            $loadedLang = [string]$script:lastCoversLanguage
+                            if([string]::IsNullOrWhiteSpace($loadedLang)){ $loadedLang = 'english' }
+                            if(-not [string]::IsNullOrWhiteSpace($restoredLang) -and ($availSw -contains $restoredLang) -and $restoredLang -ne $loadedLang){
+                                $nRel = 0
+                                try { $nRel = [int]@(Reload-EditorSteamCoversForLanguage ([string]$chosenId) $slots $status $restoredLang)[-1] } catch { $nRel = 0 }
+                                if($nRel -gt 0){ $loadedLang = $restoredLang }
+                            }
+                            if($availSw -notcontains $loadedLang){
+                                if($availSw -contains 'english'){ $loadedLang = 'english' } else { $loadedLang = [string]$availSw[0] }
+                            }
+                            & $renderCoverLanguages $availSw $loadedLang
+                            Set-EditorCoverLangButton $btnCoverLang $loadedLang
+                        }
+                    }
+                } catch {}
             } else {
                 [void](Load-EditorSgdbPreviews -gameName $txtTitle.Text.Trim() -steamAppId '' -slots $slots -statusLabel $status -sgdbGameId $chosenId)
             }
@@ -36408,10 +36727,39 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
             }
         }
         finally {
+            # Поиск закончился без запуска загрузчика — снимаем спиннеры, показываем заглушки.
+            # Если пользователь уже переключил источник, спиннер подхватит следующий запуск.
+            if(-not $spinHandedOff -and [int]$editorState.SwitchSerial -eq $serial){
+                try { Stop-EditorLoading $slots ($status.FindForm()) } catch {}
+            }
             if([int]$editorState.SwitchSerial -eq $serial){
                 & $updateSearchSourceUi
                 $btnAdd.Enabled=$true
                 Set-ConfidenceBadge $titleConfidenceBadge ($txtId.Text.Trim() -match '^\d+$') (T 'badge_title_ok') (T 'badge_title_fail_src')
+            }
+            # Обложки уже на месте, «Добавить» доступна — теперь дозаполняем выпадающий список
+            # вариантов названия (поиск по названию пропускали, чтобы не задерживать обложки).
+            if($deferCandidates -and $null -ne $byApp -and $null -ne $tag -and [int]$editorState.SwitchSerial -eq $serial -and -not (Test-EditorLoadCancelled)){
+                try {
+                    $more=@(Get-EditorSgdbCandidates $query $prevSteamAppId)
+                    if([int]$editorState.SwitchSerial -eq $serial -and -not (Test-EditorLoadCancelled) -and $more.Count -gt 0){
+                        $merged=@($byApp) + @($more | Where-Object { [int]$_.Id -ne [int]$byApp.Id })
+                        $mapInfo=New-EditorTitleCandidateMap $merged
+                        $newMap=$mapInfo.Map
+                        $mapNames=$mapInfo.Names
+                        if($newMap.Count -gt 0){
+                            $tag.Map=$newMap
+                            $tag.RefreshNeeded=$false
+                            try {
+                                $titleResults.BeginUpdate()
+                                $titleResults.Items.Clear()
+                                foreach($key in $mapNames){ [void]$titleResults.Items.Add([string]$key) }
+                                & $resizeEditorTitleResults
+                            } finally { try { $titleResults.EndUpdate() } catch {} }
+                            $titleResults.SelectedIndex=-1
+                        }
+                    }
+                } catch {}
             }
         }
         } finally {
@@ -37540,6 +37888,18 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
                     else { $activeLang = [string]$avail[0] }
                     & $renderCoverLanguages $avail $activeLang
                 }
+                # Игра уже в библиотеке, а полный список регионов в cover_sources не сохранён
+                # (игра добавлена до этой функции или сохранена без сети): на кнопке был только
+                # текущий регион. Дозагружаем список сразу после показа карточки (загрузка
+                # прокачивает UI, окно не подвисает), а не по клику на единственной кнопке.
+                # Если сети нет — список остаётся «ожидающим», клик по кнопке повторит попытку.
+                if ($offlineOpen -and [bool]$editorState.LangListPending -and -not ($global:editorLoadAbortRequested -or $dlg.IsDisposed -or $dlg.Disposing)) {
+                    $avFull = @(Get-SteamPicsAvailableLanguages $txtId.Text.Trim())
+                    if ($avFull.Count -gt 0 -and -not ($dlg.IsDisposed -or $dlg.Disposing)) {
+                        $editorState.LangListPending = $false
+                        & $renderCoverLanguages $avFull ([string]$btnCoverLang.Tag.Lang)
+                    }
+                }
             } elseif ($null -ne $coverLangPanel) {
                 $coverLangPanel.Visible = $false
             }
@@ -37827,6 +38187,8 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
                         try { Save-CoverSourcesMetadata ([string]$appIdSave) $slots ([string]$btnCoverLang.Tag.Lang) (New-CoverMetaExtra $editorState $btnCoverLang ([string]$appIdSave) 'Steam') | Out-Null } catch {}
                     }
                 }
+                # Логотип скрыт глазиком - в Steam он не попадает (и старый файл убирается).
+                try { if ([bool]$editorState.LogoHidden) { Remove-SteamGridLogoForAllProfiles ([string]$appIdSave) } } catch {}
                 $status.Text=if($coversSaved){(T 'st_done_saved_covers')}elseif($hasCovers){(T 'st_saved_no_covers')}else{(T 'st_done_saved')}
                 [System.Media.SystemSounds]::Asterisk.Play()
                 $script:editorSavedChanges = $true
@@ -37886,6 +38248,13 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
                     $logoPosEdit = Get-EditorLogoPositionToSave $editorState $logoIdChanged
                     if ($null -ne $logoPosEdit) { [void](Set-SteamLogoPositionForAllProfiles ([string]$freshShortcutAfterSave.ShortcutId) $logoPosEdit) }
                 } catch {}
+                # Логотип скрыт глазиком - в Steam он не попадает (и старый файл убирается).
+                try {
+                    if ([bool]$editorState.LogoHidden) {
+                        Remove-SteamGridLogoForAllProfiles ([string]$freshShortcutAfterSave.ShortcutId)
+                        Remove-SteamGridLogoForAllProfiles ([string]$existingShortcut.ShortcutId)
+                    }
+                } catch {}
 
                 # Сначала гарантированно закрываем карточку. Steam запускается
                 # внешним finally главного обработчика после возврата из ShowDialog.
@@ -37942,6 +38311,8 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
             } elseif ($null -ne $logoPosNew) {
                 try { [void](Set-SteamLogoPositionForAllProfiles ([string]$newId) $logoPosNew) } catch {}
             }
+            # Логотип скрыт глазиком - в Steam он не попадает.
+            try { if ([bool]$editorState.LogoHidden) { Remove-SteamGridLogoForAllProfiles ([string]$newId) } } catch {}
             $script:editorSavedChanges = $true
             if(-not $batchMode -and (Test-Path $steamPathProperty)){Start-Process -FilePath $steamPathProperty}
             $status.Text=if($hasCovers){(T 'st_done_added_covers')}else{(T 'st_done_added_nocovers')}
@@ -38387,7 +38758,7 @@ function Get-MovePlan ([object[]]$tasks, [int64]$freeC, [int64]$freeD, [int64]$r
 # ------------------------------------------------------- вспомогательные штуки
 function Set-MoveProgress ([string]$name, [int64]$bytesNow, [int64]$bytesTotal, [int]$speedMB) {
     $pct = 0
-    if ($bytesTotal -gt 0) { $pct = [int][Math]::Round(($bytesNow / [double]$bytesTotal) * 100) }
+    if ($bytesTotal -gt 0) { $pct = [int][Math]::Floor(($bytesNow / [double]$bytesTotal) * 100) }
     $pct = [Math]::Min(100, [Math]::Max(0, $pct))
     $progressBarFolder.Value = $pct
     $labelHeader.Text = (T 'st_copy_progress' @((T 'move_title'), $name, ([string]$speedMB), $pct))
@@ -38528,7 +38899,8 @@ function Copy-GameFolderStaged ($item, [string]$stage, [int64]$base, [int64]$tot
         $speed = 0
         if ($dt -gt 0 -and $cur -ge $c.LastBytes) { $speed = [int][Math]::Round((($cur - $c.LastBytes) / 1MB) / $dt) }
         $c.LastBytes = $cur; $c.LastTime = $now
-        Set-MoveProgress $c.Name ([int64]$c.Base + $cur) $c.Total $speed
+        $capCur = [Math]::Min([int64]$cur, [Math]::Max([int64]0, [int64]$c.Total - [int64]$c.Base - 1))
+        Set-MoveProgress $c.Name ([int64]$c.Base + $capCur) $c.Total $speed
     }
     $code = Invoke-ExternalPumped 'robocopy.exe' $rcArgs $tick
     # Коды robocopy 0..7 — успех (в т.ч. «ничего не копировалось»), 8 и выше — ошибки.
@@ -38598,12 +38970,8 @@ function Invoke-SafeGameMove ($item, [bool]$sameVolume, [int64]$base, [int64]$to
     $targetType = if ($item.IsFile) { 'Leaf' } else { 'Container' }
     if (-not (Test-Path -LiteralPath $dst -PathType $targetType)) { throw (T 'mv_move_fail' @([string]$item.Name)) }
 
-    # Путь в Steam обновляем, пока исходные данные ещё лежат на месте.
-    try {
-        [void](Update-SteamShortcutAfterGameMove $item.Name $src $dst -IsFile:$item.IsFile)
-    } catch {
-        [void]$warnings.Add((T 'mv_steam_path_fail' @([string]$item.Name, [string]$_.Exception.Message)))
-    }
+    # Путь в Steam здесь НЕ правим: shortcuts.vdf обновляется один раз в конце всего переноса
+    # (см. Move-SelectedGames, шаг 3b), чтобы Steam не приходилось держать закрытым всё время копирования.
 
     # Только теперь, когда копия проверена и закреплена под настоящим именем, удаляем источник.
     if (-not $sameVolume) {
@@ -38671,7 +39039,7 @@ function Move-SelectedGames($source) {
                 if (-not $isFile -and (Test-FolderHasReparsePoints $sp)) {
                     [void]$skipped.Add([PSCustomObject]@{ Name = $name; Reason = (T 'mv2_reparse') }); continue
                 }
-                $size = if ($isFile) { [int64](Get-Item -LiteralPath $sp).Length } else { [int64](Get-FolderSize $sp) }
+                $size = if ($isFile) { [int64](Get-Item -LiteralPath $sp).Length } else { [int64](Get-DirBytesFast $sp) }
                 [void]$tasks.Add([PSCustomObject]@{ Name = $name; From = $side; To = $toSide; SourcePath = $sp; TargetPath = $tp; Size = [int64]$size; IsFile = $isFile })
             }
         }
@@ -38710,12 +39078,10 @@ function Move-SelectedGames($source) {
 
         # ---- 3. Выполнение ---------------------------------------------------------------
         $executed = $true
-        # Steam закрываем на время правки shortcuts.vdf, чтобы клиент не перезаписал файл.
-        if ($steamWasRunning) {
-            taskkill.exe /F /T /IM steam.exe 2>$null | Out-Null
-            $steamClosed = $true
-            Start-Sleep -Seconds 2
-        }
+        $warnings = New-Object System.Collections.ArrayList
+        # Steam на время копирования НЕ закрываем. Ярлыки правятся один раз в конце (см. 3b), только для
+        # игр, которые реально переехали: до этого момента shortcuts.vdf не меняется и всегда указывает
+        # на существующие файлы, а откат при ошибке или сбое не нужен.
         $aggregateTotal = [int64]0
         foreach ($t in $plan.Order) { $aggregateTotal += [int64]$t.Size }
         if ($aggregateTotal -lt 1) { $aggregateTotal = 1 }
@@ -38726,7 +39092,6 @@ function Move-SelectedGames($source) {
         foreach ($t in $plan.Order) { [void]$pending.Add($t) }
         $done = New-Object System.Collections.ArrayList
         $stalled = New-Object System.Collections.ArrayList
-        $warnings = New-Object System.Collections.ArrayList
         $failure = $null
 
         while ($pending.Count -gt 0) {
@@ -38752,6 +39117,20 @@ function Move-SelectedGames($source) {
                 $failure = [PSCustomObject]@{ Name = $next.Name; Message = [string]$_.Exception.Message }
                 foreach ($t in $pending) { [void]$stalled.Add($t) }
                 break
+            }
+        }
+
+        # ---- 3b. Ярлыки Steam: один раз в конце, только для переехавших игр -----------------
+        if ($done.Count -gt 0) {
+            try {
+                if (@(Get-Process -Name steam -ErrorAction SilentlyContinue).Count -gt 0) {
+                    Stop-SteamProcessResponsive
+                    $steamClosed = $true   # Steam запустит блок finally
+                }
+            } catch {}
+            foreach ($t in $done) {
+                try { [void](Update-SteamShortcutAfterGameMove $t.Name $t.SourcePath $t.TargetPath -IsFile:$t.IsFile) }
+                catch { [void]$warnings.Add((T 'mv_steam_path_fail' @([string]$t.Name, [string]$_.Exception.Message))) }
             }
         }
 
@@ -39605,7 +39984,6 @@ $btnSteamLibrary.Add_Click({
     # Пока открыта библиотека, прогрев не работает (иначе он делал бы ту же работу параллельно).
     $script:libPreheatBlocked = $true
     try { Stop-LibPreheatJob } catch {}
-    Write-Tm '=== CLICK: открытие библиотеки ===' -Reset
     # Бесшовный переход: главное окно не прячем и сплэш не показываем — библиотека открывается ровно поверх него
     # (см. Show-SteamLibraryBrowser). Пока она строится, у окна курсор ожидания; потом главное окно становится
     # невидимым (Opacity = 0), а при закрытии библиотеки возвращается (см. $dlg.Add_FormClosing).
