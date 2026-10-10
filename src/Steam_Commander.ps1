@@ -13,6 +13,27 @@ $script:SplashRs = $null
 $script:SplashRu = $false
 # Композиция «Hero + логотип» в карточке (как в Steam). $false - вернуть прежнюю раскладку и поведение.
 $script:LogoComposeEnabled = $true
+# Сетевой пул .NET (общий для всех runspace процесса). По умолчанию лимит - 2 соединения на хост,
+# и пара зависших/прерванных запросов к SteamGridDB блокировала все следующие (карточки, проверка
+# ключа) до их таймаута. Поднимаем лимит, отключаем Expect100 и не держим простаивающие соединения
+# (Cloudflare их рвёт, а повторное использование мёртвого соединения даёт ложные «нет ответа»).
+try {
+    [Net.ServicePointManager]::DefaultConnectionLimit = 32
+    [Net.ServicePointManager]::Expect100Continue = $false
+    [Net.ServicePointManager]::MaxServicePointIdleTime = 15000
+    [Net.ServicePointManager]::DnsRefreshTimeout = 30000
+} catch {}
+function Reset-SgdbConnectionPool {
+    # Закрывает соединения к SteamGridDB (в т.ч. занятые брошенными запросами), чтобы следующие
+    # запросы не стояли в очереди за ними.
+    foreach ($h in @('https://www.steamgriddb.com','https://cdn2.steamgriddb.com','https://cdn.steamgriddb.com')) {
+        try {
+            $sp = [Net.ServicePointManager]::FindServicePoint([Uri]$h)
+            $sp.ConnectionLimit = 32
+            [void]$sp.CloseConnectionGroup('')
+        } catch {}
+    }
+}
 try { $script:SplashRu = ([System.Globalization.CultureInfo]::CurrentUICulture.TwoLetterISOLanguageName -eq 'ru') } catch {}
 
 function Set-SplashText ([string]$Text) {
@@ -884,7 +905,7 @@ Set-SplashProgress 0.52
 # Единая версия приложения — используется в заголовке главного окна, в
 # подписи внизу окна настроек и в User-Agent HTTP-запросов. Меняйте только
 # здесь при выпуске новой версии.
-$global:appVersion = "2.0.4"
+$global:appVersion = "2.0.5"
 $global:appTitle = "Steam Commander"
 # Ссылки на исходный код и поддержку автора (окно «Поддержать» в настройках). Меняйте только здесь.
 $global:appRepoUrl = "https://github.com/Hetfield1985/Steam-Commander"
@@ -5378,13 +5399,88 @@ $script:SgdbKeyRawCheck = {
     param($apiKey, [int]$maxAttempts = 1)
     try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch {}
 
+    $sgCurlGet = {
+        param([string]$u, $hdrs, [int]$t)
+        $res = @{ Code = 0; Exit = -1; Body = ''; Err = ''; NoCurl = $false }
+        try {
+            $exe = Join-Path $env:SystemRoot 'System32\curl.exe'
+            if (-not (Test-Path -LiteralPath $exe)) { $res.NoCurl = $true; return $res }
+            $tm = [Math]::Max(5, $t)
+            $a = New-Object System.Collections.Generic.List[string]
+            foreach ($x in @('-s', '-S', '--connect-timeout', '8', '--max-time', [string]$tm)) { [void]$a.Add($x) }
+            if ($hdrs) {
+                foreach ($k in @($hdrs.Keys)) {
+                    $v = ([string]$hdrs[$k]) -replace '["\r\n]', ''
+                    [void]$a.Add('-H'); [void]$a.Add('"' + $k + ': ' + $v + '"')
+                }
+            }
+            [void]$a.Add('-w'); [void]$a.Add('"\n%{http_code}"')
+            [void]$a.Add('"' + $u + '"')
+            $psi = New-Object System.Diagnostics.ProcessStartInfo
+            $psi.FileName = $exe
+            $psi.Arguments = ($a.ToArray() -join ' ')
+            $psi.UseShellExecute = $false
+            $psi.CreateNoWindow = $true
+            $psi.RedirectStandardOutput = $true
+            $psi.RedirectStandardError = $true
+            $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
+            $p = [System.Diagnostics.Process]::Start($psi)
+            $errT = $p.StandardError.ReadToEndAsync()
+            $outT = $p.StandardOutput.ReadToEndAsync()
+            if (-not $p.WaitForExit(($tm + 4) * 1000)) {
+                try { $p.Kill() } catch {}
+                $res.Exit = 28; $res.Err = 'timeout'
+                return $res
+            }
+            $p.WaitForExit()
+            $res.Exit = [int]$p.ExitCode
+            $out = [string]$outT.Result
+            $res.Err = ([string]$errT.Result).Trim()
+            $nl = $out.LastIndexOf("`n")
+            $code = 0
+            if ($nl -ge 0) {
+                [void][int]::TryParse($out.Substring($nl + 1).Trim(), [ref]$code)
+                $res.Body = $out.Substring(0, $nl)
+            }
+            $res.Code = $code
+            try { $p.Dispose() } catch {}
+        } catch { $res.Err = [string]$_.Exception.Message }
+        return $res
+    }
     $r = @{ Ok = $false; StatusCode = 0; WebStatus = ''; RawMsg = '' }
     for ($attempt = 1; $attempt -le [Math]::Max(1, $maxAttempts); $attempt++) {
         $r = @{ Ok = $false; StatusCode = 0; WebStatus = ''; RawMsg = '' }
         try {
             $headers = @{ Authorization = "Bearer $(([string]$apiKey).Trim())" }
             $url = 'https://www.steamgriddb.com/api/v2/search/autocomplete/__steam_commander_key_check__'
-            $resp = Invoke-RestMethod -Uri $url -Headers $headers -UserAgent 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) SteamCommander' -TimeoutSec 15 -ErrorAction Stop
+            # Запрос через системный curl.exe: у части пользователей Invoke-RestMethod (.NET) до SteamGridDB
+            # зависает до таймаута, хотя curl.exe в тот же момент отвечает за доли секунды.
+            $resp = $null
+            $curlErr = $false
+            $cg = & $sgCurlGet $url $headers 15
+            if ($cg.NoCurl) {
+                $resp = Invoke-RestMethod -Uri $url -Headers $headers -UserAgent 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) SteamCommander' -TimeoutSec 15 -ErrorAction Stop
+            } elseif ($cg.Exit -eq 0 -and $cg.Code -ge 200 -and $cg.Code -lt 400) {
+                $resp = $cg.Body | ConvertFrom-Json
+            } else {
+                $curlErr = $true
+                if ($cg.Code -ge 400) {
+                    $r.StatusCode = [int]$cg.Code; $r.WebStatus = 'ProtocolError'; $r.RawMsg = ('HTTP ' + $cg.Code)
+                } else {
+                    $r.StatusCode = 0
+                    $r.WebStatus = switch ([int]$cg.Exit) {
+                        28 { 'Timeout' }
+                        6 { 'NameResolutionFailure' }
+                        7 { 'ConnectFailure' }
+                        { $_ -in 35, 58, 59, 60, 77, 83, 90, 91 } { 'SecureChannelFailure' }
+                        { $_ -in 52, 56 } { 'ReceiveFailure' }
+                        55 { 'SendFailure' }
+                        default { '' }
+                    }
+                    $r.RawMsg = [string]$cg.Err
+                }
+            }
+            if (-not $curlErr) {
             # ВАЖНО: SteamGridDB на этот эндпоинт может вернуть HTTP 200 с телом
             # {"success": false, ...} даже для неверного/испорченного ключа — то есть
             # исключения не будет. Раньше тело ответа полностью отбрасывалось
@@ -5398,6 +5494,7 @@ $script:SgdbKeyRawCheck = {
                 $r.Ok = $true
                 break
             }
+            }
         } catch {
             $ex = $_.Exception
             try { $r.StatusCode = [int]$ex.Response.StatusCode.value__ } catch {}
@@ -5406,7 +5503,12 @@ $script:SgdbKeyRawCheck = {
         }
         if (-not ($r.StatusCode -eq 0 -or $r.StatusCode -ge 500 -or $r.StatusCode -eq 429)) { break }
         # Пауза перед повтором: мгновенный повтор при сбое/429 почти всегда падает так же.
-        if ($attempt -lt $maxAttempts) { Start-Sleep -Milliseconds (1500 * $attempt) }
+        if ($attempt -lt $maxAttempts) {
+            if ($r.StatusCode -eq 0) {
+                try { [void][Net.ServicePointManager]::FindServicePoint([Uri]'https://www.steamgriddb.com').CloseConnectionGroup('') } catch {}
+            }
+            Start-Sleep -Milliseconds (1500 * $attempt)
+        }
     }
     return $r
 }
@@ -5572,7 +5674,7 @@ function Complete-StartupKeyChecks ([switch]$Wait) {
                 [System.Windows.Forms.Application]::DoEvents()
                 Start-Sleep -Milliseconds 30
             }
-            if (-not $job.Async.IsCompleted) { try { $job.Ps.Stop() } catch {} }
+            if (-not $job.Async.IsCompleted) { try { [void]$job.Ps.BeginStop($null, $null) } catch {} }
         }
         $script:startupJobs[$name] = $null
         $raw = Get-StartupJobResult $job
@@ -9725,6 +9827,7 @@ function Get-RetroArchCoreInfo([string]$exePath, [string]$fileCore) {
 
 # Установленный 7-Zip (7z.exe): Program Files и реестр. Пустая строка, если не найден.
 function Get-InstalledSevenZip {
+    if ($script:sevenZipInstalledCache) { return $script:sevenZipInstalledCache }
     $c = New-Object System.Collections.Generic.List[string]
     foreach ($base in @($env:ProgramFiles, ${env:ProgramFiles(x86)}, $env:ProgramW6432)) {
         if (-not [string]::IsNullOrWhiteSpace($base)) { $c.Add((Join-Path $base '7-Zip\7z.exe')) }
@@ -9738,7 +9841,7 @@ function Get-InstalledSevenZip {
             }
         } catch {}
     }
-    foreach ($p in $c) { if (Test-Path -LiteralPath $p -PathType Leaf) { return $p } }
+    foreach ($p in $c) { if (Test-Path -LiteralPath $p -PathType Leaf) { $script:sevenZipInstalledCache = $p; return $p } }
     return ''
 }
 
@@ -9797,7 +9900,21 @@ function Get-RomArchiveExtractor([string]$ext, [bool]$allowDownload) {
 }
 
 # Список файлов внутри архива без распаковки: .zip через System.IO.Compression, остальное через 7z l.
+$script:romArchiveListCache = @{}
 function Get-RomArchiveEntries([string]$archive, [string]$szPath) {
+    # Кеш листинга архива по пути+размеру+дате: повторное открытие карточки не запускает 7z заново.
+    $cacheKey = ''
+    try {
+        $cfi = New-Object System.IO.FileInfo($archive)
+        $cacheKey = $archive.ToLowerInvariant() + '|' + $cfi.Length + '|' + $cfi.LastWriteTimeUtc.Ticks
+        if ($script:romArchiveListCache.ContainsKey($cacheKey)) { return $script:romArchiveListCache[$cacheKey] }
+    } catch { $cacheKey = '' }
+    $cres = Get-RomArchiveEntriesUncached $archive $szPath
+    if ($cres.Ok -and $cacheKey) { $script:romArchiveListCache[$cacheKey] = $cres }
+    return $cres
+}
+
+function Get-RomArchiveEntriesUncached([string]$archive, [string]$szPath) {
     $r = [PSCustomObject]@{ Ok = $false; Files = @(); Error = '' }
     try {
         $ext = [System.IO.Path]::GetExtension($archive).ToLowerInvariant()
@@ -10867,8 +10984,29 @@ function Get-EmulatorProfileByExePath ([string]$exePath) {
 }
 
 # $entry — элемент из Get-SteamLibraryEntries (или любой объект с полем Exe).
+function Get-ShortcutRomWrapperInfo ($entry) {
+    # ROM из архива запускается через SCLauncher.exe: в Exe стоит он, а настоящие эмулятор и архив лежат
+    # в LaunchOptions (--rom-archive "<архив>" --emu "<эмулятор>" ...). Возвращает Archive/Emu или $null.
+    if ($null -eq $entry) { return $null }
+    $lo = ''
+    try { $lo = [string]$entry.LaunchOptions } catch {}
+    if ([string]::IsNullOrWhiteSpace($lo)) { return $null }
+    $m = [regex]::Match($lo, '^\s*--rom-archive\s+"(?<a>[^"]+)"\s+--emu\s+"(?<e>[^"]+)"')
+    if (-not $m.Success) { return $null }
+    return [PSCustomObject]@{ Archive = [string]$m.Groups['a'].Value; Emu = [string]$m.Groups['e'].Value }
+}
+
+# Профиль эмулятора ярлыка: для ROM из архива - по --emu из параметров, иначе - по Exe ярлыка.
+function Get-EntryEmulatorProfile ($entry) {
+    if ($null -eq $entry) { return $null }
+    $w = Get-ShortcutRomWrapperInfo $entry
+    if ($null -ne $w) { return (Get-EmulatorProfileByExePath ([string]$w.Emu)) }
+    return (Get-EmulatorProfileByExePath ([string]$entry.Exe))
+}
+
 function Test-ShortcutIsRomEntry ($entry) {
     if ($null -eq $entry) { return $false }
+    if ($null -ne (Get-ShortcutRomWrapperInfo $entry)) { return $true }
     return (Get-EmulatorProfileByExePath ([string]$entry.Exe)) -ne $null
 }
 
@@ -10883,6 +11021,12 @@ function Test-ShortcutIsRomEntry ($entry) {
 function Get-RomPathFromLaunchOptions ($entry) {
     $launchOptions = [string]$entry.LaunchOptions
     if ([string]::IsNullOrWhiteSpace($launchOptions)) { return '' }
+
+    # ROM из архива (SCLauncher): «ром» для карточки - сам архив.
+    $wrap = Get-ShortcutRomWrapperInfo $entry
+    if ($null -ne $wrap) {
+        try { if (Test-Path -LiteralPath ([string]$wrap.Archive) -PathType Leaf) { return [string]$wrap.Archive } } catch {}
+    }
 
     $profile = Get-EmulatorProfileByExePath ([string]$entry.Exe)
     if ($profile -ne $null) {
@@ -12217,6 +12361,8 @@ function Download-SteamIconToTemp ([string]$appId, [bool]$force = $false, [bool]
             return $false
         }
         $hosts = @(
+            'https://shared.fastly.steamstatic.com/community_assets/images/apps',
+            'https://shared.akamai.steamstatic.com/community_assets/images/apps',
             'https://cdn.cloudflare.steamstatic.com/steamcommunity/public/images/apps',
             'https://cdn.akamai.steamstatic.com/steamcommunity/public/images/apps',
             'https://media.steampowered.com/steamcommunity/public/images/apps',
@@ -12934,16 +13080,21 @@ function Invoke-BackgroundJsonRequest ($scriptBlock, [object[]]$argumentList, [i
     }
 
     $deadline = (Get-Date).AddSeconds([Math]::Max(1, $maxSeconds))
+    $wasAborted = $false
     try {
         while (-not $async.IsCompleted) {
             [System.Windows.Forms.Application]::DoEvents()
             if ($global:editorLoadAbortRequested) {
+                $wasAborted = $true
                 try { $ps.Stop() } catch {}
                 break
             }
             Start-Sleep -Milliseconds 30
-            if ((Get-Date) -gt $deadline) { try { $ps.Stop() } catch {}; break }
+            if ((Get-Date) -gt $deadline) { $wasAborted = $true; try { $ps.Stop() } catch {}; break }
         }
+        # Прерванный запрос оставляет соединение занятым до своего таймаута, и все следующие запросы
+        # к SteamGridDB (в т.ч. проверка ключа) встают за ним в очередь - закрываем такие соединения.
+        if ($wasAborted) { Reset-SgdbConnectionPool }
         $result = $null
         try { $result = $ps.EndInvoke($async) } catch { $result = $null }
         if ($result -eq $null) { return $null }
@@ -12987,7 +13138,62 @@ function Invoke-SgdbApiRequest ($url, [hashtable]$headers, [int]$timeoutSec = 20
     # остаются нажимаемыми даже при медленном или зависшем сервере.
     $requestBlock = {
         param($requestUrl, $requestHeaders, $requestTimeout)
+        $sgCurlGet = {
+        param([string]$u, $hdrs, [int]$t)
+        $res = @{ Code = 0; Exit = -1; Body = ''; Err = ''; NoCurl = $false }
         try {
+            $exe = Join-Path $env:SystemRoot 'System32\curl.exe'
+            if (-not (Test-Path -LiteralPath $exe)) { $res.NoCurl = $true; return $res }
+            $tm = [Math]::Max(5, $t)
+            $a = New-Object System.Collections.Generic.List[string]
+            foreach ($x in @('-s', '-S', '--connect-timeout', '8', '--max-time', [string]$tm)) { [void]$a.Add($x) }
+            if ($hdrs) {
+                foreach ($k in @($hdrs.Keys)) {
+                    $v = ([string]$hdrs[$k]) -replace '["\r\n]', ''
+                    [void]$a.Add('-H'); [void]$a.Add('"' + $k + ': ' + $v + '"')
+                }
+            }
+            [void]$a.Add('-w'); [void]$a.Add('"\n%{http_code}"')
+            [void]$a.Add('"' + $u + '"')
+            $psi = New-Object System.Diagnostics.ProcessStartInfo
+            $psi.FileName = $exe
+            $psi.Arguments = ($a.ToArray() -join ' ')
+            $psi.UseShellExecute = $false
+            $psi.CreateNoWindow = $true
+            $psi.RedirectStandardOutput = $true
+            $psi.RedirectStandardError = $true
+            $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
+            $p = [System.Diagnostics.Process]::Start($psi)
+            $errT = $p.StandardError.ReadToEndAsync()
+            $outT = $p.StandardOutput.ReadToEndAsync()
+            if (-not $p.WaitForExit(($tm + 4) * 1000)) {
+                try { $p.Kill() } catch {}
+                $res.Exit = 28; $res.Err = 'timeout'
+                return $res
+            }
+            $p.WaitForExit()
+            $res.Exit = [int]$p.ExitCode
+            $out = [string]$outT.Result
+            $res.Err = ([string]$errT.Result).Trim()
+            $nl = $out.LastIndexOf("`n")
+            $code = 0
+            if ($nl -ge 0) {
+                [void][int]::TryParse($out.Substring($nl + 1).Trim(), [ref]$code)
+                $res.Body = $out.Substring(0, $nl)
+            }
+            $res.Code = $code
+            try { $p.Dispose() } catch {}
+        } catch { $res.Err = [string]$_.Exception.Message }
+        return $res
+    }
+        try {
+            # Через системный curl.exe (см. комментарий в проверке ключа): .NET-клиент у части пользователей зависает.
+            $cg = & $sgCurlGet $requestUrl $requestHeaders $requestTimeout
+            if (-not $cg.NoCurl) {
+                if ($cg.Exit -eq 0 -and $cg.Code -ge 200 -and $cg.Code -lt 400) { return ($cg.Body | ConvertFrom-Json) }
+                $cm = if ($cg.Code -ge 400) { 'HTTP ' + $cg.Code } elseif ($cg.Exit -eq 28) { 'Время ожидания завершения операции истекло.' } else { 'curl: (' + $cg.Exit + ') ' + $cg.Err }
+                return [PSCustomObject]@{ __RequestError = [string]$cm; __Response = $null; __Status = [int]$(if ($cg.Code -ge 400) { $cg.Code } else { 0 }) }
+            }
             return (Invoke-RestMethod -Uri $requestUrl -Headers $requestHeaders -UserAgent 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) SteamCommander' -TimeoutSec $requestTimeout -ErrorAction Stop)
         } catch {
             $st = 0; try { $st = [int]$_.Exception.Response.StatusCode.value__ } catch {}
@@ -13020,6 +13226,7 @@ function Invoke-SgdbApiRequest ($url, [hashtable]$headers, [int]$timeoutSec = 20
         $transient = ($httpStatus -eq 0 -or $httpStatus -eq 429 -or $httpStatus -ge 500)
         if (-not $transient -or $attempt -ge $maxAttempts) { break }
         $pauseMs = if ($httpStatus -eq 429) { 2000 * $attempt } else { 700 * $attempt }
+        if ($httpStatus -eq 0) { Reset-SgdbConnectionPool }
         $pauseUntil = (Get-Date).AddMilliseconds($pauseMs)
         while ((Get-Date) -lt $pauseUntil) {
             [System.Windows.Forms.Application]::DoEvents()
@@ -13541,7 +13748,7 @@ function Add-GameToSteamQuietly ($game) {
                     Logo       = [PSCustomObject]@{ Source = 'Steam' }
                     Icon       = [PSCustomObject]@{ Source = $(if ($autoExeIcon) { 'Local' } else { 'Steam' }) }
                 }
-                Save-CoverSourcesMetadata ([string]$newId) $quietSlots $coverLang | Out-Null
+                Save-CoverSourcesMetadata ([string]$newId) $quietSlots $coverLang @{ appId = [string]$appId; idSource = 'Steam' } | Out-Null
             } catch {}
         } else {
             # Обложек нет, но положение логотипа «по умолчанию» всё равно записываем.
@@ -14017,7 +14224,7 @@ function Add-RomToSteamQuietly ($game) {
                 Logo       = [PSCustomObject]@{ Source = 'SteamGridDB' }
                 Icon       = [PSCustomObject]@{ Source = 'SteamGridDB' }
             }
-            Save-CoverSourcesMetadata ([string]$newId) $quietSlots '' | Out-Null
+            Save-CoverSourcesMetadata ([string]$newId) $quietSlots '' @{ appId = [string]$sgdbId; idSource = 'SteamGridDB' } | Out-Null
         } catch {}
         $result.Success = $true
     } catch {
@@ -16236,6 +16443,8 @@ function Get-EditorRomCandidates ($gamePath, [string]$preferredExtensions = '', 
     # Эти признаки исключают файл только из АВТОВЫБОРА.
     $junkNamePattern = '(?i)(?:^|[\s._\-\[\]()])(?:patch(?:es)?|update|upd|dlc|bonus(?:es)?|extra(?:s)?|addon|add-on|expansion|season[\s._\-]+pass|fighters[\s._\-]+pass|artbook|ost|soundtrack|manual|scan(?:s)?|crack|trainer|keygen|repack|hotfix|(?:bug)?fix|proto(?:type)?|sample|demo|beta)(?:$|[\s._\-\[\]()])'
 
+    $cueDirs = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($cf in $all) { if ($cf.Extension -match '(?i)^\.(cue|m3u|ccd|mds|toc)$') { [void]$cueDirs.Add([string]$cf.DirectoryName) } }
     $result = New-Object System.Collections.Generic.List[object]
     foreach ($f in $all) {
         $ext = $f.Extension.TrimStart('.').ToLowerInvariant()
@@ -16261,7 +16470,7 @@ function Get-EditorRomCandidates ($gamePath, [string]$preferredExtensions = '', 
         $extBoost = 0
         if ($ext -eq 'm3u') { $extBoost = -20 }
         elseif ($ext -in @('cue','ccd','mds','toc','gdi')) { $extBoost = -10 }
-        elseif ($ext -in @('bin','img') -and @($all | Where-Object { $_.DirectoryName -eq $f.DirectoryName -and $_.Extension -match '(?i)^\.(cue|m3u|ccd|mds|toc)$' }).Count -gt 0) { $extBoost = 5 }
+        elseif ($ext -in @('bin','img') -and $cueDirs.Contains([string]$f.DirectoryName)) { $extBoost = 5 }
 
         # Чем меньше приоритет — тем раньше автоматический выбор.
         # v0 = базовая версия, затем обычный ROM, затем DLC/patch/update и v1+.
@@ -16926,7 +17135,7 @@ function Get-CoverSourcesMetadata([string]$shortcutId) {
 # $slots — та же коллекция слотов карточки (Vertical/Horizontal/Hero/Logo),
 # что используется в редакторе. Пишем текущий .Source каждого слота на диск,
 # чтобы при следующем открытии карточки значки источников не терялись.
-function Save-CoverSourcesMetadata([string]$shortcutId, $slots, [string]$coverLang = '') {
+function Save-CoverSourcesMetadata([string]$shortcutId, $slots, [string]$coverLang = '', $extra = $null) {
     try {
         if ([string]::IsNullOrWhiteSpace($shortcutId) -or $null -eq $slots) { return $false }
         if (-not (Test-Path $global:coverSourcesDir)) { New-Item -ItemType Directory -Path $global:coverSourcesDir -Force | Out-Null }
@@ -16946,6 +17155,38 @@ function Save-CoverSourcesMetadata([string]$shortcutId, $slots, [string]$coverLa
         # Регион (язык) Steam-обложек — чтобы при повторном открытии карточки кнопка
         # региона показывала тот, на котором обложки были сохранены.
         if (-not [string]::IsNullOrWhiteSpace($coverLang)) { $data['lang'] = $coverLang }
+        # Данные для открытия карточки БЕЗ СЕТИ: Steam App ID (или SGDB ID) игры, какой источник
+        # его дал и список доступных регионов обложек. Если новое значение не передано,
+        # остаётся то, что уже было записано в файл.
+        $metaAppId = ''; $metaIdSrc = ''; $metaLangs = @()
+        try {
+            if (Test-Path -LiteralPath $path) {
+                $prevMeta = (Get-Content -LiteralPath $path -Raw -ErrorAction Stop) | ConvertFrom-Json -ErrorAction Stop
+                if ($null -ne $prevMeta) {
+                    try { if ($null -ne $prevMeta.appId) { $metaAppId = [string]$prevMeta.appId } } catch {}
+                    try { if ($null -ne $prevMeta.idSource) { $metaIdSrc = [string]$prevMeta.idSource } } catch {}
+                    try { if ($null -ne $prevMeta.langs) { $metaLangs = @($prevMeta.langs | ForEach-Object { [string]$_ }) } } catch {}
+                }
+            }
+        } catch {}
+        if ($null -ne $extra) {
+            try {
+                if ($extra.ContainsKey('appId') -and -not [string]::IsNullOrWhiteSpace([string]$extra['appId'])) {
+                    $metaAppId = [string]$extra['appId']
+                    $metaIdSrc = [string]$extra['idSource']
+                }
+            } catch {}
+            try {
+                if ($extra.ContainsKey('langs') -and @($extra['langs']).Count -gt 0) {
+                    $metaLangs = @($extra['langs'] | ForEach-Object { [string]$_ })
+                }
+            } catch {}
+        }
+        if (-not [string]::IsNullOrWhiteSpace($metaAppId)) {
+            $data['appId'] = $metaAppId
+            $data['idSource'] = $(if ([string]::IsNullOrWhiteSpace($metaIdSrc)) { 'Steam' } else { $metaIdSrc })
+        }
+        if ($metaLangs.Count -gt 0) { $data['langs'] = @($metaLangs) }
         ($data | ConvertTo-Json -Compress) | Out-File -LiteralPath $path -Encoding utf8 -Force
         return $true
     } catch { return $false }
@@ -17093,9 +17334,13 @@ function Get-EditorLogoRect($logoImage, $backRect, $state) {
     try { $wp = [double]$state.LogoWidthPct; $hp = [double]$state.LogoHeightPct; $pos = [string]$state.LogoPosition } catch {}
     $wp = [math]::Max(1.0, [math]::Min(100.0, $wp)); $hp = [math]::Max(1.0, [math]::Min(100.0, $hp))
     $bw = [double]$backRect.Width * $wp / 100.0; $bh = [double]$backRect.Height * $hp / 100.0
+    $pad = [double]$backRect.Width * $script:EditorLogoPadFraction
+    # Логотип вместе с отступами не должен выходить за пределы фона (иначе при 100% он вылезает
+    # за край превью): рамка ограничивается областью фона минус отступ с каждой стороны.
+    $bw = [math]::Min($bw, [math]::Max(1.0, [double]$backRect.Width - 2.0 * $pad))
+    $bh = [math]::Min($bh, [math]::Max(1.0, [double]$backRect.Height - 2.0 * $pad))
     $sc = [math]::Min($bw / [double]$logoImage.Width, $bh / [double]$logoImage.Height)
     $lw = [double]$logoImage.Width * $sc; $lh = [double]$logoImage.Height * $sc
-    $pad = [double]$backRect.Width * $script:EditorLogoPadFraction
     $x = [double]$backRect.X + $pad
     if ($pos -match 'Center') { $x = [double]$backRect.X + ([double]$backRect.Width - $lw) / 2.0 }
     $y = [double]$backRect.Y + $pad
@@ -20909,8 +21154,17 @@ function Show-ProgramSettingsDialog {
     # значение видно во всех обработчиках.
     $settingsState = @{ Accepted = $false; ButtonClose = $false; ExitRequested = $false }
 
-    # Проверка ключей при запуске идёт в фоне — здесь результат уже нужен.
-    try { Complete-StartupKeyChecks -Wait } catch {}
+    # Проверка ключей при запуске идёт в фоне. РАНЬШЕ здесь стояло -Wait: если SteamGridDB
+    # не отвечал, окно настроек не открывалось до 25 секунд (и ещё столько же для Steam
+    # Web API), а Ps.Stop() после таймаута мог подвиснуть, пока не вернётся сам
+    # блокирующий сетевой вызов. Теперь окно открывается сразу: забираем только то,
+    # что уже готово, а недостающий результат подхватывает $keyPollTimer (см. ниже) —
+    # значок рядом с ключом просто появится, когда проверка закончится.
+    try { Complete-StartupKeyChecks } catch {}
+    $keyWatch = @{
+        Sgdb  = ($null -ne $script:startupJobs['Sgdb'])
+        Steam = ($null -ne $script:startupJobs['Steam'])
+    }
 
     # БАГ-ФИКС: результат проверки ключей (Valid/Check) менялся "живьём" при
     # каждом изменении текста в полях (см. Add_TextChanged/таймеры ниже), даже
@@ -20920,10 +21174,15 @@ function Show-ProgramSettingsDialog {
     # Запоминаем исходное состояние ПОСЛЕ ожидания фоновой проверки (иначе тут
     # был бы захвачен ещё не готовый, устаревший результат) и восстанавливаем
     # его при отмене.
-    $originalSgdbKeyValid = [bool]$global:steamGridDbApiKeyValid
-    $originalSgdbKeyCheck = $global:steamGridDbApiKeyCheck
-    $originalSteamKeyValid = [bool]$global:steamApiKeyValid
-    $originalSteamKeyCheck = $global:steamApiKeyCheck
+    # Хэштаблица, а не отдельные переменные: результат фоновой проверки может прийти
+    # уже после открытия окна, и таймер должен обновить снимок (иначе «Отмена»
+    # откатила бы готовый результат к «ещё не проверено»).
+    $keySnap = @{
+        SgdbValid  = [bool]$global:steamGridDbApiKeyValid
+        SgdbCheck  = $global:steamGridDbApiKeyCheck
+        SteamValid = [bool]$global:steamApiKeyValid
+        SteamCheck = $global:steamApiKeyCheck
+    }
 
     # Окно настроек должно открываться ВМЕСТО главного окна, а не поверх
     # него: прячем главное окно на время показа диалога и возвращаем его
@@ -21474,8 +21733,11 @@ function Show-ProgramSettingsDialog {
     # результат проверки, уже полученный при запуске программы. Поэтому
     # зелёная галочка/красный ! сразу видны рядом с ключом. Текстом статус не
     # дублируется: причина отказа лежит в подсказке-tooltip значка.
-    if (-not [string]::IsNullOrWhiteSpace([string]$global:steamGridDbApiKey)) {
-        if ([bool]$global:steamGridDbApiKeyValid) {
+    $showSgdbStartupBadge = {
+        if ([string]::IsNullOrWhiteSpace([string]$global:steamGridDbApiKey) -or $null -ne $script:startupJobs['Sgdb']) {
+            # Ключа нет или проверка ещё идёт — вердикта пока нет, значок скрыт.
+            Set-ApiKeyValidationBadge $apiKeyValidationBadge 'hidden' ''
+        } elseif ([bool]$global:steamGridDbApiKeyValid) {
             Set-ApiKeyValidationBadge $apiKeyValidationBadge 'valid' (T 'key_valid')
         } else {
             $startupCheck = $global:steamGridDbApiKeyCheck
@@ -21483,9 +21745,8 @@ function Show-ProgramSettingsDialog {
             if ($startupCheck -ne $null -and $startupCheck.Kind -eq 'invalid') { $startupMsg += (T 'key_new_key') }
             Set-ApiKeyValidationBadge $apiKeyValidationBadge 'invalid' $startupMsg
         }
-    } else {
-        Set-ApiKeyValidationBadge $apiKeyValidationBadge 'hidden' ''
     }
+    & $showSgdbStartupBadge
 
     # Проверяем ключ после окончания ввода, а не на каждый символ.
     # Это исключает десятки лишних HTTP-запросов во время вставки/набора ключа.
@@ -21516,6 +21777,13 @@ function Show-ProgramSettingsDialog {
 
     $txtKey.Add_TextChanged({
         $apiKeyValidationTimer.Stop()
+        # Фоновая проверка относится к СТАРОМУ тексту ключа — её результат больше не нужен.
+        $keyWatch.Sgdb = $false
+        $oldSgdbJob = $script:startupJobs['Sgdb']
+        if ($null -ne $oldSgdbJob) {
+            $script:startupJobs['Sgdb'] = $null
+            try { [void]$oldSgdbJob.Ps.BeginStop($null, $null) } catch {}
+        }
         # После любого изменения ключ снова считается непроверенным, поэтому
         # кнопка SGDB в карточке игры должна стать неактивной до новой успешной проверки.
         $global:steamGridDbApiKeyValid = $false
@@ -21592,8 +21860,10 @@ function Show-ProgramSettingsDialog {
     $swKeyPanel.Controls.Add($txtSteamKey)
     & $centerFieldText $txtSteamKey $swKeyPanel
 
-    if (-not [string]::IsNullOrWhiteSpace([string]$global:steamApiKey)) {
-        if ([bool]$global:steamApiKeyValid) {
+    $showSteamStartupBadge = {
+        if ([string]::IsNullOrWhiteSpace([string]$global:steamApiKey) -or $null -ne $script:startupJobs['Steam']) {
+            Set-ApiKeyValidationBadge $swKeyValidationBadge 'hidden' ''
+        } elseif ([bool]$global:steamApiKeyValid) {
             Set-ApiKeyValidationBadge $swKeyValidationBadge 'valid' (T 'key_valid')
         } else {
             $swStartupCheck = $global:steamApiKeyCheck
@@ -21601,9 +21871,33 @@ function Show-ProgramSettingsDialog {
             if ($swStartupCheck -ne $null -and ($swStartupCheck.Kind -eq 'invalid' -or $swStartupCheck.Kind -eq 'forbidden')) { $swStartupMsg += (T 'sw_key_new_key') }
             Set-ApiKeyValidationBadge $swKeyValidationBadge 'invalid' $swStartupMsg
         }
-    } else {
-        Set-ApiKeyValidationBadge $swKeyValidationBadge 'hidden' ''
     }
+    & $showSteamStartupBadge
+
+    # Результаты фоновой проверки ключей, которая ещё шла в момент открытия окна,
+    # подхватываем здесь, не блокируя интерфейс.
+    $keyPollTimer = New-Object System.Windows.Forms.Timer
+    $keyPollTimer.Interval = 300
+    $keyPollTimer.Add_Tick({
+        try { Complete-StartupKeyChecks } catch {}
+        if ($keyWatch.Sgdb -and $null -eq $script:startupJobs['Sgdb']) {
+            $keyWatch.Sgdb = $false
+            $keySnap.SgdbValid = [bool]$global:steamGridDbApiKeyValid
+            $keySnap.SgdbCheck = $global:steamGridDbApiKeyCheck
+            & $showSgdbStartupBadge
+        }
+        if ($keyWatch.Steam -and $null -eq $script:startupJobs['Steam']) {
+            $keyWatch.Steam = $false
+            $keySnap.SteamValid = [bool]$global:steamApiKeyValid
+            $keySnap.SteamCheck = $global:steamApiKeyCheck
+            & $showSteamStartupBadge
+        }
+        if (-not $keyWatch.Sgdb -and -not $keyWatch.Steam) { $keyPollTimer.Stop() }
+    })
+    $dlg.Add_FormClosed({
+        try { $keyPollTimer.Stop(); $keyPollTimer.Dispose() } catch {}
+    })
+    if ($keyWatch.Sgdb -or $keyWatch.Steam) { $keyPollTimer.Start() }
 
     $swKeyValidationTimer = New-Object System.Windows.Forms.Timer
     $swKeyValidationTimer.Interval = 650
@@ -21628,6 +21922,12 @@ function Show-ProgramSettingsDialog {
 
     $txtSteamKey.Add_TextChanged({
         $swKeyValidationTimer.Stop()
+        $keyWatch.Steam = $false
+        $oldSteamJob = $script:startupJobs['Steam']
+        if ($null -ne $oldSteamJob) {
+            $script:startupJobs['Steam'] = $null
+            try { [void]$oldSteamJob.Ps.BeginStop($null, $null) } catch {}
+        }
         $global:steamApiKeyValid = $false
         Set-ApiKeyValidationBadge $swKeyValidationBadge 'hidden' ''
         # Вернуть обычную подсказку по ключу (там мог остаться ответ на «Обновить»
@@ -22741,10 +23041,10 @@ function Show-ProgramSettingsDialog {
                 $global:steamUserId = $originalSteamUserId
                 $global:suggestGameLaunchers = $originalSuggestGameLaunchers
                 $global:useExeIcons = $originalUseExeIcons
-                $global:steamGridDbApiKeyValid = $originalSgdbKeyValid
-                $global:steamGridDbApiKeyCheck = $originalSgdbKeyCheck
-                $global:steamApiKeyValid = $originalSteamKeyValid
-                $global:steamApiKeyCheck = $originalSteamKeyCheck
+                $global:steamGridDbApiKeyValid = $keySnap.SgdbValid
+                $global:steamGridDbApiKeyCheck = $keySnap.SgdbCheck
+                $global:steamApiKeyValid = $keySnap.SteamValid
+                $global:steamApiKeyCheck = $keySnap.SteamCheck
             }
         } catch {}
     })
@@ -30960,7 +31260,7 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
                 }
             } elseif ($tileIsRom) {
                 $romEmuIcon = $null
-                try { $romEmuIcon = Get-LibEmulatorBadgeBitmap (Get-EmulatorProfileByExePath ([string]$entry.Exe)) } catch { $romEmuIcon = $null }
+                try { $romEmuIcon = Get-LibEmulatorBadgeBitmap (Get-EntryEmulatorProfile $entry) } catch { $romEmuIcon = $null }
                 if ($null -ne $romEmuIcon) { Add-LauncherBadgeToPictureBox $pic $romEmuIcon 22 6 }
             }
         } catch {}
@@ -31394,7 +31694,8 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
                     # которая лежит в StartDir/Path этого ярлыка.
                     $romFile = Get-RomPathFromLaunchOptions $entry
                     if (-not [string]::IsNullOrWhiteSpace($romFile)) {
-                        try { $path = [System.IO.Path]::GetDirectoryName($romFile) } catch {}
+                        if (Test-Path -LiteralPath $romFile -PathType Leaf) { $path = $romFile }
+                        else { try { $path = [System.IO.Path]::GetDirectoryName($romFile) } catch {} }
                     }
                 }
                 if ([string]::IsNullOrWhiteSpace($path)) {
@@ -31605,7 +31906,7 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
                     if ($showRom) {
                         # Значок эмулятора — отдельно, справа от «ROM» (размер как у значка лаунчера).
                         $romHoverIcon = $null
-                        try { $romHoverIcon = Get-LibEmulatorBadgeBitmap (Get-EmulatorProfileByExePath ([string]$entry.Exe)) } catch { $romHoverIcon = $null }
+                        try { $romHoverIcon = Get-LibEmulatorBadgeBitmap (Get-EntryEmulatorProfile $entry) } catch { $romHoverIcon = $null }
                         if ($null -ne $romHoverIcon) {
                             $libHoverLauncherIcon.BackColor = [System.Drawing.Color]::Transparent
                             $libHoverLauncherIcon.Image = $romHoverIcon
@@ -32005,7 +32306,7 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
                             if ($tileIsRom) {
                                 # Значок эмулятора — отдельно, в углу (как значки лаунчеров, 22 px); «ROM» стоит слева от него.
                                 $romEmuIcon = $null
-                                try { $romEmuIcon = Get-LibEmulatorBadgeBitmap (Get-EmulatorProfileByExePath ([string]$entry.Exe)) } catch { $romEmuIcon = $null }
+                                try { $romEmuIcon = Get-LibEmulatorBadgeBitmap (Get-EntryEmulatorProfile $entry) } catch { $romEmuIcon = $null }
                                 if ($null -ne $romEmuIcon) {
                                     Add-LauncherBadgeToPictureBox $pic $romEmuIcon 22 6
                                     $nsb.Location = New-Object System.Drawing.Point(([int]$script:libTileInnerW - 6 - 22 - 4 - [int]$nsb.Width), 9)
@@ -33247,7 +33548,7 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
     }
 
     $searchTimer = New-Object System.Windows.Forms.Timer
-    $searchTimer.Interval = 150
+    $searchTimer.Interval = 300
     $searchTimer.Add_Tick({
         try { $searchTimer.Stop() } catch {}
         $fastOk = $false
@@ -33455,6 +33756,170 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
     try { Initialize-FormForSmallScreen -Form $dlg -Owner $form } catch {}
     Write-Tm 'окно построено, перед ShowDialog (создание всех контролов)'
     $dlg.ShowDialog($form) | Out-Null
+}
+
+# ===================== КАРТОЧКА ИГРЫ ИЗ БИБЛИОТЕКИ: ЧТЕНИЕ ТОЛЬКО С ДИСКА =====================
+# Карточка уже добавленной игры не должна ходить в сеть: название — из ярлыка, обложки — из
+# config\grid, App ID и список регионов — из cover_sources\<id>.json, официальные картинки
+# лицензионных игр — из локального кэша клиента Steam. Сеть нужна только при добавлении игры
+# и при изменении информации/обложек.
+
+# Поиск App ID ТОЛЬКО в локальной базе Steam (Настройки -> Steam Web API). Без сети.
+# Неоднозначное совпадение (несколько одноимённых игр) не угадываем — вернётся $null.
+function Find-SteamAppInfoLocal ($gameName) {
+    try {
+        if ([string]::IsNullOrWhiteSpace([string]$gameName)) { return $null }
+        if (-not [SteamAppsIndex]::EnsureLoaded([string]$global:steamAppsDbFile)) { return $null }
+        $exact = @([SteamAppsIndex]::FindExact([string]$gameName, 6))
+        if ($exact.Count -eq 0) { return $null }
+        $clean = @($exact | Where-Object { -not $_.Junk })
+        if ($clean.Count -gt 1) { return $null }
+        $pick = $exact[0]
+        if ($clean.Count -eq 1) { $pick = $clean[0] }
+        return [PSCustomObject]@{ Id = [string]$pick.AppId; Name = [string]$pick.Name }
+    } catch { return $null }
+}
+
+# Эвристика «чёрная иконка»: старые _icon.png в grid (битое ico->png) бывают полностью чёрными.
+function Test-ImageMostlyBlack ([string]$path) {
+    $ms = $null; $img = $null; $bmp = $null
+    try {
+        if ([string]::IsNullOrWhiteSpace($path) -or -not (Test-Path -LiteralPath $path -PathType Leaf)) { return $false }
+        $bytes = [System.IO.File]::ReadAllBytes($path)
+        $ms = New-Object System.IO.MemoryStream(,$bytes)
+        $img = [System.Drawing.Image]::FromStream($ms)
+        $bmp = New-Object System.Drawing.Bitmap($img)
+        $opaque = 0
+        for ($gx = 0; $gx -lt 8; $gx++) {
+            for ($gy = 0; $gy -lt 8; $gy++) {
+                $px = [int][Math]::Min($bmp.Width - 1, [Math]::Floor(($gx + 0.5) * $bmp.Width / 8.0))
+                $py = [int][Math]::Min($bmp.Height - 1, [Math]::Floor(($gy + 0.5) * $bmp.Height / 8.0))
+                $c = $bmp.GetPixel($px, $py)
+                if ($c.A -gt 16) {
+                    $opaque++
+                    if (([int]$c.R + [int]$c.G + [int]$c.B) -gt 24) { return $false }
+                }
+            }
+        }
+        return ($opaque -ge 8)
+    } catch { return $false }
+    finally {
+        try { if ($null -ne $bmp) { $bmp.Dispose() } } catch {}
+        try { if ($null -ne $img) { $img.Dispose() } } catch {}
+        try { if ($null -ne $ms) { $ms.Dispose() } } catch {}
+    }
+}
+
+# Иконка из ЛОКАЛЬНОГО кэша клиента Steam -> temp_icon.*. Сеть не используется.
+function Set-TempIconFromLocalSteamCache ([string]$appId) {
+    try {
+        if ([string]::IsNullOrWhiteSpace($appId) -or $appId -notmatch '^\d+$') { return $false }
+        $localIcon = Get-LocalSteamLibraryIconPath $appId
+        if ([string]::IsNullOrWhiteSpace($localIcon) -or -not (Test-Path -LiteralPath $localIcon -PathType Leaf)) { return $false }
+        if (-not (Test-Path $global:tempCovers)) { New-Item -ItemType Directory -Path $global:tempCovers -Force | Out-Null }
+        foreach ($n in @('temp_icon.ico','temp_icon.png','temp_icon.jpg')) {
+            Remove-Item -LiteralPath (Join-Path $global:tempCovers $n) -Force -ErrorAction SilentlyContinue
+        }
+        $ext = [System.IO.Path]::GetExtension($localIcon).ToLowerInvariant()
+        $dest = Join-Path $global:tempCovers ('temp_icon' + $(if ($ext -in @('.jpg','.jpeg')) { '.jpg' } elseif ($ext -eq '.ico') { '.ico' } else { '.png' }))
+        Copy-Item -LiteralPath $localIcon -Destination $dest -Force -ErrorAction Stop
+        return $true
+    } catch { return $false }
+}
+
+# hero / logo из appcache\librarycache клиента Steam (старый плоский и новый формат с подпапками).
+function Get-LocalSteamLibraryAssetPath ([string]$appId, [string]$kind) {
+    if ([string]::IsNullOrWhiteSpace($appId) -or $appId -notmatch '^\d+$') { return $null }
+    try {
+        $steamRoot = Get-ConfiguredSteamInstallPath
+        if ([string]::IsNullOrWhiteSpace($steamRoot)) { return $null }
+        $cache = Join-Path $steamRoot 'appcache\librarycache'
+        if (-not (Test-Path -LiteralPath $cache -PathType Container)) { return $null }
+        $id = $appId.Trim()
+        $namePat = '(?i)hero'
+        if ($kind -eq 'logo') { $namePat = '(?i)logo' }
+        $files = New-Object System.Collections.Generic.List[object]
+        $appDir = Join-Path $cache $id
+        if (Test-Path -LiteralPath $appDir -PathType Container) {
+            foreach ($f in @(Get-ChildItem -LiteralPath $appDir -Recurse -File -ErrorAction SilentlyContinue)) { [void]$files.Add($f) }
+        }
+        foreach ($f in @(Get-ChildItem -LiteralPath $cache -File -Filter ($id + '_*') -ErrorAction SilentlyContinue)) { [void]$files.Add($f) }
+        $best = $null; $bestScore = 99
+        foreach ($f in $files) {
+            $n = [string]$f.Name
+            if ($n -notmatch '(?i)\.(jpe?g|png)$') { continue }
+            if ($f.Length -lt 2048) { continue }
+            if ($n -notmatch $namePat) { continue }
+            if ($n -match '(?i)blur') { continue }
+            if ($kind -eq 'logo' -and $n -match '(?i)icon') { continue }
+            $score = 0
+            if ($n -match '(?i)_2x') { $score = 1 }
+            if ($null -eq $best -or $score -lt $bestScore -or ($score -eq $bestScore -and $f.Length -gt $best.Length)) {
+                $best = $f; $bestScore = $score
+            }
+        }
+        if ($null -ne $best) { return [string]$best.FullName }
+    } catch {}
+    return $null
+}
+
+# Официальные картинки лицензионной игры из локального кэша Steam -> temp_*.
+# Возвращает hashtable с ключами p / header / hero / logo / icon для найденных файлов.
+function Copy-LocalSteamLibraryCoversToTemp ([string]$appId) {
+    $loaded = @{}
+    if ([string]::IsNullOrWhiteSpace($appId) -or $appId -notmatch '^\d+$') { return $loaded }
+    if (-not (Test-Path $global:tempCovers)) { New-Item -ItemType Directory -Path $global:tempCovers -Force | Out-Null }
+
+    $copyOne = {
+        param([string]$key, [string]$src, [string]$dstName, [string]$shape)
+        if ([string]::IsNullOrWhiteSpace($src) -or -not (Test-Path -LiteralPath $src -PathType Leaf)) { return }
+        # Форма: p — портрет, wide — широкая. Не кладём широкую картинку в портретный слот и наоборот.
+        if ($shape -eq 'p' -or $shape -eq 'wide') {
+            try {
+                $sz = Get-ImageSizeFast $src
+                if ($null -ne $sz) {
+                    $w = [int]$sz[0]; $h = [int]$sz[1]
+                    if ($shape -eq 'p' -and $w -gt ($h * 1.15)) { return }
+                    if ($shape -eq 'wide' -and $h -gt ($w * 1.15)) { return }
+                }
+            } catch {}
+        }
+        try {
+            Copy-Item -LiteralPath $src -Destination (Join-Path $global:tempCovers $dstName) -Force -ErrorAction Stop
+            $loaded[$key] = $true
+        } catch {}
+    }
+
+    $srcP = $null; $srcH = $null; $srcHero = $null; $srcLogo = $null
+    try { $srcP = [string](Get-LibraryCoverPath $appId) } catch {}
+    try { $srcH = [string](Get-LibraryHeaderPath $appId) } catch {}
+    try { $srcHero = [string](Get-LocalSteamLibraryAssetPath $appId 'hero') } catch {}
+    try { $srcLogo = [string](Get-LocalSteamLibraryAssetPath $appId 'logo') } catch {}
+    & $copyOne 'p'      $srcP    'temp_p.jpg'      'p'
+    & $copyOne 'header' $srcH    'temp_header.jpg' 'wide'
+    & $copyOne 'hero'   $srcHero 'temp_hero.jpg'   'wide'
+    & $copyOne 'logo'   $srcLogo 'temp_logo.png'   ''
+    if (Set-TempIconFromLocalSteamCache $appId) { $loaded['icon'] = $true }
+    return $loaded
+}
+
+# Данные, которые карточка дописывает в cover_sources\<id>.json при сохранении.
+# Список регионов не пишем, пока он не загружен полностью (показан только текущий регион).
+function New-CoverMetaExtra ($editorState, $btnCoverLang, [string]$idValue, [string]$idSource) {
+    $extra = @{}
+    try {
+        if (-not [string]::IsNullOrWhiteSpace($idValue) -and $idValue -match '^\d+$') {
+            $extra['appId'] = $idValue
+            $extra['idSource'] = $idSource
+        }
+    } catch {}
+    try {
+        if ($idSource -eq 'Steam' -and -not [bool]$editorState.LangListPending) {
+            $codes = @($btnCoverLang.Tag.Codes | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+            if ($codes.Count -gt 0) { $extra['langs'] = @($codes) }
+        }
+    } catch {}
+    return $extra
 }
 
 function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode = $false, $batchHost = $null, $libraryEntry = $null, $ownerWin = $null, [bool]$IsRomEntry = $false, $LauncherEntry = $null) {
@@ -35655,6 +36120,20 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
         if($editorState.SearchSource -ne 'Steam'){ return }
         $appId = $txtId.Text.Trim()
         if($appId -notmatch '^\d+$'){ $status.Text = (T 'covlang_no_appid'); return }
+        if ($editorState.LangListPending) {
+            # Карточка открыта без сети и знает только текущий регион. Клик по кнопке — это действие
+            # по изменению обложек: подгружаем полный список регионов и перерисовываем кнопки.
+            $editorState.LangListPending = $false
+            $editorState | Add-Member -NotePropertyName LangLazyAppId -NotePropertyValue $appId -Force
+            try {
+                $dlg.BeginInvoke([Action]{
+                    try {
+                        $avLazy = @(Get-SteamPicsAvailableLanguages ([string]$editorState.LangLazyAppId))
+                        if ($avLazy.Count -gt 0) { & $renderCoverLanguages $avLazy ([string]$btnCoverLang.Tag.Lang) }
+                    } catch {}
+                }) | Out-Null
+            } catch {}
+        }
         if([string]$btnCoverLang.Tag.Lang -eq $newLang){ return }
 
         # 1) Сразу подсвечиваем кнопку региона — до любой сети.
@@ -36723,7 +37202,16 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
         # В режиме редактирования Copy-ExistingShortcutCoversToTemp ниже всё равно
         # перезапишет их обложками существующего ярлыка.
         Clear-TempCoverFiles
-        $status.Text=if($editorState.SearchSource -eq 'Steam'){(T 'st_resolving_steam')}else{(T 'st_resolving_sgdb')}
+        # Игра уже в библиотеке (ярлык или лицензионная): всё читаем с диска, без обращения к сети.
+        $offlineOpen = ($editMode -and ($licensedMode -or $null -ne $existingShortcut))
+        $savedMeta = $null
+        if ($offlineOpen) {
+            try {
+                $metaKeyOpen = if ($licensedMode) { [string]$licensedAppId } else { [string]$existingShortcut.ShortcutId }
+                $savedMeta = Get-CoverSourcesMetadata $metaKeyOpen
+            } catch { $savedMeta = $null }
+        }
+        $status.Text=if($offlineOpen){''}elseif($editorState.SearchSource -eq 'Steam'){(T 'st_resolving_steam')}else{(T 'st_resolving_sgdb')}
         # Анимацию включаем сразу при открытии карточки: определение App ID —
         # тоже часть пути к миниатюрам, и до конца этого пути слот показывает
         # спиннер, а не крест. Крест появится только в ветке "App ID не
@@ -36753,7 +37241,33 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
             # ROM-карточка никогда не переключается на Steam: при открытии
             # название и обложки определяются только через SteamGridDB.
             if ($IsRomEntry) { $editorState.SearchSource = 'SteamGridDB' }
-            if($editorState.SearchSource -eq 'Steam') {
+            if ($offlineOpen) {
+                # Название уже стоит в поле (из ярлыка / библиотеки) — не перезапрашиваем его в Steam.
+                # App ID: лицензионная — известен; иначе из cover_sources, иначе локальная база Steam.
+                $idLocal = ''
+                if ($licensedMode -and ($licensedAppId -match '^\d+$')) { $idLocal = [string]$licensedAppId }
+                elseif ($null -ne $savedMeta) {
+                    $savedIdVal = ''; $savedIdSrc = 'Steam'
+                    try { if ($null -ne $savedMeta.appId) { $savedIdVal = [string]$savedMeta.appId } } catch {}
+                    try { if (-not [string]::IsNullOrWhiteSpace([string]$savedMeta.idSource)) { $savedIdSrc = [string]$savedMeta.idSource } } catch {}
+                    if ($savedIdVal -match '^\d+$' -and $savedIdSrc -eq [string]$editorState.SearchSource) { $idLocal = $savedIdVal }
+                }
+                if ([string]::IsNullOrWhiteSpace($idLocal) -and $editorState.SearchSource -eq 'Steam' -and -not $licensedMode) {
+                    $qNames = @()
+                    try { if (-not [string]::IsNullOrWhiteSpace([string]$gamePath)) { $qNames += [System.IO.Path]::GetFileName(([string]$gamePath).TrimEnd('\')) } } catch {}
+                    try { if ($null -ne $existingShortcut) { $qNames += [string]$existingShortcut.AppName } } catch {}
+                    $qNames += $txtTitle.Text.Trim()
+                    foreach ($qn in $qNames) {
+                        if ([string]::IsNullOrWhiteSpace([string]$qn)) { continue }
+                        $lf = Find-SteamAppInfoLocal $qn
+                        if ($null -ne $lf) { $idLocal = [string]$lf.Id; break }
+                    }
+                }
+                if (-not [string]::IsNullOrWhiteSpace($idLocal)) {
+                    $txtId.Text = $idLocal
+                    $found = [PSCustomObject]@{ Id = $idLocal; Name = [string]$txtTitle.Text }
+                }
+            } elseif($editorState.SearchSource -eq 'Steam') {
                 if ($licensedMode -and ($licensedAppId -match '^\d+$')) {
                     $found = [PSCustomObject]@{ Id = $licensedAppId; Name = $gameName }
                 } elseif($editMode -and $existingShortcut -ne $null) {
@@ -36795,7 +37309,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
             }
         }
         if($global:editorLoadAbortRequested -or $dlg.IsDisposed -or $dlg.Disposing){ return }
-        $titleConfidentInitial = if($editorState.SearchSource -eq 'Steam'){ $found -ne $null } else { (@($candidates).Count -gt 0) }
+        $titleConfidentInitial = if($offlineOpen){ $true } elseif($editorState.SearchSource -eq 'Steam'){ $found -ne $null } else { (@($candidates).Count -gt 0) }
         Set-ConfidenceBadge $titleConfidenceBadge $titleConfidentInitial (T 'badge_title_ok') (T 'badge_title_fail_auto')
         # Название уже подставлено выше — сразу отдаём кадр UI, не дожидаясь обложек.
         try {
@@ -36809,9 +37323,24 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
         # Активна кнопка региона из «Настроек», если он есть у игры; иначе english.
         try {
             if($editorState.SearchSource -eq 'Steam' -and $txtId.Text -match '^\d+$'){
-                $availEarly = @(Get-SteamPicsAvailableLanguages $txtId.Text.Trim())
+                $availEarly = @()
+                $savedLangEarly = ''
+                if ($offlineOpen) {
+                    try { if ($null -ne $savedMeta -and $null -ne $savedMeta.langs) { $availEarly = @($savedMeta.langs | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) } } catch {}
+                    try { if ($null -ne $savedMeta -and -not [string]::IsNullOrWhiteSpace([string]$savedMeta.lang)) { $savedLangEarly = [string]$savedMeta.lang } } catch {}
+                    if ($availEarly.Count -eq 0) {
+                        # Полный список регионов для этой игры ещё не сохранён: показываем только текущий,
+                        # остальные подгрузятся по клику на нём (это уже действие по изменению обложек).
+                        if ([string]::IsNullOrWhiteSpace($savedLangEarly)) { $savedLangEarly = 'english' }
+                        $availEarly = @($savedLangEarly)
+                        $editorState | Add-Member -NotePropertyName LangListPending -NotePropertyValue $true -Force
+                    }
+                } else {
+                    $availEarly = @(Get-SteamPicsAvailableLanguages $txtId.Text.Trim())
+                }
                 if ($availEarly.Count -eq 0) { $availEarly = @('english') }
                 $preferEarly = [string](Get-SteamAssetLanguage)
+                if ($offlineOpen -and -not [string]::IsNullOrWhiteSpace($savedLangEarly)) { $preferEarly = $savedLangEarly }
                 if ($availEarly -contains $preferEarly) { $activeEarly = $preferEarly }
                 elseif ($availEarly -contains 'english') { $activeEarly = 'english' }
                 else { $activeEarly = [string]$availEarly[0] }
@@ -36822,7 +37351,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
 
         # Значок exe определяем ДО загрузки обложек: подсказка Steam нужна
         # только App ID, который уже известен, и не должна ждать миниатюры.
-        try { & $tryApplySteamExeHint $txtId.Text.Trim() } catch {}
+        if (-not $offlineOpen) { try { & $tryApplySteamExeHint $txtId.Text.Trim() } catch {} }
         try { [System.Windows.Forms.Application]::DoEvents() } catch {}
         if($global:editorLoadAbortRequested -or $dlg.IsDisposed -or $dlg.Disposing){ return }
 
@@ -36861,7 +37390,14 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
                         $iconFromSaved = ($IsRomEntry -or ([string]$editorState.SearchSource -ne 'Steam'))
                         $appForIcon = $txtId.Text.Trim()
                         if ((-not $iconFromSaved) -and $appForIcon -match '^\d+$') {
-                            try { Download-SteamIconToTemp $appForIcon $true | Out-Null } catch {}
+                            # Без сети: берём сохранённую иконку из grid. Если её нет или она «чёрная» (битая) —
+                            # подменяем иконкой из локального кэша клиента Steam (если она там есть).
+                            try {
+                                $savedIconPath = Get-TempIconPath
+                                if ($null -eq $savedIconPath -or (Test-ImageMostlyBlack $savedIconPath)) {
+                                    [void](Set-TempIconFromLocalSteamCache $appForIcon)
+                                }
+                            } catch {}
                         }
                         $iconSource = 'Steam'
                         if ($iconFromSaved) {
@@ -36897,6 +37433,42 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
             # загружены выше из userdata\<account>\config\grid. НИЧЕГО не
             # очищаем и не заменяем их повторной загрузкой по App ID.
             Stop-EditorLoading $slots $dlg
+        } elseif($offlineOpen){
+            # Игра из библиотеки без сохранённых обложек в grid: сеть не трогаем.
+            # Лицензионная — официальные картинки из локального кэша клиента Steam; иначе пустые слоты
+            # (клик по слоту загрузит варианты — это уже изменение обложки).
+            $offlineMissingSlots = New-Object System.Collections.ArrayList
+            try {
+                if ($licensedMode -and $licensedAppId -match '^\d+$') {
+                    foreach($s in $slots.Values){ try { $s.ExpectedSource = 'Steam' } catch {} }
+                    $locLoaded = Copy-LocalSteamLibraryCoversToTemp $licensedAppId
+                    $locMap = @(
+                        @{ Key = 'p';      Slot = $slots.Vertical;   File = 'temp_p.jpg' },
+                        @{ Key = 'header'; Slot = $slots.Horizontal; File = 'temp_header.jpg' },
+                        @{ Key = 'hero';   Slot = $slots.Hero;       File = 'temp_hero.jpg' },
+                        @{ Key = 'logo';   Slot = $slots.Logo;       File = 'temp_logo.png' }
+                    )
+                    $locShown = 0
+                    foreach ($lm in $locMap) {
+                        if ($locLoaded.ContainsKey($lm.Key) -and (Set-EditorPreviewFile $lm.Slot (Join-Path $global:tempCovers $lm.File))) {
+                            Set-EditorSourceBadge $lm.Slot 'Steam'
+                            $locShown++
+                        } else { [void]$offlineMissingSlots.Add($lm.Slot) }
+                    }
+                    if ($null -ne $slots.Icon) {
+                        $locIcon = Get-TempIconPath
+                        if ($locLoaded.ContainsKey('icon') -and $null -ne $locIcon -and (Set-EditorPreviewFile $slots.Icon $locIcon)) {
+                            Set-EditorSourceBadge $slots.Icon 'Steam'
+                            $locShown++
+                        } else { [void]$offlineMissingSlots.Add($slots.Icon) }
+                    }
+                    if ($locShown -gt 0) { $status.Text = (T 'st_covers_loaded') }
+                } else {
+                    foreach($sl in $slots.Values){ [void]$offlineMissingSlots.Add($sl) }
+                }
+            } catch {}
+            Stop-EditorLoading $slots $dlg
+            foreach($sl in $offlineMissingSlots){ try { Set-EditorPreviewFile $sl $null | Out-Null } catch {} }
         } elseif($txtId.Text -match '^\d+$'){
             if($editorState.SearchSource -eq 'Steam') {
                 Load-EditorSteamPreviews $txtId.Text.Trim() $slots $status $licensedMode
@@ -36959,7 +37531,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
             $coverLangPanel = Get-EditorCoverLanguagePanel $dlg
             if($editorState.SearchSource -eq 'Steam' -and $txtId.Text -match '^\d+$' -and $null -ne $coverLangPanel){
                 $avail = @($coverLangPanel.Tag.Codes)
-                if(@($avail).Count -eq 0){
+                if(@($avail).Count -eq 0 -and -not $offlineOpen){
                     $avail = @(Get-SteamPicsAvailableLanguages $txtId.Text.Trim())
                     if ($avail.Count -eq 0) { $avail = @('english') }
                     $prefer = [string](Get-SteamAssetLanguage)
@@ -36976,7 +37548,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
         # Подсказка exe из Steam — теперь через переиспользуемый блок
         # $tryApplySteamExeHint (см. его определение выше), чтобы её можно было
         # так же вызвать позже, при последующих подтверждениях App ID.
-        & $tryApplySteamExeHint $txtId.Text.Trim()
+        if (-not $offlineOpen) { & $tryApplySteamExeHint $txtId.Text.Trim() }
         # Лицензионная игра: EXE только для просмотра и нигде не сохраняется,
         # поэтому красный "!" не имеет смысла — считаем поле подтверждённым.
         if ($licensedMode -and -not $editorState.ExeConfirmed) {
@@ -37009,6 +37581,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
         # Положение логотипа: у готового ярлыка и лицензионной игры берём сохранённое в
         # config\librarycache\<id>.json, чтобы карточка открывалась с прежними значениями.
         # Снимок отпечатка берём после этого - «не трогали» значит «равно тому, что открылось».
+        $savedLogoPos = $null
         try {
             $logoCacheId = ''
             if ($licensedMode) { $logoCacheId = [string]$licensedAppId }
@@ -37018,10 +37591,11 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
                 if ($null -ne $savedLogoPos) { Set-EditorLogoStateFromCache $slots.Hero $savedLogoPos }
             }
         } catch {}
-        # Галочка «по умолчанию» включена - карточка (в том числе новая и для рома) открывается с общими
-        # положением и размером логотипа вместо сохранённых у конкретной игры.
+        # Галочка «по умолчанию» включена - новая карточка (и игра, у которой своего положения ещё нет)
+        # открывается с общими положением и размером логотипа. Если у игры/рома уже есть сохранённое
+        # положение, показываем его, а не общее: иначе карточка врёт, а сохранение затирает своё значение.
         try {
-            if ($script:LogoComposeEnabled -and $null -ne $slots.Hero.PSObject.Properties['ComposeLogo']) {
+            if ($null -eq $savedLogoPos -and $script:LogoComposeEnabled -and $null -ne $slots.Hero.PSObject.Properties['ComposeLogo']) {
                 $logoDefOpen = Get-LogoDefaultPosition
                 if ($null -ne $logoDefOpen) {
                     Set-EditorLogoStateFromCache $slots.Hero $logoDefOpen
@@ -37250,7 +37824,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
                 if ($hasCovers) {
                     try { $coversSaved = [bool](Copy-TempCoversDirectlyToGrid $appIdSave) } catch { $coversSaved=$false }
                     if ($coversSaved) {
-                        try { Save-CoverSourcesMetadata ([string]$appIdSave) $slots ([string]$btnCoverLang.Tag.Lang) | Out-Null } catch {}
+                        try { Save-CoverSourcesMetadata ([string]$appIdSave) $slots ([string]$btnCoverLang.Tag.Lang) (New-CoverMetaExtra $editorState $btnCoverLang ([string]$appIdSave) 'Steam') | Out-Null } catch {}
                     }
                 }
                 $status.Text=if($coversSaved){(T 'st_done_saved_covers')}elseif($hasCovers){(T 'st_saved_no_covers')}else{(T 'st_done_saved')}
@@ -37298,7 +37872,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
                     if($coversSaved){
                         try {
                             $newShortcutId=[string]$freshShortcutAfterSave.ShortcutId
-                            Save-CoverSourcesMetadata $newShortcutId $slots ([string]$btnCoverLang.Tag.Lang) | Out-Null
+                            Save-CoverSourcesMetadata $newShortcutId $slots ([string]$btnCoverLang.Tag.Lang) (New-CoverMetaExtra $editorState $btnCoverLang ([string]$txtId.Text.Trim()) ([string]$editorState.SearchSource)) | Out-Null
                             $oldShortcutId=[string]$existingShortcut.ShortcutId
                             if(-not [string]::IsNullOrWhiteSpace($oldShortcutId) -and $oldShortcutId -ne $newShortcutId){ Remove-CoverSourcesMetadata $oldShortcutId }
                         } catch {}
@@ -37364,7 +37938,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
             try { $logoPosNew = Get-EditorLogoPositionToSave $editorState $false } catch {}
             if($hasCovers){
                 try { Copy-TempCoversDirectlyToGrid $newId $logoPosNew | Out-Null } catch {}
-                try { Save-CoverSourcesMetadata ([string]$newId) $slots ([string]$btnCoverLang.Tag.Lang) | Out-Null } catch {}
+                try { Save-CoverSourcesMetadata ([string]$newId) $slots ([string]$btnCoverLang.Tag.Lang) (New-CoverMetaExtra $editorState $btnCoverLang ([string]$txtId.Text.Trim()) ([string]$editorState.SearchSource)) | Out-Null } catch {}
             } elseif ($null -ne $logoPosNew) {
                 try { [void](Set-SteamLogoPositionForAllProfiles ([string]$newId) $logoPosNew) } catch {}
             }
