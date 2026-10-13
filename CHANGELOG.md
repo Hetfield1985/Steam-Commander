@@ -6,6 +6,32 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [2.0.7] - 2026-10-13
+
+### Added
+* **Quick emulator switch for ROMs already in Steam.** Right-click a ROM tile in *Library / Import* → **Switch emulator** (or **Switch for all "X" games**); no card is needed, only `Exe`, the working folder and the launch options change, while the title, covers and icon stay. Works for all ticked ROMs, asks for confirmation if the ROM extension does not fit the new emulator, and opens a core picker with search for RetroArch. The same is available from the *Switch emulator* button of the library toolbar and from the main window (in ROMs mode, when only games already in Steam are ticked, the main button switches them to the emulator chosen under *Refresh*).
+* **Steam restart mode (Settings):** *Automatically* (as before) or *Manually*. In the manual mode the program asks you to close Steam, writes `shortcuts.vdf` and writes it again after Steam exits (Steam overwrites it from memory when it quits). A **Restart Steam** button on the main window restarts it for you.
+* **Filter by emulator in Library / Import:** a tick for the ROM games of each emulator, **Undetected** for ROMs with an unknown emulator, and **Hide all**.
+
+### Changed
+* The *Filter*, *Select all* and *Deselect all* buttons of the library are icons now. The right mouse button no longer opens a card or ticks a tile (it opens the ROM context menu).
+* The emulator dialog and the Settings window are aligned (28 px fields and folder button).
+* Moving games, adding games and saving a card respect the Steam restart mode.
+* Application version is now 2.0.7.
+
+### Improved
+* The ROM context menu opens at once, and the launcher filter no longer freezes the library (launcher games are indexed by path once).
+
+### Fixed
+* **ROMs with an `.ico` icon had no icon in the panels** (the archive placeholder was shown) although the icon was present in Steam, in the card and in `config\grid`. The panel now reads icons the same way as the card (by content, not by extension) and tries the neighbouring `<appid>_icon.*` files if one cannot be read.
+* ROM shortcuts without an icon in `config\grid` take it from the Steam client cache (`appcache\librarycache`).
+* ROMs inside a game folder (Switch, Wii U) are marked correctly: separately added ROM files get the "in library" tick, not the folder.
+* A logo hidden with the eye could be lost after saving. A copy is now kept in `%AppData%\Steam Commander\hidden_logos`, so the logo can be switched back on when the card is opened again.
+* The default logo position and size apply at once when the lock is pressed.
+* Changes waiting for Steam to close are no longer lost when the program is closed.
+
+---
+
 ## [2.0.6] - 2026-10-11
 
 ### Added
