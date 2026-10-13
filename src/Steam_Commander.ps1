@@ -905,7 +905,7 @@ Set-SplashProgress 0.52
 # Единая версия приложения — используется в заголовке главного окна, в
 # подписи внизу окна настроек и в User-Agent HTTP-запросов. Меняйте только
 # здесь при выпуске новой версии.
-$global:appVersion = "2.0.6"
+$global:appVersion = "2.0.7"
 $global:appTitle = "Steam Commander"
 # Ссылки на исходный код и поддержку автора (окно «Поддержать» в настройках). Меняйте только здесь.
 $global:appRepoUrl = "https://github.com/Hetfield1985/Steam-Commander"
@@ -968,6 +968,8 @@ $script:I18n = @{
         btn_add_batch = 'Добавить выбранные игры в библиотеку'
         btn_add_batch_n = 'Добавить выбранные игры в библиотеку ({0})'
         btn_steam_library = 'Библиотека / Импорт'
+        btn_swap_emulator = 'Сменить эмулятор на {0} ({1})'
+        rom_swap_not_added = 'нет ярлыка в Steam'
         lib_browser_title = 'Библиотека/Импорт'
         lib_loading = 'Загрузка библиотеки…'
         lib_empty = 'В библиотеке Steam пока нет игр.'
@@ -993,8 +995,11 @@ $script:I18n = @{
         lib_filter_btn = 'Фильтр'
         lib_filter_src = 'Показывать игры'
         lib_filter_launchers = 'Из лаунчеров'
+        lib_filter_emus = 'Эмуляторы (ROM)'
+        lib_filter_emu_undef = 'Не определены'
         lib_filter_only_libs = 'Только с библиотеками апскейлеров'
         lib_filter_reset = 'Показать все'
+        lib_filter_hide = 'Скрыть все'
         lib_restore_tip = 'Вернуть в выбранных играх оригинальные DLL апскейлеров из сохранённых копий (.sc_orig). Копии остаются рядом, поэтому позже игры можно снова обновить.'
         lib_restore_confirm = 'Вернуть оригинальные библиотеки апскейлеров в выбранных играх: {0}.'
         lib_restore_confirm2 = 'Файлы будут заменены копиями .sc_orig, созданными перед обновлением. Закройте игры перед возвратом.'
@@ -1055,6 +1060,15 @@ $script:I18n = @{
         set_profile_unknown = 'Эта папка не соответствует ни одному аккаунту Steam на этом компьютере (нет записи в loginusers.vdf).'
         set_profile_unknown_short = 'не аккаунт Steam'
         set_exe_filter = 'EXE'
+        set_steam_restart = 'Перезапуск'
+        set_restart_auto = 'Автоматически'
+        set_restart_manual = 'Вручную (Steam перезапускаю сам)'
+        steam_pending_note = 'Перезапустите Steam для применения изменений'
+        steam_pending_applied = 'Изменения применены. Теперь можно запускать Steam.'
+        btn_restart_steam = 'Перезапустить Steam'
+        steam_restarted = 'Steam перезапущен'
+        steam_wait_msg = 'Steam запущен. Закройте Steam (значок в трее → Выход): программа продолжит сама, как только он закроется. После записи Steam запустите сами.'
+        steam_close_cancelled = 'Отменено: Steam не был закрыт'
         set_offer_launchers = 'Предлагать лаунчеры'
         set_use_exe_icons = 'Использовать иконки из EXE'
         icon_exe_back_tip = 'Вернуть иконку, которая была до EXE'
@@ -1334,6 +1348,16 @@ $script:I18n = @{
         hd_card_err = 'Ошибка открытия карточки: {0}'
         emu_dlg_new = 'Новый эмулятор'
         emu_dlg_edit = 'Изменить эмулятор'
+        rom_swap_menu = 'Сменить эмулятор'
+        rom_swap_menu_sel = 'Сменить эмулятор у выбранных ({0})'
+        rom_swap_menu_all = 'Сменить у всех игр «{0}» ({1})'
+        rom_swap_done = 'Эмулятор «{1}» назначен играм: {0}.'
+        rom_swap_skipped = 'Пропущено: {0}'
+        rom_swap_fail = 'Не удалось изменить игр: {0}. {1}'
+        rom_swap_no_rom = 'файл ROM не найден'
+        rom_swap_mismatch = 'Расширение ROM не входит в список расширений эмулятора «{1}» (игр: {0}). Всё равно сменить эмулятор?'
+        rom_swap_confirm = 'Назначить эмулятор «{1}» играм: {0}? Steam будет закрыт и запущен заново.'
+        rom_swap_core_profile = 'Ядро из аргументов профиля'
         emu_lbl_name = 'Название:'
         emu_lbl_exe = 'Файл эмулятора:'
         emu_ofd_title = 'Выбор эмулятора (.exe)'
@@ -1460,6 +1484,8 @@ $script:I18n = @{
         btn_add_batch = 'Add selected games to library'
         btn_add_batch_n = 'Add selected games to library ({0})'
         btn_steam_library = 'Library / Import'
+        btn_swap_emulator = 'Switch emulator to {0} ({1})'
+        rom_swap_not_added = 'no shortcut in Steam'
         lib_browser_title = 'Library/Import'
         lib_loading = 'Loading library…'
         lib_empty = 'No games in the Steam library yet.'
@@ -1485,8 +1511,11 @@ $script:I18n = @{
         lib_filter_btn = 'Filter'
         lib_filter_src = 'Show games'
         lib_filter_launchers = 'From launchers'
+        lib_filter_emus = 'Emulators (ROM)'
+        lib_filter_emu_undef = 'Undetected'
         lib_filter_only_libs = 'Only with upscaler libraries'
         lib_filter_reset = 'Show all'
+        lib_filter_hide = 'Hide all'
         lib_restore_tip = 'Restore the original upscaler DLLs in the selected games from the saved copies (.sc_orig). The copies stay in place, so the games can be updated again later.'
         lib_restore_confirm = 'Restore the original upscaler libraries in the selected games: {0}.'
         lib_restore_confirm2 = 'Files will be replaced with the .sc_orig copies made before updating. Close the games before restoring.'
@@ -1547,6 +1576,15 @@ $script:I18n = @{
         set_profile_unknown = 'This folder does not match any Steam account on this computer (no entry in loginusers.vdf).'
         set_profile_unknown_short = 'not a Steam account'
         set_exe_filter = 'EXE'
+        set_steam_restart = 'Restart'
+        set_restart_auto = 'Automatic'
+        set_restart_manual = 'Manual (I restart Steam myself)'
+        steam_pending_note = 'Restart Steam to apply the changes'
+        steam_pending_applied = 'Changes applied. You can start Steam now.'
+        btn_restart_steam = 'Restart Steam'
+        steam_restarted = 'Steam restarted'
+        steam_wait_msg = 'Steam is running. Close Steam (tray icon → Exit); the program will continue on its own as soon as it closes. Start Steam yourself afterwards.'
+        steam_close_cancelled = 'Cancelled: Steam was not closed'
         set_offer_launchers = 'Suggest launchers'
         set_use_exe_icons = 'Use icons from EXE'
         icon_exe_back_tip = 'Restore the icon that was used before EXE'
@@ -1826,6 +1864,16 @@ $script:I18n = @{
         hd_card_err = 'Could not open the card: {0}'
         emu_dlg_new = 'New emulator'
         emu_dlg_edit = 'Edit emulator'
+        rom_swap_menu = 'Change emulator'
+        rom_swap_menu_sel = 'Change emulator for selected ({0})'
+        rom_swap_menu_all = 'Change for all "{0}" games ({1})'
+        rom_swap_done = 'Emulator "{1}" assigned to {0} game(s).'
+        rom_swap_skipped = 'Skipped: {0}'
+        rom_swap_fail = 'Could not change {0} game(s). {1}'
+        rom_swap_no_rom = 'ROM file not found'
+        rom_swap_mismatch = 'The ROM extension is not in the extension list of emulator "{1}" (games: {0}). Change the emulator anyway?'
+        rom_swap_confirm = 'Assign emulator "{1}" to {0} game(s)? Steam will be closed and started again.'
+        rom_swap_core_profile = 'Core from profile arguments'
         emu_lbl_name = 'Name:'
         emu_lbl_exe = 'Emulator file:'
         emu_ofd_title = 'Select emulator (.exe)'
@@ -1952,6 +2000,8 @@ $script:I18n = @{
         btn_add_batch = '＋  将所选游戏添加到库'
         btn_add_batch_n = '＋  将所选游戏添加到库（{0}）'
         btn_steam_library = '游戏库/导入'
+        btn_swap_emulator = '切换模拟器为 {0}（{1}）'
+        rom_swap_not_added = 'Steam 中没有快捷方式'
         lib_browser_title = '游戏库/导入'
         lib_loading = '正在加载库…'
         lib_empty = 'Steam 库中暂无游戏。'
@@ -1977,8 +2027,11 @@ $script:I18n = @{
         lib_filter_btn = '筛选'
         lib_filter_src = '显示游戏'
         lib_filter_launchers = '来自启动器'
+        lib_filter_emus = '模拟器 (ROM)'
+        lib_filter_emu_undef = '未识别'
         lib_filter_only_libs = '仅含超分库的游戏'
         lib_filter_reset = '全部显示'
+        lib_filter_hide = '全部隐藏'
         lib_restore_tip = '用保存的副本（.sc_orig）还原所选游戏中的原始超分 DLL。副本会保留，之后仍可再次更新。'
         lib_restore_confirm = '还原所选游戏中的原始超分库：{0}。'
         lib_restore_confirm2 = '文件将被更新前创建的 .sc_orig 副本替换。还原前请关闭游戏。'
@@ -2033,6 +2086,15 @@ $script:I18n = @{
         set_profile_unknown = '此文件夹与本机上的任何 Steam 账户都不匹配（loginusers.vdf 中没有对应记录）。'
         set_profile_unknown_short = '不是 Steam 账户'
         set_exe_filter = 'EXE'
+        set_steam_restart = '重启'
+        set_restart_auto = '自动'
+        set_restart_manual = '手动（我自己重启 Steam）'
+        steam_pending_note = '请重启 Steam 以应用更改'
+        steam_pending_applied = '更改已应用。现在可以启动 Steam。'
+        btn_restart_steam = '重启 Steam'
+        steam_restarted = 'Steam 已重启'
+        steam_wait_msg = 'Steam 正在运行。请关闭 Steam（托盘图标 → 退出），关闭后程序将自动继续。写入完成后请自行启动 Steam。'
+        steam_close_cancelled = '已取消：Steam 未关闭'
         set_offer_launchers = '提供游戏启动器'
         set_use_exe_icons = '使用 EXE 中的图标'
         icon_exe_back_tip = '恢复使用 EXE 之前的图标'
@@ -2311,6 +2373,16 @@ $script:I18n = @{
         rom_arc_checking = '正在检查压缩包...'
         emu_dlg_new = '新建模拟器'
         emu_dlg_edit = '编辑模拟器'
+        rom_swap_menu = '更换模拟器'
+        rom_swap_menu_sel = '为所选游戏更换模拟器（{0}）'
+        rom_swap_menu_all = '为所有“{0}”游戏更换（{1}）'
+        rom_swap_done = '已将模拟器“{1}”分配给 {0} 个游戏。'
+        rom_swap_skipped = '已跳过：{0}'
+        rom_swap_fail = '无法更改的游戏数：{0}。{1}'
+        rom_swap_no_rom = '未找到 ROM 文件'
+        rom_swap_mismatch = 'ROM 扩展名不在模拟器“{1}”的扩展名列表中（游戏数：{0}）。仍要更换模拟器吗？'
+        rom_swap_confirm = '将模拟器“{1}”分配给 {0} 个游戏？Steam 将被关闭并重新启动。'
+        rom_swap_core_profile = '使用配置中的核心参数'
         emu_lbl_name = '名称：'
         emu_lbl_exe = '模拟器文件：'
         emu_ofd_title = '选择模拟器 (.exe)'
@@ -2445,6 +2517,8 @@ $script:I18n = @{
         btn_add_batch = '＋  Añadir juegos seleccionados a la biblioteca'
         btn_add_batch_n = '＋  Añadir juegos seleccionados a la biblioteca ({0})'
         btn_steam_library = 'Biblioteca / Importación'
+        btn_swap_emulator = 'Cambiar emulador a {0} ({1})'
+        rom_swap_not_added = 'sin acceso directo en Steam'
         lib_browser_title = 'Biblioteca/Importación'
         lib_loading = 'Cargando biblioteca…'
         lib_empty = 'Aún no hay juegos en la biblioteca de Steam.'
@@ -2470,8 +2544,11 @@ $script:I18n = @{
         lib_filter_btn = 'Filtro'
         lib_filter_src = 'Mostrar juegos'
         lib_filter_launchers = 'De lanzadores'
+        lib_filter_emus = 'Emuladores (ROM)'
+        lib_filter_emu_undef = 'Sin detectar'
         lib_filter_only_libs = 'Solo con bibliotecas de escalado'
         lib_filter_reset = 'Mostrar todo'
+        lib_filter_hide = 'Ocultar todo'
         lib_restore_tip = 'Restaura las DLL originales de escalado en los juegos seleccionados a partir de las copias guardadas (.sc_orig). Las copias se conservan, así que se puede volver a actualizar después.'
         lib_restore_confirm = 'Restaurar las bibliotecas de escalado originales en los juegos seleccionados: {0}.'
         lib_restore_confirm2 = 'Los archivos se sustituirán por las copias .sc_orig creadas antes de actualizar. Cierra los juegos antes de restaurar.'
@@ -2526,6 +2603,15 @@ $script:I18n = @{
         set_profile_unknown = 'Esta carpeta no corresponde a ninguna cuenta de Steam de este equipo (no hay entrada en loginusers.vdf).'
         set_profile_unknown_short = 'no es una cuenta de Steam'
         set_exe_filter = 'EXE'
+        set_steam_restart = 'Reinicio'
+        set_restart_auto = 'Automático'
+        set_restart_manual = 'Manual (reinicio Steam yo mismo)'
+        steam_pending_note = 'Reinicia Steam para aplicar los cambios'
+        steam_pending_applied = 'Cambios aplicados. Ya puedes iniciar Steam.'
+        btn_restart_steam = 'Reiniciar Steam'
+        steam_restarted = 'Steam reiniciado'
+        steam_wait_msg = 'Steam está en ejecución. Ciérralo (icono de la bandeja → Salir): el programa continuará solo en cuanto se cierre. Después, inicia Steam tú mismo.'
+        steam_close_cancelled = 'Cancelado: Steam no se cerró'
         set_offer_launchers = 'Sugerir lanzadores'
         set_use_exe_icons = 'Usar iconos del EXE'
         icon_exe_back_tip = 'Restaurar el icono que había antes del EXE'
@@ -2804,6 +2890,16 @@ $script:I18n = @{
         rom_arc_checking = 'Comprobando el archivo...'
         emu_dlg_new = 'Nuevo emulador'
         emu_dlg_edit = 'Editar emulador'
+        rom_swap_menu = 'Cambiar emulador'
+        rom_swap_menu_sel = 'Cambiar emulador de los seleccionados ({0})'
+        rom_swap_menu_all = 'Cambiar en todos los juegos de «{0}» ({1})'
+        rom_swap_done = 'Emulador «{1}» asignado a {0} juego(s).'
+        rom_swap_skipped = 'Omitidos: {0}'
+        rom_swap_fail = 'No se pudieron cambiar {0} juego(s). {1}'
+        rom_swap_no_rom = 'no se encontró el archivo ROM'
+        rom_swap_mismatch = 'La extensión de la ROM no está en la lista de extensiones del emulador «{1}» (juegos: {0}). ¿Cambiar el emulador de todos modos?'
+        rom_swap_confirm = '¿Asignar el emulador «{1}» a {0} juego(s)? Steam se cerrará y se iniciará de nuevo.'
+        rom_swap_core_profile = 'Núcleo de los argumentos del perfil'
         emu_lbl_name = 'Nombre:'
         emu_lbl_exe = 'Archivo del emulador:'
         emu_ofd_title = 'Seleccionar emulador (.exe)'
@@ -2938,6 +3034,8 @@ $script:I18n = @{
         btn_add_batch = '＋  Adicionar jogos selecionados à biblioteca'
         btn_add_batch_n = '＋  Adicionar jogos selecionados à biblioteca ({0})'
         btn_steam_library = 'Biblioteca / Importação'
+        btn_swap_emulator = 'Trocar emulador para {0} ({1})'
+        rom_swap_not_added = 'sem atalho no Steam'
         lib_browser_title = 'Biblioteca/Importação'
         lib_loading = 'Carregando biblioteca…'
         lib_empty = 'Ainda não há jogos na biblioteca Steam.'
@@ -2963,8 +3061,11 @@ $script:I18n = @{
         lib_filter_btn = 'Filtro'
         lib_filter_src = 'Mostrar jogos'
         lib_filter_launchers = 'De launchers'
+        lib_filter_emus = 'Emuladores (ROM)'
+        lib_filter_emu_undef = 'Não detectados'
         lib_filter_only_libs = 'Só com bibliotecas de upscaling'
         lib_filter_reset = 'Mostrar tudo'
+        lib_filter_hide = 'Ocultar tudo'
         lib_restore_tip = 'Restaura as DLLs originais de upscaler nos jogos selecionados a partir das cópias salvas (.sc_orig). As cópias permanecem, então dá para atualizar de novo depois.'
         lib_restore_confirm = 'Restaurar as bibliotecas de upscaler originais nos jogos selecionados: {0}.'
         lib_restore_confirm2 = 'Os arquivos serão substituídos pelas cópias .sc_orig criadas antes da atualização. Feche os jogos antes de restaurar.'
@@ -3019,6 +3120,15 @@ $script:I18n = @{
         set_profile_unknown = 'Esta pasta não corresponde a nenhuma conta da Steam neste computador (sem entrada em loginusers.vdf).'
         set_profile_unknown_short = 'não é uma conta da Steam'
         set_exe_filter = 'EXE'
+        set_steam_restart = 'Reinício'
+        set_restart_auto = 'Automático'
+        set_restart_manual = 'Manual (eu reinicio o Steam)'
+        steam_pending_note = 'Reinicie o Steam para aplicar as alterações'
+        steam_pending_applied = 'Alterações aplicadas. Agora você pode iniciar o Steam.'
+        btn_restart_steam = 'Reiniciar o Steam'
+        steam_restarted = 'Steam reiniciado'
+        steam_wait_msg = 'O Steam está em execução. Feche-o (ícone da bandeja → Sair): o programa continuará sozinho assim que ele fechar. Depois, inicie o Steam você mesmo.'
+        steam_close_cancelled = 'Cancelado: o Steam não foi fechado'
         set_offer_launchers = 'Sugerir launchers'
         set_use_exe_icons = 'Usar ícones do EXE'
         icon_exe_back_tip = 'Restaurar o ícone que havia antes do EXE'
@@ -3297,6 +3407,16 @@ $script:I18n = @{
         rom_arc_checking = 'Verificando o arquivo...'
         emu_dlg_new = 'Novo emulador'
         emu_dlg_edit = 'Editar emulador'
+        rom_swap_menu = 'Trocar emulador'
+        rom_swap_menu_sel = 'Trocar emulador dos selecionados ({0})'
+        rom_swap_menu_all = 'Trocar em todos os jogos de «{0}» ({1})'
+        rom_swap_done = 'Emulador «{1}» atribuído a {0} jogo(s).'
+        rom_swap_skipped = 'Ignorados: {0}'
+        rom_swap_fail = 'Não foi possível alterar {0} jogo(s). {1}'
+        rom_swap_no_rom = 'arquivo ROM não encontrado'
+        rom_swap_mismatch = 'A extensão da ROM não está na lista de extensões do emulador «{1}» (jogos: {0}). Trocar o emulador mesmo assim?'
+        rom_swap_confirm = 'Atribuir o emulador «{1}» a {0} jogo(s)? O Steam será fechado e iniciado novamente.'
+        rom_swap_core_profile = 'Núcleo dos argumentos do perfil'
         emu_lbl_name = 'Nome:'
         emu_lbl_exe = 'Arquivo do emulador:'
         emu_ofd_title = 'Selecionar emulador (.exe)'
@@ -3431,6 +3551,8 @@ $script:I18n = @{
         btn_add_batch = '＋  Ausgewählte Spiele zur Bibliothek hinzufügen'
         btn_add_batch_n = '＋  Ausgewählte Spiele zur Bibliothek hinzufügen ({0})'
         btn_steam_library = 'Bibliothek / Import'
+        btn_swap_emulator = 'Emulator wechseln zu {0} ({1})'
+        rom_swap_not_added = 'keine Verknüpfung in Steam'
         lib_browser_title = 'Bibliothek/Import'
         lib_loading = 'Bibliothek wird geladen…'
         lib_empty = 'Noch keine Spiele in der Steam-Bibliothek.'
@@ -3456,8 +3578,11 @@ $script:I18n = @{
         lib_filter_btn = 'Filter'
         lib_filter_src = 'Spiele anzeigen'
         lib_filter_launchers = 'Aus Launchern'
+        lib_filter_emus = 'Emulatoren (ROM)'
+        lib_filter_emu_undef = 'Nicht erkannt'
         lib_filter_only_libs = 'Nur mit Upscaler-Bibliotheken'
         lib_filter_reset = 'Alle anzeigen'
+        lib_filter_hide = 'Alle ausblenden'
         lib_restore_tip = 'Stellt in den ausgewählten Spielen die originalen Upscaler-DLLs aus den gespeicherten Kopien (.sc_orig) wieder her. Die Kopien bleiben erhalten, sodass später erneut aktualisiert werden kann.'
         lib_restore_confirm = 'Originale Upscaler-Bibliotheken in den ausgewählten Spielen wiederherstellen: {0}.'
         lib_restore_confirm2 = 'Die Dateien werden durch die vor dem Update erstellten .sc_orig-Kopien ersetzt. Schließe die Spiele vor dem Zurückspielen.'
@@ -3512,6 +3637,15 @@ $script:I18n = @{
         set_profile_unknown = 'Dieser Ordner gehört zu keinem Steam-Konto auf diesem Computer (kein Eintrag in loginusers.vdf).'
         set_profile_unknown_short = 'kein Steam-Konto'
         set_exe_filter = 'EXE'
+        set_steam_restart = 'Neustart'
+        set_restart_auto = 'Automatisch'
+        set_restart_manual = 'Manuell (ich starte Steam selbst neu)'
+        steam_pending_note = 'Starten Sie Steam neu, um die Änderungen zu übernehmen'
+        steam_pending_applied = 'Änderungen angewendet. Sie können Steam jetzt starten.'
+        btn_restart_steam = 'Steam neu starten'
+        steam_restarted = 'Steam wurde neu gestartet'
+        steam_wait_msg = 'Steam läuft. Beenden Sie Steam (Tray-Symbol → Beenden): Das Programm macht automatisch weiter, sobald es geschlossen ist. Starten Sie Steam danach selbst.'
+        steam_close_cancelled = 'Abgebrochen: Steam wurde nicht geschlossen'
         set_offer_launchers = 'Launcher vorschlagen'
         set_use_exe_icons = 'Symbole aus der EXE verwenden'
         icon_exe_back_tip = 'Symbol von vor der EXE wiederherstellen'
@@ -3790,6 +3924,16 @@ $script:I18n = @{
         rom_arc_checking = 'Archiv wird geprüft...'
         emu_dlg_new = 'Neuer Emulator'
         emu_dlg_edit = 'Emulator bearbeiten'
+        rom_swap_menu = 'Emulator wechseln'
+        rom_swap_menu_sel = 'Emulator für Ausgewählte wechseln ({0})'
+        rom_swap_menu_all = 'Bei allen Spielen von «{0}» wechseln ({1})'
+        rom_swap_done = 'Emulator «{1}» wurde {0} Spiel(en) zugewiesen.'
+        rom_swap_skipped = 'Übersprungen: {0}'
+        rom_swap_fail = '{0} Spiel(e) konnten nicht geändert werden. {1}'
+        rom_swap_no_rom = 'ROM-Datei nicht gefunden'
+        rom_swap_mismatch = 'Die ROM-Endung steht nicht in der Endungsliste des Emulators «{1}» (Spiele: {0}). Emulator trotzdem wechseln?'
+        rom_swap_confirm = 'Emulator «{1}» {0} Spiel(en) zuweisen? Steam wird geschlossen und neu gestartet.'
+        rom_swap_core_profile = 'Core aus den Profilargumenten'
         emu_lbl_name = 'Name:'
         emu_lbl_exe = 'Emulator-Datei:'
         emu_ofd_title = 'Emulator auswählen (.exe)'
@@ -4184,6 +4328,10 @@ $global:suggestGameLaunchers = $false
 # Если включено, иконка игры берётся из её EXE (а не из Steam). Кнопка EXE на
 # миниатюре иконки в карточке игры переключает иконку туда и обратно.
 $global:useExeIcons = $false
+# Режим перезапуска Steam при записи изменений: 'auto' (по умолчанию) - программа сама закрывает Steam
+# перед записью и запускает его после; 'manual' - Steam закрывает и запускает пользователь, а программа
+# не пишет в файлы Steam, пока он запущен (этапы 2-4 плана подключают это значение).
+$global:steamRestartMode = 'auto'
 # Положение и размер логотипа «по умолчанию» (галочка в слоте «Фон и логотип» карточки игры).
 # Пока logoDefaultEnabled = $true, эти значения применяются ко всем карточкам, ромам и автоимпорту.
 $global:logoDefaultEnabled = $false
@@ -4663,17 +4811,30 @@ function Get-ImageFileIconBitmap ([string]$filePath, [int]$size) {
         $ext = [System.IO.Path]::GetExtension($filePath).ToLowerInvariant()
         if ($ext -in @('.exe','.dll','.lnk')) { return (Get-IconBitmapFromFile $filePath $size) }
         $bytes = [System.IO.File]::ReadAllBytes($filePath)
-        $ms = New-Object System.IO.MemoryStream(, $bytes)
         $src = $null
-        try {
-            if ($ext -eq '.ico') {
-                $ico = New-Object System.Drawing.Icon($ms, $size, $size)
-                try { $src = $ico.ToBitmap() } finally { $ico.Dispose() }
-            } else {
-                $img = [System.Drawing.Image]::FromStream($ms)
-                try { $src = New-Object System.Drawing.Bitmap($img) } finally { $img.Dispose() }
-            }
-        } finally { $ms.Dispose() }
+        # Формат определяем по содержимому, а не по расширению: в grid встречается .ico под именем .png и наоборот.
+        # Если выбранный способ не сработал — пробуем остальные.
+        $isIcoData = ($bytes.Length -ge 4 -and $bytes[0] -eq 0 -and $bytes[1] -eq 0 -and $bytes[2] -eq 1 -and $bytes[3] -eq 0)
+        # Для ICO сначала тот же разбор, что использует карточка (ICO с PNG-кадром 256x256 ломает Icon(...16,16) — иконка не рисуется).
+        $modes = if ($isIcoData -or $ext -eq '.ico') { @('icofile','ico','img','ico0') } else { @('img','icofile','ico','ico0') }
+        foreach ($mode in $modes) {
+            if ($null -ne $src) { break }
+            $ms = New-Object System.IO.MemoryStream(, $bytes)
+            try {
+                if ($mode -eq 'icofile') {
+                    if ($isIcoData) { $src = Get-BitmapFromIcoFile $filePath }
+                } elseif ($mode -eq 'ico') {
+                    $ico = New-Object System.Drawing.Icon($ms, $size, $size)
+                    try { $src = $ico.ToBitmap() } finally { $ico.Dispose() }
+                } elseif ($mode -eq 'ico0') {
+                    $ico = New-Object System.Drawing.Icon($ms)
+                    try { $src = $ico.ToBitmap() } finally { $ico.Dispose() }
+                } else {
+                    $img = [System.Drawing.Image]::FromStream($ms)
+                    try { $src = New-Object System.Drawing.Bitmap($img) } finally { $img.Dispose() }
+                }
+            } catch { $src = $null } finally { $ms.Dispose() }
+        }
         if ($null -eq $src) { return $null }
         $bmp = New-Object System.Drawing.Bitmap($size, $size, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
         $g = [System.Drawing.Graphics]::FromImage($bmp)
@@ -4724,6 +4885,18 @@ function Get-InstalledGameRowIcon ([string]$rowPath, [int]$size = 16) {
         $bmp = $null
         if (-not [string]::IsNullOrWhiteSpace([string]$info.Icon)) {
             $bmp = Get-ImageFileIconBitmap ([string]$info.Icon) $size
+            # Файл иконки есть, но не читается (битый .png рядом с рабочим .ico и т.п.) —
+            # пробуем соседние файлы <appid>_icon.* с другими расширениями.
+            if ($null -eq $bmp -and ([string]$info.Icon) -match '(?i)^(.*_icon)\.(png|ico|jpe?g)$') {
+                $iconPrefix = $Matches[1]
+                foreach ($sx in @('ico','png','jpg','jpeg')) {
+                    $alt = $iconPrefix + '.' + $sx
+                    if ($alt -ieq [string]$info.Icon) { continue }
+                    if (-not (Test-Path -LiteralPath $alt -PathType Leaf)) { continue }
+                    $bmp = Get-ImageFileIconBitmap $alt $size
+                    if ($null -ne $bmp) { break }
+                }
+            }
         }
         if ($null -eq $bmp -and -not [bool]$info.IconOnly) {
             $exe = [string]$info.Exe
@@ -4951,6 +5124,8 @@ function Register-ListBoxDrawEvent ($listBox) {
                     if ($null -ne $gameIco) {
                         $e.Graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
                         $e.Graphics.CompositingMode = [System.Drawing.Drawing2D.CompositingMode]::SourceOver
+                        # Помеченная «в Steam» папка — всегда папка одной игры (обычная игра или ром вроде Wii U,
+                        # где ROM лежит внутри папки игры), поэтому иконка игры рисуется полноразмерной и в ROM-режиме.
                         $e.Graphics.DrawImage($gameIco, $icoX, $icoY, 16, 16)
                         $drewNative = $true
                     }
@@ -5157,6 +5332,155 @@ function Get-ConfiguredSteamExePath {
     return 'steam.exe'
 }
 
+# Режим перезапуска Steam: 'auto' или 'manual'. Любое другое/пустое значение читается как 'auto'.
+function Get-SteamRestartMode {
+    try { if (([string]$global:steamRestartMode).ToLowerInvariant() -eq 'manual') { return 'manual' } } catch {}
+    return 'auto'
+}
+
+function Test-SteamRunning {
+    try { return (@(Get-Process -Name 'steam' -ErrorAction SilentlyContinue).Count -gt 0) } catch { return $false }
+}
+
+# Единая точка решения «можно ли сейчас писать в файлы Steam».
+# 'ready'   - Steam не запущен, можно писать сразу;
+# 'close'   - Steam запущен, но режим 'auto': вызывающий код сам закрывает его, как и раньше;
+# 'blocked' - Steam запущен, режим 'manual': в shortcuts.vdf не писать (Steam перезапишет
+#             их своей копией из памяти), изменения откладываются до закрытия Steam пользователем.
+function Get-SteamWriteState {
+    if (-not (Test-SteamRunning)) { return 'ready' }
+    if ((Get-SteamRestartMode) -eq 'manual') { return 'blocked' }
+    return 'close'
+}
+
+# Запуск Steam после записи: в ручном режиме Steam запускает пользователь, поэтому ничего не делаем.
+function Start-SteamIfAuto([string]$exePath) {
+    if ((Get-SteamRestartMode) -eq 'manual') { return }
+    try { if (-not [string]::IsNullOrWhiteSpace($exePath) -and (Test-Path -LiteralPath $exePath)) { Start-Process -FilePath $exePath } } catch {}
+}
+
+# Ручной режим: окно «закройте Steam». Закрывается само, когда процесс steam исчезает; кнопка «Отмена» прерывает
+# операцию. Возвращает $true, если Steam закрыт (можно писать), и $false при отмене.
+function Wait-SteamClosedByUser {
+    if (-not (Test-SteamRunning)) { return $true }
+    $wf = New-Object System.Windows.Forms.Form
+    $wf.Text = [string]$global:appTitle
+    $wf.StartPosition = 'CenterParent'
+    $wf.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedDialog
+    $wf.MaximizeBox = $false
+    $wf.MinimizeBox = $false
+    $wf.ShowInTaskbar = $false
+    $wf.ClientSize = New-Object System.Drawing.Size(420, 176)
+    $wf.BackColor = $steamUi.Bg
+    $wf.ForeColor = $steamUi.Text
+    $wf.Font = New-Object System.Drawing.Font('Segoe UI', 9)
+    $wl = New-Object System.Windows.Forms.Label
+    $wl.Text = (T 'steam_wait_msg')
+    $wl.Location = New-Object System.Drawing.Point(20, 20)
+    $wl.Size = New-Object System.Drawing.Size(380, 94)
+    $wl.ForeColor = $steamUi.Text
+    $wl.Font = New-Object System.Drawing.Font('Segoe UI', 10)
+    $wl.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
+    $wf.Controls.Add($wl)
+    $wb = New-Object System.Windows.Forms.Button
+    $wb.Text = (T 'set_cancel')
+    $wb.Location = New-Object System.Drawing.Point(290, 126)
+    $wb.Size = New-Object System.Drawing.Size(110, 34)
+    $wb.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    $wb.FlatAppearance.BorderColor = $steamUi.Border
+    $wb.BackColor = $steamUi.Panel
+    $wb.ForeColor = $steamUi.Text
+    $wb.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $wb.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+    $wf.Controls.Add($wb)
+    $wf.CancelButton = $wb
+    $wt = New-Object System.Windows.Forms.Timer
+    $wt.Interval = 400
+    $wt.Tag = $wf
+    $wt.Add_Tick({
+        param($snd, $ea)
+        try { if (-not (Test-SteamRunning)) { $snd.Stop(); $snd.Tag.DialogResult = [System.Windows.Forms.DialogResult]::OK } } catch {}
+    })
+    $wt.Start()
+    try {
+        $owner = [System.Windows.Forms.Form]::ActiveForm
+        $res = if ($null -ne $owner) { $wf.ShowDialog($owner) } else { $wf.ShowDialog() }
+    } finally {
+        try { $wt.Stop(); $wt.Dispose() } catch {}
+        try { $wf.Dispose() } catch {}
+    }
+    if ($res -ne [System.Windows.Forms.DialogResult]::OK) { return $false }
+    # Steam завершил процесс — даём диску секунду, чтобы он дописал свои файлы.
+    Start-Sleep -Milliseconds 800
+    return $true
+}
+
+# Запись shortcuts.vdf. В ручном режиме при запущенном Steam файл пишется сразу (программа дальше читает уже новое
+# состояние), а записанное содержимое запоминается: Steam может перезаписать файл своей копией из памяти при выходе,
+# поэтому после его закрытия программа возвращает свои данные (Apply-PendingSteamShortcutWrites).
+$script:pendingShortcutWrites = @{}
+function Write-SteamShortcutsFile([string]$path, [byte[]]$bytes) {
+    [System.IO.File]::WriteAllBytes($path, $bytes)
+    try {
+        if ((Get-SteamRestartMode) -eq 'manual' -and (Test-SteamRunning)) { $script:pendingShortcutWrites[$path] = $bytes }
+        elseif ($script:pendingShortcutWrites.ContainsKey($path)) { [void]$script:pendingShortcutWrites.Remove($path) }
+    } catch {}
+}
+
+# Возвращает число файлов, которые пришлось записать заново. Пока Steam запущен, ничего не делает.
+function Apply-PendingSteamShortcutWrites {
+    $n = 0
+    try {
+        if ($script:pendingShortcutWrites.Count -eq 0) { return 0 }
+        if (Test-SteamRunning) { return 0 }
+        foreach ($k in @($script:pendingShortcutWrites.Keys)) {
+            try {
+                $want = [byte[]]$script:pendingShortcutWrites[$k]
+                $cur = $null
+                try { $cur = [byte[]][System.IO.File]::ReadAllBytes([string]$k) } catch {}
+                $same = ($null -ne $cur) -and [System.Linq.Enumerable]::SequenceEqual([byte[]]$cur, [byte[]]$want)
+                if (-not $same) { [System.IO.File]::WriteAllBytes([string]$k, $want); $n++ }
+                [void]$script:pendingShortcutWrites.Remove($k)
+            } catch {}
+        }
+    } catch {}
+    return $n
+}
+
+# Кнопка «Перезапустить Steam» (ручной режим): штатно просим Steam завершиться (-shutdown), ждём до 20 секунд,
+# при необходимости закрываем принудительно, закрепляем записанное программой в shortcuts.vdf и запускаем Steam.
+function Restart-SteamNow {
+    $exe = [string](Get-ConfiguredSteamExePath)
+    if (Test-SteamRunning) {
+        try { Start-Process -FilePath $exe -ArgumentList '-shutdown' } catch {}
+        $sw = [System.Diagnostics.Stopwatch]::StartNew()
+        while ((Test-SteamRunning) -and $sw.ElapsedMilliseconds -lt 20000) {
+            [System.Windows.Forms.Application]::DoEvents()
+            Start-Sleep -Milliseconds 100
+        }
+        if (Test-SteamRunning) { Stop-SteamProcessResponsive }
+        $sw2 = [System.Diagnostics.Stopwatch]::StartNew()
+        while ($sw2.ElapsedMilliseconds -lt 800) { [System.Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 30 }
+    }
+    [void](Apply-PendingSteamShortcutWrites)
+    try { Start-Process -FilePath $exe } catch {}
+}
+
+# Закрыть Steam перед записью в его файлы. Автоматический режим: принудительное закрытие, как раньше.
+# Ручной режим: ждём, пока Steam закроет пользователь. $false — пользователь отказался (писать нельзя).
+function Close-SteamForWrite([switch]$Responsive) {
+    if (-not (Test-SteamRunning)) { return $true }
+    # Ручной режим: Steam не трогаем, запись идёт сразу, а закрепляется после его закрытия пользователем
+    # (см. Write-SteamShortcutsFile / Apply-PendingSteamShortcutWrites).
+    if ((Get-SteamRestartMode) -eq 'manual') { return $true }
+    if ($Responsive) { Stop-SteamProcessResponsive }
+    else {
+        taskkill.exe /F /T /IM steam.exe 2>$null | Out-Null
+        Start-Sleep -Seconds 2
+    }
+    return $true
+}
+
 function Get-ConfiguredSteamUserDataPath {
     $root = Get-ConfiguredSteamInstallPath
     $userDataRoot = Join-Path $root 'userdata'
@@ -5337,6 +5661,10 @@ function Load-Configuration {
                 # правильно введённым и сохранённым ключом.
                 if ($line.StartsWith("steamGridDbApiKey=")) { $global:steamGridDbApiKey = $line.Substring(18).Trim() }
                 if ($line.StartsWith("suggestGameLaunchers=")) { $global:suggestGameLaunchers = ([string]$line.Substring(21).Trim()).ToLowerInvariant() -eq "true" }
+                if ($line.StartsWith("steamRestartMode=")) {
+                    $srm = ([string]$line.Substring("steamRestartMode=".Length).Trim()).ToLowerInvariant()
+                    $global:steamRestartMode = if ($srm -eq 'manual') { 'manual' } else { 'auto' }
+                }
                 if ($line.StartsWith("useExeIcons=")) { $global:useExeIcons = ([string]$line.Substring(12).Trim()).ToLowerInvariant() -eq "true" }
                 if ($line.StartsWith("logoDefaultEnabled=")) { $global:logoDefaultEnabled = ([string]$line.Substring("logoDefaultEnabled=".Length).Trim()).ToLowerInvariant() -eq "true" }
                 if ($line.StartsWith("logoDefaultPosition=")) { $global:logoDefaultPosition = [string]$line.Substring("logoDefaultPosition=".Length).Trim() }
@@ -7991,7 +8319,9 @@ $form.Controls.Add($labelHeader)
 # $labelHeader.Text, автоматически убирает значок и возвращает подпись
 # на полную ширину.
 $script:statusBadgeLocked = $false
+$script:labelHeaderChangedAt = [Environment]::TickCount
 $labelHeader.Add_TextChanged({
+    $script:labelHeaderChangedAt = [Environment]::TickCount
     if ($script:statusBadgeLocked) { return }
     try {
         if ($picStatusBadge.Visible) {
@@ -8787,6 +9117,7 @@ $toggleRomsMode = {
     }
     & $updateRomsToggle
     try { Refresh-Panels } catch {}
+    try { Update-MainLibraryButtonState } catch {}
 }
 $pnlRomsToggle.Add_Click($toggleRomsMode)
 $pnlRomsToggle.Add_CheckedChanged({
@@ -9466,7 +9797,8 @@ function Show-RomEmulatorPickerPopup {
             try { Save-Configuration } catch {}
             try { Update-RomEmulatorIndicator } catch {}
             if ($script:romsModeEnabled) {
-                try { $global:checkedC.Clear(); $global:checkedD.Clear() } catch {}
+                # Отметки не сбрасываем: Refresh-Panels сам снимет только те, которых нет в новом списке
+                # (например, расширение ROM не подходит новому эмулятору).
                 try { Refresh-Panels } catch {}
                 try { Update-MainLibraryButtonState } catch {}
             }
@@ -9519,6 +9851,25 @@ $btnSteamLibrary.Cursor = [System.Windows.Forms.Cursors]::Hand
 $btnSteamLibrary.Visible = $true
 $pnlBatchActions.Controls.Add($btnSteamLibrary)
 
+# «Сменить эмулятор на <активный> (N)» — на том же месте. Появляется в режиме ROMs, когда отмечены только игры,
+# уже добавленные в Steam (см. Update-MainLibraryButtonState): им назначается эмулятор, выбранный в индикаторе.
+$btnSwapEmuMain = New-Object System.Windows.Forms.Button
+$btnSwapEmuMain.Tag = ''
+$btnSwapEmuMain.Location = New-Object System.Drawing.Point(260, 0)
+$btnSwapEmuMain.Size = New-Object System.Drawing.Size(520, 42)
+$btnSwapEmuMain.FlatStyle = "Flat"
+$btnSwapEmuMain.FlatAppearance.BorderColor = $steamUi.Accent2
+$btnSwapEmuMain.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(35,78,106)
+$btnSwapEmuMain.BackColor = [System.Drawing.Color]::FromArgb(25,55,75)
+$btnSwapEmuMain.ForeColor = $steamUi.Text
+$btnSwapEmuMain.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 10.5)
+$btnSwapEmuMain.Image = $null
+$btnSwapEmuMain.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
+$btnSwapEmuMain.Cursor = [System.Windows.Forms.Cursors]::Hand
+$btnSwapEmuMain.Visible = $false
+$script:steamSwapButtonIcon = $null
+$pnlBatchActions.Controls.Add($btnSwapEmuMain)
+
 Set-SplashProgress 0.77
 # Кнопка настроек в стиле Steam.
 # Используется отдельный PNG самого Steam-стиля, чтобы форма шестерёнки
@@ -9552,11 +9903,39 @@ $btnSettings.AccessibleName = (T 'settings_title')
 $btnSettings.AccessibleDescription = (T 'settings_desc')
 $pnlBatchActions.Controls.Add($btnSettings)
 
+# «Перезапустить Steam» — только в ручном режиме перезапуска, между кнопкой «Библиотека» и кнопкой настроек.
+$btnRestartSteam = New-Object System.Windows.Forms.Button
+$btnRestartSteam.Text = (T 'btn_restart_steam')
+$btnRestartSteam.Size = New-Object System.Drawing.Size(184, 42)
+$btnRestartSteam.Location = New-Object System.Drawing.Point((992 - 8 - 184), 0)
+$btnRestartSteam.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$btnRestartSteam.FlatAppearance.BorderColor = $steamUi.Accent2
+$btnRestartSteam.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(35,78,106)
+$btnRestartSteam.BackColor = [System.Drawing.Color]::FromArgb(25,55,75)
+$btnRestartSteam.ForeColor = $steamUi.Text
+$btnRestartSteam.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 9.5)
+$btnRestartSteam.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
+$btnRestartSteam.Cursor = [System.Windows.Forms.Cursors]::Hand
+$btnRestartSteam.TabStop = $false
+$btnRestartSteam.Visible = ((Get-SteamRestartMode) -eq 'manual')
+$btnRestartSteam.Add_Click({
+    try {
+        if ($script:moveInProgress -or $script:batchInProgress -or $script:smartBatchActive -or $script:libImportRunning) { return }
+        $btnRestartSteam.Enabled = $false
+        $form.UseWaitCursor = $true
+        try { Restart-SteamNow } finally { $form.UseWaitCursor = $false; $btnRestartSteam.Enabled = $true }
+        $labelHeader.Text = (T 'steam_restarted')
+    } catch {}
+})
+$pnlBatchActions.Controls.Add($btnRestartSteam)
+
 $pnlBatchActions.Add_Resize({
     try {
         $btnAddToSteam.Left = [int](($pnlBatchActions.ClientSize.Width - $btnAddToSteam.Width) / 2)
         $btnSteamLibrary.Left = [int](($pnlBatchActions.ClientSize.Width - $btnSteamLibrary.Width) / 2)
+        $btnSwapEmuMain.Left = [int](($pnlBatchActions.ClientSize.Width - $btnSwapEmuMain.Width) / 2)
         $btnSettings.Left = $pnlBatchActions.ClientSize.Width - $btnSettings.Width
+        $btnRestartSteam.Left = $btnSettings.Left - 8 - $btnRestartSteam.Width
     } catch {}
 })
 
@@ -9570,6 +9949,7 @@ function Save-Configuration {
             "steamGridDbApiKey=$($global:steamGridDbApiKey)",
             "suggestGameLaunchers=$($global:suggestGameLaunchers)",
             "useExeIcons=$($global:useExeIcons)",
+            "steamRestartMode=$($global:steamRestartMode)",
             "steamApiKey=$($global:steamApiKey)",
             "backupFolderPath=$($global:backupFolderPath)",
             "language=$($global:language)",
@@ -9594,7 +9974,7 @@ function Save-Configuration {
     } catch {}
 }
 
-$form.Add_FormClosing({ if ($script:moveInProgress) { $_.Cancel = $true; $labelHeader.Text = (T 'mv2_busy'); return }; Stop-StartupBackgroundJobs; Save-Configuration; Remove-TemporaryCovers })
+$form.Add_FormClosing({ if ($script:moveInProgress) { $_.Cancel = $true; $labelHeader.Text = (T 'mv2_busy'); return }; try { if ($script:pendingShortcutWrites.Count -gt 0) { if (Test-SteamRunning) { [void](Wait-SteamClosedByUser) }; [void](Apply-PendingSteamShortcutWrites) } } catch {}; Stop-StartupBackgroundJobs; Save-Configuration; Remove-TemporaryCovers })
 
 # Игры, убранные из списка клавишей Delete. Это ТОЛЬКО скрытие в интерфейсе:
 # папки на диске не трогаются. Действует до кнопки «Обновить» или перезапуска.
@@ -10548,6 +10928,8 @@ function Refresh-Panels {
     # Remove-OrphanedCoverSourcesMetadata).
     $liveShortcutIds = @{}
     $shortcutsScanOk = $false
+    # ROM лежит прямо в папке игры (например Switch: Game\game.nsp): папка верхнего уровня -> добавленные ROM-файлы и значок.
+    $romDirectByTop = @{}
     if (-not [string]::IsNullOrEmpty($steamPathProperty)) {
         $steamPath = Get-ConfiguredSteamInstallPath
         $userDataPath = Get-ConfiguredSteamUserDataPath
@@ -10610,6 +10992,14 @@ function Refresh-Panels {
                                                 $romIcoCand = Join-Path $romGridDir ($romAppIdU + '_icon.' + $romIcoExt)
                                                 if (Test-Path -LiteralPath $romIcoCand -PathType Leaf) { $romIconVal = $romIcoCand; break }
                                             }
+                                            # В grid иконки нет, а Steam её показывает: берём из кэша клиента (appcache\librarycache),
+                                            # откуда Steam рисует значки в своём списке. Пробуем 32-битный appid и «длинный» (appid<<32 | 0x02000000).
+                                            if (-not [System.IO.File]::Exists(([string]$romIconVal).Trim().Trim('"'))) {
+                                                foreach ($romCacheId in @($romAppIdU, [string](([uint64]$romAppIdU -shl 32) -bor [uint64]0x02000000))) {
+                                                    $romCacheIco = Get-LocalSteamLibraryIconPath $romCacheId
+                                                    if (-not [string]::IsNullOrWhiteSpace($romCacheIco)) { $romIconVal = $romCacheIco; break }
+                                                }
+                                            }
                                         }
                                     } catch {}
                                 }
@@ -10625,9 +11015,26 @@ function Refresh-Panels {
                                                 # Игры вроде Wii U (Cemu): ROM лежит внутри папки игры
                                                 # (Game\code\Game.rpx) — отмечаем и саму папку игры в корне.
                                                 $romTop = Get-TopLevelFolderUnderRoot $romCand $rootPath
+                                                # ROM лежит прямо в этой папке (несколько дисков/версий, каждая добавлена отдельным ярлыком) —
+                                                # саму папку «добавленной» не считаем: галочку получают только добавленные файлы.
+                                                $romDirectInTop = $false
                                                 if (-not [string]::IsNullOrEmpty($romTop)) {
+                                                    try {
+                                                        $romParentKey = Get-NormalizedGamePathKey ([System.IO.Path]::GetDirectoryName($romCand))
+                                                        $romTopKey = Get-NormalizedGamePathKey (Join-Path $rootPath $romTop)
+                                                        $romDirectInTop = ($romParentKey -eq $romTopKey -and $romCand -ne (Join-Path $rootPath $romTop))
+                                                    } catch { $romDirectInTop = $false }
+                                                }
+                                                if (-not [string]::IsNullOrEmpty($romTop) -and -not $romDirectInTop) {
                                                     $global:installedSteamGames[(Get-NormalizedGamePathKey (Join-Path $rootPath $romTop))] = $true
                                                     Register-InstalledGameIconInfo (Join-Path $rootPath $romTop) $romIconVal '' '' $true
+                                                }
+                                                elseif (-not [string]::IsNullOrEmpty($romTop) -and $romDirectInTop) {
+                                                    # Несколько отдельно добавленных ROM в одной папке по-прежнему не делают папку «добавленной»,
+                                                    # но если в папке добавлен ровно один ROM-файл (типичная папка игры Switch) — это папка одной игры.
+                                                    $romTopPath = Join-Path $rootPath $romTop
+                                                    if (-not $romDirectByTop.ContainsKey($romTopPath)) { $romDirectByTop[$romTopPath] = @{ Roms = @{}; Icon = $romIconVal } }
+                                                    $romDirectByTop[$romTopPath].Roms[(Get-NormalizedGamePathKey $romCand)] = $true
                                                 }
                                             }
                                         }
@@ -10655,6 +11062,16 @@ function Refresh-Panels {
                 } catch {}
             }
         }
+    }
+
+    foreach ($romTopPathKey in @($romDirectByTop.Keys)) {
+        try {
+            $romTopInfo = $romDirectByTop[$romTopPathKey]
+            if ($romTopInfo.Roms.Count -eq 1) {
+                $global:installedSteamGames[(Get-NormalizedGamePathKey $romTopPathKey)] = $true
+                Register-InstalledGameIconInfo $romTopPathKey ([string]$romTopInfo.Icon) '' '' $true
+            }
+        } catch {}
     }
 
     # Метаданные источников обложек (cover_sources\<ShortcutId>.json) переживают
@@ -11083,10 +11500,295 @@ function Get-RomPathFromLaunchOptions ($entry) {
     return ''
 }
 
+# ===================== Быстрая смена эмулятора у ROM-ярлыков =====================
+# Ядро RetroArch, с которым сейчас запускается ярлык (имя файла без _libretro.dll), либо '' если ядро не найдено.
+function Get-EntryRetroArchCore ($entry) {
+    try {
+        $lo = [string]$entry.LaunchOptions
+        if ($null -ne (Get-ShortcutRomWrapperInfo $entry)) {
+            $w = [regex]::Match($lo, '--core\s+"(?<c>[^"]+)"')
+            if ($w.Success) { return [string]$w.Groups['c'].Value }
+        }
+        $m = [regex]::Match($lo, '(?i)-L\s+"?(?:[^"\\/]*[\\/])*(?<c>[^"\\/]+?)_libretro\.dll')
+        if ($m.Success) { return [string]$m.Groups['c'].Value }
+    } catch {}
+    return ''
+}
+
+# Считает, какими станут Exe / StartDir / LaunchOptions ярлыка $entry (элемент Get-SteamLibraryEntries),
+# если запускать тот же ROM через эмулятор $newProfile. Логика такая же, как при сохранении карточки игры:
+# шаблон параметров профиля ({rom}), обёртка SCLauncher для архивов при включённой галочке «Распаковывать архивы».
+# Mismatch = расширение ROM не входит в список расширений нового эмулятора (вызывающий код спрашивает подтверждение).
+function Get-RomShortcutSwapPlan ($entry, $newProfile, [string]$core = '') {
+    $plan = [PSCustomObject]@{ Ok = $false; Reason = ''; Mismatch = $false; Exe = ''; StartDir = ''; Launch = '' }
+    try {
+        $romPath = [string](Get-RomPathFromLaunchOptions $entry)
+        if ([string]::IsNullOrWhiteSpace($romPath) -or -not (Test-Path -LiteralPath $romPath -PathType Leaf)) { $plan.Reason = (T 'rom_swap_no_rom'); return $plan }
+        $emuExe = [string]$newProfile.ExePath
+        if ([string]::IsNullOrWhiteSpace($emuExe) -or -not (Test-Path -LiteralPath $emuExe -PathType Leaf)) { $plan.Reason = (T 'st_emulator_gone'); return $plan }
+        $startDir = [System.IO.Path]::GetDirectoryName($emuExe)
+        if ([string]::IsNullOrWhiteSpace($startDir) -or -not (Test-Path -LiteralPath $startDir -PathType Container)) { $plan.Reason = (T 'st_no_workdir'); return $plan }
+
+        # Файл, выбранный внутри архива (--entry у ярлыков через SCLauncher), переносим на новый эмулятор.
+        $archiveEntry = ''
+        if ($null -ne (Get-ShortcutRomWrapperInfo $entry)) {
+            $en = [regex]::Match([string]$entry.LaunchOptions, '--entry\s+"(?<n>[^"]+)"')
+            if ($en.Success) { $archiveEntry = [string]$en.Groups['n'].Value }
+        }
+
+        # Для RetroArch выбранное ядро добавляется к аргументам профиля (-L cores\<ядро>_libretro.dll), как в карточке игры.
+        $argsTpl = [string]$newProfile.Args
+        if (-not [string]::IsNullOrWhiteSpace($core) -and (Test-IsRetroArchProfile ([string]$newProfile.Name) $emuExe)) {
+            $argsTpl = Merge-RetroArchCoreArgs $argsTpl $core
+        }
+        $launch = Format-EmulatorLaunchArgs $argsTpl $romPath
+        $outExe = $emuExe
+        $romExt = [System.IO.Path]::GetExtension($romPath).TrimStart('.').ToLowerInvariant()
+        $isArchive = (@(Get-RomArchiveExtensions) -contains $romExt)
+        $extractOn = Test-EmulatorExtractArchives $newProfile
+        if ($isArchive -and $extractOn) {
+            if (Test-IsRetroArchProfile ([string]$newProfile.Name) $emuExe) {
+                $wrap = Get-RomArchiveWrapPlan $romPath $emuExe $launch $archiveEntry
+            } else {
+                $wrap = Get-EmulatorArchiveWrapPlan $romPath $emuExe $launch ([string]$newProfile.Extensions) $archiveEntry
+            }
+            if (-not $wrap.Ok) { $plan.Reason = [string]$wrap.Reason; return $plan }
+            if ($wrap.Wrapped) { $outExe = [string]$wrap.Exe; $launch = [string]$wrap.Args }
+        }
+
+        $allowed = @(([string]$newProfile.Extensions -split '[,;\s]+') | ForEach-Object { $_.Trim().TrimStart('.').ToLowerInvariant() } | Where-Object { $_ -ne '' })
+        if ($allowed.Count -gt 0) {
+            $checkExt = $romExt
+            if ($isArchive -and $extractOn) {
+                $checkExt = ''
+                if (-not [string]::IsNullOrWhiteSpace($archiveEntry)) { $checkExt = [System.IO.Path]::GetExtension($archiveEntry).TrimStart('.').ToLowerInvariant() }
+            }
+            if ($checkExt -ne '' -and ($allowed -notcontains $checkExt)) { $plan.Mismatch = $true }
+        }
+
+        $plan.Ok = $true
+        $plan.Exe = $outExe
+        $plan.StartDir = $startDir
+        $plan.Launch = $launch
+        return $plan
+    } catch {
+        $plan.Ok = $false
+        $plan.Reason = [string]$_.Exception.Message
+        return $plan
+    }
+}
+
+# Записывает в shortcuts.vdf новые Exe / StartDir / LaunchOptions сразу для нескольких ярлыков.
+# $changes - элементы вида @{ Entry (запись библиотеки с ShortcutRecord); Exe; StartDir; Launch }.
+# Каждый файл shortcuts.vdf читается и пишется один раз, перед записью делается авто-бэкап.
+# Название, обложки и значок ярлыка не трогаются: appid остаётся прежним.
+# Steam на время вызова должен быть закрыт (иначе он перезапишет файл обратно).
+function Set-ShortcutsEmulatorBatch ($changes) {
+    $res = [PSCustomObject]@{ Done = 0; Failed = 0; Error = '' }
+    $items = @($changes)
+    if ($items.Count -eq 0) { return $res }
+    # Группируем по файлу shortcuts.vdf вручную (Group-Object со скриптблоком и сравнение типов давали
+    # «Типы аргумента не совпадают» в Windows PowerShell 5.1).
+    $groupMap = [ordered]@{}
+    foreach ($itm in $items) {
+        $gp = ''
+        try { $gp = [string]$itm.Entry.ShortcutRecord.FilePath } catch {}
+        if (-not $groupMap.Contains($gp)) { $groupMap[$gp] = New-Object System.Collections.Generic.List[object] }
+        [void]$groupMap[$gp].Add($itm)
+    }
+    foreach ($gKey in @($groupMap.Keys)) {
+        $groupItems = @($groupMap[$gKey].ToArray())
+        $stage = 'start'
+        try {
+            $filePath = [string]$gKey
+            if ([string]::IsNullOrWhiteSpace($filePath) -or -not (Test-Path -LiteralPath $filePath)) { throw (T 'sc_file_missing' @($filePath)) }
+            $stage = 'backup'
+            Create-AutoShortcutBackup $filePath | Out-Null
+            $stage = 'read'
+            $bytes = [System.IO.File]::ReadAllBytes($filePath)
+            $stage = 'parse'
+            $root = Read-VdfObjectBody $bytes 0
+            $shortcutsNode = $root.Children | Where-Object { $_.Key -eq 'shortcuts' } | Select-Object -First 1
+            if ($null -eq $shortcutsNode) { throw (T 'sc_no_node') }
+            $stage = 'match'
+
+            # Уже использованные записи помечаем по индексу (PSCustomObject в HashSet сравниваются ненадёжно).
+            # Копируем перебором, а не через @(...): @() над этим списком падал с ArgumentException
+            # «Argument types do not match».
+            $scList = New-Object System.Collections.Generic.List[object]
+            foreach ($scItem in $shortcutsNode.Body.Children) { [void]$scList.Add($scItem) }
+            $used = @{}
+            $applied = New-Object System.Collections.Generic.List[object]
+            foreach ($ch in $groupItems) {
+                $rec = $ch.Entry.ShortcutRecord
+                $target = $null; $targetScore = -1
+                $targetIdx = -1
+                for ($si = 0; $si -lt $scList.Count; $si++) {
+                    $sc = $scList[$si]
+                    if ($sc.Type -ne 0x00) { continue }
+                    if ($used.ContainsKey([string]$si)) { continue }
+                    $appidField = $sc.Body.Children | Where-Object { $_.Key -eq 'appid' } | Select-Object -First 1
+                    if ($null -eq $appidField -or [string]$appidField.Value -ne [string]$rec.ShortcutId) { continue }
+                    # У ярлыков с одинаковым appid берём ту запись, у которой совпадают Exe и LaunchOptions.
+                    $score = 0
+                    $exeField = $sc.Body.Children | Where-Object { $_.Key -eq 'Exe' } | Select-Object -First 1
+                    $loField = $sc.Body.Children | Where-Object { $_.Key -eq 'LaunchOptions' } | Select-Object -First 1
+                    if ($null -ne $exeField -and [string]::Equals(([string]$exeField.Value).Trim('"'), ([string]$rec.Exe).Trim('"'), [System.StringComparison]::OrdinalIgnoreCase)) { $score += 2 }
+                    if ($null -ne $loField -and [string]::Equals(([string]$loField.Value).Trim(), ([string]$rec.LaunchOptions).Trim(), [System.StringComparison]::OrdinalIgnoreCase)) { $score += 4 }
+                    if ($score -gt $targetScore) { $targetScore = $score; $target = $sc; $targetIdx = $si }
+                }
+                if ($null -eq $target) { $res.Failed = [int]$res.Failed + 1; continue }
+                $used[[string]$targetIdx] = $true
+                $stage = 'set-fields'
+                Set-VdfStringField $target 'Exe' ('"' + [string]$ch.Exe + '"')
+                Set-VdfStringField $target 'StartDir' ('"' + [string]$ch.StartDir + '"')
+                Set-VdfStringField $target 'LaunchOptions' ([string]$ch.Launch)
+                [void]$applied.Add($ch)
+            }
+            if ($applied.Count -gt 0) {
+                $stage = 'write'
+                Write-SteamShortcutsFile $filePath ([byte[]](Write-VdfFileBytes $root.Children))
+                $stage = 'folder-map'
+                foreach ($ch in $applied) {
+                    # Запомненная папка игры привязана к паре Exe+LaunchOptions - переносим на новый ключ.
+                    try { Move-GameFolderMapEntry ([string]$ch.Entry.Exe) ([string]$ch.Entry.LaunchOptions) ([string]$ch.Exe) ([string]$ch.Launch) '' } catch {}
+                }
+                $res.Done = [int]$res.Done + $applied.Count
+            }
+        } catch {
+            $res.Failed = [int]$res.Failed + $groupItems.Count
+            $res.Error = [string]$_.Exception.Message + ' [этап: ' + $stage + '; ' + $_.Exception.GetType().Name + '; строка ' + [string]$_.InvocationInfo.ScriptLineNumber + ': ' + ([string]$_.InvocationInfo.Line).Trim() + ']'
+            try { Write-LauncherLog ('Set-ShortcutsEmulatorBatch: ' + $_.Exception.Message + ' @ ' + [string]$_.InvocationInfo.PositionMessage) } catch {}
+        }
+    }
+    try { Save-Configuration } catch {}
+    return $res
+}
+
 # Лёгкий индекс ярлыков (Exe/StartDir/LaunchOptions) по каждому shortcuts.vdf. Файл разбирается один раз и
 # кэшируется по размеру и времени изменения: раньше проверка «уже в Steam» заново разбирала весь файл для
 # КАЖДОЙ отмеченной игры (~1 с на игру), и окно висело до появления первой карточки.
 $script:shortcutLightIndexCache = @{}
+# Смена эмулятора у отмеченных в главном окне ROM-игр на эмулятор, выбранный в индикаторе (активный профиль).
+# Игры сопоставляются с ROM-ярлыками Steam по пути ROM; отмеченные без ярлыка пропускаются.
+# Дальше та же схема, что в окне библиотеки: план -> подтверждение -> закрыть Steam -> записать shortcuts.vdf -> запустить Steam.
+function Invoke-MainRomEmulatorSwap {
+    $msgOk = [System.Windows.Forms.MessageBoxButtons]::OK
+    $owner = $form
+    try {
+        $newProfile = Get-ActiveEmulatorProfile
+        if ($null -eq $newProfile) { return }
+        $checked = @(Get-CheckedGames)
+        if ($checked.Count -eq 0) { return }
+        $core = ''
+        try { if (Test-IsRetroArchProfile ([string]$newProfile.Name) ([string]$newProfile.ExePath)) { $core = [string]$newProfile.Core } } catch {}
+
+        try { $owner.UseWaitCursor = $true; [System.Windows.Forms.Application]::DoEvents() } catch {}
+        $entries = @()
+        try { $entries = @(Get-SteamLibraryEntries) } finally { try { $owner.UseWaitCursor = $false } catch {} }
+
+        # ROM-путь -> ярлыки (один путь может принадлежать нескольким ярлыкам).
+        $romEntries = New-Object System.Collections.Generic.List[object]
+        foreach ($en in $entries) {
+            if ([string]$en.Kind -ne 'shortcut') { continue }
+            $isRom = $false
+            try { $isRom = [bool](Test-ShortcutIsRomEntry $en) } catch {}
+            if (-not $isRom) { continue }
+            $rk = ''
+            try { $rk = [string](Get-NormalizedGamePathKey ([string](Get-RomPathFromLaunchOptions $en))) } catch {}
+            if ([string]::IsNullOrWhiteSpace($rk)) { continue }
+            [void]$romEntries.Add([PSCustomObject]@{ Key = $rk; Entry = $en })
+        }
+
+        $targets = New-Object System.Collections.Generic.List[object]
+        $seen = @{}
+        $skipped = New-Object System.Collections.Generic.List[string]
+        foreach ($game in $checked) {
+            $gk = [string](Get-NormalizedGamePathKey $game.Path)
+            $found = $false
+            if (-not [string]::IsNullOrWhiteSpace($gk)) {
+                $gkDir = $gk.TrimEnd('\') + '\'
+                foreach ($re in $romEntries) {
+                    # Файл-ROM совпадает по пути; игра-папка (Wii U и т.п.) — ROM внутри этой папки.
+                    if ($re.Key -eq $gk -or $re.Key.StartsWith($gkDir, [System.StringComparison]::OrdinalIgnoreCase)) {
+                        $found = $true
+                        $sk = [string]$re.Entry.AppId + '|' + [string]$re.Entry.Name
+                        if (-not $seen.ContainsKey($sk)) { $seen[$sk] = $true; [void]$targets.Add($re.Entry) }
+                    }
+                }
+            }
+            if (-not $found) { [void]$skipped.Add(([string]$game.Name + ' - ' + (T 'rom_swap_not_added'))) }
+        }
+
+        $newId = [string]$newProfile.Id
+        $list = New-Object System.Collections.Generic.List[object]
+        foreach ($t in $targets) {
+            $curP = $null
+            try { $curP = Get-EntryEmulatorProfile $t } catch {}
+            if ($null -ne $curP -and [string]$curP.Id -eq $newId) {
+                $sameIsRA = $false
+                try { $sameIsRA = [bool](Test-IsRetroArchProfile ([string]$newProfile.Name) ([string]$newProfile.ExePath)) } catch {}
+                if (-not $sameIsRA) { continue }
+                if ($core -ne '' -and [string]::Equals((Get-EntryRetroArchCore $t), $core, [System.StringComparison]::OrdinalIgnoreCase)) { continue }
+            }
+            [void]$list.Add($t)
+        }
+
+        $plans = New-Object System.Collections.Generic.List[object]
+        foreach ($en in $list) {
+            $pl = Get-RomShortcutSwapPlan $en $newProfile $core
+            if (-not $pl.Ok) { [void]$skipped.Add(([string]$en.Name + ' - ' + [string]$pl.Reason)); continue }
+            [void]$plans.Add([PSCustomObject]@{ Entry = $en; Exe = [string]$pl.Exe; StartDir = [string]$pl.StartDir; Launch = [string]$pl.Launch; Mismatch = [bool]$pl.Mismatch })
+        }
+        if ($plans.Count -eq 0) {
+            if ($skipped.Count -gt 0) {
+                try { $labelHeader.Text = (T 'rom_swap_skipped' @((@($skipped | Select-Object -First 8)) -join '; ')) } catch {}
+            }
+            return
+        }
+
+        # Без диалогов подтверждения и итогов: операция применяется сразу, результат — в строке статуса.
+
+        try { $owner.UseWaitCursor = $true; [System.Windows.Forms.Application]::DoEvents() } catch {}
+        $swapRes = $null
+        $steamWasRunning = $false
+        try {
+            try { $steamWasRunning = Test-SteamRunning } catch {}
+            $swapCancelled = $false
+            if ($steamWasRunning) { if (-not (Close-SteamForWrite)) { $swapCancelled = $true } }
+            if (-not $swapCancelled) { $swapRes = Set-ShortcutsEmulatorBatch @($plans.ToArray()) }
+        } finally {
+            if ($steamWasRunning -and (Get-SteamRestartMode) -eq 'auto') {
+                try {
+                    $steamExeSwap = [string](Get-ConfiguredSteamExePath)
+                    if ([string]::IsNullOrWhiteSpace($steamExeSwap) -or -not (Test-Path -LiteralPath $steamExeSwap)) {
+                        $steamExeSwap = [string](Get-ItemProperty -Path 'HKCU:\Software\Valve\Steam' -Name 'SteamExe' -ErrorAction SilentlyContinue).SteamExe
+                    }
+                    if ([string]::IsNullOrWhiteSpace($steamExeSwap) -or -not (Test-Path -LiteralPath $steamExeSwap)) { $steamExeSwap = 'C:\Program Files (x86)\Steam\steam.exe' }
+                    if (Test-Path -LiteralPath $steamExeSwap) { Start-Process -FilePath $steamExeSwap }
+                } catch {}
+            }
+            try { $owner.UseWaitCursor = $false } catch {}
+        }
+        try { $owner.Activate() } catch {}
+
+        # Как после пакетного добавления: операция выполнена — отметки сняты, панели перерисованы,
+        # Update-MainLibraryButtonState (внутри Refresh-Panels) возвращает кнопку «Библиотека Steam».
+        try { $global:checkedC.Clear(); $global:checkedD.Clear() } catch {}
+        try { Refresh-Panels } catch {}
+
+        $lines = New-Object System.Collections.Generic.List[string]
+        if ($null -ne $swapRes -and [int]$swapRes.Done -gt 0) { [void]$lines.Add((T 'rom_swap_done' @([int]$swapRes.Done, [string]$newProfile.Name))) }
+        if ($null -ne $swapRes -and [int]$swapRes.Failed -gt 0) { [void]$lines.Add((T 'rom_swap_fail' @([int]$swapRes.Failed, [string]$swapRes.Error))) }
+        if ($skipped.Count -gt 0) { [void]$lines.Add((T 'rom_swap_skipped' @((@($skipped | Select-Object -First 8)) -join '; '))) }
+        if ($swapCancelled) { [void]$lines.Add((T 'steam_close_cancelled')) }
+        try { $labelHeader.Text = ($lines.ToArray() -join '  |  ') } catch {}
+    } catch {
+        try { $owner.UseWaitCursor = $false } catch {}
+        try { $labelHeader.Text = [string]$_.Exception.Message } catch {}
+    }
+}
+
 function Get-ShortcutLightIndex {
     $all = New-Object System.Collections.Generic.List[object]
     $userDataPath = Get-ConfiguredSteamUserDataPath
@@ -11266,7 +11968,7 @@ function Update-ExistingSteamShortcut ($shortcutRecord, $newName, $newExePath, $
             }
         } catch {}
 
-        [System.IO.File]::WriteAllBytes($filePath,(Write-VdfFileBytes $root.Children))
+        Write-SteamShortcutsFile $filePath ([byte[]](Write-VdfFileBytes $root.Children))
         Save-Configuration
         return [string]$shortcutRecord.ShortcutId
     } catch {
@@ -11581,7 +12283,7 @@ function Add-ShortcutToSteam ($gameName, $exePath, $startDir, $launchOptions = "
                 $newBytes.Add(0x08)  # закрывает корень файла
             }
 
-            [System.IO.File]::WriteAllBytes($shortcutsFile, $newBytes.ToArray())
+            Write-SteamShortcutsFile $shortcutsFile ([byte[]]$newBytes.ToArray())
             $success = $true; $resultId = [string]$shortcutIdValue
         } catch {
             $global:lastShortcutError = $_.Exception.Message
@@ -16138,7 +16840,7 @@ function Get-LogoDefaultPosition {
 }
 
 function Sync-LogoDefaultFromState($state) {
-    # Вызывается при сохранении карточки. Галочка включена - текущие положение и размер логотипа становятся
+    # Вызывается при нажатии на замок в карточке и при сохранении карточки. Галочка включена - текущие положение и размер логотипа становятся
     # значением по умолчанию (config.ini); галочку сняли - значение по умолчанию отключается
     # (числа в config.ini остаются, но не применяются).
     try {
@@ -16226,11 +16928,73 @@ function Get-EditorLogoSignature($state) {
     } catch { return ('?' + [guid]::NewGuid().ToString('N')) }
 }
 
+# Скрытый «глазиком» логотип: из Steam файл убирается, но копия лежит в %AppData%\Steam Commander\hidden_logos\<id>.png,
+# чтобы при следующем открытии карточки логотип снова был в слоте и его можно было включить обратно.
+function Get-HiddenLogoStashPath([string]$shortcutId) {
+    return (Join-Path (Join-Path $global:appDataDir 'hidden_logos') ($shortcutId + '.png'))
+}
+
+function Save-HiddenLogoStash([string]$shortcutId) {
+    try {
+        if ($shortcutId -notmatch '^\d+$') { return }
+        $src = Join-Path $global:tempCovers 'temp_logo.png'
+        # После Copy-TempCoversDirectlyToGrid папка temp очищается целиком, и temp_logo.png там уже нет:
+        # тогда копию берём из config\grid (файл ещё не удалён), иначе логотип терялся бы безвозвратно,
+        # а при следующем открытии карточки пропадала кнопка-«глаз».
+        if (-not [System.IO.File]::Exists($src)) {
+            $src = $null
+            try {
+                foreach ($pr in @(Get-ConfiguredSteamProfileDirectories)) {
+                    $gp = Join-Path (Join-Path ([string]$pr.FullName) 'config\grid') ($shortcutId + '_logo.png')
+                    if ([System.IO.File]::Exists($gp)) { $src = $gp; break }
+                }
+            } catch {}
+            if ($null -eq $src) { return }
+        }
+        $dst = Get-HiddenLogoStashPath $shortcutId
+        [System.IO.Directory]::CreateDirectory([System.IO.Path]::GetDirectoryName($dst)) | Out-Null
+        Copy-Item -LiteralPath $src -Destination $dst -Force -ErrorAction Stop
+    } catch {}
+}
+
+function Remove-HiddenLogoStash([string]$shortcutId) {
+    try {
+        if ($shortcutId -notmatch '^\d+$') { return }
+        $f = Get-HiddenLogoStashPath $shortcutId
+        if ([System.IO.File]::Exists($f)) { Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue }
+    } catch {}
+}
+
+function Test-SteamGridLogoExists([string]$shortcutId) {
+    try {
+        foreach ($pr in @(Get-ConfiguredSteamProfileDirectories)) {
+            $lp = Join-Path (Join-Path ([string]$pr.FullName) 'config\grid') ($shortcutId + '_logo.png')
+            if ([System.IO.File]::Exists($lp)) { return $true }
+        }
+    } catch {}
+    return $false
+}
+
+# Возвращает $true и кладёт сохранённый логотип в temp_logo.png, если логотип этой игры был скрыт
+# и в Steam его сейчас нет (появился в Steam вручную - значит, скрытие больше не актуально).
+function Restore-HiddenLogoStash([string]$shortcutId) {
+    try {
+        if ($shortcutId -notmatch '^\d+$') { return $false }
+        $f = Get-HiddenLogoStashPath $shortcutId
+        if (-not [System.IO.File]::Exists($f)) { return $false }
+        if (Test-SteamGridLogoExists $shortcutId) { Remove-HiddenLogoStash $shortcutId; return $false }
+        if (-not (Test-Path $global:tempCovers)) { New-Item -ItemType Directory -Path $global:tempCovers -Force | Out-Null }
+        Copy-Item -LiteralPath $f -Destination (Join-Path $global:tempCovers 'temp_logo.png') -Force -ErrorAction Stop
+        return $true
+    } catch { return $false }
+}
+
 function Remove-SteamGridLogoForAllProfiles($shortcutId) {
     # Логотип скрыт «глазиком» в карточке: файл <id>_logo.png в config\grid не должен остаться в Steam
     # (ни свежескопированный из temp, ни старый от прошлого сохранения).
     try {
         if ([string]::IsNullOrWhiteSpace([string]$shortcutId)) { return }
+        Save-HiddenLogoStash ([string]$shortcutId)
         Get-ConfiguredSteamProfileDirectories | ForEach-Object {
             try {
                 $lp = Join-Path (Join-Path $_.FullName 'config\grid') ([string]$shortcutId + '_logo.png')
@@ -16470,7 +17234,7 @@ function Copy-TempCoversDirectlyToGrid ($shortcutId, $logoPosition = $null) {
 
         if (Test-Path (Join-Path $global:tempCovers "temp_p.jpg")) { Copy-Item (Join-Path $global:tempCovers "temp_p.jpg") (Join-Path $gridDir ($shortcutId + "p.jpg")) -Force }
         if (Test-Path (Join-Path $global:tempCovers "temp_hero.jpg")) { Copy-Item (Join-Path $global:tempCovers "temp_hero.jpg") (Join-Path $gridDir ($shortcutId + "_hero.jpg")) -Force }
-        if (Test-Path (Join-Path $global:tempCovers "temp_logo.png")) { Copy-Item (Join-Path $global:tempCovers "temp_logo.png") (Join-Path $gridDir ($shortcutId + "_logo.png")) -Force }
+        if (Test-Path (Join-Path $global:tempCovers "temp_logo.png")) { Copy-Item (Join-Path $global:tempCovers "temp_logo.png") (Join-Path $gridDir ($shortcutId + "_logo.png")) -Force; Remove-HiddenLogoStash ([string]$shortcutId) }
         if (Test-Path (Join-Path $global:tempCovers "temp_header.jpg")) { Copy-Item (Join-Path $global:tempCovers "temp_header.jpg") (Join-Path $gridDir ($shortcutId + ".jpg")) -Force }
         $iconTemp = Get-TempIconPath
         if ($null -ne $iconTemp) {
@@ -17040,7 +17804,7 @@ $drawSteamButtonContent = {
         $btn = $sender
         $g = $e.Graphics
         $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::ClearTypeGridFit
-        $icon = if ($btn -eq $btnAddToSteam) { $script:steamAddButtonIcon } else { $script:steamLibraryButtonIcon }
+        $icon = if ($btn -eq $btnAddToSteam) { $script:steamAddButtonIcon } elseif ($btn -eq $btnSwapEmuMain) { $script:steamSwapButtonIcon } else { $script:steamLibraryButtonIcon }
         $text = [string]$btn.Tag
         if ([string]::IsNullOrWhiteSpace($text)) { return }
 
@@ -17134,6 +17898,7 @@ $drawSteamButtonContent = {
 }
 $btnAddToSteam.Add_Paint($drawSteamButtonContent)
 $btnSteamLibrary.Add_Paint($drawSteamButtonContent)
+$btnSwapEmuMain.Add_Paint($drawSteamButtonContent)
 
 function Get-SteamGridDbSourceIconBitmap {
     try {
@@ -18071,6 +18836,10 @@ function Initialize-EditorCompose($heroSlot, $logoSlot) {
                 $hs.EditorState | Add-Member -NotePropertyName LogoDefaultSig -NotePropertyValue (Get-EditorLogoGeomSig $hs.EditorState) -Force
                 $hs.EditorState | Add-Member -NotePropertyName LogoDefaultDeviated -NotePropertyValue $false -Force
             }
+            # Значения по умолчанию действуют сразу при нажатии на замок (пишутся в config.ini), без сохранения карточки.
+            # Автоснятие замка из-за отклонения положения (LogoDefaultDeviated) и открытие карточки с теми же значениями
+            # общее значение не меняют - это проверяет сама Sync-LogoDefaultFromState.
+            Sync-LogoDefaultFromState $hs.EditorState
         } catch {}
     }.GetNewClosure())
     $heroSlot.Panel.Controls.Add($chkDef)
@@ -19415,7 +20184,7 @@ function Show-SupportDialog ($owner) {
 function Show-EmulatorEditDialog ($owner, $existing = $null) {
     $dlg = New-Object System.Windows.Forms.Form
     $dlg.Text = if ($existing -eq $null) { (T 'emu_dlg_new') } else { (T 'emu_dlg_edit') }
-    $dlg.ClientSize = New-Object System.Drawing.Size(480, 276)
+    $dlg.ClientSize = New-Object System.Drawing.Size(480, 296)
     $dlg.StartPosition = 'CenterParent'
     $dlg.FormBorderStyle = 'FixedDialog'
     $dlg.MaximizeBox = $false; $dlg.MinimizeBox = $false
@@ -19423,49 +20192,69 @@ function Show-EmulatorEditDialog ($owner, $existing = $null) {
     $dlg.ForeColor = $steamUi.Text
     $dlg.Font = New-Object System.Drawing.Font('Segoe UI', 9)
 
+    # Поля ввода - той же высоты (28 px), что и в окне настроек: рамка и фон у панели, а сам TextBox внутри
+    # без рамки и по центру по вертикали (у однострочного TextBox высота задаётся шрифтом, а не Size).
+    # Сами TextBox остаются теми же объектами (Text, события, Focus), поэтому остальная логика диалога не меняется.
+    $emuFieldHeight = 28
+    $addEmuField = {
+        param($tb, [int]$x, [int]$y, [int]$w)
+        $pnl = New-Object System.Windows.Forms.Panel
+        $pnl.Location = New-Object System.Drawing.Point($x, $y)
+        $pnl.Size = New-Object System.Drawing.Size($w, $emuFieldHeight)
+        $pnl.BackColor = $steamUi.Input
+        $pnl.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+        $tb.AutoSize = $false
+        $tb.BorderStyle = [System.Windows.Forms.BorderStyle]::None
+        $tb.BackColor = $steamUi.Input
+        $tb.ForeColor = $steamUi.Text
+        $pnl.Controls.Add($tb)
+        $tb.Height = [int]$tb.PreferredHeight
+        $tb.Width = [int]($pnl.ClientSize.Width - 12 - 8)
+        $tb.Left = 12
+        $tb.Top = [int][Math]::Floor(($pnl.ClientSize.Height - $tb.Height) / 2)
+        $dlg.Controls.Add($pnl)
+    }
+
     $lblName = New-Object System.Windows.Forms.Label
     $lblName.Text = (T 'emu_lbl_name')
-    $lblName.Location = New-Object System.Drawing.Point(16, 16)
-    $lblName.Size = New-Object System.Drawing.Size(100, 24)
+    $lblName.Location = New-Object System.Drawing.Point(16, 14)
+    $lblName.Size = New-Object System.Drawing.Size(100, 28)
+    $lblName.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
     $lblName.ForeColor = $steamUi.Muted
     $dlg.Controls.Add($lblName)
 
     $txtName = New-Object System.Windows.Forms.TextBox
-    $txtName.Location = New-Object System.Drawing.Point(120, 14)
-    $txtName.Size = New-Object System.Drawing.Size(340, 24)
-    $txtName.BackColor = $steamUi.Input
-    $txtName.ForeColor = $steamUi.Text
-    $txtName.BorderStyle = 'FixedSingle'
     if ($existing -ne $null) { $txtName.Text = [string]$existing.Name }
-    $dlg.Controls.Add($txtName)
+    & $addEmuField $txtName 120 14 340
 
     $lblExe = New-Object System.Windows.Forms.Label
     $lblExe.Text = (T 'emu_lbl_exe')
-    $lblExe.Location = New-Object System.Drawing.Point(16, 50)
-    $lblExe.Size = New-Object System.Drawing.Size(100, 24)
+    $lblExe.Location = New-Object System.Drawing.Point(16, 52)
+    $lblExe.Size = New-Object System.Drawing.Size(100, 28)
+    $lblExe.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
     $lblExe.ForeColor = $steamUi.Muted
     $dlg.Controls.Add($lblExe)
 
+    # Кнопка папки (28x28, как в настройках) прижата к правому краю полей диалога (x = 460), поле пути
+    # эмулятора растянуто до неё с зазором 10 px, как у «Папка Steam» в настройках.
+    $emuBrowseWidth = 28
+    $emuBrowseGap = 10
+    $emuFieldRight = 460
+    $emuExeFieldWidth = $emuFieldRight - $emuBrowseWidth - $emuBrowseGap - 120
     $txtExe = New-Object System.Windows.Forms.TextBox
-    $txtExe.Location = New-Object System.Drawing.Point(120, 48)
-    $txtExe.Size = New-Object System.Drawing.Size(258, 24)
-    $txtExe.BackColor = $steamUi.Input
-    $txtExe.ForeColor = $steamUi.Text
-    $txtExe.BorderStyle = 'FixedSingle'
     if ($existing -ne $null) { $txtExe.Text = [string]$existing.ExePath }
-    $dlg.Controls.Add($txtExe)
+    & $addEmuField $txtExe 120 52 $emuExeFieldWidth
 
     $btnBrowseExeEmu = New-Object System.Windows.Forms.Button
-    $btnBrowseExeEmu.Location = New-Object System.Drawing.Point(384, $txtExe.Top)
-    $btnBrowseExeEmu.Size = New-Object System.Drawing.Size(76, $txtExe.Height)
-    Set-BrowseIconButton $btnBrowseExeEmu
-    # Кнопка папки - вровень с полем пути эмулятора: те же верх и высота (фактическая высота TextBox
-    # задаётся шрифтом, а не Size, поэтому берём её у самого поля; Set-BrowseIconButton трогает только ширину).
-    $btnBrowseExeEmu.Top = $txtExe.Top
-    $btnBrowseExeEmu.Height = $txtExe.Height
-    $btnBrowseExeEmu.FlatStyle = 'Flat'
-    $btnBrowseExeEmu.BackColor = $steamUi.Panel2
+    $btnBrowseExeEmu.Location = New-Object System.Drawing.Point(($emuFieldRight - $emuBrowseWidth), 52)
+    $btnBrowseExeEmu.Size = New-Object System.Drawing.Size($emuBrowseWidth, $emuFieldHeight)
+    Set-BrowseIconButton $btnBrowseExeEmu $emuBrowseWidth
+    # Верх и высота кнопки равны верху и высоте поля пути (28 px), правый край - вровень с остальными полями.
+    $btnBrowseExeEmu.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    $btnBrowseExeEmu.FlatAppearance.BorderColor = $steamUi.Border
+    $btnBrowseExeEmu.BackColor = $steamUi.Panel
     $btnBrowseExeEmu.ForeColor = $steamUi.Text
+    $btnBrowseExeEmu.Cursor = [System.Windows.Forms.Cursors]::Hand
     $btnBrowseExeEmu.Add_Click({
         $ofdEmu = New-Object System.Windows.Forms.OpenFileDialog
         $ofdEmu.Title = (T 'emu_ofd_title')
@@ -19481,23 +20270,19 @@ function Show-EmulatorEditDialog ($owner, $existing = $null) {
 
     $lblExt = New-Object System.Windows.Forms.Label
     $lblExt.Text = (T 'emu_lbl_ext')
-    $lblExt.Location = New-Object System.Drawing.Point(16, 84)
-    $lblExt.Size = New-Object System.Drawing.Size(100, 24)
+    $lblExt.Location = New-Object System.Drawing.Point(16, 90)
+    $lblExt.Size = New-Object System.Drawing.Size(100, 28)
+    $lblExt.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
     $lblExt.ForeColor = $steamUi.Muted
     $dlg.Controls.Add($lblExt)
 
     $txtExt = New-Object System.Windows.Forms.TextBox
-    $txtExt.Location = New-Object System.Drawing.Point(120, 82)
-    $txtExt.Size = New-Object System.Drawing.Size(340, 24)
-    $txtExt.BackColor = $steamUi.Input
-    $txtExt.ForeColor = $steamUi.Text
-    $txtExt.BorderStyle = 'FixedSingle'
     if ($existing -ne $null) { $txtExt.Text = [string]$existing.Extensions }
-    $dlg.Controls.Add($txtExt)
+    & $addEmuField $txtExt 120 90 340
 
     $lblExtHint = New-Object System.Windows.Forms.Label
     $lblExtHint.Text = (T 'emu_ext_hint')
-    $lblExtHint.Location = New-Object System.Drawing.Point(120, 106)
+    $lblExtHint.Location = New-Object System.Drawing.Point(120, 120)
     $lblExtHint.Size = New-Object System.Drawing.Size(340, 18)
     $lblExtHint.ForeColor = $steamUi.Muted
     $lblExtHint.Font = New-Object System.Drawing.Font('Segoe UI', 7.5)
@@ -19508,7 +20293,7 @@ function Show-EmulatorEditDialog ($owner, $existing = $null) {
     # диалога в конце функции. Подсказка — стандартный ToolTip.
     $chkExtract = New-Object System.Windows.Forms.CheckBox
     $chkExtract.Text = (T 'emu_chk_extract')
-    $chkExtract.Location = New-Object System.Drawing.Point(120, 126)
+    $chkExtract.Location = New-Object System.Drawing.Point(120, 142)
     $chkExtract.Size = New-Object System.Drawing.Size(340, 22)
     $chkExtract.AutoSize = $false
     $chkExtract.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
@@ -19583,23 +20368,19 @@ function Show-EmulatorEditDialog ($owner, $existing = $null) {
     # просто не выполнялась, поэтому ошибки не было).
     $lblArgs = New-Object System.Windows.Forms.Label
     $lblArgs.Text = (T 'emu_lbl_args')
-    $lblArgs.Location = New-Object System.Drawing.Point(16, 158)
-    $lblArgs.Size = New-Object System.Drawing.Size(100, 24)
+    $lblArgs.Location = New-Object System.Drawing.Point(16, 174)
+    $lblArgs.Size = New-Object System.Drawing.Size(100, 28)
+    $lblArgs.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
     $lblArgs.ForeColor = $steamUi.Muted
     $dlg.Controls.Add($lblArgs)
 
     $txtArgs = New-Object System.Windows.Forms.TextBox
-    $txtArgs.Location = New-Object System.Drawing.Point(120, 156)
-    $txtArgs.Size = New-Object System.Drawing.Size(340, 24)
-    $txtArgs.BackColor = $steamUi.Input
-    $txtArgs.ForeColor = $steamUi.Text
-    $txtArgs.BorderStyle = 'FixedSingle'
     if ($existing -ne $null) { $txtArgs.Text = [string]$existing.Args }
-    $dlg.Controls.Add($txtArgs)
+    & $addEmuField $txtArgs 120 174 340
 
     $lblArgsHint = New-Object System.Windows.Forms.Label
     $lblArgsHint.Text = (T 'emu_args_hint')
-    $lblArgsHint.Location = New-Object System.Drawing.Point(120, 180)
+    $lblArgsHint.Location = New-Object System.Drawing.Point(120, 206)
     $lblArgsHint.Size = New-Object System.Drawing.Size(340, 32)
     $lblArgsHint.ForeColor = $steamUi.Muted
     $lblArgsHint.Font = New-Object System.Drawing.Font('Segoe UI', 7.5)
@@ -19612,7 +20393,7 @@ function Show-EmulatorEditDialog ($owner, $existing = $null) {
     # обычным текстовым полем — можно как выбрать платформу из списка, так и
     # просто вписать расширения вручную.
     $extResults = New-Object System.Windows.Forms.ListBox
-    $extResults.Location = New-Object System.Drawing.Point(120, 104)
+    $extResults.Location = New-Object System.Drawing.Point(120, 116)
     $extResults.Size = New-Object System.Drawing.Size(340, 24)
     $extResults.BackColor = $steamUi.Input
     $extResults.ForeColor = $steamUi.Text
@@ -19747,7 +20528,7 @@ function Show-EmulatorEditDialog ($owner, $existing = $null) {
     # если для этого эмулятора они известны, иначе поле «Аргументы» не
     # трогается (чтобы не затирать то, что уже вписано вручную).
     $nameResults = New-Object System.Windows.Forms.ListBox
-    $nameResults.Location = New-Object System.Drawing.Point(120, 36)
+    $nameResults.Location = New-Object System.Drawing.Point(120, 40)
     $nameResults.Size = New-Object System.Drawing.Size(340, 24)
     $nameResults.BackColor = $steamUi.Input
     $nameResults.ForeColor = $steamUi.Text
@@ -19858,7 +20639,7 @@ function Show-EmulatorEditDialog ($owner, $existing = $null) {
 
     $btnOkEmu = New-Object System.Windows.Forms.Button
     $btnOkEmu.Text = (T 'set_save')
-    $btnOkEmu.Location = New-Object System.Drawing.Point(268, 226)
+    $btnOkEmu.Location = New-Object System.Drawing.Point(268, 246)
     $btnOkEmu.Size = New-Object System.Drawing.Size(96, 30)
     $btnOkEmu.FlatStyle = 'Flat'
     $btnOkEmu.BackColor = [System.Drawing.Color]::FromArgb(25,55,75)
@@ -19868,7 +20649,7 @@ function Show-EmulatorEditDialog ($owner, $existing = $null) {
 
     $btnCancelEmu = New-Object System.Windows.Forms.Button
     $btnCancelEmu.Text = (T 'set_cancel')
-    $btnCancelEmu.Location = New-Object System.Drawing.Point(370, 226)
+    $btnCancelEmu.Location = New-Object System.Drawing.Point(370, 246)
     $btnCancelEmu.Size = New-Object System.Drawing.Size(90, 30)
     $btnCancelEmu.FlatStyle = 'Flat'
     $btnCancelEmu.BackColor = $steamUi.Panel2
@@ -21356,6 +22137,7 @@ function Show-ProgramSettingsDialog {
     $originalSteamUserId = [string]$global:steamUserId
     $originalSuggestGameLaunchers = [bool]$global:suggestGameLaunchers
     $originalUseExeIcons = [bool]$global:useExeIcons
+    $originalSteamRestartMode = [string]$global:steamRestartMode
     # ВАЖНО: обработчики событий (Add_Click/Add_FormClosed) выполняются в дочерней
     # области видимости, и простое присваивание `$settingsAccepted = $true` внутри
     # обработчика создавало бы ЛОКАЛЬНУЮ копию переменной — родительская осталась
@@ -21801,7 +22583,7 @@ function Show-ProgramSettingsDialog {
     # CheckBox здесь не используем, потому что его системная галочка выглядит бледно
     # и отличается от основной галочки программы.
     $chkSuggestLaunchers = New-Object System.Windows.Forms.Panel
-    $chkSuggestLaunchers.Location = New-Object System.Drawing.Point(120, 207)
+    $chkSuggestLaunchers.Location = New-Object System.Drawing.Point(120, 245)
     $chkSuggestLaunchers.Size = New-Object System.Drawing.Size(22, 22)
     $chkSuggestLaunchers.BackColor = $steamUi.Bg
     $chkSuggestLaunchers.Cursor = [System.Windows.Forms.Cursors]::Hand
@@ -21828,7 +22610,7 @@ function Show-ProgramSettingsDialog {
 
     $exeFilterLabel = New-Object System.Windows.Forms.Label
     $exeFilterLabel.Text = (T 'set_exe_filter')
-    $exeFilterLabel.Location = New-Object System.Drawing.Point(20, 202)
+    $exeFilterLabel.Location = New-Object System.Drawing.Point(20, 240)
     $exeFilterLabel.Size = New-Object System.Drawing.Size(92, 32)
     $exeFilterLabel.ForeColor = $steamUi.Muted
     $exeFilterLabel.BackColor = $steamUi.Bg
@@ -21836,7 +22618,7 @@ function Show-ProgramSettingsDialog {
 
     $chkSuggestLaunchersLabel = New-Object System.Windows.Forms.Label
     $chkSuggestLaunchersLabel.Text = (T 'set_offer_launchers')
-    $chkSuggestLaunchersLabel.Location = New-Object System.Drawing.Point(146, 202)
+    $chkSuggestLaunchersLabel.Location = New-Object System.Drawing.Point(146, 240)
     $chkSuggestLaunchersLabel.Size = New-Object System.Drawing.Size(170, 32)
     $chkSuggestLaunchersLabel.ForeColor = $steamUi.Muted
     $chkSuggestLaunchersLabel.BackColor = $steamUi.Bg
@@ -21857,7 +22639,7 @@ function Show-ProgramSettingsDialog {
     # Вторая галочка в блоке EXE: брать иконки игр из самого EXE (а не из Steam).
     # Оформление и логика те же, что у галочки «Предлагать лаунчеры» выше.
     $chkUseExeIcons = New-Object System.Windows.Forms.Panel
-    $chkUseExeIcons.Location = New-Object System.Drawing.Point(320, 207)
+    $chkUseExeIcons.Location = New-Object System.Drawing.Point(320, 245)
     $chkUseExeIcons.Size = New-Object System.Drawing.Size(22, 22)
     $chkUseExeIcons.BackColor = $steamUi.Bg
     $chkUseExeIcons.Cursor = [System.Windows.Forms.Cursors]::Hand
@@ -21883,7 +22665,7 @@ function Show-ProgramSettingsDialog {
 
     $chkUseExeIconsLabel = New-Object System.Windows.Forms.Label
     $chkUseExeIconsLabel.Text = (T 'set_use_exe_icons')
-    $chkUseExeIconsLabel.Location = New-Object System.Drawing.Point(346, 202)
+    $chkUseExeIconsLabel.Location = New-Object System.Drawing.Point(346, 240)
     $chkUseExeIconsLabel.Size = New-Object System.Drawing.Size(174, 32)
     $chkUseExeIconsLabel.ForeColor = $steamUi.Muted
     $chkUseExeIconsLabel.BackColor = $steamUi.Bg
@@ -21900,9 +22682,60 @@ function Show-ProgramSettingsDialog {
     $dlg.Controls.Add($chkUseExeIcons)
     $dlg.Controls.Add($chkUseExeIconsLabel)
 
+    # Режим перезапуска Steam: «Автоматически» (программа сама закрывает Steam перед записью и запускает его
+    # после) или «Вручную» (Steam закрывает и запускает пользователь). Строка под блоком EXE, оформление как у региона.
+    $steamRestartLabel = New-Object System.Windows.Forms.Label
+    $steamRestartLabel.Text = (T 'set_steam_restart')
+    $steamRestartLabel.Location = New-Object System.Drawing.Point(20, 204)
+    $steamRestartLabel.Size = New-Object System.Drawing.Size(92, 28)
+    $steamRestartLabel.ForeColor = $steamUi.Muted
+    $steamRestartLabel.BackColor = $steamUi.Bg
+    $steamRestartLabel.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
+    $dlg.Controls.Add($steamRestartLabel)
+
+    $pnlSteamRestart = New-Object System.Windows.Forms.Panel
+    $pnlSteamRestart.Location = New-Object System.Drawing.Point(120, 204)
+    $pnlSteamRestart.Size = New-Object System.Drawing.Size(300, 28)
+    $pnlSteamRestart.BackColor = $steamUi.Input
+    $pnlSteamRestart.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+    $dlg.Controls.Add($pnlSteamRestart)
+
+    $cmbSteamRestart = New-Object SmartExeComboBox
+    $cmbSteamRestart.Dock = [System.Windows.Forms.DockStyle]::Fill
+    $cmbSteamRestart.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
+    $cmbSteamRestart.DrawMode = [System.Windows.Forms.DrawMode]::OwnerDrawFixed
+    $cmbSteamRestart.ItemHeight = 20
+    $cmbSteamRestart.BackColor = $steamUi.Input
+    $cmbSteamRestart.ForeColor = $steamUi.Text
+    $cmbSteamRestart.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    try { $cmbSteamRestart.BorderColor = $steamUi.Input } catch {}
+    $cmbSteamRestart.IntegralHeight = $false
+    [void]$cmbSteamRestart.Items.Add([string](T 'set_restart_auto'))
+    [void]$cmbSteamRestart.Items.Add([string](T 'set_restart_manual'))
+    $cmbSteamRestart.SelectedIndex = $(if ((Get-SteamRestartMode) -eq 'manual') { 1 } else { 0 })
+    $pnlSteamRestart.Controls.Add($cmbSteamRestart)
+    $cmbSteamRestart.Add_DrawItem({
+        param($sender,$e)
+        if($e.Index -lt 0){ return }
+        $isSelected = (($e.State -band [System.Windows.Forms.DrawItemState]::Selected) -ne 0)
+        $bg = if($isSelected){ $steamUi.Accent2 } else { $steamUi.Input }
+        $fg = if($isSelected){ [System.Drawing.Color]::White } else { $steamUi.Text }
+        $bgBrush = New-Object System.Drawing.SolidBrush($bg)
+        $textBrush = New-Object System.Drawing.SolidBrush($fg)
+        try {
+            $e.Graphics.FillRectangle($bgBrush,$e.Bounds)
+            $text = [string]$sender.Items[$e.Index]
+            # Текст рисуем через TextRenderer (как в TextBox): тот же отступ слева (12 px), что у полей ввода,
+            # и точное вертикальное центрирование.
+            $ctFlags = [System.Windows.Forms.TextFormatFlags]::Left -bor [System.Windows.Forms.TextFormatFlags]::VerticalCenter -bor [System.Windows.Forms.TextFormatFlags]::EndEllipsis -bor [System.Windows.Forms.TextFormatFlags]::NoPadding -bor [System.Windows.Forms.TextFormatFlags]::SingleLine
+            $ctRect = New-Object System.Drawing.Rectangle(($e.Bounds.X + 12), $e.Bounds.Y, [Math]::Max(10, $e.Bounds.Width - 12 - 4), $e.Bounds.Height)
+            [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, $text, $sender.Font, $ctRect, $fg, $ctFlags)
+        } finally { $bgBrush.Dispose(); $textBrush.Dispose() }
+    })
+
     $section = New-Object System.Windows.Forms.Label
     $section.Text = (T 'api_keys_section')
-    $section.Location = New-Object System.Drawing.Point(20, 244)
+    $section.Location = New-Object System.Drawing.Point(20, 282)
     $section.Size = New-Object System.Drawing.Size(500, 25)
     $section.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 10.5)
     $section.ForeColor = $steamUi.Accent
@@ -21910,7 +22743,7 @@ function Show-ProgramSettingsDialog {
 
     $keyLabel = New-Object System.Windows.Forms.Label
     $keyLabel.Text = 'SteamGridDB'
-    $keyLabel.Location = New-Object System.Drawing.Point(20, 278)
+    $keyLabel.Location = New-Object System.Drawing.Point(20, 316)
     $keyLabel.Size = New-Object System.Drawing.Size(78, 28)
     $keyLabel.ForeColor = $steamUi.Muted
     $keyLabel.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
@@ -21919,10 +22752,10 @@ function Show-ProgramSettingsDialog {
     # Значок состояния API-ключа — точно такой же, как в карточке игры:
     # зелёная галочка для валидного ключа, красный ! для невалидного.
     # Он находится непосредственно перед полем ввода.
-    $apiKeyValidationBadge = New-ConfidenceBadge $dlg 100 283
+    $apiKeyValidationBadge = New-ConfidenceBadge $dlg 100 321
 
     $keyPanel = New-Object System.Windows.Forms.Panel
-    $keyPanel.Location = New-Object System.Drawing.Point(120, 278)
+    $keyPanel.Location = New-Object System.Drawing.Point(120, 316)
     $keyPanel.Size = New-Object System.Drawing.Size(300, 28)
     $keyPanel.BackColor = $steamUi.Input
     $keyPanel.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
@@ -22014,7 +22847,7 @@ function Show-ProgramSettingsDialog {
     # Видна только пока поле пустое; когда ключ введён — состояние показывает
     # значок рядом с полем (см. $applySettingsLayout ниже).
     $hint = New-Object System.Windows.Forms.LinkLabel
-    $hint.Location = New-Object System.Drawing.Point(120, 310)
+    $hint.Location = New-Object System.Drawing.Point(120, 348)
     $hint.Size = New-Object System.Drawing.Size(400, 30)
     $hint.Font = New-Object System.Drawing.Font('Segoe UI', 8.5)
     $hint.ForeColor = $steamUi.Muted
@@ -22333,7 +23166,8 @@ function Show-ProgramSettingsDialog {
     $lblBackupPath.ForeColor = $steamUi.Muted
     $lblBackupPath.Font = New-Object System.Drawing.Font('Segoe UI', 8.5)
     $lblBackupPath.AutoEllipsis = $true
-    $dlg.Controls.Add($lblBackupPath)
+    # Строка с текущей папкой убрана из окна (путь виден во всплывающей подсказке кнопки выбора папки).
+    # $dlg.Controls.Add($lblBackupPath)
 
     # Кнопка выбора собственной папки для сохранения резервных копий —
     # вторая в ряду, справа от «Создать бэкап». Ряд теперь под таблицей
@@ -22560,7 +23394,7 @@ function Show-ProgramSettingsDialog {
         $hint.Visible = $sgEmpty
 
         # Ряд SteamGridDB — на постоянном месте; ряд Steam сдвигается вслед за подсказкой под ним.
-        $sgTop = 278
+        $sgTop = 316
         $swTop = if ($sgEmpty) { $sgTop + 30 + $hint.Height + 4 } else { $sgTop + 34 }
         $keyLabel.Top = $sgTop
         $keyPanel.Top = $sgTop
@@ -22584,9 +23418,15 @@ function Show-ProgramSettingsDialog {
         $footerTop = $script:settingsDialogHeight - 16 - 34
         $btnRowTop = $footerTop - 19 - 32
         $backupSection.Top = $bTop
-        $lblBackupPath.Top = $bTop + 26
-        $lvBackups.Top = $bTop + 52
-        $lvBackups.Height = [int][Math]::Max(60, ($btnRowTop - 13) - ($bTop + 52))
+        # Список бэкапов выровнен по крайним полям блока апскейлеров: верх — по верхнему краю
+        # первого ряда выпадающих списков, низ — по нижнему краю последнего ряда (плитки 3 ряда
+        # по 51px + зазор 4px, список начинается на 25px ниже верха плитки и имеет высоту 24px).
+        # Если заголовок раздела опустился ниже (подсказки ключей), список сдвигается под него.
+        $libFieldsTop = $upscalerTop + 32 + 25
+        $libFieldsBottom = $upscalerTop + 32 + 2 * (51 + 4) + 25 + 24
+        $lvTop = [int][Math]::Max($libFieldsTop, ($bTop + 28))
+        $lvBackups.Top = $lvTop
+        $lvBackups.Height = [int][Math]::Max(60, $libFieldsBottom - $lvTop)
         $btnBrowseBackupFolder.Top = $btnRowTop
         $btnCreateBackup.Top = $btnRowTop
         $btnRestoreBackup.Top = $btnRowTop
@@ -23093,6 +23933,7 @@ function Show-ProgramSettingsDialog {
             $launchersSettingChanged = ([bool]$global:suggestGameLaunchers -ne [bool]$chkSuggestLaunchers.Tag)
             $global:suggestGameLaunchers = [bool]$chkSuggestLaunchers.Tag
             $global:useExeIcons = [bool]$chkUseExeIcons.Tag
+            $global:steamRestartMode = $(if ($cmbSteamRestart.SelectedIndex -eq 1) { 'manual' } else { 'auto' })
             if ($launchersSettingChanged) { $global:exeSelectionCache.Clear() }
             $global:steamApiKey = $txtSteamKey.Text.Trim()
             $settingsState.Accepted = $true
@@ -23252,6 +24093,7 @@ function Show-ProgramSettingsDialog {
                 $global:steamUserId = $originalSteamUserId
                 $global:suggestGameLaunchers = $originalSuggestGameLaunchers
                 $global:useExeIcons = $originalUseExeIcons
+                $global:steamRestartMode = $originalSteamRestartMode
                 $global:steamGridDbApiKeyValid = $keySnap.SgdbValid
                 $global:steamGridDbApiKeyCheck = $keySnap.SgdbCheck
                 $global:steamApiKeyValid = $keySnap.SteamValid
@@ -24764,6 +25606,51 @@ function Add-LauncherBadgeToPictureBox ($Pic, $IconBmp, [int]$BadgeSize = 22, [i
     } catch {}
 }
 
+# Индекс путей игр лаунчеров для быстрого определения лаунчера ярлыка (Get-ShortcutLauncherId).
+# Пересобирается, только когда подменили $script:libLauncherMap или изменилось общее число игр.
+function Get-LauncherPathIndex {
+    try {
+        $map = $script:libLauncherMap
+        if ($null -eq $map -or $map.Count -eq 0) { return $null }
+        $total = 0
+        foreach ($lid0 in @($map.Keys)) {
+            $s0 = $map[$lid0]
+            if ($null -eq $s0) { continue }
+            $g0 = $s0.Games
+            if ($null -ne $g0) { $total += [int]$g0.Count }
+        }
+        $cur = $script:libLauncherPathIndex
+        if ($null -ne $cur -and [object]::ReferenceEquals($cur.Map, $map) -and [int]$cur.Total -eq $total) { return $cur }
+        $exact = New-Object 'System.Collections.Generic.Dictionary[string,object]' ([System.StringComparer]::OrdinalIgnoreCase)
+        $byName = New-Object 'System.Collections.Generic.Dictionary[string,object]' ([System.StringComparer]::Ordinal)
+        $order = 0
+        foreach ($lid in @($map.Keys)) {
+            $src = $map[$lid]
+            if ($null -eq $src) { continue }
+            foreach ($g in @($src.Games)) {
+                $gk = ''
+                try { $gk = Get-NormalizedGamePathKey ([string]$g.Path) } catch { $gk = '' }
+                if (-not $gk) { continue }
+                $order++
+                $rec = [PSCustomObject]@{ Lid = [string]$lid; Gk = [string]$gk; Order = [int]$order }
+                if (-not $exact.ContainsKey($gk)) { $exact[$gk] = $rec }
+                $gn = ''
+                try { $gn = ([string]$g.Name).Trim().ToUpperInvariant() } catch { $gn = '' }
+                if ($gn) {
+                    $lst = $null
+                    if (-not $byName.TryGetValue($gn, [ref]$lst)) {
+                        $lst = New-Object System.Collections.Generic.List[object]
+                        $byName[$gn] = $lst
+                    }
+                    [void]$lst.Add($rec)
+                }
+            }
+        }
+        $script:libLauncherPathIndex = [PSCustomObject]@{ Map = $map; Total = [int]$total; Exact = $exact; ByName = $byName }
+        return $script:libLauncherPathIndex
+    } catch { return $null }
+}
+
 function Get-ShortcutLauncherId ($Entry) {
     try {
         if ($null -eq $Entry) { return '' }
@@ -24794,26 +25681,36 @@ function Get-ShortcutLauncherId ($Entry) {
         if ($keys.Count -eq 0) { return '' }
         $sep = [string][System.IO.Path]::DirectorySeparatorChar
         $entryNameKey = ([string]$Entry.Name).Trim().ToUpperInvariant()
-        foreach ($lid in @($script:libLauncherMap.Keys)) {
-            $src = $script:libLauncherMap[$lid]
-            if ($null -eq $src) { continue }
-            foreach ($g in @($src.Games)) {
-                $gk = ''
-                try { $gk = Get-NormalizedGamePathKey ([string]$g.Path) } catch { $gk = '' }
-                if (-not $gk) { continue }
-                foreach ($k in $keys) {
-                    # Тот же путь или ярлык лежит внутри папки игры лаунчера.
-                    if ($k -eq $gk) { return [string]$lid }
-                    if ($k.StartsWith($gk + $sep, [System.StringComparison]::OrdinalIgnoreCase)) { return [string]$lid }
-                    # Путь ярлыка выше папки игры лаунчера (игра во вложенной папке) — только при совпадении названия.
-                    if ($entryNameKey -and $gk.StartsWith($k + $sep, [System.StringComparison]::OrdinalIgnoreCase)) {
-                        $gn = ''
-                        try { $gn = ([string]$g.Name).Trim().ToUpperInvariant() } catch { $gn = '' }
-                        if ($gn -and $gn -eq $entryNameKey) { return [string]$lid }
+        # Индекс игр лаунчеров строится один раз (см. Get-LauncherPathIndex): раньше на КАЖДУЮ игру перебирались
+        # все игры всех лаунчеров - при активном фильтре и при открытии меню фильтра это давало долгие подвисания.
+        $idx = Get-LauncherPathIndex
+        if ($null -eq $idx) { return '' }
+        $best = $null
+        foreach ($k in $keys) {
+            $r = $null
+            # Тот же путь, что у игры лаунчера.
+            if ($idx.Exact.TryGetValue($k, [ref]$r)) { if ($null -eq $best -or $r.Order -lt $best.Order) { $best = $r } }
+            # Ярлык лежит внутри папки игры лаунчера: проверяем все родительские пути ярлыка.
+            $pos = $k.IndexOf($sep, [System.StringComparison]::Ordinal)
+            while ($pos -gt 0) {
+                $r = $null
+                if ($idx.Exact.TryGetValue($k.Substring(0, $pos), [ref]$r)) { if ($null -eq $best -or $r.Order -lt $best.Order) { $best = $r } }
+                $pos = $k.IndexOf($sep, $pos + 1, [System.StringComparison]::Ordinal)
+            }
+            # Путь ярлыка выше папки игры лаунчера (игра во вложенной папке) - только при совпадении названия.
+            if ($entryNameKey) {
+                $lst = $null
+                if ($idx.ByName.TryGetValue($entryNameKey, [ref]$lst)) {
+                    $pref = $k + $sep
+                    foreach ($rec in $lst) {
+                        if ($rec.Gk.StartsWith($pref, [System.StringComparison]::OrdinalIgnoreCase)) {
+                            if ($null -eq $best -or $rec.Order -lt $best.Order) { $best = $rec }
+                        }
                     }
                 }
             }
         }
+        if ($null -ne $best) { return [string]$best.Lid }
     } catch {}
     return ''
 }
@@ -30347,6 +31244,246 @@ function Restore-GameUpscalersInDir ([string]$dir, $titleOf) {
     return [PSCustomObject]@{ Status = 'error'; Replaced = 0; Titles = @(); Error = $err }
 }
 
+# Тёмный рендерер выпадающих меню (SCFilterRenderer): общий для меню «Фильтр» и контекстного меню плиток.
+function Initialize-SCFilterRenderer {
+    if ('SCFilterRenderer' -as [type]) { return }
+    Add-Type -ReferencedAssemblies @('System.Drawing','System.Windows.Forms') -TypeDefinition @'
+using System.Drawing;
+using System.Windows.Forms;
+public class SCFilterColors : ProfessionalColorTable
+{
+    private static readonly Color Bg = Color.FromArgb(22, 28, 36);
+    private static readonly Color Hover = Color.FromArgb(35, 78, 106);
+    private static readonly Color Line = Color.FromArgb(55, 65, 75);
+    public override Color ToolStripDropDownBackground { get { return Bg; } }
+    public override Color ImageMarginGradientBegin { get { return Bg; } }
+    public override Color ImageMarginGradientMiddle { get { return Bg; } }
+    public override Color ImageMarginGradientEnd { get { return Bg; } }
+    public override Color MenuBorder { get { return Line; } }
+    public override Color MenuItemBorder { get { return Hover; } }
+    public override Color MenuItemSelected { get { return Hover; } }
+    public override Color MenuItemSelectedGradientBegin { get { return Hover; } }
+    public override Color MenuItemSelectedGradientEnd { get { return Hover; } }
+    public override Color MenuItemPressedGradientBegin { get { return Hover; } }
+    public override Color MenuItemPressedGradientMiddle { get { return Hover; } }
+    public override Color MenuItemPressedGradientEnd { get { return Hover; } }
+    public override Color CheckBackground { get { return Hover; } }
+    public override Color CheckSelectedBackground { get { return Hover; } }
+    public override Color CheckPressedBackground { get { return Hover; } }
+    public override Color SeparatorDark { get { return Line; } }
+    public override Color SeparatorLight { get { return Line; } }
+}
+
+// Галочка меню — как в списках игр главных панелей: квадрат 14x14, у выбранного заливка цветом
+// акцента и белая «птичка», у невыбранного контур приглушённого цвета (белый под курсором).
+public class SCFilterRenderer : ToolStripProfessionalRenderer
+{
+    public static Color Accent = Color.FromArgb(30, 144, 230);
+    public static Color Muted = Color.FromArgb(139, 148, 158);
+    // Насколько текст пунктов сдвигается влево: WinForms оставляет между колонкой значков и текстом
+    // лишний отступ, из-за которого название стоит далеко от значка (Steam, лаунчеры).
+    public static int TextShift = 12;
+    public SCFilterRenderer() : base(new SCFilterColors()) { RoundedEdges = false; }
+    protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
+    {
+        // Сдвиг только для обычных пунктов: у заголовков-подписей (ToolStripLabel) текст и так начинается у левого края,
+        // и сдвиг влево обрезал им первую букву.
+        if (e.Item is ToolStripMenuItem && e.Item.Owner is ToolStripDropDownMenu)
+        {
+            Rectangle r = e.TextRectangle;
+            r.X -= TextShift;
+            r.Width += TextShift;
+            e.TextRectangle = r;
+        }
+        base.OnRenderItemText(e);
+    }
+    protected override void OnRenderItemCheck(ToolStripItemImageRenderEventArgs e)
+    {
+        Rectangle r = e.ImageRectangle;
+        Rectangle cb = new Rectangle(r.X + (r.Width - 14) / 2, r.Y + (r.Height - 14) / 2, 14, 14);
+        ToolStripMenuItem mi = e.Item as ToolStripMenuItem;
+        bool on = (mi != null && mi.Checked);
+        Graphics g = e.Graphics;
+        if (on)
+        {
+            using (SolidBrush b = new SolidBrush(Accent)) { g.FillRectangle(b, cb); }
+            using (Pen p = new Pen(Color.White, 1.6f))
+            {
+                g.DrawLine(p, cb.X + 3, cb.Y + 7, cb.X + 6, cb.Y + 10);
+                g.DrawLine(p, cb.X + 6, cb.Y + 10, cb.X + 11, cb.Y + 3);
+            }
+        }
+        else
+        {
+            using (Pen p = new Pen(e.Item.Selected ? Color.White : Muted, 1.2f)) { g.DrawRectangle(p, cb); }
+        }
+    }
+}
+'@
+}
+
+# Окно выбора ядра RetroArch: поле поиска + прокручиваемый список (у вложенного меню WinForms нет прокрутки колесом,
+# а ядер бывает несколько сотен). $coreList - элементы с FileCore / DisplayName (Get-RetroArchCoreDisplayList).
+# Возвращает имя файла ядра (без _libretro.dll), '' - «ядро из аргументов профиля», $null - выбор отменён.
+function Show-RetroArchCorePicker ($owner, $coreList, [string]$curCore, [string]$title) {
+    $state = [PSCustomObject]@{ Result = $null; Shown = @() }
+    $all = New-Object System.Collections.Generic.List[object]
+    [void]$all.Add([PSCustomObject]@{ Text = (T 'rom_swap_core_profile'); Core = ''; Search = '' })
+    foreach ($ci in @($coreList)) {
+        [void]$all.Add([PSCustomObject]@{ Text = [string]$ci.DisplayName; Core = [string]$ci.FileCore; Search = (([string]$ci.DisplayName + ' ' + [string]$ci.FileCore).ToLowerInvariant()) })
+    }
+
+    $f = New-Object System.Windows.Forms.Form
+    $f.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
+    $f.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
+    $f.ShowInTaskbar = $false
+    $f.KeyPreview = $true
+    $f.Size = New-Object System.Drawing.Size(380, 440)
+    $f.BackColor = [System.Drawing.Color]::FromArgb(22, 28, 36)
+    $f.ForeColor = $steamUi.Text
+    $f.Font = New-Object System.Drawing.Font('Segoe UI', 9)
+    $f.Padding = New-Object System.Windows.Forms.Padding(0)
+    # Рамка окна.
+    $f.Add_Paint({
+        param($s, $e)
+        try {
+            $pen = New-Object System.Drawing.Pen($steamUi.Border)
+            $e.Graphics.DrawRectangle($pen, 0, 0, $s.ClientSize.Width - 1, $s.ClientSize.Height - 1)
+            $pen.Dispose()
+        } catch {}
+    })
+
+    $lblTitle = New-Object System.Windows.Forms.Label
+    $lblTitle.Text = $title
+    $lblTitle.Location = New-Object System.Drawing.Point(12, 10)
+    $lblTitle.Size = New-Object System.Drawing.Size(356, 20)
+    $lblTitle.ForeColor = $steamUi.Muted
+    $lblTitle.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 9)
+    $f.Controls.Add($lblTitle)
+
+    $pnlSearch = New-Object System.Windows.Forms.Panel
+    $pnlSearch.Location = New-Object System.Drawing.Point(12, 34)
+    $pnlSearch.Size = New-Object System.Drawing.Size(356, 28)
+    $pnlSearch.BackColor = $steamUi.Input
+    $pnlSearch.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+    $f.Controls.Add($pnlSearch)
+    $txt = New-Object System.Windows.Forms.TextBox
+    $txt.AutoSize = $false
+    $txt.BorderStyle = [System.Windows.Forms.BorderStyle]::None
+    $txt.BackColor = $steamUi.Input
+    $txt.ForeColor = $steamUi.Text
+    $pnlSearch.Controls.Add($txt)
+    $txt.Height = [int]$txt.PreferredHeight
+    $txt.Width = [int]($pnlSearch.ClientSize.Width - 20)
+    $txt.Left = 12
+    $txt.Top = [int][Math]::Floor(($pnlSearch.ClientSize.Height - $txt.Height) / 2)
+
+    $lb = New-Object System.Windows.Forms.ListBox
+    $lb.Location = New-Object System.Drawing.Point(12, 70)
+    $lb.Size = New-Object System.Drawing.Size(356, 358)
+    $lb.BorderStyle = [System.Windows.Forms.BorderStyle]::None
+    $lb.BackColor = $steamUi.Input
+    $lb.ForeColor = $steamUi.Text
+    $lb.DrawMode = [System.Windows.Forms.DrawMode]::OwnerDrawFixed
+    $lb.ItemHeight = 22
+    $lb.IntegralHeight = $false
+    $f.Controls.Add($lb)
+
+    $lb.Add_DrawItem({
+        param($s, $e)
+        if ($e.Index -lt 0 -or $e.Index -ge @($state.Shown).Count) { return }
+        $sel = (($e.State -band [System.Windows.Forms.DrawItemState]::Selected) -ne 0)
+        $bg = if ($sel) { $steamUi.Accent2 } else { $steamUi.Input }
+        $fg = if ($sel) { [System.Drawing.Color]::White } else { $steamUi.Text }
+        $br = New-Object System.Drawing.SolidBrush($bg)
+        try { $e.Graphics.FillRectangle($br, $e.Bounds) } finally { $br.Dispose() }
+        $it = $state.Shown[$e.Index]
+        $mark = ($curCore -ne '' -and [string]$it.Core -ne '' -and [string]::Equals([string]$it.Core, $curCore, [System.StringComparison]::OrdinalIgnoreCase))
+        $text = if ($mark) { ([string][char]0x2713 + '  ' + [string]$it.Text) } else { ('     ' + [string]$it.Text) }
+        $rc = New-Object System.Drawing.Rectangle(($e.Bounds.X + 4), $e.Bounds.Y, ($e.Bounds.Width - 8), $e.Bounds.Height)
+        $flags = [System.Windows.Forms.TextFormatFlags]::Left -bor [System.Windows.Forms.TextFormatFlags]::VerticalCenter -bor [System.Windows.Forms.TextFormatFlags]::NoPrefix -bor [System.Windows.Forms.TextFormatFlags]::EndEllipsis
+        [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, $text, $s.Font, $rc, $fg, $flags)
+    })
+
+    $refill = {
+        $q = ([string]$txt.Text).Trim().ToLowerInvariant()
+        $shown = New-Object System.Collections.Generic.List[object]
+        for ($i = 0; $i -lt $all.Count; $i++) {
+            if ($i -eq 0 -or $q -eq '' -or ([string]$all[$i].Search).Contains($q)) { [void]$shown.Add($all[$i]) }
+        }
+        $state.Shown = @($shown.ToArray())
+        $lb.BeginUpdate()
+        try {
+            $lb.Items.Clear()
+            foreach ($it in $state.Shown) { [void]$lb.Items.Add([string]$it.Text) }
+        } finally { $lb.EndUpdate() }
+        if ($lb.Items.Count -gt 0) {
+            $idx = 0
+            if ($q -ne '' -and $lb.Items.Count -gt 1) { $idx = 1 }
+            elseif ($curCore -ne '') {
+                for ($i = 1; $i -lt @($state.Shown).Count; $i++) {
+                    if ([string]::Equals([string]$state.Shown[$i].Core, $curCore, [System.StringComparison]::OrdinalIgnoreCase)) { $idx = $i; break }
+                }
+            }
+            $lb.SelectedIndex = $idx
+        }
+    }
+    $commit = {
+        $i = $lb.SelectedIndex
+        if ($i -ge 0 -and $i -lt @($state.Shown).Count) {
+            $state.Result = [string]$state.Shown[$i].Core
+            $f.DialogResult = [System.Windows.Forms.DialogResult]::OK
+            $f.Close()
+        }
+    }
+    $move = {
+        param([int]$delta)
+        if ($lb.Items.Count -eq 0) { return }
+        $n = [Math]::Max(0, [Math]::Min($lb.Items.Count - 1, $lb.SelectedIndex + $delta))
+        $lb.SelectedIndex = $n
+    }
+
+    $txt.Add_TextChanged({ & $refill })
+    $lb.Add_MouseUp({
+        param($s, $e)
+        if ($e.Button -ne [System.Windows.Forms.MouseButtons]::Left) { return }
+        $i = $lb.IndexFromPoint($e.Location)
+        if ($i -ge 0) { $lb.SelectedIndex = $i; & $commit }
+    })
+    # Колесо мыши: фокус стоит в поле поиска, поэтому прокручиваем список вручную.
+    $wheel = {
+        param($s, $e)
+        $step = [Math]::Max(1, [int]([Math]::Abs($e.Delta) / 120) * 3)
+        $top = $lb.TopIndex + $(if ($e.Delta -gt 0) { -$step } else { $step })
+        $lb.TopIndex = [Math]::Max(0, [Math]::Min([Math]::Max(0, $lb.Items.Count - 1), $top))
+    }
+    $txt.Add_MouseWheel($wheel)
+    $lb.Add_MouseWheel($wheel)
+    $f.Add_KeyDown({
+        param($s, $e)
+        switch ($e.KeyCode) {
+            'Down'     { $e.SuppressKeyPress = $true; & $move 1 }
+            'Up'       { $e.SuppressKeyPress = $true; & $move -1 }
+            'PageDown' { $e.SuppressKeyPress = $true; & $move 15 }
+            'PageUp'   { $e.SuppressKeyPress = $true; & $move -15 }
+            'Return'   { $e.SuppressKeyPress = $true; & $commit }
+            'Escape'   { $e.SuppressKeyPress = $true; $f.Close() }
+        }
+    })
+    # Клик мимо окна закрывает его без выбора (как обычное меню).
+    $f.Add_Deactivate({ try { if ($f.Visible) { $f.Close() } } catch {} })
+    $f.Add_Shown({ try { $txt.Focus() } catch {} })
+
+    & $refill
+    $pos = [System.Windows.Forms.Cursor]::Position
+    $wa = [System.Windows.Forms.Screen]::FromPoint($pos).WorkingArea
+    $x = [Math]::Max($wa.Left, [Math]::Min($pos.X, $wa.Right - $f.Width))
+    $y = [Math]::Max($wa.Top, [Math]::Min($pos.Y, $wa.Bottom - $f.Height))
+    $f.Location = New-Object System.Drawing.Point($x, $y)
+    try { [void]$f.ShowDialog($owner) } finally { try { $f.Dispose() } catch {} }
+    return $state.Result
+}
+
 function Show-SteamLibraryBrowser {
     # Сбрасываем флаг на каждое новое открытие библиотеки: он отличает закрытие
     # кнопкой "Назад" (просто вернуться к главному окну) от закрытия крестиком/
@@ -30647,9 +31784,97 @@ function Show-SteamLibraryBrowser {
     if ($null -eq $script:libFilterOnlyLibs) { $script:libFilterOnlyLibs = $false }
     $script:libFilterCatCache = @{}
     $script:libFilterLibsState = $null
+    # Служебный ключ фильтра: ROM-ярлыки, чей эмулятор не опознан (нет подходящего профиля эмулятора - «битые»).
+    $script:libFilterEmuUndefKey = 'emu:__undef__'
+
+    # Значки вместо текста на кнопках «Фильтр» / «Выбрать все» / «Снять все»: рисуются через GDI+ (без файлов и шрифтов),
+    # цвет меняется по состоянию — обычный, под курсором (акцент), недоступна (приглушённый).
+    # kind: filter (воронка; при активном фильтре заливка и точка-индикатор), selall (квадрат с галочкой), clear (квадрат с крестиком).
+    $script:libFilterActive = $false
+    $paintLibIcon = {
+        param($btn, $e, [string]$kind)
+        $pen = $null; $br = $null; $path = $null
+        try {
+            $g = $e.Graphics
+            $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+            $w = [int]$btn.ClientSize.Width
+            $h = [int]$btn.ClientSize.Height
+            $hot = $false
+            try { $hot = ($btn.Enabled -and $btn.ClientRectangle.Contains($btn.PointToClient([System.Windows.Forms.Cursor]::Position))) } catch { $hot = $false }
+            $bg = if ($hot) { $btn.FlatAppearance.MouseOverBackColor } else { $btn.BackColor }
+            $bb = New-Object System.Drawing.SolidBrush($bg)
+            try { $g.FillRectangle($bb, 1, 1, ($w - 2), ($h - 2)) } finally { $bb.Dispose() }
+            $col = if (-not $btn.Enabled) { [System.Drawing.Color]::FromArgb(110, $steamUi.Muted) } elseif ($hot) { $steamUi.Accent2 } else { $steamUi.Text }
+            $pen = New-Object System.Drawing.Pen($col, 1.8)
+            $pen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+            $pen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+            $pen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
+            $cx = [single]($w / 2.0)
+            $cy = [single]($h / 2.0)
+            if ($kind -eq 'filter') {
+                $pts = [System.Drawing.PointF[]]@(
+                    (New-Object System.Drawing.PointF(($cx - 8), ($cy - 7))),
+                    (New-Object System.Drawing.PointF(($cx + 8), ($cy - 7))),
+                    (New-Object System.Drawing.PointF(($cx + 2), ($cy + 0.5))),
+                    (New-Object System.Drawing.PointF(($cx + 2), ($cy + 7))),
+                    (New-Object System.Drawing.PointF(($cx - 2), ($cy + 5))),
+                    (New-Object System.Drawing.PointF(($cx - 2), ($cy + 0.5)))
+                )
+                if ([bool]$script:libFilterActive) {
+                    $br = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(90, $steamUi.Accent2))
+                    $g.FillPolygon($br, $pts)
+                    $br.Dispose(); $br = $null
+                }
+                $g.DrawPolygon($pen, $pts)
+                if ([bool]$script:libFilterActive) {
+                    $br = New-Object System.Drawing.SolidBrush($steamUi.Accent2)
+                    $g.FillEllipse($br, ($cx + 5), ($cy - 11), 7, 7)
+                    $br.Dispose(); $br = $null
+                }
+            } elseif ($kind -eq 'emu') {
+                $g.DrawLine($pen, ($cx - 7), ($cy - 3.5), ($cx + 7), ($cy - 3.5))
+                $g.DrawLines($pen, [System.Drawing.PointF[]]@(
+                    (New-Object System.Drawing.PointF(($cx + 3.5), ($cy - 7))),
+                    (New-Object System.Drawing.PointF(($cx + 7), ($cy - 3.5))),
+                    (New-Object System.Drawing.PointF(($cx + 3.5), ($cy)))
+                ))
+                $g.DrawLine($pen, ($cx + 7), ($cy + 3.5), ($cx - 7), ($cy + 3.5))
+                $g.DrawLines($pen, [System.Drawing.PointF[]]@(
+                    (New-Object System.Drawing.PointF(($cx - 3.5), ($cy))),
+                    (New-Object System.Drawing.PointF(($cx - 7), ($cy + 3.5))),
+                    (New-Object System.Drawing.PointF(($cx - 3.5), ($cy + 7)))
+                ))
+            } else {
+                # Скруглённый квадрат 15x15.
+                $x0 = $cx - 7.5; $y0 = $cy - 7.5; $sz = 15.0; $rd = 4.0
+                $path = New-Object System.Drawing.Drawing2D.GraphicsPath
+                $path.AddArc($x0, $y0, $rd, $rd, 180, 90)
+                $path.AddArc(($x0 + $sz - $rd), $y0, $rd, $rd, 270, 90)
+                $path.AddArc(($x0 + $sz - $rd), ($y0 + $sz - $rd), $rd, $rd, 0, 90)
+                $path.AddArc($x0, ($y0 + $sz - $rd), $rd, $rd, 90, 90)
+                $path.CloseFigure()
+                $g.DrawPath($pen, $path)
+                if ($kind -eq 'selall') {
+                    $g.DrawLines($pen, [System.Drawing.PointF[]]@(
+                        (New-Object System.Drawing.PointF(($cx - 3.5), ($cy + 0.2))),
+                        (New-Object System.Drawing.PointF(($cx - 1), ($cy + 3))),
+                        (New-Object System.Drawing.PointF(($cx + 3.8), ($cy - 3)))
+                    ))
+                } else {
+                    $g.DrawLine($pen, ($cx - 3), ($cy - 3), ($cx + 3), ($cy + 3))
+                    $g.DrawLine($pen, ($cx + 3), ($cy - 3), ($cx - 3), ($cy + 3))
+                }
+            }
+        } catch {
+        } finally {
+            if ($null -ne $pen) { $pen.Dispose() }
+            if ($null -ne $br) { $br.Dispose() }
+            if ($null -ne $path) { $path.Dispose() }
+        }
+    }
 
     $btnFilter = New-Object System.Windows.Forms.Button
-    $btnFilter.Size = New-Object System.Drawing.Size(88, 30)
+    $btnFilter.Size = New-Object System.Drawing.Size(36, 30)
     $btnFilter.Location = New-Object System.Drawing.Point(290, 12)   # сразу за полем поиска (92..282) с зазором 8
     $btnFilter.Anchor = 'Top,Left'
     $btnFilter.FlatStyle = 'Flat'
@@ -30665,6 +31890,9 @@ function Show-SteamLibraryBrowser {
     $btnFilter.TabStop = $false
     $btnFilter.Visible = $false
     $dlg.Controls.Add($btnFilter)
+    $btnFilter.Text = ''
+    $btnFilter.AccessibleName = (T 'lib_filter_btn')
+    $btnFilter.Add_Paint({ param($s, $e) & $paintLibIcon $s $e 'filter' })
 
     # Категория записи вкладки Steam: steam / nonsteam / rom / launcher:<id>. Результат кэшируем (путь к лаунчеру
     # ищется перебором игр); кэш сбрасывается при пересборке плиток.
@@ -30691,6 +31919,25 @@ function Show-SteamLibraryBrowser {
         } catch { return '' }
     }
 
+    # Эмулятор ROM-ярлыка: 'emu:<Id профиля>', либо 'emu:__undef__' (эмулятор не опознан), либо '' (не ярлык).
+    # Вызывать нужно только для записей категории 'rom'.
+    # Кэш общий с категориями ($script:libFilterCatCache) и сбрасывается вместе с ними.
+    $getEntryEmuKey = {
+        param($en)
+        try {
+            if ($null -eq $en -or [string]$en.Kind -ne 'shortcut') { return '' }
+            $ck = 'emu|' + [string]$en.AppId + '|' + [string]$en.Name + '|' + [string]$en.Exe + '|' + [string]$en.LaunchOptions
+            if ($script:libFilterCatCache.ContainsKey($ck)) { return [string]$script:libFilterCatCache[$ck] }
+            $key = ''
+            $ep = $null
+            try { $ep = Get-EntryEmulatorProfile $en } catch { $ep = $null }
+            if ($null -ne $ep -and -not [string]::IsNullOrWhiteSpace([string]$ep.Id)) { $key = 'emu:' + [string]$ep.Id }
+            else { $key = [string]$script:libFilterEmuUndefKey }
+            $script:libFilterCatCache[$ck] = $key
+            return $key
+        } catch { return '' }
+    }
+
     # Проходит ли запись фильтр. Действует только на вкладке Steam; записи без категории не прячем.
     $passesLibFilter = {
         param($en)
@@ -30701,6 +31948,11 @@ function Show-SteamLibraryBrowser {
             if (($null -eq $off -or $off.Count -eq 0) -and -not $onlyLibs) { return $true }
             $cat = [string](& $getEntryFilterCat $en)
             if ($cat -and $null -ne $off -and $off.ContainsKey($cat)) { return $false }
+            # Эмулятор ROM-ярлыка: снятая галочка эмулятора прячет только его ROM-игры.
+            if ($cat -eq 'rom' -and $null -ne $off -and $off.Count -gt 0) {
+                $ek = [string](& $getEntryEmuKey $en)
+                if ($ek -and $off.ContainsKey($ek)) { return $false }
+            }
             # «Только с библиотеками апскейлеров» — по результату фонового поиска; касается и ROM-ярлыков.
             if ($onlyLibs) {
                 if (-not [bool](& $getEntryHasLibs $en)) { return $false }
@@ -30712,7 +31964,8 @@ function Show-SteamLibraryBrowser {
     $updateFilterBtn = {
         try {
             $active = (($script:libFilterOff.Count -gt 0) -or [bool]$script:libFilterOnlyLibs)
-            $btnFilter.Text = (T 'lib_filter_btn') + $(if ($active) { ' ' + [string][char]0x25CF } else { ' ' + [string][char]0x25BE })
+            $script:libFilterActive = [bool]$active
+            $btnFilter.Invalidate()
             if ($active) {
                 $btnFilter.FlatAppearance.BorderColor = $steamUi.Accent2
                 $btnFilter.BackColor = [System.Drawing.Color]::FromArgb(25,55,75)
@@ -30754,80 +32007,13 @@ function Show-SteamLibraryBrowser {
     $btnFilter.Add_Click({
         try {
             if ($script:libUpdRunning -or $script:libRestoreRunning -or $script:libImportRunning) { return }
+            # Повторный клик по кнопке: меню уже закрылось само (клик вне меню) — заново не открываем.
+            if ($script:libFilterClosedByBtnAt -and (([Environment]::TickCount - [int]$script:libFilterClosedByBtnAt) -lt 400)) {
+                $script:libFilterClosedByBtnAt = 0
+                return
+            }
             if ($null -eq $script:libFilterOff) { $script:libFilterOff = @{} }
-            if (-not ('SCFilterRenderer' -as [type])) {
-                Add-Type -ReferencedAssemblies @('System.Drawing','System.Windows.Forms') -TypeDefinition @'
-using System.Drawing;
-using System.Windows.Forms;
-public class SCFilterColors : ProfessionalColorTable
-{
-    private static readonly Color Bg = Color.FromArgb(22, 28, 36);
-    private static readonly Color Hover = Color.FromArgb(35, 78, 106);
-    private static readonly Color Line = Color.FromArgb(55, 65, 75);
-    public override Color ToolStripDropDownBackground { get { return Bg; } }
-    public override Color ImageMarginGradientBegin { get { return Bg; } }
-    public override Color ImageMarginGradientMiddle { get { return Bg; } }
-    public override Color ImageMarginGradientEnd { get { return Bg; } }
-    public override Color MenuBorder { get { return Line; } }
-    public override Color MenuItemBorder { get { return Hover; } }
-    public override Color MenuItemSelected { get { return Hover; } }
-    public override Color MenuItemSelectedGradientBegin { get { return Hover; } }
-    public override Color MenuItemSelectedGradientEnd { get { return Hover; } }
-    public override Color MenuItemPressedGradientBegin { get { return Hover; } }
-    public override Color MenuItemPressedGradientMiddle { get { return Hover; } }
-    public override Color MenuItemPressedGradientEnd { get { return Hover; } }
-    public override Color CheckBackground { get { return Hover; } }
-    public override Color CheckSelectedBackground { get { return Hover; } }
-    public override Color CheckPressedBackground { get { return Hover; } }
-    public override Color SeparatorDark { get { return Line; } }
-    public override Color SeparatorLight { get { return Line; } }
-}
-
-// Галочка меню — как в списках игр главных панелей: квадрат 14x14, у выбранного заливка цветом
-// акцента и белая «птичка», у невыбранного контур приглушённого цвета (белый под курсором).
-public class SCFilterRenderer : ToolStripProfessionalRenderer
-{
-    public static Color Accent = Color.FromArgb(30, 144, 230);
-    public static Color Muted = Color.FromArgb(139, 148, 158);
-    // Насколько текст пунктов сдвигается влево: WinForms оставляет между колонкой значков и текстом
-    // лишний отступ, из-за которого название стоит далеко от значка (Steam, лаунчеры).
-    public static int TextShift = 12;
-    public SCFilterRenderer() : base(new SCFilterColors()) { RoundedEdges = false; }
-    protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
-    {
-        if (e.Item != null && e.Item.Owner is ToolStripDropDownMenu)
-        {
-            Rectangle r = e.TextRectangle;
-            r.X -= TextShift;
-            r.Width += TextShift;
-            e.TextRectangle = r;
-        }
-        base.OnRenderItemText(e);
-    }
-    protected override void OnRenderItemCheck(ToolStripItemImageRenderEventArgs e)
-    {
-        Rectangle r = e.ImageRectangle;
-        Rectangle cb = new Rectangle(r.X + (r.Width - 14) / 2, r.Y + (r.Height - 14) / 2, 14, 14);
-        ToolStripMenuItem mi = e.Item as ToolStripMenuItem;
-        bool on = (mi != null && mi.Checked);
-        Graphics g = e.Graphics;
-        if (on)
-        {
-            using (SolidBrush b = new SolidBrush(Accent)) { g.FillRectangle(b, cb); }
-            using (Pen p = new Pen(Color.White, 1.6f))
-            {
-                g.DrawLine(p, cb.X + 3, cb.Y + 7, cb.X + 6, cb.Y + 10);
-                g.DrawLine(p, cb.X + 6, cb.Y + 10, cb.X + 11, cb.Y + 3);
-            }
-        }
-        else
-        {
-            using (Pen p = new Pen(e.Item.Selected ? Color.White : Muted, 1.2f)) { g.DrawRectangle(p, cb); }
-        }
-    }
-}
-'@
-            }
+            Initialize-SCFilterRenderer
             $menu = New-Object System.Windows.Forms.ContextMenuStrip
             try {
                 [SCFilterRenderer]::Accent = $steamUi.Accent
@@ -30843,7 +32029,13 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
             # Клик по пункту не закрывает меню — можно отметить несколько категорий подряд.
             $menu.Add_Closing({
                 param($snd, $ea)
-                try { if ($ea.CloseReason -eq [System.Windows.Forms.ToolStripDropDownCloseReason]::ItemClicked) { $ea.Cancel = $true } } catch {}
+                try {
+                    if ($ea.CloseReason -eq [System.Windows.Forms.ToolStripDropDownCloseReason]::ItemClicked) { $ea.Cancel = $true }
+                    elseif ($ea.CloseReason -eq [System.Windows.Forms.ToolStripDropDownCloseReason]::AppClicked) {
+                        $scr = $btnFilter.RectangleToScreen($btnFilter.ClientRectangle)
+                        if ($scr.Contains([System.Windows.Forms.Control]::MousePosition)) { $script:libFilterClosedByBtnAt = [Environment]::TickCount }
+                    }
+                } catch {}
             })
 
             # Сколько игр в каждой категории (по всем записям вкладки Steam, без учёта поиска и фильтра).
@@ -30851,6 +32043,10 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
             foreach ($en in @($script:libBrowserEntries)) {
                 $c = [string](& $getEntryFilterCat $en)
                 if ($c) { if ($counts.ContainsKey($c)) { $counts[$c] = [int]$counts[$c] + 1 } else { $counts[$c] = 1 } }
+                if ($c -eq 'rom') {
+                    $ec = [string](& $getEntryEmuKey $en)
+                    if ($ec) { if ($counts.ContainsKey($ec)) { $counts[$ec] = [int]$counts[$ec] + 1 } else { $counts[$ec] = 1 } }
+                }
             }
 
             $addHeader = {
@@ -30872,10 +32068,38 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
                     param($snd, $ea)
                     try {
                         $k = [string]$snd.Tag
+                        $wasOff = ($k -ne 'onlylibs') -and $script:libFilterOff.ContainsKey($k)
                         if ($k -eq 'onlylibs') { $script:libFilterOnlyLibs = (-not [bool]$script:libFilterOnlyLibs) }
-                        elseif ($script:libFilterOff.ContainsKey($k)) { [void]$script:libFilterOff.Remove($k) }
+                        elseif ($wasOff) { [void]$script:libFilterOff.Remove($k) }
                         else { $script:libFilterOff[$k] = $true }
-                        & $paintItem $snd
+                        # Связь «ROM» и эмуляторов: включили эмулятор — ROM включается сам; включили ROM — включаются все
+                        # эмуляторы; выключили ROM — выключаются и все эмуляторы (их игры без ROM всё равно не видны).
+                        if ($k -eq 'rom' -or $k -like 'emu:*') {
+                            if ($k -like 'emu:*') {
+                                if ($wasOff) { [void]$script:libFilterOff.Remove('rom') }
+                                else {
+                                    # Сняли галочку с последнего включённого эмулятора — «ROM» тоже снимается.
+                                    $anyEmuOn = $false
+                                    foreach ($it0 in @($snd.Owner.Items)) {
+                                        if ($it0 -is [System.Windows.Forms.ToolStripMenuItem] -and ([string]$it0.Tag) -like 'emu:*' -and -not $script:libFilterOff.ContainsKey([string]$it0.Tag)) { $anyEmuOn = $true; break }
+                                    }
+                                    if (-not $anyEmuOn) { $script:libFilterOff['rom'] = $true }
+                                }
+                            } elseif ($wasOff) {
+                                foreach ($ok in @($script:libFilterOff.Keys)) { if ([string]$ok -like 'emu:*') { [void]$script:libFilterOff.Remove($ok) } }
+                            } else {
+                                foreach ($it1 in @($snd.Owner.Items)) {
+                                    if ($it1 -is [System.Windows.Forms.ToolStripMenuItem] -and $null -ne $it1.Tag -and (([string]$it1.Tag -like 'emu:*') -or ([string]$it1.Tag -eq [string]$script:libFilterEmuUndefKey))) {
+                                        $script:libFilterOff[[string]$it1.Tag] = $true
+                                    }
+                                }
+                            }
+                            foreach ($it in @($snd.Owner.Items)) {
+                                if ($it -is [System.Windows.Forms.ToolStripMenuItem] -and $null -ne $it.Tag) { & $paintItem $it }
+                            }
+                        } else {
+                            & $paintItem $snd
+                        }
                         & $applyLibFilter
                     } catch {}
                 })
@@ -30900,6 +32124,42 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
                     & $addCheck $key (& $cntText ([string]$row[1]) $key) $row[2]
                 }
             }
+
+            # Эмуляторы — отдельные галочки для ROM-игр каждого эмулятора (иконка + число игр). Показываем, когда в библиотеке
+            # ROM-игры минимум двух эмуляторов или какой-то эмулятор уже выключен (иначе пункт дублировал бы «ROM»).
+            # Ключи выключенных удалённых эмуляторов чистим, чтобы фильтр не оставался «активным» без видимой причины.
+            try {
+                $knownEmuIds = @{}
+                foreach ($ep0 in @($global:emulatorProfiles)) { if ($null -ne $ep0 -and $counts.ContainsKey('emu:' + [string]$ep0.Id)) { $knownEmuIds['emu:' + [string]$ep0.Id] = $true } }
+                # «Не определены» остаётся в фильтре, только пока такие ROM-игры реально есть.
+                if ($counts.ContainsKey([string]$script:libFilterEmuUndefKey)) { $knownEmuIds[[string]$script:libFilterEmuUndefKey] = $true }
+                foreach ($k0 in @($script:libFilterOff.Keys)) {
+                    if (([string]$k0 -like 'emu:*') -and -not $knownEmuIds.ContainsKey([string]$k0)) { $script:libFilterOff.Remove($k0) }
+                }
+                $emuRows = New-Object System.Collections.Generic.List[object]
+                foreach ($ep in @(@($global:emulatorProfiles) | Where-Object { $null -ne $_ } | Sort-Object -Property { [string]$_.Name } -CaseSensitive:$false)) {
+                    $ek = 'emu:' + [string]$ep.Id
+                    if ($counts.ContainsKey($ek)) { [void]$emuRows.Add([PSCustomObject]@{ Key = $ek; Profile = $ep }) }
+                }
+                # Последней строкой - «Не определены»: ROM-игры, для которых не нашёлся эмулятор.
+                $uk = [string]$script:libFilterEmuUndefKey
+                if ($counts.ContainsKey($uk)) { [void]$emuRows.Add([PSCustomObject]@{ Key = $uk; Profile = $null }) }
+                $anyEmuOff = $false
+                foreach ($er in $emuRows) { if ($script:libFilterOff.ContainsKey([string]$er.Key)) { $anyEmuOff = $true } }
+                if ($emuRows.Count -ge 2 -or $anyEmuOff) {
+                    [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
+                    & $addHeader (T 'lib_filter_emus')
+                    foreach ($er in $emuRows) {
+                        $eico = $null
+                        $enm = (T 'lib_filter_emu_undef')
+                        if ($null -ne $er.Profile) {
+                            $enm = [string]$er.Profile.Name
+                            try { $eico = Get-EmulatorIconBitmap $er.Profile } catch { $eico = $null }
+                        }
+                        & $addCheck ([string]$er.Key) (& $cntText $enm ([string]$er.Key)) $eico
+                    }
+                }
+            } catch {}
 
             # Лаунчеры — по тем, чьи игры реально есть в Steam как ярлыки (плюс уже выключенные в фильтре).
             $lids = New-Object System.Collections.Generic.List[string]
@@ -30930,6 +32190,24 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
             & $addCheck 'onlylibs' (T 'lib_filter_only_libs') $null
 
             [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
+            # «Скрыть все»: снимает галочки со всех категорий меню (Steam, Non-Steam, ROM, лаунчеры, эмуляторы).
+            # «Только с библиотеками апскейлеров» не трогаем — это отдельное условие, а не категория.
+            $miHide = New-Object System.Windows.Forms.ToolStripMenuItem((T 'lib_filter_hide'))
+            $miHide.ForeColor = $steamUi.Text
+            $miHide.BackColor = [System.Drawing.Color]::FromArgb(22, 28, 36)
+            $miHide.Add_Click({
+                param($snd, $ea)
+                try {
+                    foreach ($it in @($snd.Owner.Items)) {
+                        if ($it -is [System.Windows.Forms.ToolStripMenuItem] -and $null -ne $it.Tag -and [string]$it.Tag -ne 'onlylibs') {
+                            $script:libFilterOff[[string]$it.Tag] = $true
+                            & $paintItem $it
+                        }
+                    }
+                    & $applyLibFilter
+                } catch {}
+            })
+            [void]$menu.Items.Add($miHide)
             $miReset = New-Object System.Windows.Forms.ToolStripMenuItem((T 'lib_filter_reset'))
             $miReset.ForeColor = $steamUi.Text
             $miReset.BackColor = [System.Drawing.Color]::FromArgb(22, 28, 36)
@@ -30970,7 +32248,7 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
     $dlg.Controls.Add($lblAutoImport)
 
     $btnSelectAll = New-Object System.Windows.Forms.Button
-    $btnSelectAll.Size = New-Object System.Drawing.Size(100, 30)
+    $btnSelectAll.Size = New-Object System.Drawing.Size(36, 30)
     $btnSelectAll.Location = New-Object System.Drawing.Point(290, 12)
     $btnSelectAll.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $btnSelectAll.FlatAppearance.BorderColor = $steamUi.Border
@@ -30981,15 +32259,18 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
     $btnSelectAll.Cursor = [System.Windows.Forms.Cursors]::Hand
     $btnSelectAll.TabStop = $false
     $btnSelectAll.Anchor = 'Top,Left'
-    $btnSelectAll.Text = (T 'lib_select_all')
+    $btnSelectAll.Text = ''
+    $btnSelectAll.AccessibleName = (T 'lib_select_all')
+    $btnSelectAll.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(35,78,106)
+    $btnSelectAll.Add_Paint({ param($s, $e) & $paintLibIcon $s $e 'selall' })
     $btnSelectAll.Visible = $false
     $dlg.Controls.Add($btnSelectAll)
 
     # «Снять все» — отдельная кнопка правее «Выбрать все»: снимает выбор со ВСЕХ игр
     # на всех вкладках-лаунчерах.
     $btnDeselectAll = New-Object System.Windows.Forms.Button
-    $btnDeselectAll.Size = New-Object System.Drawing.Size(100, 30)
-    $btnDeselectAll.Location = New-Object System.Drawing.Point(398, 12)
+    $btnDeselectAll.Size = New-Object System.Drawing.Size(36, 30)
+    $btnDeselectAll.Location = New-Object System.Drawing.Point(334, 12)
     $btnDeselectAll.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $btnDeselectAll.FlatAppearance.BorderColor = $steamUi.Border
     $btnDeselectAll.FlatAppearance.BorderSize = 1
@@ -30999,9 +32280,34 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
     $btnDeselectAll.Cursor = [System.Windows.Forms.Cursors]::Hand
     $btnDeselectAll.TabStop = $false
     $btnDeselectAll.Anchor = 'Top,Left'
-    $btnDeselectAll.Text = (T 'lib_deselect_all')
+    $btnDeselectAll.Text = ''
+    $btnDeselectAll.AccessibleName = (T 'lib_deselect_all')
+    $btnDeselectAll.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(35,78,106)
+    $btnDeselectAll.Add_Paint({ param($s, $e) & $paintLibIcon $s $e 'clear' })
     $btnDeselectAll.Visible = $false
     $dlg.Controls.Add($btnDeselectAll)
+
+    # «Сменить эмулятор» — на вкладке Steam, у отмеченных галочкой ROM-игр. Меню эмуляторов открывается по клику
+    # (то же действие, что «Сменить эмулятор» в меню плитки). Без отмеченных ROM-игр кнопка недоступна.
+    $btnSwapEmu = New-Object System.Windows.Forms.Button
+    $btnSwapEmu.Size = New-Object System.Drawing.Size(36, 30)
+    $btnSwapEmu.Location = New-Object System.Drawing.Point(378, 12)
+    $btnSwapEmu.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    $btnSwapEmu.FlatAppearance.BorderColor = $steamUi.Border
+    $btnSwapEmu.FlatAppearance.BorderSize = 1
+    $btnSwapEmu.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(35,78,106)
+    $btnSwapEmu.UseVisualStyleBackColor = $false
+    $btnSwapEmu.BackColor = $steamUi.Panel2
+    $btnSwapEmu.ForeColor = $steamUi.Text
+    $btnSwapEmu.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $btnSwapEmu.TabStop = $false
+    $btnSwapEmu.Anchor = 'Top,Left'
+    $btnSwapEmu.Text = ''
+    $btnSwapEmu.AccessibleName = (T 'rom_swap_menu')
+    $btnSwapEmu.Enabled = $false
+    $btnSwapEmu.Visible = $false
+    $btnSwapEmu.Add_Paint({ param($s, $e) & $paintLibIcon $s $e 'emu' })
+    $dlg.Controls.Add($btnSwapEmu)
 
     # Тот же переключатель "автозаполнение карточек", что и на главном окне:
     # состояние общее ($script:batchAutoFillEnabled), меняется в обоих местах.
@@ -31009,6 +32315,9 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
     $libToolTip.SetToolTip($toggleAuto, (T 'batch_auto_tip'))
     $libToolTip.SetToolTip($lblAutoImport, (T 'batch_auto_tip'))
     $libToolTip.SetToolTip($btnUpdUp, (T 'lib_upd_tip'))
+    $libToolTip.SetToolTip($btnFilter, (T 'lib_filter_btn'))
+    $libToolTip.SetToolTip($btnSelectAll, (T 'lib_select_all'))
+    $libToolTip.SetToolTip($btnDeselectAll, (T 'lib_deselect_all'))
     $libToolTip.SetToolTip($btnRestoreUp, (T 'lib_restore_tip'))
     $toggleAuto.Add_Click({ $toggleAuto.Checked = -not $toggleAuto.Checked })
     $lblAutoImport.Add_Click({ $toggleAuto.Checked = -not $toggleAuto.Checked })
@@ -31960,6 +33269,408 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
         }
     }
 
+    # --- Быстрая смена эмулятора у уже добавленных ROM-игр ---
+    # Правый клик по плитке ROM-игры -> «Сменить эмулятор» -> нужный эмулятор. Открывать карточку не нужно:
+    # у ярлыка меняются только Exe / рабочая папка / параметры запуска (название, обложки и значок остаются).
+    # Если у игры есть галочка и отмечено несколько ROM-игр - меняется сразу у всех отмеченных.
+    # Пункт «Сменить у всех игр «X»» переключает на другой эмулятор все ROM-игры, запускаемые через X.
+    $swapRomEmulator = {
+        param($targets, $newProfile, [string]$core = '')
+        try {
+            if ($script:libUpdRunning -or $script:libImportRunning -or $script:libRestoreRunning) { return }
+            if ($null -eq $newProfile) { return }
+            $newId = [string]$newProfile.Id
+            $list = New-Object System.Collections.Generic.List[object]
+            foreach ($t in @($targets)) {
+                if ($null -eq $t) { continue }
+                $curP = $null
+                try { $curP = Get-EntryEmulatorProfile $t } catch {}
+                # Игры, которые уже запускаются через этот эмулятор, не трогаем.
+                if ($null -ne $curP -and [string]$curP.Id -eq $newId) {
+                    $sameIsRA = $false
+                    try { $sameIsRA = [bool](Test-IsRetroArchProfile ([string]$newProfile.Name) ([string]$newProfile.ExePath)) } catch {}
+                    # У RetroArch повторный выбор того же эмулятора имеет смысл, если меняется ядро.
+                    if (-not $sameIsRA) { continue }
+                    if ($core -ne '' -and [string]::Equals((Get-EntryRetroArchCore $t), $core, [System.StringComparison]::OrdinalIgnoreCase)) { continue }
+                }
+                [void]$list.Add($t)
+            }
+            if ($list.Count -eq 0) { return }
+
+            $plans = New-Object System.Collections.Generic.List[object]
+            $skipped = New-Object System.Collections.Generic.List[string]
+            foreach ($en in $list) {
+                $pl = Get-RomShortcutSwapPlan $en $newProfile $core
+                if (-not $pl.Ok) { [void]$skipped.Add(([string]$en.Name + ' - ' + [string]$pl.Reason)); continue }
+                [void]$plans.Add([PSCustomObject]@{ Entry = $en; Exe = [string]$pl.Exe; StartDir = [string]$pl.StartDir; Launch = [string]$pl.Launch; Mismatch = [bool]$pl.Mismatch })
+            }
+            $msgOk = [System.Windows.Forms.MessageBoxButtons]::OK
+            if ($plans.Count -eq 0) {
+                $txt = (T 'rom_swap_skipped' @((@($skipped | Select-Object -First 8)) -join "`n"))
+                Show-AppMessageBox($dlg, $txt, $global:appTitle, $msgOk, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
+                return
+            }
+            $mmCount = @($plans | Where-Object { $_.Mismatch }).Count
+            if ($mmCount -gt 0) {
+                $ans = Show-AppMessageBox($dlg, (T 'rom_swap_mismatch' @($mmCount, [string]$newProfile.Name)), $global:appTitle, [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
+                if ($ans -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+            } elseif ($plans.Count -gt 1) {
+                $ans = Show-AppMessageBox($dlg, (T 'rom_swap_confirm' @($plans.Count, [string]$newProfile.Name)), $global:appTitle, [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
+                if ($ans -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+            }
+
+            try { & $hideLibHoverCardNow } catch {}
+            $dlg.UseWaitCursor = $true
+            [System.Windows.Forms.Application]::DoEvents()
+            $swapRes = $null
+            $steamWasRunning = $false
+            try {
+                try { $steamWasRunning = Test-SteamRunning } catch {}
+                $swapCancelled = $false
+                # Пока Steam запущен, он перезаписывает shortcuts.vdf своей копией из памяти.
+                if ($steamWasRunning) { if (-not (Close-SteamForWrite)) { $swapCancelled = $true } }
+                if (-not $swapCancelled) { $swapRes = Set-ShortcutsEmulatorBatch @($plans.ToArray()) }
+            } finally {
+                if ($steamWasRunning -and (Get-SteamRestartMode) -eq 'auto') {
+                    try {
+                        $steamExeSwap = [string](Get-ConfiguredSteamExePath)
+                        if ([string]::IsNullOrWhiteSpace($steamExeSwap) -or -not (Test-Path -LiteralPath $steamExeSwap)) {
+                            $steamExeSwap = [string](Get-ItemProperty -Path 'HKCU:\Software\Valve\Steam' -Name 'SteamExe' -ErrorAction SilentlyContinue).SteamExe
+                        }
+                        if ([string]::IsNullOrWhiteSpace($steamExeSwap) -or -not (Test-Path -LiteralPath $steamExeSwap)) { $steamExeSwap = 'C:\Program Files (x86)\Steam\steam.exe' }
+                        if (Test-Path -LiteralPath $steamExeSwap) { Start-Process -FilePath $steamExeSwap }
+                    } catch {}
+                }
+                $dlg.UseWaitCursor = $false
+            }
+            try { & $refreshLibAfterEdit $null } catch {}
+            try { $dlg.Activate() } catch {}
+
+            $lines = New-Object System.Collections.Generic.List[string]
+            if ($null -ne $swapRes -and [int]$swapRes.Done -gt 0) { [void]$lines.Add((T 'rom_swap_done' @([int]$swapRes.Done, [string]$newProfile.Name))) }
+            if ($null -ne $swapRes -and [int]$swapRes.Failed -gt 0) { [void]$lines.Add((T 'rom_swap_fail' @([int]$swapRes.Failed, [string]$swapRes.Error))) }
+            if ($skipped.Count -gt 0) { [void]$lines.Add((T 'rom_swap_skipped' @((@($skipped | Select-Object -First 8)) -join "`n"))) }
+            if ($swapCancelled) { [void]$lines.Add((T 'steam_close_cancelled')) }
+            $icon = if ($null -ne $swapRes -and [int]$swapRes.Failed -eq 0 -and $skipped.Count -eq 0) { [System.Windows.Forms.MessageBoxIcon]::Information } else { [System.Windows.Forms.MessageBoxIcon]::Warning }
+            Show-AppMessageBox($dlg, ($lines.ToArray() -join "`n`n"), $global:appTitle, $msgOk, $icon) | Out-Null
+        } catch {
+            try { $dlg.UseWaitCursor = $false } catch {}
+            Show-AppMessageBox($dlg, [string]$_.Exception.Message, $global:appTitle, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
+        }
+    }
+
+    $libRomMenu = New-Object System.Windows.Forms.ContextMenuStrip
+    try {
+        Initialize-SCFilterRenderer
+        [SCFilterRenderer]::Accent = $steamUi.Accent
+        [SCFilterRenderer]::Muted = $steamUi.Muted
+        $libRomMenu.Renderer = (New-Object SCFilterRenderer)
+    } catch {}
+    $libRomMenu.BackColor = [System.Drawing.Color]::FromArgb(22, 28, 36)
+    $libRomMenu.ForeColor = $steamUi.Text
+    $libRomMenu.Font = New-Object System.Drawing.Font('Segoe UI', 9)
+    $libRomMenu.ShowCheckMargin = $true
+    $libRomMenu.ShowImageMargin = $true
+    $libRomMenu.ImageScalingSize = New-Object System.Drawing.Size(16, 16)
+    # Меню показываем сами по правой кнопке (а не через свойство ContextMenuStrip плитки): сразу после открытия
+    # библиотеки окно ещё не активно, и штатное меню закрывалось активацией окна - первый правый клик «ничего не делал».
+    # Поэтому на нажатие правой кнопки окно активируется, а меню открывается уже на отпускание.
+    $script:libRomMenuEntry = $null
+    $libRomMenuMouseDown = {
+        param($s, $e)
+        try {
+            if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Right -and [System.Windows.Forms.Form]::ActiveForm -ne $dlg) { $dlg.Activate() }
+        } catch {}
+    }
+    $libRomMenuMouseUp = {
+        param($s, $e)
+        try {
+            if ($e.Button -ne [System.Windows.Forms.MouseButtons]::Right) { return }
+            if ($script:libUpdRunning -or $script:libImportRunning -or $script:libRestoreRunning) { return }
+            $en = $s.Tag
+            if ($null -eq $en -and $null -ne $s.Parent) { $en = $s.Parent.Tag }
+            if ($null -eq $en) { return }
+            $script:libRomMenuEntry = $en
+            & $buildRomMenu $libRomMenu
+            if (-not $script:libRomMenuBuilt -or $libRomMenu.Items.Count -eq 0) { return }
+            if ([System.Windows.Forms.Form]::ActiveForm -ne $dlg) { try { $dlg.Activate() } catch {} }
+            $mpos = [System.Windows.Forms.Cursor]::Position
+            $libRomMenu.Show($mpos)
+            # Запасной путь: если меню по какой-то причине не открылось, показываем его относительно окна библиотеки.
+            if (-not $libRomMenu.Visible) { try { $libRomMenu.Show($dlg, $dlg.PointToClient($mpos)) } catch {} }
+        } catch {}
+    }
+    # Индекс ROM-ярлыков библиотеки: какие записи ROM и под каким эмулятором. Считается один раз на набор записей
+    # (пересчитывается, когда библиотека перечитана), иначе первое открытие меню заметно тормозило
+    # (сотни ярлыков x все профили эмуляторов) и клик казался «потерянным».
+    $script:libRomMenuCache = $null
+    $getRomMenuCache = {
+        $src = $script:libBrowserEntries
+        $c = $script:libRomMenuCache
+        if ($null -ne $c -and [object]::ReferenceEquals($c.Src, $src)) { return $c }
+        $byProf = @{}
+        $romKeys = @{}
+        foreach ($be in @($src)) {
+            if ([string]$be.Kind -ne 'shortcut') { continue }
+            $isRom = $false
+            try { $isRom = [bool](Test-ShortcutIsRomEntry $be) } catch {}
+            if (-not $isRom) { continue }
+            $romKeys[[string](& $getSteamEntryKey $be)] = $true
+            $bp = $null
+            try { $bp = Get-EntryEmulatorProfile $be } catch {}
+            if ($null -ne $bp) {
+                $profKey = [string]$bp.Id
+                if (-not $byProf.ContainsKey($profKey)) { $byProf[$profKey] = New-Object System.Collections.Generic.List[object] }
+                [void]$byProf[$profKey].Add($be)
+            }
+        }
+        $c = [PSCustomObject]@{ Src = $src; ByProf = $byProf; RomKeys = $romKeys }
+        $script:libRomMenuCache = $c
+        return $c
+    }
+    # Отмеченные галочкой ROM-ярлыки вкладки Steam (для кнопки «Сменить эмулятор» на верхней панели).
+    $getSelectedRomEntries = {
+        $res = New-Object System.Collections.Generic.List[object]
+        $rmc = & $getRomMenuCache
+        foreach ($be in @(& $getSelectedSteamEntries)) {
+            if ([string]$be.Kind -ne 'shortcut') { continue }
+            if ($rmc.RomKeys.ContainsKey([string](& $getSteamEntryKey $be))) { [void]$res.Add($be) }
+        }
+        $res.ToArray()
+    }
+
+    # Прогрев: пока пользователь смотрит на плитки, заранее строим индекс, иконки эмуляторов и само окно меню.
+    $script:libRomMenuWarmTries = 0
+    $script:libRomMenuWarm = New-Object System.Windows.Forms.Timer
+    $script:libRomMenuWarm.Interval = 700
+    $script:libRomMenuWarm.Add_Tick({
+        try {
+            $script:libRomMenuWarmTries = [int]$script:libRomMenuWarmTries + 1
+            if ($dlg.IsDisposed) { $script:libRomMenuWarm.Stop(); return }
+            if ([System.Windows.Forms.Control]::MouseButtons -ne [System.Windows.Forms.MouseButtons]::None) { return }
+            if (@($script:libBrowserEntries).Count -eq 0 -and [int]$script:libRomMenuWarmTries -lt 20) { return }
+            $script:libRomMenuWarm.Stop()
+            [void](& $getRomMenuCache)
+            foreach ($wp in @($global:emulatorProfiles)) { try { [void](Get-EmulatorIconBitmap $wp) } catch {} }
+            try { [void]$libRomMenu.Handle } catch {}
+        } catch { try { $script:libRomMenuWarm.Stop() } catch {} }
+    })
+    $script:libRomMenuWarm.Start()
+    $dlg.Add_FormClosed({ try { $script:libRomMenuWarm.Stop(); $script:libRomMenuWarm.Dispose() } catch {} })
+
+    # Содержимое меню собираем ДО показа (а не в событии Opening): у ContextMenuStrip без пунктов Opening может не вызываться,
+    # и меню не появлялось с первого раза. Результат сборки - в $script:libRomMenuBuilt.
+    $buildRomMenu = {
+        param($snd)
+        $script:libRomMenuBuilt = $false
+        try {
+            $en = $script:libRomMenuEntry
+            if ($null -eq $en -or $script:libUpdRunning -or $script:libImportRunning -or $script:libRestoreRunning -or `
+                [string]$en.Kind -ne 'shortcut' -or -not (Test-ShortcutIsRomEntry $en)) { return }
+            try { & $hideLibHoverCardNow } catch {}
+
+            $profiles = @(@($global:emulatorProfiles) | Where-Object { $null -ne $_ } | Sort-Object -Property { [string]$_.Name } -CaseSensitive:$false)
+            if ($profiles.Count -eq 0) { return }
+            $curProf = $null
+            try { $curProf = Get-EntryEmulatorProfile $en } catch {}
+
+            # Цель первого пункта: сама игра или все отмеченные галочкой ROM-игры, если эта игра среди них.
+            $thisTargets = @($en)
+            $thisText = (T 'rom_swap_menu')
+            $selRoms = New-Object System.Collections.Generic.List[object]
+            $thisKey = [string](& $getSteamEntryKey $en)
+            if ($script:libSteamSelected.ContainsKey($thisKey)) {
+                $rmc = & $getRomMenuCache
+                foreach ($be in @($script:libBrowserEntries)) {
+                    if ([string]$be.Kind -ne 'shortcut') { continue }
+                    $bk = [string](& $getSteamEntryKey $be)
+                    if ($script:libSteamSelected.ContainsKey($bk) -and $rmc.RomKeys.ContainsKey($bk)) { [void]$selRoms.Add($be) }
+                }
+                if ($selRoms.Count -gt 1) {
+                    $thisTargets = @($selRoms.ToArray())
+                    $thisText = (T 'rom_swap_menu_sel' @($selRoms.Count))
+                }
+            }
+
+            $snd.Items.Clear()
+            $styleDrop = {
+                param($dd)
+                try { $dd.Renderer = $libRomMenu.Renderer } catch {}
+                $dd.BackColor = [System.Drawing.Color]::FromArgb(22, 28, 36)
+                $dd.ForeColor = $steamUi.Text
+                $dd.Font = $libRomMenu.Font
+                try { $dd.ShowCheckMargin = $true; $dd.ShowImageMargin = $true; $dd.ImageScalingSize = New-Object System.Drawing.Size(16, 16) } catch {}
+            }
+            $newItem = {
+                param([string]$text, $tag)
+                $mi = New-Object System.Windows.Forms.ToolStripMenuItem
+                $mi.Text = $text
+                $mi.BackColor = [System.Drawing.Color]::FromArgb(22, 28, 36)
+                $mi.ForeColor = $steamUi.Text
+                $mi.Tag = $tag
+                if ($null -ne $tag) {
+                    $mi.Add_Click({
+                        param($s2, $e2)
+                        try {
+                            $tg = $s2.Tag
+                            $coreArg = [string]$tg.Core
+                            if ($tg.Picker) {
+                                $cores = @(Get-RetroArchCoreDisplayList ([string]$tg.Profile.ExePath))
+                                if ($cores.Count -gt 0) {
+                                    $pick = Show-RetroArchCorePicker $dlg $cores ([string]$tg.CurCore) ([string]$tg.Title)
+                                    if ($null -eq $pick) { return }
+                                    $coreArg = [string]$pick
+                                }
+                            }
+                            & $swapRomEmulator $tg.Targets $tg.Profile $coreArg
+                        } catch {}
+                    })
+                }
+                return $mi
+            }
+            $fillDrop = {
+                param($parentItem, $targets, $skipProfileId, [bool]$markCurrent)
+                $dd = $parentItem.DropDown
+                & $styleDrop $dd
+                # Текущее ядро RetroArch показываем галочкой только когда меню относится к одной игре.
+                $curCore = ''
+                if ($markCurrent -and $thisTargets.Count -eq 1) { $curCore = [string](Get-EntryRetroArchCore $en) }
+                foreach ($ep in $profiles) {
+                    if ($skipProfileId -ne '' -and [string]$ep.Id -eq $skipProfileId) { continue }
+                    $isCur = ($markCurrent -and $thisTargets.Count -eq 1 -and $null -ne $curProf -and [string]$ep.Id -eq [string]$curProf.Id)
+                    # Список ядер здесь НЕ читаем (сотни .info-файлов, при первом открытии это секунды): он грузится,
+                    # когда пользователь выберет RetroArch. Здесь только проверяем, что рядом с exe есть папка cores.
+                    $hasCores = $false
+                    try {
+                        if (Test-IsRetroArchProfile ([string]$ep.Name) ([string]$ep.ExePath)) {
+                            $hasCores = (Test-Path -LiteralPath (Join-Path ([System.IO.Path]::GetDirectoryName([string]$ep.ExePath)) 'cores') -PathType Container)
+                        }
+                    } catch { $hasCores = $false }
+                    if ($hasCores) {
+                        # RetroArch: пункт открывает окно выбора ядра с поиском (в длинном меню нет прокрутки колесом).
+                        $mi = & $newItem ([string]$ep.Name + [string][char]0x2026) ([PSCustomObject]@{ Targets = @($targets); Profile = $ep; Core = ''; Picker = $true; CurCore = $curCore; Title = [string]$ep.Name })
+                        $mi.Checked = $isCur
+                    } else {
+                        $mi = & $newItem ([string]$ep.Name) ([PSCustomObject]@{ Targets = @($targets); Profile = $ep; Core = '' })
+                        $mi.Checked = $isCur
+                    }
+                    try {
+                        $ico = Get-EmulatorIconBitmap $ep
+                        if ($null -ne $ico) { $mi.Image = $ico; $mi.ImageScaling = [System.Windows.Forms.ToolStripItemImageScaling]::SizeToFit }
+                    } catch {}
+                    [void]$dd.Items.Add($mi)
+                }
+            }
+
+            $itThis = New-Object System.Windows.Forms.ToolStripMenuItem
+            $itThis.Text = $thisText
+            $itThis.BackColor = [System.Drawing.Color]::FromArgb(22, 28, 36)
+            $itThis.ForeColor = $steamUi.Text
+            [void]$snd.Items.Add($itThis)
+            & $fillDrop $itThis $thisTargets '' $true
+
+            # Все ROM-игры, запускаемые через тот же эмулятор, что и эта.
+            if ($null -ne $curProf -and ($profiles.Count -gt 1 -or (Test-IsRetroArchProfile ([string]$curProf.Name) ([string]$curProf.ExePath)))) {
+                $sameEmu = New-Object System.Collections.Generic.List[object]
+                $rmc2 = & $getRomMenuCache
+                if ($rmc2.ByProf.ContainsKey([string]$curProf.Id)) { $sameEmu = $rmc2.ByProf[[string]$curProf.Id] }
+                if ($sameEmu.Count -gt 1) {
+                    $itAll = New-Object System.Windows.Forms.ToolStripMenuItem
+                    $itAll.Text = (T 'rom_swap_menu_all' @([string]$curProf.Name, $sameEmu.Count))
+                    $itAll.BackColor = [System.Drawing.Color]::FromArgb(22, 28, 36)
+                    $itAll.ForeColor = $steamUi.Text
+                    [void]$snd.Items.Add($itAll)
+                    $skipId = [string]$curProf.Id
+                    try { if (Test-IsRetroArchProfile ([string]$curProf.Name) ([string]$curProf.ExePath)) { $skipId = '' } } catch {}
+                    & $fillDrop $itAll @($sameEmu.ToArray()) $skipId $false
+                }
+            }
+            $script:libRomMenuBuilt = $true
+        } catch {
+            $script:libRomMenuBuilt = $false
+        }
+    }
+
+    # Кнопка «Сменить эмулятор» на верхней панели: меню эмуляторов для всех отмеченных ROM-игр.
+    # RetroArch открывает окно выбора ядра, остальное делает тот же $swapRomEmulator, что и меню плитки.
+    $btnSwapEmu.Add_Click({
+        try {
+            if ($script:libUpdRunning -or $script:libImportRunning -or $script:libRestoreRunning) { return }
+            $swTargets = @(& $getSelectedRomEntries)
+            if ($swTargets.Count -eq 0) { return }
+            $swProfiles = @(@($global:emulatorProfiles) | Where-Object { $null -ne $_ } | Sort-Object -Property { [string]$_.Name } -CaseSensitive:$false)
+            try { & $hideLibHoverCardNow } catch {}
+            Initialize-SCFilterRenderer
+            $swMenu = New-Object System.Windows.Forms.ContextMenuStrip
+            try {
+                [SCFilterRenderer]::Accent = $steamUi.Accent
+                [SCFilterRenderer]::Muted = $steamUi.Muted
+                $swMenu.Renderer = (New-Object SCFilterRenderer)
+            } catch {}
+            $swMenu.BackColor = [System.Drawing.Color]::FromArgb(22, 28, 36)
+            $swMenu.ForeColor = $steamUi.Text
+            $swMenu.Font = New-Object System.Drawing.Font('Segoe UI', 9)
+            $swMenu.ShowCheckMargin = $true
+            $swMenu.ShowImageMargin = $true
+            $swMenu.ImageScalingSize = New-Object System.Drawing.Size(16, 16)
+
+            $swHdr = New-Object System.Windows.Forms.ToolStripLabel((T 'rom_swap_menu_sel' @($swTargets.Count)))
+            $swHdr.ForeColor = $steamUi.Muted
+            $swHdr.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 8.5)
+            [void]$swMenu.Items.Add($swHdr)
+
+            if ($swProfiles.Count -eq 0) {
+                $swEmpty = New-Object System.Windows.Forms.ToolStripMenuItem((T 'rom_emu_list_empty'))
+                $swEmpty.Enabled = $false
+                [void]$swMenu.Items.Add($swEmpty)
+            } else {
+                # Галочка у эмулятора, через который сейчас запущены ВСЕ отмеченные игры (если он один).
+                $swCurIds = @{}
+                foreach ($t in $swTargets) {
+                    try { $cp = Get-EntryEmulatorProfile $t; if ($null -ne $cp) { $swCurIds[[string]$cp.Id] = $true } } catch {}
+                }
+                $swCurId = ''
+                if ($swCurIds.Count -eq 1) { $swCurId = [string]@($swCurIds.Keys)[0] }
+                foreach ($ep in $swProfiles) {
+                    $hasCores = $false
+                    try {
+                        if (Test-IsRetroArchProfile ([string]$ep.Name) ([string]$ep.ExePath)) {
+                            $hasCores = (Test-Path -LiteralPath (Join-Path ([System.IO.Path]::GetDirectoryName([string]$ep.ExePath)) 'cores') -PathType Container)
+                        }
+                    } catch { $hasCores = $false }
+                    $mi = New-Object System.Windows.Forms.ToolStripMenuItem
+                    $mi.Text = [string]$ep.Name + $(if ($hasCores) { [string][char]0x2026 } else { '' })
+                    $mi.BackColor = [System.Drawing.Color]::FromArgb(22, 28, 36)
+                    $mi.ForeColor = $steamUi.Text
+                    $mi.Checked = ($swCurId -ne '' -and [string]$ep.Id -eq $swCurId)
+                    $mi.Tag = [PSCustomObject]@{ Targets = @($swTargets); Profile = $ep; Picker = $hasCores }
+                    try {
+                        $ico = Get-EmulatorIconBitmap $ep
+                        if ($null -ne $ico) { $mi.Image = $ico; $mi.ImageScaling = [System.Windows.Forms.ToolStripItemImageScaling]::SizeToFit }
+                    } catch {}
+                    $mi.Add_Click({
+                        param($s2, $e2)
+                        try {
+                            $tg = $s2.Tag
+                            $coreArg = ''
+                            if ($tg.Picker) {
+                                $cores = @(Get-RetroArchCoreDisplayList ([string]$tg.Profile.ExePath))
+                                if ($cores.Count -gt 0) {
+                                    $pick = Show-RetroArchCorePicker $dlg $cores '' ([string]$tg.Profile.Name)
+                                    if ($null -eq $pick) { return }
+                                    $coreArg = [string]$pick
+                                }
+                            }
+                            & $swapRomEmulator $tg.Targets $tg.Profile $coreArg
+                        } catch {}
+                    })
+                    [void]$swMenu.Items.Add($mi)
+                }
+            }
+            $swMenu.Show($btnSwapEmu, (New-Object System.Drawing.Point(0, $btnSwapEmu.Height)))
+        } catch {}
+    })
+
     # --- Всплывающая карточка как в Steam (header + бейдж + название) ---
     # Компактная миниатюра как в Steam (~230x150).
     $libHoverCard = New-Object System.Windows.Forms.Panel
@@ -32454,6 +34165,10 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
                 $click = {
                     param($s, $e)
                     if ($script:libUpdRunning -or $script:libRestoreRunning) { return }
+                    # Карточку и выбор галочкой открывает только левая кнопка: правая зарезервирована под контекстное меню.
+                    try {
+                        if ($e -is [System.Windows.Forms.MouseEventArgs] -and $e.Button -ne [System.Windows.Forms.MouseButtons]::Left) { return }
+                    } catch {}
                     # Клик по галочке (квадрат 24x24 в точке 8,8) выбирает игру, а не открывает карточку.
                     try {
                         if ([string]$s.AccessibleDescription -eq 'selcheck') {
@@ -32596,6 +34311,15 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
                         & $setSteamTileCheck $tile $isSel
                     } catch {}
                 }
+                # Правый клик по плитке ROM-игры открывает меню быстрой смены эмулятора.
+                try {
+                    if ([string]$entry.Kind -eq 'shortcut' -and [bool](Test-ShortcutIsRomEntry $entry)) {
+                        foreach ($tc in (@($tile) + @($tile.Controls))) {
+                            $tc.Add_MouseDown($libRomMenuMouseDown)
+                            $tc.Add_MouseUp($libRomMenuMouseUp)
+                        }
+                    }
+                } catch {}
                 [void]$script:libTileAll.Add($tile)
                 $script:libLastTile = $tile
     }
@@ -32924,14 +34648,16 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
         try {
             $isL = ([string]$script:libActiveTab -ne 'steam')
             foreach ($c in @($btnSelectAll, $btnDeselectAll)) { $c.Visible = $true }
+            $btnSwapEmu.Visible = (-not $isL)
             foreach ($c in @($lblAutoImport, $toggleAuto, $btnImport)) { $c.Visible = $isL }
             foreach ($c in @($btnUpdUp, $btnRestoreUp, $btnFilter)) { $c.Visible = (-not $isL) }
             # Кнопка «Фильтр» стоит сразу за поиском (только на вкладке Steam): остальные кнопки и счётчик
             # сдвигаются правее на её ширину + зазор; на вкладках лаунчеров возвращаются на прежние места.
             $fdx = if ($btnFilter.Visible) { [int]($btnFilter.Width + 8) } else { 0 }
             $btnSelectAll.Left = 290 + $fdx
-            $btnDeselectAll.Left = 398 + $fdx
-            $lblCount.Left = 506 + $fdx
+            $btnDeselectAll.Left = $btnSelectAll.Left + $btnSelectAll.Width + 8
+            $btnSwapEmu.Left = $btnDeselectAll.Left + $btnDeselectAll.Width + 8
+            $lblCount.Left = $(if ($btnSwapEmu.Visible) { $btnSwapEmu.Left + $btnSwapEmu.Width + 8 } else { $btnDeselectAll.Left + $btnDeselectAll.Width + 8 })
             $lblSelected.Visible = $false
             $lblCount.Width = if ($isL) { 100 } else { 96 }
             if (-not $isL) {
@@ -32943,8 +34669,8 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
                     # Текст вида «20 / 25» короткий: счётчик сужаем.
                     $lblCount.Width = 76
                 }
-                $btnSelectAll.Text = (T 'lib_select_all')
-                $btnDeselectAll.Text = (T 'lib_deselect_all')
+                $btnSelectAll.Text = ''
+                $btnDeselectAll.Text = ''
                 if ($script:libUpdRunning -or $script:libRestoreRunning) { return }
                 $btnUpdUp.Text = (T 'lib_upd_btn')
                 $btnRestoreUp.Text = (T 'lib_restore_btn')
@@ -32965,6 +34691,12 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
                 }
                 $btnSelectAll.Enabled = (@($script:libBrowserEntries).Count -gt 0)
                 $btnDeselectAll.Enabled = ($cntS -gt 0)
+                try {
+                    $romSel = @(& $getSelectedRomEntries).Count
+                    $btnSwapEmu.Enabled = (($romSel -gt 0) -and (@($global:emulatorProfiles).Count -gt 0))
+                    $swapTip = $(if ($romSel -gt 0) { (T 'rom_swap_menu_sel' @($romSel)) } else { (T 'rom_swap_menu') })
+                    if ([string]$script:libSwapTipText -ne $swapTip) { $script:libSwapTipText = $swapTip; $libToolTip.SetToolTip($btnSwapEmu, $swapTip) }
+                } catch {}
                 return
             }
             # Счётчик и кнопка «Импорт» — по выбору во всех лаунчерах, а не только
@@ -32981,9 +34713,9 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
                 $btnImport.ForeColor = $steamUi.Muted
             }
             $selectable = @(@(& $getVisibleLauncherEntries) | Where-Object { -not [bool]$_.AlreadyInSteam })
-            $btnSelectAll.Text = (T 'lib_select_all')
+            $btnSelectAll.Text = ''
             $btnSelectAll.Enabled = ($selectable.Count -gt 0)
-            $btnDeselectAll.Text = (T 'lib_deselect_all')
+            $btnDeselectAll.Text = ''
             $btnDeselectAll.Enabled = ($cnt -gt 0)
         } catch {}
     }
@@ -33428,7 +35160,7 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
     $script:libImportRunning = $false
     $setLibImportLock = {
         param([bool]$locked)
-        foreach ($c in @($txtSearch, $btnSelectAll, $btnDeselectAll, $toggleAuto, $lblAutoImport, $btnLibBack, $tabBar, $btnRestoreUp, $btnFilter, $btnLibRefresh)) {
+        foreach ($c in @($txtSearch, $btnSelectAll, $btnDeselectAll, $btnSwapEmu, $toggleAuto, $lblAutoImport, $btnLibBack, $tabBar, $btnRestoreUp, $btnFilter, $btnLibRefresh)) {
             try { $c.Enabled = (-not $locked) } catch {}
         }
     }
@@ -37964,6 +39696,27 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
                 }
             }
         } catch {}
+        # Логотип этой игры был скрыт «глазиком» и убран из Steam: возвращаем его в слот (из копии)
+        # в скрытом состоянии, чтобы кнопка-«глаз» была на месте и логотип можно было включить обратно.
+        try {
+            $hiddenLogoId = ''
+            if ($licensedMode) { $hiddenLogoId = [string]$licensedAppId }
+            elseif ($editMode -and $null -ne $existingShortcut) { $hiddenLogoId = [string]$existingShortcut.ShortcutId }
+            if ($hiddenLogoId -match '^\d+$' -and $script:LogoComposeEnabled -and $null -ne $slots.Hero.PSObject.Properties['ComposeLogo']) {
+                if (Restore-HiddenLogoStash $hiddenLogoId) {
+                    if (Set-EditorPreviewFile $slots.Logo (Join-Path $global:tempCovers 'temp_logo.png')) {
+                        $hlSrc = 'Steam'
+                        try {
+                            $hlMeta = Get-CoverSourcesMetadata $hiddenLogoId
+                            if ($null -ne $hlMeta -and -not [string]::IsNullOrWhiteSpace([string]$hlMeta.logo)) { $hlSrc = [string]$hlMeta.logo }
+                        } catch {}
+                        Set-EditorSourceBadge $slots.Logo $hlSrc
+                        $editorState.LogoHidden = $true
+                        Update-EditorComposeView $slots.Hero
+                    }
+                }
+            }
+        } catch {}
         try { $editorState.LogoSig0 = [string](Get-EditorLogoSignature $editorState) } catch {}
         # Снимок состояния карточки сразу после загрузки: по нему при сохранении понимаем, менялось ли
         # что-то кроме библиотек (см. $hasOtherEditorChanges).
@@ -38167,8 +39920,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
                 if([string]::IsNullOrEmpty($steamPathProperty)){$steamPathProperty='C:\Program Files (x86)\Steam\steam.exe'}
                 $labelHeader.Text=(T 'hd_saving' @($name))
                 [System.Windows.Forms.Application]::DoEvents()
-                taskkill.exe /F /T /IM steam.exe 2>$null | Out-Null
-                Start-Sleep -Seconds 2
+                [void](Close-SteamForWrite)
                 $script:steamWasKilledThisSession = $true
                 $appIdSave = $licensedAppId
                 if ($appIdSave -notmatch '^\d+$') { $appIdSave = $txtId.Text.Trim() }
@@ -38201,8 +39953,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
                 if([string]::IsNullOrEmpty($steamPathProperty)){$steamPathProperty='C:\Program Files (x86)\Steam\steam.exe'}
                 $labelHeader.Text=(T 'hd_saving' @($name))
                 [System.Windows.Forms.Application]::DoEvents()
-                taskkill.exe /F /T /IM steam.exe 2>$null | Out-Null
-                Start-Sleep -Seconds 2
+                [void](Close-SteamForWrite)
                 $script:steamWasKilledThisSession = $true
                 # Ярлык уже известен - перечитываем его строго по ID, а не по имени/папке (см. Find-SteamShortcutRecordById).
                 $freshShortcut=Find-SteamShortcutRecordById $existingShortcut
@@ -38287,7 +40038,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
             if([string]::IsNullOrEmpty($steamPathProperty)){$steamPathProperty='C:\Program Files (x86)\Steam\steam.exe'}
             $labelHeader.Text=(T 'hd_adding' @($name))
             [System.Windows.Forms.Application]::DoEvents()
-            if(-not $batchMode){taskkill.exe /F /T /IM steam.exe 2>$null | Out-Null;Start-Sleep -Seconds 2}
+            if(-not $batchMode){[void](Close-SteamForWrite)}
 
             # Обе панели равноправны. При добавлении игры в Steam НЕ переносим
             # её в другую панель и НЕ создаём Junction. Steam получает реальный
@@ -38314,14 +40065,14 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
             # Логотип скрыт глазиком - в Steam он не попадает.
             try { if ([bool]$editorState.LogoHidden) { Remove-SteamGridLogoForAllProfiles ([string]$newId) } } catch {}
             $script:editorSavedChanges = $true
-            if(-not $batchMode -and (Test-Path $steamPathProperty)){Start-Process -FilePath $steamPathProperty}
+            if(-not $batchMode){Start-SteamIfAuto $steamPathProperty}
             $status.Text=if($hasCovers){(T 'st_done_added_covers')}else{(T 'st_done_added_nocovers')}
             [System.Media.SystemSounds]::Asterisk.Play()
             [System.Windows.Forms.Application]::DoEvents()
             Start-Sleep -Milliseconds 500
             $dlg.Close()
         } catch {
-            if(-not $batchMode){try{if(Test-Path $steamPathProperty){Start-Process -FilePath $steamPathProperty}}catch{}}
+            if(-not $batchMode){try{Start-SteamIfAuto $steamPathProperty}catch{}}
             $status.Text=(T 'st_error' @([string]$_.Exception.Message))
             $btnAdd.Enabled=$true; try { & $updateSgdbButtonState } catch {}; if ($IsRomEntry) { $searchSourceBtn.Visible=$false }; $btnCoverLang.Enabled=($editorState.SearchSource -eq 'Steam'); if($btnCancel -ne $null){$btnCancel.Enabled=$true}
         }
@@ -38467,7 +40218,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
         try {
             $steamPathProperty=(Get-ItemProperty -Path 'HKCU:\Software\Valve\Steam' -Name 'SteamExe' -ErrorAction SilentlyContinue).SteamExe
             if([string]::IsNullOrEmpty($steamPathProperty)){$steamPathProperty='C:\Program Files (x86)\Steam\steam.exe'}
-            if(Test-Path $steamPathProperty){Start-Process -FilePath $steamPathProperty}
+            Start-SteamIfAuto $steamPathProperty
         } catch {}
     }
     # Возвращаем фокус и передний план окну-владельцу карточки — оно было
@@ -39122,15 +40873,18 @@ function Move-SelectedGames($source) {
 
         # ---- 3b. Ярлыки Steam: один раз в конце, только для переехавших игр -----------------
         if ($done.Count -gt 0) {
+            $mvCanWrite = $true
             try {
-                if (@(Get-Process -Name steam -ErrorAction SilentlyContinue).Count -gt 0) {
-                    Stop-SteamProcessResponsive
-                    $steamClosed = $true   # Steam запустит блок finally
+                if (Test-SteamRunning) {
+                    if (Close-SteamForWrite -Responsive) { $steamClosed = $true   # Steam запустит блок finally (только в автоматическом режиме)
+                    } else { $mvCanWrite = $false; [void]$warnings.Add((T 'steam_close_cancelled')) }
                 }
             } catch {}
-            foreach ($t in $done) {
-                try { [void](Update-SteamShortcutAfterGameMove $t.Name $t.SourcePath $t.TargetPath -IsFile:$t.IsFile) }
-                catch { [void]$warnings.Add((T 'mv_steam_path_fail' @([string]$t.Name, [string]$_.Exception.Message))) }
+            if ($mvCanWrite) {
+                foreach ($t in $done) {
+                    try { [void](Update-SteamShortcutAfterGameMove $t.Name $t.SourcePath $t.TargetPath -IsFile:$t.IsFile) }
+                    catch { [void]$warnings.Add((T 'mv_steam_path_fail' @([string]$t.Name, [string]$_.Exception.Message))) }
+                }
             }
         }
 
@@ -39163,9 +40917,7 @@ function Move-SelectedGames($source) {
         $labelHeader.Text = (T 'mv_error' @([string]$_.Exception.Message))
     } finally {
         $script:moveInProgress = $false
-        if ($steamClosed -and -not [string]::IsNullOrWhiteSpace($steamPathProperty) -and (Test-Path $steamPathProperty)) {
-            try { Start-Process -FilePath $steamPathProperty } catch {}
-        }
+        if ($steamClosed) { Start-SteamIfAuto $steamPathProperty }
         $btnMoveGame.Enabled = $true
         $btnRefreshLibrary.Enabled = $true
         $btnAddToSteam.Enabled = $true
@@ -39291,12 +41043,28 @@ function Update-MainLibraryButtonState {
             }
         }
 
+        # ROM-режим: отмечены только уже добавленные игры — вместо библиотеки предлагаем сменить им эмулятор
+        # на выбранный в главном окне (индикатор под «Обновить»).
+        $swapProfile = $null
+        if ($script:romsModeEnabled -and $ready -and $totalChecked -ge 1 -and $addableCount -eq 0) {
+            try { $swapProfile = Get-ActiveEmulatorProfile } catch { $swapProfile = $null }
+        }
+
         if ($ready -and $totalChecked -ge 1 -and $addableCount -ge 1) {
             $btnAddToSteam.Tag = (T 'btn_add_batch_n' @($addableCount))
             $btnAddToSteam.Visible = $true
             $btnAddToSteam.Enabled = $true
             $btnSteamLibrary.Visible = $false
+            $btnSwapEmuMain.Visible = $false
+        } elseif ($null -ne $swapProfile) {
+            $btnAddToSteam.Visible = $false
+            $btnSteamLibrary.Visible = $false
+            try { $script:steamSwapButtonIcon = Get-EmulatorIconBitmap $swapProfile } catch { $script:steamSwapButtonIcon = $null }
+            $btnSwapEmuMain.Tag = (T 'btn_swap_emulator' @([string]$swapProfile.Name, $totalChecked))
+            $btnSwapEmuMain.Visible = $true
+            $btnSwapEmuMain.Enabled = $true
         } else {
+            $btnSwapEmuMain.Visible = $false
             # Если отмечены только игры, которые уже есть в Steam, кнопки
             # добавления вообще быть не должно — показываем библиотеку.
             $btnAddToSteam.Visible = $false
@@ -39305,9 +41073,9 @@ function Update-MainLibraryButtonState {
             $btnSteamLibrary.Tag = (T 'btn_steam_library')
         }
 
-        try { $btnAddToSteam.Invalidate(); $btnSteamLibrary.Invalidate() } catch {}
+        try { $btnAddToSteam.Invalidate(); $btnSteamLibrary.Invalidate(); $btnSwapEmuMain.Invalidate() } catch {}
     } catch {
-        try { $btnAddToSteam.Visible = $false; $btnSteamLibrary.Visible = $true } catch {}
+        try { $btnAddToSteam.Visible = $false; $btnSwapEmuMain.Visible = $false; $btnSteamLibrary.Visible = $true } catch {}
     }
 }
 
@@ -39688,7 +41456,7 @@ function Invoke-SmartBatchAdd ($selectedGames, [bool]$AutoFill = $true, $OwnerWi
     try {
         $steamPathProperty = (Get-ItemProperty -Path 'HKCU:\Software\Valve\Steam' -Name 'SteamExe' -ErrorAction SilentlyContinue).SteamExe
         if ([string]::IsNullOrEmpty($steamPathProperty)) { $steamPathProperty = 'C:\Program Files (x86)\Steam\steam.exe' }
-        Stop-SteamProcessResponsive
+        if (-not (Close-SteamForWrite -Responsive)) { Set-BatchStatusText ([string](T 'steam_close_cancelled')); return }
 
         # Трёхфазный пакет (без лагов на карточке):
         #  1) Быстрая классификация: авто vs нужна карточка.
@@ -39837,7 +41605,7 @@ function Invoke-SmartBatchAdd ($selectedGames, [bool]$AutoFill = $true, $OwnerWi
     } catch {
         Set-BatchStatusText ([string]((T 'hd_auto_batch_err' @([string]$_.Exception.Message))))
     } finally {
-        try { if ($steamPathProperty -and (Test-Path $steamPathProperty)) { Start-Process -FilePath $steamPathProperty } } catch {}
+        try { Start-SteamIfAuto $steamPathProperty } catch {}
         [System.Windows.Forms.Application]::DoEvents()
         Start-Sleep -Milliseconds 400
         Set-BatchProgressValue ([int](0))
@@ -39937,7 +41705,7 @@ $btnAddToSteam.Add_Click({
     try{
         $steamPathProperty=(Get-ItemProperty -Path 'HKCU:\Software\Valve\Steam' -Name 'SteamExe' -ErrorAction SilentlyContinue).SteamExe
         if([string]::IsNullOrEmpty($steamPathProperty)){$steamPathProperty='C:\Program Files (x86)\Steam\steam.exe'}
-        Stop-SteamProcessResponsive
+        if (-not (Close-SteamForWrite -Responsive)) { $labelHeader.Text = (T 'steam_close_cancelled'); return }
         [System.Windows.Forms.Application]::DoEvents()
 
         $manualTotal=[Math]::Max(1,@($selectedGames).Count)
@@ -39964,7 +41732,7 @@ $btnAddToSteam.Add_Click({
         # Если пакет отменён/упал — сразу убираем бар; при успешном завершении (100%)
         # его скроет таймер через ~1.2 с.
         try{if($script:batchCardCancelRequested -or $progressBarFolder.Value -lt 100){$progressBarFolder.Value=0}}catch{}
-        try{if($steamPathProperty -and (Test-Path $steamPathProperty)){Start-Process -FilePath $steamPathProperty}}catch{}
+        try{Start-SteamIfAuto $steamPathProperty}catch{}
         $btnMoveGame.Enabled=$true;$btnRefreshLibrary.Enabled=$true;$btnAddToSteam.Enabled=$true
         # Карточки по всем отмеченным играм прошли (или добавление отменено) —
         # отметки своё дело сделали, явно снимаем.
@@ -39974,6 +41742,11 @@ $btnAddToSteam.Add_Click({
 })
 
 
+
+$btnSwapEmuMain.Add_Click({
+    try { Invoke-MainRomEmulatorSwap } catch {}
+    try { Update-MainLibraryButtonState } catch {}
+})
 
 $btnSteamLibrary.Add_Click({
     # Библиотека открывается как экран той же программы: модальное окно ровно поверх главного, которое
@@ -40011,6 +41784,32 @@ $btnSteamLibrary.Add_Click({
 })
 
 $form.Add_FormClosing({ Save-Configuration })
+
+# Ручной режим перезапуска: после закрытия Steam пользователем закрепляем записанное программой в shortcuts.vdf,
+# а пока Steam запущен — в свободной статусной строке напоминаем, что изменения ждут его закрытия.
+$script:steamPendingTimer = New-Object System.Windows.Forms.Timer
+$script:steamPendingTimer.Interval = 1500
+$script:steamPendingTimer.Add_Tick({
+    try {
+        $wantRestartBtn = ((Get-SteamRestartMode) -eq 'manual')
+        if ($btnRestartSteam.Visible -ne $wantRestartBtn) { $btnRestartSteam.Visible = $wantRestartBtn }
+    } catch {}
+    try {
+        if ($script:pendingShortcutWrites.Count -eq 0) { return }
+        if (Test-SteamRunning) {
+            $busyNow = [bool]$script:moveInProgress -or [bool]$script:batchInProgress -or [bool]$script:smartBatchActive -or [bool]$script:libImportRunning
+            $noteText = (T 'steam_pending_note')
+            # Результат последней операции остаётся на экране 3 секунды, дальше — напоминание про перезапуск Steam.
+            if (-not $busyNow -and [string]$labelHeader.Text -ne $noteText -and (([Environment]::TickCount - [int]$script:labelHeaderChangedAt) -gt 3000)) {
+                $labelHeader.Text = $noteText
+            }
+        } else {
+            $applied = Apply-PendingSteamShortcutWrites
+            if ($script:pendingShortcutWrites.Count -eq 0) { $labelHeader.Text = (T 'steam_pending_applied') }
+        }
+    } catch {}
+})
+$script:steamPendingTimer.Start()
 
 # Если папка Steam не найдена или не выбран (либо не найден) userdata-профиль —
 # сразу открываем окно настроек, чтобы пользователь их указал. Нужные поля там
