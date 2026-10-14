@@ -6,6 +6,25 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [2.0.8] - 2026-10-14
+
+### Improved
+* **Refreshing the panels is faster.** The "already in Steam" map is cached (by the panel folders and the size / date of `shortcuts.vdf`) and is not rebuilt when nothing has changed. Switching the ROMs mode or the emulator keeps the current map instead of rescanning `shortcuts.vdf`. Cleaning up `cover_sources` of games that were removed from Steam now runs in the background shortly after the refresh, so it no longer delays the panels.
+* **Folders with thousands of ROMs no longer freeze the window.** The panel contents are read with a direct directory enumeration instead of `Get-ChildItem` with array appends, and the window shows the wait cursor while the panels are being refreshed.
+* **Library / Import is smoother.**
+  * Tiles of every tab (Steam, Epic, ...) are kept, so switching between tabs no longer rebuilds them from scratch.
+  * A tab is always built in portions: the visible screen first, the rest after the window is shown, so a tab or filter change on hundreds of games does not block the window.
+  * Loading of tiles and covers is paused while you scroll or hold a mouse button, so scrolling no longer stutters.
+  * The search and the filters also work while a tab is still being filled; the Steam tab is rebuilt after a refresh.
+
+### Fixed
+* **The icon source badge was wrong when a saved game was opened.** If the icon of a game in `config\grid` was taken from its EXE, the card still showed the *Steam* badge. The badge now matches the real icon (*Local*).
+
+### Changed
+* Application version is now 2.0.8.
+
+---
+
 ## [2.0.7] - 2026-10-13
 
 ### Added
