@@ -905,7 +905,7 @@ Set-SplashProgress 0.52
 # Единая версия приложения — используется в заголовке главного окна, в
 # подписи внизу окна настроек и в User-Agent HTTP-запросов. Меняйте только
 # здесь при выпуске новой версии.
-$global:appVersion = "2.0.7"
+$global:appVersion = "2.0.8"
 $global:appTitle = "Steam Commander"
 # Ссылки на исходный код и поддержку автора (окно «Поддержать» в настройках). Меняйте только здесь.
 $global:appRepoUrl = "https://github.com/Hetfield1985/Steam-Commander"
@@ -9116,7 +9116,7 @@ $toggleRomsMode = {
         }
     }
     & $updateRomsToggle
-    try { Refresh-Panels } catch {}
+    try { Refresh-Panels -KeepSteamMap } catch {}
     try { Update-MainLibraryButtonState } catch {}
 }
 $pnlRomsToggle.Add_Click($toggleRomsMode)
@@ -9799,7 +9799,7 @@ function Show-RomEmulatorPickerPopup {
             if ($script:romsModeEnabled) {
                 # Отметки не сбрасываем: Refresh-Panels сам снимет только те, которых нет в новом списке
                 # (например, расширение ROM не подходит новому эмулятору).
-                try { Refresh-Panels } catch {}
+                try { Refresh-Panels -KeepSteamMap } catch {}
                 try { Update-MainLibraryButtonState } catch {}
             }
         } else {
@@ -10830,7 +10830,25 @@ function Get-DriveInfoQuick ([string]$root) {
     return (Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='$root'" -ErrorAction SilentlyContinue)
 }
 
+# Ключ кэша карты «уже в Steam»: пути панелей + размер/mtime shortcuts.vdf.
+function Get-InstalledMapCacheKey {
+    $sb = New-Object System.Text.StringBuilder
+    try {
+        [void]$sb.Append('C=').Append([string]$global:dirC).Append('|D=').Append([string]$global:dirD).Append('|')
+        $ud = [string](Get-ConfiguredSteamUserDataPath)
+        if (-not [string]::IsNullOrWhiteSpace($ud)) {
+            foreach ($f in @(Get-ShortcutsVdfFiles $ud)) {
+                try {
+                    [void]$sb.Append([string]$f.FullName).Append(':').Append([string]$f.Length).Append(':').Append([string]$f.LastWriteTimeUtc.Ticks).Append(';')
+                } catch {}
+            }
+        }
+    } catch {}
+    return $sb.ToString()
+}
+
 function Refresh-Panels {
+    param([switch]$KeepSteamMap)
     # 1. Запоминаем имя выделенной игры на левой и правой панели перед очисткой.
     # Поиск и сортировку (панель, текст, режим) НЕ сбрасываем — «Обновить»
     # перечитывает диск, но не должен сбрасывать то, что пользователь ввёл
@@ -10838,6 +10856,10 @@ function Refresh-Panels {
     $selectedNameC = $null; $selectedNameD = $null
     if ($listBoxC.SelectedItem -ne $null) { $selectedNameC = Clean-GameName $listBoxC.SelectedItem.ToString() }
     if ($listBoxD.SelectedItem -ne $null) { $selectedNameD = Clean-GameName $listBoxD.SelectedItem.ToString() }
+
+    $prevWait = $false
+    try { $prevWait = [bool]$form.UseWaitCursor; $form.UseWaitCursor = $true; [System.Windows.Forms.Cursor]::Current = [System.Windows.Forms.Cursors]::WaitCursor; [System.Windows.Forms.Application]::DoEvents() } catch {}
+    try {
 
     $listBoxC.Items.Clear(); $listBoxD.Items.Clear()
     # ГАЛОЧКИ (checkedC/checkedD) больше НЕ чистятся здесь безусловно.
@@ -10915,7 +10937,20 @@ function Refresh-Panels {
     $foldersReady = $hasC -and $hasD
     $global:foldersReady = $foldersReady
     try { Update-MainLibraryButtonState } catch {}
-    
+
+    $skipSteamScan = $false
+    $cacheKey = ''
+    try { $cacheKey = Get-InstalledMapCacheKey } catch { $cacheKey = '' }
+    if ($KeepSteamMap -and $global:installedSteamGames.Count -gt 0) {
+        $skipSteamScan = $true
+    } elseif (-not [string]::IsNullOrWhiteSpace($cacheKey) -and $null -ne $script:installedMapCache -and [string]$script:installedMapCache.Key -ceq $cacheKey) {
+        $skipSteamScan = $true
+    }
+
+    $liveShortcutIds = @{}
+    $shortcutsScanOk = $false
+    $romDirectByTop = @{}
+    if (-not $skipSteamScan) {
     $global:installedSteamGames.Clear()
     $global:installedGameIcons.Clear()
     $script:installedGameIconCache.Clear()
@@ -10926,10 +10961,7 @@ function Refresh-Panels {
     # отдельного прохода по файлу не требуется. Используется ниже, чтобы почистить
     # cover_sources от JSON-файлов игр, которых больше нет в Steam (см.
     # Remove-OrphanedCoverSourcesMetadata).
-    $liveShortcutIds = @{}
-    $shortcutsScanOk = $false
     # ROM лежит прямо в папке игры (например Switch: Game\game.nsp): папка верхнего уровня -> добавленные ROM-файлы и значок.
-    $romDirectByTop = @{}
     if (-not [string]::IsNullOrEmpty($steamPathProperty)) {
         $steamPath = Get-ConfiguredSteamInstallPath
         $userDataPath = Get-ConfiguredSteamUserDataPath
@@ -11079,90 +11111,128 @@ function Refresh-Panels {
     # их подчистить. Раз сканирование shortcuts.vdf выше прошло успешно, у нас
     # есть достоверный список ShortcutId, которые реально есть в библиотеке
     # прямо сейчас — всё остальное в cover_sources оставлено удалённой игрой.
-    if ($shortcutsScanOk) { Remove-OrphanedCoverSourcesMetadata $liveShortcutIds }
+    if ($shortcutsScanOk) {
+        try {
+            $script:orphanCleanupIds = $liveShortcutIds
+            if ($null -eq $script:orphanCleanupTimer) {
+                $script:orphanCleanupTimer = New-Object System.Windows.Forms.Timer
+                $script:orphanCleanupTimer.Interval = 400
+                $script:orphanCleanupTimer.Add_Tick({
+                    try { $script:orphanCleanupTimer.Stop() } catch {}
+                    try {
+                        $ids = $script:orphanCleanupIds
+                        $script:orphanCleanupIds = $null
+                        if ($null -ne $ids) { Remove-OrphanedCoverSourcesMetadata $ids }
+                    } catch {}
+                })
+            }
+            $script:orphanCleanupTimer.Stop()
+            $script:orphanCleanupTimer.Start()
+        } catch {
+            try { Remove-OrphanedCoverSourcesMetadata $liveShortcutIds } catch {}
+        }
+    }
+    try {
+        if (-not [string]::IsNullOrWhiteSpace($cacheKey)) {
+            $script:installedMapCache = [PSCustomObject]@{ Key = [string]$cacheKey; At = [DateTime]::UtcNow }
+        }
+    } catch {}
+    } # end if (-not $skipSteamScan)
+
+    try { [System.Windows.Forms.Application]::DoEvents() } catch {}
 
     if ($script:romsModeEnabled) {
-        # ROM-режим: панели показывают И ПАПКИ, И ROM-файлы в корне выбранного
-        # каталога. Папки не фильтруются и остаются навигационными контейнерами;
-        # из файлов показываем только расширения, заданные активному эмулятору.
-        # Если пользователь открывает карточку папки — она сканируется целиком;
-        # если выбирает конкретный ROM-файл — карточка получает именно этот файл.
-        if ($hasC) {
-            Get-ChildItem -LiteralPath $global:dirC -Directory -ErrorAction SilentlyContinue | ForEach-Object {
-                $fName = $_.Name
-                if ($global:hiddenGames.ContainsKey((Get-HiddenGameKey 'C' $fName))) { return }
-                $script:panelDataC += [PSCustomObject]@{ Name = $fName; Path = $_.FullName; LastWriteTime = $_.LastWriteTime; IsDirectory = $true }
-            }
-        }
-        if ($hasD) {
-            Get-ChildItem -LiteralPath $global:dirD -Directory -ErrorAction SilentlyContinue | ForEach-Object {
-                if (-not [string]::IsNullOrEmpty($_.LinkType)) { return }
-                $fName = $_.Name
-                if ($global:hiddenGames.ContainsKey((Get-HiddenGameKey 'D' $fName))) { return }
-                $script:panelDataD += [PSCustomObject]@{ Name = $fName; Path = $_.FullName; LastWriteTime = $_.LastWriteTime; IsDirectory = $true }
-            }
-        }
-
-        # Если у активного эмулятора расширения не заданы — фильтра нет:
-        # показываем файлы всех расширений (а не ни одного, как было раньше).
+        # Enumerate* + List вместо Get-ChildItem + += (тысячи ROM не подвисают UI).
         $romExts = @(Get-ActiveEmulatorRomExtensions -IncludeArchives)
         $romExtSet = $null
         if ($romExts.Count -gt 0) {
             $romExtSet = New-Object 'System.Collections.Generic.HashSet[string]' ([string[]]$romExts, [System.StringComparer]::OrdinalIgnoreCase)
         }
+        $listC = New-Object System.Collections.Generic.List[object]
+        $listD = New-Object System.Collections.Generic.List[object]
         if ($hasC) {
-            Get-ChildItem -LiteralPath $global:dirC -File -ErrorAction SilentlyContinue | ForEach-Object {
-                $ext = $_.Extension.TrimStart('.').ToLowerInvariant()
-                if ($romExtSet -ne $null -and -not $romExtSet.Contains($ext)) { return }
-                $fName = $_.Name
-                if ($global:hiddenGames.ContainsKey((Get-HiddenGameKey 'C' $fName))) { return }
-                $script:panelDataC += [PSCustomObject]@{ Name = $fName; Path = $_.FullName; LastWriteTime = $_.LastWriteTime; IsDirectory = $false }
-            }
+            try {
+                $diC = New-Object System.IO.DirectoryInfo($global:dirC)
+                foreach ($d in $diC.EnumerateDirectories()) {
+                    $fName = $d.Name
+                    if ($global:hiddenGames.ContainsKey((Get-HiddenGameKey 'C' $fName))) { continue }
+                    [void]$listC.Add([PSCustomObject]@{ Name = $fName; Path = $d.FullName; LastWriteTime = $d.LastWriteTime; IsDirectory = $true })
+                }
+                foreach ($f in $diC.EnumerateFiles()) {
+                    $ext = $f.Extension.TrimStart('.').ToLowerInvariant()
+                    if ($null -ne $romExtSet -and -not $romExtSet.Contains($ext)) { continue }
+                    $fName = $f.Name
+                    if ($global:hiddenGames.ContainsKey((Get-HiddenGameKey 'C' $fName))) { continue }
+                    [void]$listC.Add([PSCustomObject]@{ Name = $fName; Path = $f.FullName; LastWriteTime = $f.LastWriteTime; IsDirectory = $false })
+                }
+            } catch {}
         }
         if ($hasD) {
-            Get-ChildItem -LiteralPath $global:dirD -File -ErrorAction SilentlyContinue | ForEach-Object {
-                $ext = $_.Extension.TrimStart('.').ToLowerInvariant()
-                if ($romExtSet -ne $null -and -not $romExtSet.Contains($ext)) { return }
-                $fName = $_.Name
-                if ($global:hiddenGames.ContainsKey((Get-HiddenGameKey 'D' $fName))) { return }
-                $script:panelDataD += [PSCustomObject]@{ Name = $fName; Path = $_.FullName; LastWriteTime = $_.LastWriteTime; IsDirectory = $false }
-            }
+            try {
+                $diD = New-Object System.IO.DirectoryInfo($global:dirD)
+                foreach ($d in $diD.EnumerateDirectories()) {
+                    if (($d.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) { continue }
+                    $fName = $d.Name
+                    if ($global:hiddenGames.ContainsKey((Get-HiddenGameKey 'D' $fName))) { continue }
+                    [void]$listD.Add([PSCustomObject]@{ Name = $fName; Path = $d.FullName; LastWriteTime = $d.LastWriteTime; IsDirectory = $true })
+                }
+                foreach ($f in $diD.EnumerateFiles()) {
+                    if (($f.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) { continue }
+                    $ext = $f.Extension.TrimStart('.').ToLowerInvariant()
+                    if ($null -ne $romExtSet -and -not $romExtSet.Contains($ext)) { continue }
+                    $fName = $f.Name
+                    if ($global:hiddenGames.ContainsKey((Get-HiddenGameKey 'D' $fName))) { continue }
+                    [void]$listD.Add([PSCustomObject]@{ Name = $fName; Path = $f.FullName; LastWriteTime = $f.LastWriteTime; IsDirectory = $false })
+                }
+            } catch {}
         }
+        $script:panelDataC = $listC.ToArray()
+        $script:panelDataD = $listD.ToArray()
     } else {
         $gameFileExts = New-Object 'System.Collections.Generic.HashSet[string]' (
             [string[]]@('exe','bat','cmd','com','lnk'),
             [System.StringComparer]::OrdinalIgnoreCase
         )
+        $listC = New-Object System.Collections.Generic.List[object]
+        $listD = New-Object System.Collections.Generic.List[object]
         if ($hasC) {
-            Get-ChildItem -LiteralPath $global:dirC -Directory -ErrorAction SilentlyContinue | ForEach-Object {
-                $fName = $_.Name
-                if ($global:hiddenGames.ContainsKey((Get-HiddenGameKey 'C' $fName))) { return }
-                $script:panelDataC += [PSCustomObject]@{ Name = $fName; Path = $_.FullName; LastWriteTime = $_.LastWriteTime; IsDirectory = $true }
-            }
-            Get-ChildItem -LiteralPath $global:dirC -File -ErrorAction SilentlyContinue | ForEach-Object {
-                $ext = $_.Extension.TrimStart('.').ToLowerInvariant()
-                if (-not $gameFileExts.Contains($ext)) { return }
-                $fName = $_.Name
-                if ($global:hiddenGames.ContainsKey((Get-HiddenGameKey 'C' $fName))) { return }
-                $script:panelDataC += [PSCustomObject]@{ Name = $fName; Path = $_.FullName; LastWriteTime = $_.LastWriteTime; IsDirectory = $false }
-            }
+            try {
+                $diC = New-Object System.IO.DirectoryInfo($global:dirC)
+                foreach ($d in $diC.EnumerateDirectories()) {
+                    $fName = $d.Name
+                    if ($global:hiddenGames.ContainsKey((Get-HiddenGameKey 'C' $fName))) { continue }
+                    [void]$listC.Add([PSCustomObject]@{ Name = $fName; Path = $d.FullName; LastWriteTime = $d.LastWriteTime; IsDirectory = $true })
+                }
+                foreach ($f in $diC.EnumerateFiles()) {
+                    $ext = $f.Extension.TrimStart('.').ToLowerInvariant()
+                    if (-not $gameFileExts.Contains($ext)) { continue }
+                    $fName = $f.Name
+                    if ($global:hiddenGames.ContainsKey((Get-HiddenGameKey 'C' $fName))) { continue }
+                    [void]$listC.Add([PSCustomObject]@{ Name = $fName; Path = $f.FullName; LastWriteTime = $f.LastWriteTime; IsDirectory = $false })
+                }
+            } catch {}
         }
         if ($hasD) {
-            Get-ChildItem -LiteralPath $global:dirD -Directory -ErrorAction SilentlyContinue | ForEach-Object {
-                if (-not [string]::IsNullOrEmpty($_.LinkType)) { return }
-                $fName = $_.Name
-                if ($global:hiddenGames.ContainsKey((Get-HiddenGameKey 'D' $fName))) { return }
-                $script:panelDataD += [PSCustomObject]@{ Name = $fName; Path = $_.FullName; LastWriteTime = $_.LastWriteTime; IsDirectory = $true }
-            }
-            Get-ChildItem -LiteralPath $global:dirD -File -ErrorAction SilentlyContinue | ForEach-Object {
-                if (-not [string]::IsNullOrEmpty($_.LinkType)) { return }
-                $ext = $_.Extension.TrimStart('.').ToLowerInvariant()
-                if (-not $gameFileExts.Contains($ext)) { return }
-                $fName = $_.Name
-                if ($global:hiddenGames.ContainsKey((Get-HiddenGameKey 'D' $fName))) { return }
-                $script:panelDataD += [PSCustomObject]@{ Name = $fName; Path = $_.FullName; LastWriteTime = $_.LastWriteTime; IsDirectory = $false }
-            }
+            try {
+                $diD = New-Object System.IO.DirectoryInfo($global:dirD)
+                foreach ($d in $diD.EnumerateDirectories()) {
+                    if (($d.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) { continue }
+                    $fName = $d.Name
+                    if ($global:hiddenGames.ContainsKey((Get-HiddenGameKey 'D' $fName))) { continue }
+                    [void]$listD.Add([PSCustomObject]@{ Name = $fName; Path = $d.FullName; LastWriteTime = $d.LastWriteTime; IsDirectory = $true })
+                }
+                foreach ($f in $diD.EnumerateFiles()) {
+                    if (($f.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) { continue }
+                    $ext = $f.Extension.TrimStart('.').ToLowerInvariant()
+                    if (-not $gameFileExts.Contains($ext)) { continue }
+                    $fName = $f.Name
+                    if ($global:hiddenGames.ContainsKey((Get-HiddenGameKey 'D' $fName))) { continue }
+                    [void]$listD.Add([PSCustomObject]@{ Name = $fName; Path = $f.FullName; LastWriteTime = $f.LastWriteTime; IsDirectory = $false })
+                }
+            } catch {}
         }
+        $script:panelDataC = $listC.ToArray()
+        $script:panelDataD = $listD.ToArray()
     }
 
     # Строим сами списки (с учётом текущего поиска/сортировки панели) и
@@ -11181,6 +11251,9 @@ function Refresh-Panels {
     # Ярлыки/игры могли измениться: если снимок библиотеки устарел — готовим новый в фоне (если актуален — ничего не делает).
     try { Request-LibPreheat 2000 } catch {}
     try { Update-MainLibraryButtonState } catch {}
+    } finally {
+        try { $form.UseWaitCursor = $prevWait; [System.Windows.Forms.Cursor]::Current = [System.Windows.Forms.Cursors]::Default } catch {}
+    }
 }
 
 function Show-ExeSelectionDialog ($exeList, $rootPath, $gameName) {
@@ -16255,6 +16328,27 @@ function Use-ExeIconInTemp([string]$exePath) {
     } catch { Write-ExeIconLog ('Use-ExeIconInTemp: ' + $_.Exception.Message); return $false }
 }
 
+# При открытии уже сохранённой игры иконка в temp может быть иконкой из EXE (она сохранена в grid),
+# а значок источника по умолчанию ставится «Steam». Синхронизируем значок с реальным содержимым слота.
+function Sync-EditorIconSourceBadgeWithExe($slots) {
+    try {
+        if ($null -eq $slots -or $null -eq $slots.Icon) { return }
+        $romFlag = $slots.Icon.PSObject.Properties['IsRomCard']
+        if ($null -ne $romFlag -and [bool]$romFlag.Value) { return }
+        $gp = $slots.Icon.PSObject.Properties['ExePathGetter']
+        if ($null -eq $gp -or $null -eq $gp.Value) { return }
+        $exe = [string](& $gp.Value)
+        if ([string]::IsNullOrWhiteSpace($exe) -or -not (Test-Path -LiteralPath $exe -PathType Leaf)) { return }
+        if (-not (Test-EditorIconIsExe $exe)) { return }
+        Set-EditorSourceBadge $slots.Icon 'Local'
+        try { $slots.Icon.ExpectedSource = 'Local' } catch {}
+        $png = Get-ExeIconCachePng $exe
+        if (-not [string]::IsNullOrWhiteSpace($png)) {
+            try { $slots.Icon | Add-Member -NotePropertyName ExeIconPng -NotePropertyValue ([string]$png) -Force } catch {}
+        }
+    } catch {}
+}
+
 # Карточка: если включено «Использовать иконки из EXE» и EXE игры известен — ставим в слот
 # иконку из EXE (иконка Steam при этом сохраняется для возврата кнопкой EXE).
 function Invoke-EditorAutoExeIcon($slots) {
@@ -16268,7 +16362,7 @@ function Invoke-EditorAutoExeIcon($slots) {
         if ($null -eq $gp -or $null -eq $gp.Value) { return }
         $exe = [string](& $gp.Value)
         if ([string]::IsNullOrWhiteSpace($exe) -or -not (Test-Path -LiteralPath $exe -PathType Leaf)) { return }
-        if (Test-EditorIconIsExe $exe) { return }
+        if (Test-EditorIconIsExe $exe) { Sync-EditorIconSourceBadgeWithExe $slots; return }
         if (Set-EditorIconFromExe $slots.Icon $exe) { try { $slots.Icon.PendingMissing = $false } catch {} }
     } catch {}
 }
@@ -32484,6 +32578,14 @@ function Show-SteamLibraryBrowser {
         [System.Windows.Forms.Control].GetProperty('DoubleBuffered', $flags).SetValue($scroll, $true, $null)
     } catch {}
     $dlg.Controls.Add($scroll)
+    $scroll.Add_Scroll({
+        try { $script:libScrollBusyUntil = [Environment]::TickCount + 180 } catch {}
+    })
+    try {
+        $scroll.Add_MouseWheel({
+            try { $script:libScrollBusyUntil = [Environment]::TickCount + 180 } catch {}
+        })
+    } catch {}
 
     $flow = New-Object System.Windows.Forms.FlowLayoutPanel
     $flow.Location = New-Object System.Drawing.Point(0, 0)
@@ -32786,6 +32888,9 @@ function Show-SteamLibraryBrowser {
     $script:libTileCountOverride = 0
     $script:libProgressiveOnce = $false
     $script:libLastTile = $null
+    # Кэш готовых плиток по вкладкам: переключение Steam/Epic/… без Dispose+пересборки.
+    if ($null -eq $script:libTabTileCache) { $script:libTabTileCache = @{} }
+    $script:libScrollBusyUntil = 0
     # Кэш "appId -> путь к файлу" на время сессии диалога: без него каждая
     # пересборка сетки (в т.ч. при стирании символов в поиске) заново ставит
     # в очередь скачивание уже скачанной обложки, забивая параллельные слоты
@@ -33116,18 +33221,21 @@ function Show-SteamLibraryBrowser {
     # Досоздание плиток порциями (первое открытие библиотеки): за тик не дольше ~25 мс, новые плитки
     # добавляются во flow одним AddRange. Размер сетки уже посчитан под все плитки ($script:libTileCountOverride).
     $libTileFillTimer = New-Object System.Windows.Forms.Timer
-    $libTileFillTimer.Interval = 10
+    $libTileFillTimer.Interval = 15
     $libTileFillTimer.Add_Tick({
         try { $libTileFillTimer.Stop() } catch {}
         try {
             if ($dlg.IsDisposed -or $dlg.Disposing) { return }
+            # Во время прокрутки не грузим плитки — иначе UI «заикается».
+            if ([Environment]::TickCount -lt [int]$script:libScrollBusyUntil) { try { $libTileFillTimer.Start() } catch {}; return }
+            if ([System.Windows.Forms.Control]::MouseButtons -ne [System.Windows.Forms.MouseButtons]::None) { try { $libTileFillTimer.Start() } catch {}; return }
             $pend = $script:libTilePending
             if ($null -eq $pend) { return }
             if ([string]$script:libActiveTab -ne [string]$pend.Tab) { $script:libTilePending = $null; $script:libTileCountOverride = 0; return }
             $fsw = [System.Diagnostics.Stopwatch]::StartNew()
             $batch = New-Object System.Collections.Generic.List[System.Windows.Forms.Control]
             $ents = $pend.Entries
-            while ($pend.Next -lt $ents.Count -and $fsw.ElapsedMilliseconds -lt 25) {
+            while ($pend.Next -lt $ents.Count -and $fsw.ElapsedMilliseconds -lt 40) {
                 $fentry = $ents[$pend.Next]
                 $pend.Next = $pend.Next + 1
                 $ftm = (-not ($pend.Q -and -not ([string]$fentry.Name).ToLowerInvariant().Contains([string]$pend.Q))) -and (& $passesLibFilter $fentry)
@@ -34331,6 +34439,7 @@ function Show-SteamLibraryBrowser {
         try { $libTileFillTimer.Stop() } catch {}
         $script:libTilePending = $null
         $script:libTileCountOverride = 0
+        try { if ($null -ne $script:libTabTileCache) { $script:libTabTileCache.Remove([string]$script:libActiveTab) } } catch {}
         try { while ($script:libCoverQueue.Count -gt 0) { [void]$script:libCoverQueue.Dequeue() } } catch {}
         try { $script:libLocalCoverQueue.Clear() } catch {}
         $script:coverProfileRootsKey = $null
@@ -34343,14 +34452,24 @@ function Show-SteamLibraryBrowser {
         $flow.Visible = $false
         $flow.SuspendLayout()
         try {
-            foreach ($c in @($flow.Controls)) {
-                try { $c.Dispose() } catch {}
-            }
+            # Только отвязываем от flow — Dispose только для плиток текущей вкладки,
+            # которые НЕ сохранены в libTabTileCache (чужие вкладки не трогаем).
             $flow.Controls.Clear()
-            # Плитки, скрытые фильтром, живут только в кэше — освобождаем и их.
-            try { foreach ($c in @($script:libTileAll)) { try { $c.Dispose() } catch {} } } catch {}
+            $toDispose = $script:libTileAll
             $script:libTileAll = New-Object System.Collections.Generic.List[object]
             $script:libTileAllKey = $null
+            $shared = $false
+            try {
+                if ($null -ne $script:libTabTileCache -and $null -ne $toDispose) {
+                    foreach ($ck in @($script:libTabTileCache.Keys)) {
+                        $pack = $script:libTabTileCache[$ck]
+                        if ($null -ne $pack -and [object]::ReferenceEquals($pack.All, $toDispose)) { $shared = $true; break }
+                    }
+                }
+            } catch { $shared = $false }
+            if (-not $shared -and $null -ne $toDispose) {
+                try { foreach ($c in @($toDispose)) { try { if ($null -ne $c -and -not $c.IsDisposed) { $c.Dispose() } } catch {} } } catch {}
+            }
             $q = ([string]$filter).Trim().ToLowerInvariant()
             $shown = 0
             $allCount = 0
@@ -34360,19 +34479,17 @@ function Show-SteamLibraryBrowser {
             foreach ($en0 in $entriesAll) {
                 if ((-not ($q -and -not ([string]$en0.Name).ToLowerInvariant().Contains($q))) -and (& $passesLibFilter $en0)) { $shown++ }
             }
-            # Первое открытие библиотеки: синхронно строим только то, что помещается на экран,
-            # остальные плитки досоздаются по таймеру уже после показа окна ($libTileFillTimer).
-            $progressive = [bool]$script:libProgressiveOnce
+            # Всегда прогрессивно: сначала только видимый экран, остальное — $libTileFillTimer.
+            # Иначе смена вкладки/фильтра на сотнях игр блокирует UI на секунды.
+            $progressive = $true
             $script:libProgressiveOnce = $false
-            $syncLimit = $allCount
-            if ($progressive) {
-                $tOw = [int]$script:libTileInnerW + (2 * [int]$script:libTileMargin)
-                $tOh = [int]$script:libTileInnerH + (2 * [int]$script:libTileMargin)
-                $vw = [Math]::Max(200, [int]$scroll.ClientSize.Width)
-                $vh = [Math]::Max(200, [int]$scroll.ClientSize.Height)
-                $syncLimit = ([int][Math]::Floor($vw / [double]$tOw)) * ([int][Math]::Ceiling($vh / [double]$tOh) + 1)
-                $syncLimit = [Math]::Max(18, [Math]::Min(150, $syncLimit))
-            }
+            $tOw = [int]$script:libTileInnerW + (2 * [int]$script:libTileMargin)
+            $tOh = [int]$script:libTileInnerH + (2 * [int]$script:libTileMargin)
+            $vw = [Math]::Max(200, [int]$scroll.ClientSize.Width)
+            $vh = [Math]::Max(200, [int]$scroll.ClientSize.Height)
+            $syncLimit = ([int][Math]::Floor($vw / [double]$tOw)) * ([int][Math]::Ceiling($vh / [double]$tOh) + 2)
+            $syncLimit = [Math]::Max(24, [Math]::Min(120, $syncLimit))
+            if ($allCount -le $syncLimit) { $syncLimit = $allCount }
             $made = 0
             foreach ($entry in $entriesAll) {
                 if ($made -ge $syncLimit) { break }
@@ -34390,7 +34507,8 @@ function Show-SteamLibraryBrowser {
                 # Высоту сетки и полосу прокрутки считаем сразу под ВСЕ плитки — они появятся позже, но прокрутка не будет «прыгать».
                 $script:libTileCountOverride = [int]$shown
             }
-            if ($null -eq $script:libTilePending) { $script:libTileAllKey = ([string]$script:libActiveTab + '|' + [string]$allCount) }
+            # Ключ сразу (даже пока pending): фильтр/поиск могут идти через applyTileFilter без полной пересборки.
+            $script:libTileAllKey = ([string]$script:libActiveTab + '|' + [string]$allCount)
             $lblCount.Text = (T 'lib_count' @($shown))
             $script:libShownCount = [int]$shown
             try { & $updateSelectionUi } catch {}
@@ -34423,6 +34541,15 @@ function Show-SteamLibraryBrowser {
                     [void]$dlg.BeginInvoke([Action]{
                         try { & $stabilizeLibraryGridWidth } catch {}
                     })
+                }
+            } catch {}
+            # Сохраняем плитки вкладки — следующее переключение подхватит без Dispose.
+            try {
+                if ($null -eq $script:libTabTileCache) { $script:libTabTileCache = @{} }
+                $script:libTabTileCache[[string]$script:libActiveTab] = [PSCustomObject]@{
+                    All = $script:libTileAll
+                    Key = [string]$script:libTileAllKey
+                    Pending = $script:libTilePending
                 }
             } catch {}
             # Недостающие плитки — порциями по таймеру, после показа окна.
@@ -34958,6 +35085,8 @@ function Show-SteamLibraryBrowser {
     $coverTimer.Interval = 300
     $coverTimer.Add_Tick({
         if ($script:libCoverBusy) { return }
+            if ([Environment]::TickCount -lt [int]$script:libScrollBusyUntil) { return }
+            if ([System.Windows.Forms.Control]::MouseButtons -ne [System.Windows.Forms.MouseButtons]::None) { return }
         $script:libCoverBusy = $true
         try {
             if ([string]$script:libActiveTab -eq 'steam') { $coverTimer.Stop(); return }
@@ -35013,11 +35142,56 @@ function Show-SteamLibraryBrowser {
     $switchTab = {
         param([string]$id)
         if ([string]::IsNullOrWhiteSpace($id) -or $id -eq [string]$script:libActiveTab) { return }
+        # Сохраняем плитки текущей вкладки. Важно: отвязать $script:libTileAll от списка,
+        # иначе buildTiles другой вкладки сделает Dispose этих же контролов и кэш «опустеет».
+        try {
+            if ($null -eq $script:libTabTileCache) { $script:libTabTileCache = @{} }
+            if ($null -ne $script:libTileAll -and $script:libTileAll.Count -gt 0) {
+                $script:libTabTileCache[[string]$script:libActiveTab] = [PSCustomObject]@{
+                    All = $script:libTileAll
+                    Key = [string]$script:libTileAllKey
+                    Pending = $script:libTilePending
+                }
+            }
+        } catch {}
+        try { $libTileFillTimer.Stop() } catch {}
+        # Пустой список: buildTiles не уничтожит плитки, лежащие в кэше другой вкладки.
+        $script:libTileAll = New-Object System.Collections.Generic.List[object]
+        $script:libTileAllKey = $null
+        $script:libTilePending = $null
+        $script:libTileCountOverride = 0
         $script:libActiveTab = $id
         try { if (-not $script:libImportRunning) { & $showLibProgress $false } } catch {}
         try { & $hideLibHoverCardNow } catch {}
         try { $tabBar.Invalidate() } catch {}
-        try { & $buildTiles ([string]$txtSearch.Text) } catch {}
+        $restored = $false
+        try {
+            if ($null -ne $script:libTabTileCache -and $script:libTabTileCache.ContainsKey([string]$id)) {
+                $pack = $script:libTabTileCache[[string]$id]
+                $wantKey = ([string]$id + '|' + [string]@(& $getActiveEntries).Count)
+                if ($null -ne $pack -and $null -ne $pack.All -and $pack.All.Count -gt 0 -and [string]$pack.Key -ceq $wantKey) {
+                    # Отбрасываем уже уничтоженные контролы (после полного Refresh).
+                    $alive = 0
+                    foreach ($tc in @($pack.All)) {
+                        try { if ($null -ne $tc -and -not $tc.IsDisposed) { $alive++ } } catch {}
+                    }
+                    if ($alive -gt 0) {
+                        $script:libTileAll = $pack.All
+                        $script:libTileAllKey = [string]$pack.Key
+                        $script:libTilePending = $pack.Pending
+                        $restored = [bool](& $applyTileFilter ([string]$txtSearch.Text))
+                        if ($restored -and $null -ne $script:libTilePending) {
+                            try { $libTileFillTimer.Start() } catch {}
+                        }
+                    } else {
+                        try { $script:libTabTileCache.Remove([string]$id) } catch {}
+                    }
+                }
+            }
+        } catch { $restored = $false }
+        if (-not $restored) {
+            try { & $buildTiles ([string]$txtSearch.Text) } catch {}
+        }
         & $updateSelectionUi
         try { $coverTimer.Start() } catch {}
     }
@@ -35070,6 +35244,7 @@ function Show-SteamLibraryBrowser {
     $refreshSteamTabEntries = {
         try {
             $script:libBrowserEntries = @(Get-SteamLibraryEntries)
+            try { if ($null -ne $script:libTabTileCache) { $script:libTabTileCache.Remove('steam') } } catch {}
             try { Start-LibDlssScan $script:libBrowserEntries; $libDlssTimer.Start() } catch {}
         } catch {
             try { Write-LauncherLog ('refreshSteamTabEntries: ' + $_.Exception.Message) } catch {}
@@ -35448,22 +35623,34 @@ function Show-SteamLibraryBrowser {
         try {
             $all = $script:libTileAll
             if ($null -eq $all -or $all.Count -eq 0) { return $false }
-            $curKey = ([string]$script:libActiveTab + '|' + [string]@(& $getActiveEntries).Count)
-            if ([string]$script:libTileAllKey -ne $curKey) { return $false }
+            $activeCount = [int]@(& $getActiveEntries).Count
+            $curKey = ([string]$script:libActiveTab + '|' + [string]$activeCount)
+            # Допускаем частичный кэш (прогрессивная сборка ещё идёт).
+            if ([string]$script:libTileAllKey -ne $curKey) {
+                $pendOk = ($null -ne $script:libTilePending -and [string]$script:libTilePending.Tab -eq [string]$script:libActiveTab -and [int]$script:libTilePending.Total -eq $activeCount)
+                if (-not $pendOk) { return $false }
+                $script:libTileAllKey = $curKey
+            }
             $q = ([string]$filter).Trim().ToLowerInvariant()
+            # Те же условия, что у догружаемых плиток.
+            if ($null -ne $script:libTilePending -and [string]$script:libTilePending.Tab -eq [string]$script:libActiveTab) {
+                $script:libTilePending.Q = $q
+            }
             $vis = New-Object System.Collections.Generic.List[System.Windows.Forms.Control]
+            $aliveAny = $false
             foreach ($t in $all) {
+                if ($null -eq $t -or $t.IsDisposed) { continue }
+                $aliveAny = $true
                 $en = $t.Tag
                 if ($null -eq $en) { continue }
                 if ($q -and -not ([string]$en.Name).ToLowerInvariant().Contains($q)) { continue }
                 if (-not (& $passesLibFilter $en)) { continue }
                 [void]$vis.Add($t)
             }
+            if (-not $aliveAny) { return $false }
             try { & $hideLibHoverCardNow } catch {}
-            $flow.Visible = $false
             $flow.SuspendLayout()
             try {
-                # Служебные контролы без Tag (напр. надпись «пусто») в кэше не живут — удаляем.
                 foreach ($c in @($flow.Controls)) {
                     if ($null -eq $c.Tag) { try { $c.Dispose() } catch {} }
                 }
@@ -35472,9 +35659,10 @@ function Show-SteamLibraryBrowser {
                 if ($vis.Count -gt 0) {
                     $flow.Controls.AddRange($vis.ToArray())
                     $lblCount.Text = (T 'lib_count' @($vis.Count))
+                    $script:libTileCountOverride = 0
                 } elseif ([string]$script:libActiveTab -eq 'steam') {
-                    # Ничего не найдено: кэш плиток не трогаем, просто показываем пустую сетку.
                     $lblCount.Text = (T 'lib_empty')
+                    if ($null -ne $script:libTilePending) { $script:libTileCountOverride = 0 }
                 } else {
                     $lblCount.Text = (T 'lib_count' @(0))
                     $emptyLbl = New-Object System.Windows.Forms.Label
@@ -35489,15 +35677,7 @@ function Show-SteamLibraryBrowser {
                 $flow.ResumeLayout($true)
                 try { & $syncLibraryFlowWidth } catch {}
                 try { & $resetLibraryScroll 0 } catch {}
-                $flow.Visible = $true
-                try { & $stabilizeLibraryGridWidth } catch {}
-                try {
-                    if (-not $dlg.IsDisposed) {
-                        [void]$dlg.BeginInvoke([Action]{
-                            try { & $stabilizeLibraryGridWidth } catch {}
-                        })
-                    }
-                } catch {}
+                try { & $forceNoHScroll } catch {}
             }
             return $true
         } catch { return $false }
@@ -39490,6 +39670,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
                         try { $slots.Icon.ExpectedSource = $iconSource } catch {}
                         # «Использовать иконки из EXE»: и при открытии уже добавленной игры
                         # иконка по умолчанию — из её EXE (прежняя остаётся для кнопки EXE).
+                        try { Sync-EditorIconSourceBadgeWithExe $slots } catch {}
                         try { Invoke-EditorAutoExeIcon $slots } catch {}
                     }
                     $slots.Vertical.ExpectedSource=$vSource
