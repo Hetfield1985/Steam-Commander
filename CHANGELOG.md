@@ -6,6 +6,33 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [2.0.9] - 2026-10-16
+
+### Added
+* **Upscaler libraries are updated when a game is added.** New **Update on add** tick in *Settings → Upscaler libraries* (off by default). When a game is added to Steam (manually, from a card or by auto-import), DLSS / FSR / XeSS / XeLL in the game folder are replaced with the versions selected in the settings (or the newest downloaded ones). A file that is already the same version or newer is not touched, the original is kept as `.sc_orig`, and a failure never blocks adding the game. ROMs are skipped. The setting is stored in `config.ini`.
+* **A full report for "Update upscalers" and "Restore backups".** Instead of a plain message box, a resizable window shows a short summary and a table of *all* processed games: game, result (*Done* / *Unchanged* / *Not found* / *Error*) and the libraries or the error text. Errors are listed first; rows can be selected and copied.
+* **Steam framing button in the *Background & logo* preview** (left of the eye). It shows the background the way the Steam client does: the top part hidden under Steam's top bar is darkened and blurred, and the tail below the sharp part is blurred and fades into the window colour. Off by default (the whole background is drawn, as before); the choice is saved in `config.ini` and applies to all cards.
+* **Position marks while dragging the logo.** Green marks show the five Steam positions (corners on the left, bars at the top / bottom centre, a square in the centre); the one the logo will snap to is brighter and thicker.
+* **Size of the ticked games by panel.** Pressing Space now shows the size separately for the left and right panel with the drive letter and the number of ticked games, plus a total when both panels have ticks: `Left (C:) 20.1 GB (2) · Right (D:) 4012.5 GB (141) · Total ...`.
+* **Hint in the status line of the main window.** It explains that games are ticked to add them to the library or move them, and after you tick something it suggests pressing Space to calculate the size. It is replaced when the ticks or a folder change and never overwrites the status of a move, an import or an error.
+
+### Improved
+* **The logo position and size in the card match Steam more closely.** The logo area is now calculated from the sharp upper part of the hero image (the top ~74 px at 1635 px width are hidden under Steam's top bar), with the margins and the size reference measured from Steam at 50 % and 100 %. The constants are kept in one place so they are easy to adjust.
+* **Snapping the logo to a position is more predictable.** The column (left / centre) and the row (top / centre / bottom) are chosen separately, and the vertical thresholds cannot shrink below a share of the visible area. Before, a large logo covered almost the whole area, the centres of several positions coincided and the choice looked random and did not match the highlighted mark.
+* **Icons of the eye, lock and Steam framing buttons are drawn by code** instead of Segoe MDL2 Assets glyphs, so they look the same in every Windows version (no empty squares where the font is missing), stay sharp and follow the screen scale. A hidden logo now also highlights the eye button with the accent colour.
+* **The emulator picker remembers its page.** While the program is running, it opens on the page where you chose an emulator last time instead of the first one.
+* **The status of the *Upscaler libraries* section** is shown in brackets right after the section title, and the freed place in the button row is used by the *Update on add* tick.
+
+### Fixed
+* **`config.ini` could be damaged if saving was interrupted** (disk, permissions, antivirus). The settings are now written to a temporary file and swapped in, so the previous file stays intact on failure; a direct write is used only as a fallback. Save errors are written to `config_error.log` next to `config.ini` (the log is restarted when it grows over ~512 KB).
+* **"Cannot move" was reported misleadingly.** When the ticked games do not fit, the status now shows the total size and how much space is missing, taking into account that moving in both directions frees space on the other drive (*Cannot move. Ticked: ... Short by ...*). Before, it showed only the part that would fit or the shortage of a single game.
+
+### Changed
+* The messages about the size of the ticked games no longer repeat the number of games (it is shown per panel now); the texts are updated in all six languages.
+* Application version is now 2.0.9.
+
+---
+
 ## [2.0.8] - 2026-10-14
 
 ### Improved
