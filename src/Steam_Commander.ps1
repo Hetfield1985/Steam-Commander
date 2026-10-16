@@ -905,7 +905,7 @@ Set-SplashProgress 0.52
 # Единая версия приложения — используется в заголовке главного окна, в
 # подписи внизу окна настроек и в User-Agent HTTP-запросов. Меняйте только
 # здесь при выпуске новой версии.
-$global:appVersion = "2.0.8"
+$global:appVersion = "2.0.10"
 $global:appTitle = "Steam Commander"
 # Ссылки на исходный код и поддержку автора (окно «Поддержать» в настройках). Меняйте только здесь.
 $global:appRepoUrl = "https://github.com/Hetfield1985/Steam-Commander"
@@ -943,7 +943,8 @@ $script:languageList = @(
 )
 $script:I18n = @{
     ru = @{
-        hint_main = 'Двойной клик / Enter — карточка игры'
+        hint_main = 'Двойной клик / Enter — карточка игры. Галочки — добавить в библиотеку или перенести'
+        hint_checked = 'Пробел — посчитать размер отмеченных и проверить, хватит ли места для переноса'
         panel_extra = 'Папка'
         panel_main = 'Папка'
         panel_free = '{0} [Свободно: {1} {2}]'
@@ -1008,6 +1009,13 @@ $script:I18n = @{
         lib_restore_res_same = 'Уже оригинальные: {0}'
         lib_restore_res_none = 'Бэкапов не найдено: {0}'
         lib_restore_res_fail = 'Не удалось вернуть: {0}'
+        lib_rep_col_game = 'Игра'
+        lib_rep_col_status = 'Результат'
+        lib_rep_col_details = 'Библиотеки / сообщение'
+        lib_rep_st_ok = 'Выполнено'
+        lib_rep_st_same = 'Без изменений'
+        lib_rep_st_none = 'Не найдено'
+        lib_rep_st_fail = 'Ошибка'
         lib_auto_import = 'Автоимпорт'
         lib_import = 'Импортировать в Steam'
         lib_import_n = 'Импортировать в Steam ({0})'
@@ -1043,11 +1051,15 @@ $script:I18n = @{
         st_sizes_checked = 'Считаю размер отмеченных: {0} ({1} из {2})'
         st_size_one = 'Размер «{0}»: {1} {2}'
         st_panel_sizes = 'Посчитан размер всех папок панели ({0}) — итого: {1} {2}'
-        st_move_ok = 'Можно перенести все отмеченные ({0}) — {1}'
+        st_move_ok = 'Можно перенести все отмеченные — {1}'
         st_move_partial = 'Можно перенести {0} из {1} ({2}). Остальные не влезут.'
         st_move_none = 'Перенос невозможен: не хватает места ({0})'
-        st_move_same = 'Один том — место не требуется. Отмечено: {0} — {1}'
+        st_move_short = 'Перенос невозможен. Отмечено: {1}. Не хватает {2}'
+        st_move_same = 'Один том — место не требуется. Отмечено: {1}'
         st_move_free_unknown = 'Не удалось определить свободное место на диске.'
+        st_panel_left = 'Слева'
+        st_panel_right = 'Справа'
+        st_panel_total = 'Всего'
         st_removed = 'Убрано из списка: {0}. Файлы на диске не тронуты; кнопка «Обновить» вернёт игры в список.'
         set_lang_folder_tip = 'Папка языков: здесь можно править переводы и добавлять новые языки'
         lang_problems = 'В файлах языков найдены ошибки. Эти строки пропущены — вместо них используется встроенный текст:'
@@ -1247,6 +1259,8 @@ $script:I18n = @{
         slot_herologo = '3. Фон и логотип'
         logo_eye_hide = 'Скрыть логотип на превью'
         logo_eye_show = 'Показать логотип на превью'
+        logo_frames_show = 'Показать рамки Steam (как в клиенте)'
+        logo_frames_hide = 'Скрыть рамки Steam (показать весь фон)'
         logo_btn_bg = 'Сменить фон'
         logo_btn_logo = 'Сменить логотип'
         logo_scale_label = 'Размер логотипа: {0}%'
@@ -1392,6 +1406,8 @@ $script:I18n = @{
         upl_select_latest = 'Выбрать последние'
         upl_latest_done = 'Выбраны последние версии: {0}'
         upl_latest_same = 'Уже выбраны последние из скачанных версий.'
+        upl_auto_update = 'Обновлять при добавлении'
+        upl_tip_auto_update = 'При добавлении игры в Steam (вручную или автоимпортом) заменять DLSS / FSR / XeSS / XeLL в папке игры на версии, выбранные выше. Если в игре версия такая же или новее, файл не трогается; оригинал сохраняется рядом (.sc_orig).'
         upl_tip_all = 'Скачать последние версии всех библиотек, которых ещё нет на диске'
         upl_tip_latest = 'Выбрать по умолчанию самую новую из скачанных версий в каждой библиотеке'
         upl_checking = 'Проверка списка версий…'
@@ -1459,7 +1475,8 @@ $script:I18n = @{
         splash_reading = 'Чтение библиотеки…'
     }
     en = @{
-        hint_main = 'Double-click / Enter — open game card'
+        hint_main = 'Double-click / Enter — game card. Tick games to add to library or move'
+        hint_checked = 'Space — calculate the size of ticked games and check whether they fit for moving'
         panel_extra = 'Folder'
         panel_main = 'Folder'
         panel_free = '{0} [Free: {1} {2}]'
@@ -1524,6 +1541,13 @@ $script:I18n = @{
         lib_restore_res_same = 'Already original: {0}'
         lib_restore_res_none = 'No backups found: {0}'
         lib_restore_res_fail = 'Could not restore: {0}'
+        lib_rep_col_game = 'Game'
+        lib_rep_col_status = 'Result'
+        lib_rep_col_details = 'Libraries / message'
+        lib_rep_st_ok = 'Done'
+        lib_rep_st_same = 'Unchanged'
+        lib_rep_st_none = 'Not found'
+        lib_rep_st_fail = 'Error'
         lib_auto_import = 'Auto-import'
         lib_import = 'Import to Steam'
         lib_import_n = 'Import to Steam ({0})'
@@ -1559,11 +1583,15 @@ $script:I18n = @{
         st_sizes_checked = 'Calculating size of ticked games: {0} ({1} of {2})'
         st_size_one = 'Size of “{0}”: {1} {2}'
         st_panel_sizes = 'Calculated size of all folders in the panel ({0}) — total: {1} {2}'
-        st_move_ok = 'All ticked games can be moved ({0}) — {1}'
+        st_move_ok = 'All ticked games can be moved — {1}'
         st_move_partial = '{0} of {1} can be moved ({2}). The rest will not fit.'
         st_move_none = 'Cannot move: not enough free space ({0})'
-        st_move_same = 'Same volume — no free space needed. Ticked: {0} — {1}'
+        st_move_short = 'Cannot move. Ticked: {1}. Short by {2}'
+        st_move_same = 'Same volume — no free space needed. Ticked: {1}'
         st_move_free_unknown = 'Could not determine free space on the drive.'
+        st_panel_left = 'Left'
+        st_panel_right = 'Right'
+        st_panel_total = 'Total'
         st_removed = 'Removed from the list: {0}. Files on disk are untouched; the “Refresh” button brings the games back.'
         set_lang_folder_tip = 'Languages folder: edit translations here or add new languages'
         lang_problems = 'Errors were found in the language files. These lines were skipped and the built-in text is used instead:'
@@ -1763,6 +1791,8 @@ $script:I18n = @{
         slot_herologo = '3. Background & logo'
         logo_eye_hide = 'Hide logo in preview'
         logo_eye_show = 'Show logo in preview'
+        logo_frames_show = 'Show Steam framing (as in the client)'
+        logo_frames_hide = 'Hide Steam framing (show the full background)'
         logo_btn_bg = 'Change background'
         logo_btn_logo = 'Change logo'
         logo_scale_label = 'Logo size: {0}%'
@@ -1908,6 +1938,8 @@ $script:I18n = @{
         upl_select_latest = 'Select latest'
         upl_latest_done = 'Latest versions selected: {0}'
         upl_latest_same = 'The latest downloaded versions are already selected.'
+        upl_auto_update = 'Update on add'
+        upl_tip_auto_update = 'When a game is added to Steam (manually or by auto-import), replace DLSS / FSR / XeSS / XeLL in the game folder with the versions selected above. Files that are already the same version or newer are left alone; the original is kept next to it (.sc_orig).'
         upl_tip_all = 'Download the latest versions of all libraries that are not on disk yet'
         upl_tip_latest = 'Select the newest downloaded version of each library as the default'
         upl_checking = 'Checking the version list…'
@@ -1975,7 +2007,8 @@ $script:I18n = @{
         splash_reading = 'Reading library…'
     }
     zh = @{
-        hint_main = '双击 / 回车 — 打开游戏卡片'
+        hint_main = '双击 / 回车 — 游戏卡片。勾选游戏可添加到库或移动'
+        hint_checked = '按空格键 — 计算已勾选游戏的大小，并检查能否移动'
         panel_extra = '文件夹'
         panel_main = '文件夹'
         panel_free = '{0} [可用空间：{1} {2}]'
@@ -2040,6 +2073,13 @@ $script:I18n = @{
         lib_restore_res_same = '已是原始版本：{0}'
         lib_restore_res_none = '未找到备份：{0}'
         lib_restore_res_fail = '还原失败：{0}'
+        lib_rep_col_game = '游戏'
+        lib_rep_col_status = '结果'
+        lib_rep_col_details = '库 / 信息'
+        lib_rep_st_ok = '已完成'
+        lib_rep_st_same = '无变化'
+        lib_rep_st_none = '未找到'
+        lib_rep_st_fail = '错误'
         lib_auto_import = '自动导入'
         lib_import = '导入到 Steam'
         lib_import_n = '导入到 Steam ({0})'
@@ -2069,11 +2109,15 @@ $script:I18n = @{
         st_sizes_checked = '正在计算已勾选游戏的大小：{0}（{1}/{2}）'
         st_size_one = '“{0}”的大小：{1} {2}'
         st_panel_sizes = '已计算面板（{0}）中所有文件夹的大小 — 合计：{1} {2}'
-        st_move_ok = '可以移动全部已勾选游戏（{0}）— {1}'
+        st_move_ok = '可以移动全部已勾选游戏 — {1}'
         st_move_partial = '可移动 {0}/{1}（{2}）。其余放不下。'
         st_move_none = '无法移动：空间不足（{0}）'
-        st_move_same = '同一卷 — 不需要额外空间。已勾选：{0} — {1}'
+        st_move_short = '无法移动。已勾选：{1}。还差 {2}'
+        st_move_same = '同一卷 — 不需要额外空间。已勾选：{1}'
         st_move_free_unknown = '无法确定磁盘可用空间。'
+        st_panel_left = '左侧'
+        st_panel_right = '右侧'
+        st_panel_total = '合计'
         st_removed = '已从列表中移除：{0}。磁盘上的文件未受影响；点击“刷新”按钮即可恢复这些游戏。'
         set_lang_folder_tip = '语言文件夹：可在此编辑翻译或添加新语言'
         lang_problems = '语言文件中发现错误。这些行已被跳过，改用内置文本：'
@@ -2266,6 +2310,8 @@ $script:I18n = @{
         slot_herologo = '3. 背景与徽标'
         logo_eye_hide = '在预览中隐藏徽标'
         logo_eye_show = '在预览中显示徽标'
+        logo_frames_show = '显示 Steam 裁剪框（与客户端一致）'
+        logo_frames_hide = '隐藏 Steam 裁剪框（显示完整背景）'
         logo_btn_bg = '更换背景'
         logo_btn_logo = '更换徽标'
         logo_scale_label = '徽标大小：{0}%'
@@ -2475,6 +2521,8 @@ $script:I18n = @{
         upl_have = '已下载：{0}'
         upl_latest_done = '已选择最新版本：{0}'
         upl_latest_same = '已选择已下载的最新版本。'
+        upl_auto_update = '添加时更新'
+        upl_tip_auto_update = '将游戏添加到 Steam 时（手动添加或自动导入），把游戏文件夹中的 DLSS / FSR / XeSS / XeLL 替换为上方所选版本。版本相同或更新的文件不会改动；原文件会以 .sc_orig 后缀保存在旁边。'
         upl_mb = 'MB'
         upl_none = '未下载'
         upl_section = '超分库'
@@ -2492,7 +2540,8 @@ $script:I18n = @{
         splash_reading = '正在读取库…'
     }
     es = @{
-        hint_main = 'Doble clic / Intro — abrir la ficha del juego'
+        hint_main = 'Doble clic / Intro — ficha del juego. Marca juegos para añadir a la biblioteca o mover'
+        hint_checked = 'Espacio — calcular el tamaño de los marcados y comprobar si caben para moverlos'
         panel_extra = 'Carpeta'
         panel_main = 'Carpeta'
         panel_free = '{0} [Libre: {1} {2}]'
@@ -2557,6 +2606,13 @@ $script:I18n = @{
         lib_restore_res_same = 'Ya son originales: {0}'
         lib_restore_res_none = 'Sin copias: {0}'
         lib_restore_res_fail = 'No se pudo restaurar: {0}'
+        lib_rep_col_game = 'Juego'
+        lib_rep_col_status = 'Resultado'
+        lib_rep_col_details = 'Bibliotecas / mensaje'
+        lib_rep_st_ok = 'Hecho'
+        lib_rep_st_same = 'Sin cambios'
+        lib_rep_st_none = 'No encontrado'
+        lib_rep_st_fail = 'Error'
         lib_auto_import = 'Autoimportar'
         lib_import = 'Importar a Steam'
         lib_import_n = 'Importar a Steam ({0})'
@@ -2586,11 +2642,15 @@ $script:I18n = @{
         st_sizes_checked = 'Calculando el tamaño de los juegos marcados: {0} ({1} de {2})'
         st_size_one = 'Tamaño de “{0}”: {1} {2}'
         st_panel_sizes = 'Tamaño calculado de todas las carpetas del panel ({0}) — total: {1} {2}'
-        st_move_ok = 'Se pueden mover todos los marcados ({0}) — {1}'
+        st_move_ok = 'Se pueden mover todos los marcados — {1}'
         st_move_partial = 'Se pueden mover {0} de {1} ({2}). El resto no cabe.'
         st_move_none = 'No se puede mover: no hay espacio suficiente ({0})'
-        st_move_same = 'Mismo volumen — no se necesita espacio libre. Marcados: {0} — {1}'
+        st_move_short = 'No se puede mover. Marcados: {1}. Faltan {2}'
+        st_move_same = 'Mismo volumen — no se necesita espacio libre. Marcados: {1}'
         st_move_free_unknown = 'No se pudo determinar el espacio libre en el disco.'
+        st_panel_left = 'Izquierda'
+        st_panel_right = 'Derecha'
+        st_panel_total = 'Total'
         st_removed = 'Quitados de la lista: {0}. Los archivos del disco no se han tocado; el botón “Actualizar” recupera los juegos.'
         set_lang_folder_tip = 'Carpeta de idiomas: aquí puedes editar traducciones o añadir idiomas nuevos'
         lang_problems = 'Se encontraron errores en los archivos de idioma. Esas líneas se omitieron y se usa el texto integrado:'
@@ -2783,6 +2843,8 @@ $script:I18n = @{
         slot_herologo = '3. Fondo y logotipo'
         logo_eye_hide = 'Ocultar logotipo en la vista previa'
         logo_eye_show = 'Mostrar logotipo en la vista previa'
+        logo_frames_show = 'Mostrar el recorte de Steam (como en el cliente)'
+        logo_frames_hide = 'Ocultar el recorte de Steam (mostrar todo el fondo)'
         logo_btn_bg = 'Cambiar fondo'
         logo_btn_logo = 'Cambiar logotipo'
         logo_scale_label = 'Tamaño del logotipo: {0}%'
@@ -2992,6 +3054,8 @@ $script:I18n = @{
         upl_have = 'descargadas: {0}'
         upl_latest_done = 'Últimas versiones seleccionadas: {0}'
         upl_latest_same = 'Ya están seleccionadas las últimas versiones descargadas.'
+        upl_auto_update = 'Actualizar al añadir'
+        upl_tip_auto_update = 'Al añadir un juego a Steam (a mano o con la importación automática), sustituye DLSS / FSR / XeSS / XeLL en la carpeta del juego por las versiones seleccionadas arriba. Los archivos con la misma versión o una más nueva no se tocan; el original se conserva al lado (.sc_orig).'
         upl_mb = 'MB'
         upl_none = 'No descargada'
         upl_section = 'Bibliotecas de escaladores'
@@ -3009,7 +3073,8 @@ $script:I18n = @{
         splash_reading = 'Leyendo la biblioteca…'
     }
     pt = @{
-        hint_main = 'Clique duplo / Enter — abrir a ficha do jogo'
+        hint_main = 'Clique duplo / Enter — ficha do jogo. Marque jogos para adicionar à biblioteca ou mover'
+        hint_checked = 'Espaço — calcular o tamanho dos marcados e verificar se cabem para mover'
         panel_extra = 'Pasta'
         panel_main = 'Pasta'
         panel_free = '{0} [Livre: {1} {2}]'
@@ -3074,6 +3139,13 @@ $script:I18n = @{
         lib_restore_res_same = 'Já são originais: {0}'
         lib_restore_res_none = 'Backups não encontrados: {0}'
         lib_restore_res_fail = 'Não foi possível restaurar: {0}'
+        lib_rep_col_game = 'Jogo'
+        lib_rep_col_status = 'Resultado'
+        lib_rep_col_details = 'Bibliotecas / mensagem'
+        lib_rep_st_ok = 'Concluído'
+        lib_rep_st_same = 'Sem alterações'
+        lib_rep_st_none = 'Não encontrado'
+        lib_rep_st_fail = 'Erro'
         lib_auto_import = 'Autoimportar'
         lib_import = 'Importar para o Steam'
         lib_import_n = 'Importar para o Steam ({0})'
@@ -3103,11 +3175,15 @@ $script:I18n = @{
         st_sizes_checked = 'Calculando o tamanho dos jogos marcados: {0} ({1} de {2})'
         st_size_one = 'Tamanho de “{0}”: {1} {2}'
         st_panel_sizes = 'Tamanho calculado de todas as pastas do painel ({0}) — total: {1} {2}'
-        st_move_ok = 'É possível mover todos os marcados ({0}) — {1}'
+        st_move_ok = 'É possível mover todos os marcados — {1}'
         st_move_partial = 'É possível mover {0} de {1} ({2}). Os demais não cabem.'
         st_move_none = 'Não é possível mover: espaço insuficiente ({0})'
-        st_move_same = 'Mesmo volume — espaço livre não é necessário. Marcados: {0} — {1}'
+        st_move_short = 'Não é possível mover. Marcados: {1}. Faltam {2}'
+        st_move_same = 'Mesmo volume — espaço livre não é necessário. Marcados: {1}'
         st_move_free_unknown = 'Não foi possível determinar o espaço livre no disco.'
+        st_panel_left = 'Esquerda'
+        st_panel_right = 'Direita'
+        st_panel_total = 'Total'
         st_removed = 'Removidos da lista: {0}. Os arquivos no disco não foram alterados; o botão “Atualizar” traz os jogos de volta.'
         set_lang_folder_tip = 'Pasta de idiomas: edite traduções ou adicione novos idiomas aqui'
         lang_problems = 'Foram encontrados erros nos arquivos de idioma. Essas linhas foram ignoradas e o texto integrado é usado no lugar:'
@@ -3300,6 +3376,8 @@ $script:I18n = @{
         slot_herologo = '3. Plano de fundo e logotipo'
         logo_eye_hide = 'Ocultar logotipo na pré-visualização'
         logo_eye_show = 'Mostrar logotipo na pré-visualização'
+        logo_frames_show = 'Mostrar o corte do Steam (como no cliente)'
+        logo_frames_hide = 'Ocultar o corte do Steam (mostrar todo o plano de fundo)'
         logo_btn_bg = 'Alterar fundo'
         logo_btn_logo = 'Alterar logotipo'
         logo_scale_label = 'Tamanho do logotipo: {0}%'
@@ -3509,6 +3587,8 @@ $script:I18n = @{
         upl_have = 'baixadas: {0}'
         upl_latest_done = 'Últimas versões selecionadas: {0}'
         upl_latest_same = 'As últimas versões baixadas já estão selecionadas.'
+        upl_auto_update = 'Atualizar ao adicionar'
+        upl_tip_auto_update = 'Ao adicionar um jogo ao Steam (manualmente ou por importação automática), substitui DLSS / FSR / XeSS / XeLL na pasta do jogo pelas versões selecionadas acima. Arquivos com a mesma versão ou mais recente não são alterados; o original é mantido ao lado (.sc_orig).'
         upl_mb = 'MB'
         upl_none = 'Não baixada'
         upl_section = 'Bibliotecas de upscalers'
@@ -3526,7 +3606,8 @@ $script:I18n = @{
         splash_reading = 'Lendo a biblioteca…'
     }
     de = @{
-        hint_main = 'Doppelklick / Eingabe — Spielkarte öffnen'
+        hint_main = 'Doppelklick / Eingabe — Spielkarte. Spiele anhaken zum Hinzufügen oder Verschieben'
+        hint_checked = 'Leertaste — Größe der markierten Spiele berechnen und prüfen, ob der Platz zum Verschieben reicht'
         panel_extra = 'Ordner'
         panel_main = 'Ordner'
         panel_free = '{0} [Frei: {1} {2}]'
@@ -3591,6 +3672,13 @@ $script:I18n = @{
         lib_restore_res_same = 'Bereits original: {0}'
         lib_restore_res_none = 'Keine Sicherungen gefunden: {0}'
         lib_restore_res_fail = 'Wiederherstellung fehlgeschlagen: {0}'
+        lib_rep_col_game = 'Spiel'
+        lib_rep_col_status = 'Ergebnis'
+        lib_rep_col_details = 'Bibliotheken / Meldung'
+        lib_rep_st_ok = 'Erledigt'
+        lib_rep_st_same = 'Unverändert'
+        lib_rep_st_none = 'Nicht gefunden'
+        lib_rep_st_fail = 'Fehler'
         lib_auto_import = 'Auto-Import'
         lib_import = 'In Steam importieren'
         lib_import_n = 'In Steam importieren ({0})'
@@ -3620,11 +3708,15 @@ $script:I18n = @{
         st_sizes_checked = 'Größe der angehakten Spiele wird berechnet: {0} ({1} von {2})'
         st_size_one = 'Größe von „{0}“: {1} {2}'
         st_panel_sizes = 'Größe aller Ordner im Bereich ({0}) berechnet — gesamt: {1} {2}'
-        st_move_ok = 'Alle markierten können verschoben werden ({0}) — {1}'
+        st_move_ok = 'Alle markierten können verschoben werden — {1}'
         st_move_partial = '{0} von {1} können verschoben werden ({2}). Der Rest passt nicht.'
         st_move_none = 'Verschieben nicht möglich: nicht genug Speicherplatz ({0})'
-        st_move_same = 'Gleiches Volume — kein freier Speicher nötig. Markiert: {0} — {1}'
+        st_move_short = 'Verschieben nicht möglich. Markiert: {1}. Es fehlen {2}'
+        st_move_same = 'Gleiches Volume — kein freier Speicher nötig. Markiert: {1}'
         st_move_free_unknown = 'Freier Speicherplatz konnte nicht ermittelt werden.'
+        st_panel_left = 'Links'
+        st_panel_right = 'Rechts'
+        st_panel_total = 'Gesamt'
         st_removed = 'Aus der Liste entfernt: {0}. Die Dateien auf dem Datenträger bleiben unverändert; mit „Aktualisieren“ kommen die Spiele zurück.'
         set_lang_folder_tip = 'Sprachordner: Hier kannst du Übersetzungen bearbeiten oder neue Sprachen hinzufügen'
         lang_problems = 'In den Sprachdateien wurden Fehler gefunden. Diese Zeilen wurden übersprungen, stattdessen wird der integrierte Text verwendet:'
@@ -3817,6 +3909,8 @@ $script:I18n = @{
         slot_herologo = '3. Hintergrund & Logo'
         logo_eye_hide = 'Logo in der Vorschau ausblenden'
         logo_eye_show = 'Logo in der Vorschau einblenden'
+        logo_frames_show = 'Steam-Zuschnitt anzeigen (wie im Client)'
+        logo_frames_hide = 'Steam-Zuschnitt ausblenden (ganzen Hintergrund zeigen)'
         logo_btn_bg = 'Hintergrund ändern'
         logo_btn_logo = 'Logo ändern'
         logo_scale_label = 'Logogröße: {0}%'
@@ -4026,6 +4120,8 @@ $script:I18n = @{
         upl_have = 'heruntergeladen: {0}'
         upl_latest_done = 'Neueste Versionen ausgewählt: {0}'
         upl_latest_same = 'Die neuesten heruntergeladenen Versionen sind bereits ausgewählt.'
+        upl_auto_update = 'Beim Hinzufügen aktualisieren'
+        upl_tip_auto_update = 'Beim Hinzufügen eines Spiels zu Steam (manuell oder per Auto-Import) werden DLSS / FSR / XeSS / XeLL im Spielordner durch die oben ausgewählten Versionen ersetzt. Dateien mit gleicher oder neuerer Version bleiben unberührt; das Original wird daneben aufbewahrt (.sc_orig).'
         upl_mb = 'MB'
         upl_none = 'Nicht heruntergeladen'
         upl_section = 'Upscaler-Bibliotheken'
@@ -4328,6 +4424,9 @@ $global:suggestGameLaunchers = $false
 # Если включено, иконка игры берётся из её EXE (а не из Steam). Кнопка EXE на
 # миниатюре иконки в карточке игры переключает иконку туда и обратно.
 $global:useExeIcons = $false
+# Если включено, при добавлении игры в Steam (вручную или автоимпортом) библиотеки апскейлеров в папке игры
+# обновляются до версий, выбранных в «Библиотеках апскейлеров» (Настройки). Более новые версии в игре не трогаются.
+$global:autoUpdateUpscalers = $false
 # Режим перезапуска Steam при записи изменений: 'auto' (по умолчанию) - программа сама закрывает Steam
 # перед записью и запускает его после; 'manual' - Steam закрывает и запускает пользователь, а программа
 # не пишет в файлы Steam, пока он запущен (этапы 2-4 плана подключают это значение).
@@ -4338,6 +4437,8 @@ $global:logoDefaultEnabled = $false
 $global:logoDefaultPosition = 'BottomLeft'
 $global:logoDefaultWidthPct = 50.0
 $global:logoDefaultHeightPct = 50.0
+# Показ рамок Steam в превью «Фон и логотип» (скрытая верхушка, размытый низ). Выключено - как раньше рисуется весь фон.
+$global:logoSteamFramesPreview = $false
 # Регион обложек Steam (API-имя: english, russian, …). Задаётся в «Настройках»
 # и используется как язык ассетов по умолчанию (кнопки EN/РУ на карточке,
 # загрузка официальных обложек). Пустое значение = брать из языка интерфейса.
@@ -4536,6 +4637,265 @@ function Show-AppMessageBox {
         try { $f.Dispose() } catch {}
         try { if ($null -ne $iconBmp) { $iconBmp.Dispose() } } catch {}
         try { $font.Dispose() } catch {}
+    }
+}
+
+# ============================================================================
+# ОКНО ОТЧЁТА О МАССОВОЙ ОПЕРАЦИИ («Обновить апскейлеры» / «Вернуть бэкапы»)
+# Тематическое окно в стиле Steam Commander: сверху краткая сводка, ниже таблица со ВСЕМИ
+# обработанными играми (игра / результат / библиотеки или текст ошибки) и своей прокруткой.
+# Размер окна можно менять. Строки: @{ Status = 'ok'|'same'|'none'|'fail'; Name; Details }.
+# Ошибки показываются первыми, остальные — в порядке обработки.
+# ============================================================================
+function Show-LibActionReport {
+    param(
+        $Owner,
+        [string[]]$SummaryLines = @(),
+        [object[]]$Rows = @(),
+        $Icon = [System.Windows.Forms.MessageBoxIcon]::Information
+    )
+    $iconInt = [int]$Icon
+    $rowsArr = @($Rows)
+
+    $ownerForm = $null
+    if ($Owner -is [System.Windows.Forms.Form] -and -not $Owner.IsDisposed -and $Owner.Visible) { $ownerForm = $Owner }
+
+    $pal = @{
+        Bg      = [System.Drawing.Color]::FromArgb(23, 29, 37)
+        Panel   = [System.Drawing.Color]::FromArgb(27, 40, 56)
+        Panel2  = [System.Drawing.Color]::FromArgb(20, 30, 42)
+        Border  = [System.Drawing.Color]::FromArgb(58, 73, 90)
+        Text    = [System.Drawing.Color]::FromArgb(220, 223, 228)
+        Accent  = [System.Drawing.Color]::FromArgb(102, 192, 244)
+        Accent2 = [System.Drawing.Color]::FromArgb(26, 159, 255)
+    }
+    try { if ($null -ne $steamUi) { foreach ($k in @('Bg', 'Panel', 'Panel2', 'Border', 'Text', 'Accent', 'Accent2')) { if ($null -ne $steamUi[$k]) { $pal[$k] = $steamUi[$k] } } } } catch {}
+
+    $glyph = 'i'; $glyphColor = $pal.Accent
+    if ($iconInt -eq 48) { $glyph = '!'; $glyphColor = [System.Drawing.Color]::FromArgb(240, 178, 60) }
+    try { if ($iconInt -eq 48) { [System.Media.SystemSounds]::Exclamation.Play() } else { [System.Media.SystemSounds]::Asterisk.Play() } } catch {}
+
+    $formW = 780; $padX = 24; $iconSize = 40; $iconGap = 16; $topPad = 22; $footerH = 64
+    $rowH = 26; $gridHdrH = 30
+    $textX = $padX + $iconSize + $iconGap
+    $textW = $formW - $textX - $padX
+    $font = New-Object System.Drawing.Font('Segoe UI', 10)
+    $cellFont = New-Object System.Drawing.Font('Segoe UI', [single]9.5)
+    $boldFont = New-Object System.Drawing.Font('Segoe UI Semibold', [single]9.5)
+    $hdrFont = New-Object System.Drawing.Font('Segoe UI Semibold', 9)
+
+    $summaryText = (@($SummaryLines) -join "`n")
+    $flags = [System.Windows.Forms.TextFormatFlags]::WordBreak -bor [System.Windows.Forms.TextFormatFlags]::NoPadding
+    $measured = [System.Windows.Forms.TextRenderer]::MeasureText($summaryText, $font, (New-Object System.Drawing.Size($textW, 0)), $flags)
+    $textH = [Math]::Max(22, $measured.Height + 6)
+    $headBlockH = [Math]::Max($iconSize, $textH)
+    $headH = $topPad + $headBlockH + 16
+
+    $gridWanted = $gridHdrH + ($rowsArr.Count * $rowH) + 2
+    $gridH = [Math]::Max(120, [Math]::Min(380, $gridWanted))
+    $clientH = $headH + $gridH + 12 + $footerH
+    try {
+        $wa = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+        if ($null -ne $ownerForm) { $wa = [System.Windows.Forms.Screen]::FromControl($ownerForm).WorkingArea }
+        $maxClient = $wa.Height - 120
+        if ($clientH -gt $maxClient) { $clientH = [Math]::Max(320, $maxClient) }
+    } catch {}
+
+    $f = New-Object System.Windows.Forms.Form
+    $iconBmp = $null
+    try {
+        $f.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::None
+        $f.Text = [string]$global:appTitle
+        $f.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::Sizable
+        $f.MaximizeBox = $true; $f.MinimizeBox = $false
+        $f.ShowInTaskbar = ($null -eq $ownerForm)
+        $f.StartPosition = if ($null -ne $ownerForm) { 'CenterParent' } else { 'CenterScreen' }
+        $f.ClientSize = New-Object System.Drawing.Size($formW, $clientH)
+        $f.MinimumSize = New-Object System.Drawing.Size(560, 360)
+        $f.BackColor = $pal.Bg
+        $f.ForeColor = $pal.Text
+        $f.Font = New-Object System.Drawing.Font('Segoe UI', 9)
+        try {
+            if ($null -ne $ownerForm -and $null -ne $ownerForm.Icon) { $f.Icon = $ownerForm.Icon }
+            elseif ($null -ne $form -and $null -ne $form.Icon) { $f.Icon = $form.Icon }
+            else { $f.ShowIcon = $false }
+        } catch { try { $f.ShowIcon = $false } catch {} }
+        try { if ('Win11PopupDwm' -as [type]) { $f.Add_HandleCreated({ try { [Win11PopupDwm]::Apply($this.Handle) } catch {} }) } } catch {}
+
+        # --- таблица (добавляется первой: Fill докуется последним) ---
+        $gridHost = New-Object System.Windows.Forms.Panel
+        $gridHost.Dock = [System.Windows.Forms.DockStyle]::Fill
+        $gridHost.BackColor = $pal.Bg
+        $gridHost.Padding = New-Object System.Windows.Forms.Padding($padX, 0, $padX, 12)
+
+        $grid = New-Object System.Windows.Forms.DataGridView
+        $grid.Dock = [System.Windows.Forms.DockStyle]::Fill
+        try { [System.Windows.Forms.DataGridView].GetProperty('DoubleBuffered', [System.Reflection.BindingFlags]'Instance,NonPublic').SetValue($grid, $true, $null) } catch {}
+        $grid.AllowUserToAddRows = $false
+        $grid.AllowUserToDeleteRows = $false
+        $grid.AllowUserToResizeRows = $false
+        $grid.AllowUserToOrderColumns = $false
+        $grid.ReadOnly = $true
+        $grid.RowHeadersVisible = $false
+        $grid.MultiSelect = $true
+        $grid.SelectionMode = [System.Windows.Forms.DataGridViewSelectionMode]::FullRowSelect
+        $grid.ClipboardCopyMode = [System.Windows.Forms.DataGridViewClipboardCopyMode]::EnableWithAutoHeaderText
+        $grid.ShowCellToolTips = $true
+        $grid.BorderStyle = [System.Windows.Forms.BorderStyle]::None
+        $grid.BackgroundColor = $pal.Panel2
+        $grid.GridColor = $pal.Border
+        $grid.CellBorderStyle = [System.Windows.Forms.DataGridViewCellBorderStyle]::SingleHorizontal
+        $grid.EnableHeadersVisualStyles = $false
+        $grid.ColumnHeadersBorderStyle = [System.Windows.Forms.DataGridViewHeaderBorderStyle]::Single
+        $grid.ColumnHeadersHeightSizeMode = [System.Windows.Forms.DataGridViewColumnHeadersHeightSizeMode]::DisableResizing
+        $grid.ColumnHeadersHeight = $gridHdrH
+        $grid.RowTemplate.Height = $rowH
+        $grid.AutoSizeRowsMode = [System.Windows.Forms.DataGridViewAutoSizeRowsMode]::DisplayedCells
+        $grid.ScrollBars = [System.Windows.Forms.ScrollBars]::Vertical
+
+        $hs = $grid.ColumnHeadersDefaultCellStyle
+        $hs.BackColor = $pal.Panel; $hs.ForeColor = $pal.Text; $hs.Font = $hdrFont
+        $hs.SelectionBackColor = $pal.Panel; $hs.SelectionForeColor = $pal.Text
+        $hs.Padding = New-Object System.Windows.Forms.Padding(6, 0, 6, 0)
+        $hs.Alignment = [System.Windows.Forms.DataGridViewContentAlignment]::MiddleLeft
+
+        $ds = $grid.DefaultCellStyle
+        $ds.BackColor = $pal.Panel2; $ds.ForeColor = $pal.Text; $ds.Font = $cellFont
+        $ds.SelectionBackColor = [System.Drawing.Color]::FromArgb(38, 76, 108); $ds.SelectionForeColor = $pal.Text
+        $ds.Padding = New-Object System.Windows.Forms.Padding(6, 2, 6, 2)
+        $ds.Alignment = [System.Windows.Forms.DataGridViewContentAlignment]::MiddleLeft
+        $grid.AlternatingRowsDefaultCellStyle.BackColor = [System.Drawing.Color]::FromArgb(24, 35, 49)
+        $grid.AlternatingRowsDefaultCellStyle.ForeColor = $pal.Text
+        $grid.AlternatingRowsDefaultCellStyle.SelectionBackColor = [System.Drawing.Color]::FromArgb(38, 76, 108)
+        $grid.AlternatingRowsDefaultCellStyle.SelectionForeColor = $pal.Text
+
+        $cGame = New-Object System.Windows.Forms.DataGridViewTextBoxColumn
+        $cGame.HeaderText = (T 'lib_rep_col_game'); $cGame.SortMode = [System.Windows.Forms.DataGridViewColumnSortMode]::NotSortable
+        $cGame.AutoSizeMode = [System.Windows.Forms.DataGridViewAutoSizeColumnMode]::Fill
+        $cGame.FillWeight = 42; $cGame.MinimumWidth = 160
+        $cGame.DefaultCellStyle.WrapMode = [System.Windows.Forms.DataGridViewTriState]::True
+        $cStat = New-Object System.Windows.Forms.DataGridViewTextBoxColumn
+        $cStat.HeaderText = (T 'lib_rep_col_status'); $cStat.SortMode = [System.Windows.Forms.DataGridViewColumnSortMode]::NotSortable
+        $cStat.AutoSizeMode = [System.Windows.Forms.DataGridViewAutoSizeColumnMode]::None
+        $cStat.Width = 130; $cStat.MinimumWidth = 100
+        $cDet = New-Object System.Windows.Forms.DataGridViewTextBoxColumn
+        $cDet.HeaderText = (T 'lib_rep_col_details'); $cDet.SortMode = [System.Windows.Forms.DataGridViewColumnSortMode]::NotSortable
+        $cDet.AutoSizeMode = [System.Windows.Forms.DataGridViewAutoSizeColumnMode]::Fill
+        $cDet.FillWeight = 58; $cDet.MinimumWidth = 160
+        $cDet.DefaultCellStyle.WrapMode = [System.Windows.Forms.DataGridViewTriState]::True
+        [void]$grid.Columns.Add($cGame); [void]$grid.Columns.Add($cStat); [void]$grid.Columns.Add($cDet)
+
+        $stText = @{ ok = (T 'lib_rep_st_ok'); same = (T 'lib_rep_st_same'); none = (T 'lib_rep_st_none'); fail = (T 'lib_rep_st_fail') }
+        $stColor = @{
+            ok   = [System.Drawing.Color]::FromArgb(110, 200, 120)
+            same = [System.Drawing.Color]::FromArgb(150, 162, 176)
+            none = [System.Drawing.Color]::FromArgb(240, 178, 60)
+            fail = [System.Drawing.Color]::FromArgb(224, 90, 90)
+        }
+        $rank = @{ fail = 0; ok = 1; same = 2; none = 3 }
+        $sorted = New-Object System.Collections.Generic.List[object]
+        for ($ri = 0; $ri -lt $rowsArr.Count; $ri++) {
+            $st = [string]$rowsArr[$ri].Status
+            $rk = if ($rank.ContainsKey($st)) { [int]$rank[$st] } else { 9 }
+            [void]$sorted.Add([PSCustomObject]@{ K = $rk; I = $ri; R = $rowsArr[$ri] })
+        }
+        $sortedArr = @($sorted | Sort-Object K, I)
+
+        $grid.SuspendLayout()
+        foreach ($it in $sortedArr) {
+            $r = $it.R
+            $st = [string]$r.Status
+            $stLabel = if ($stText.ContainsKey($st)) { [string]$stText[$st] } else { $st }
+            $idx = $grid.Rows.Add([string]$r.Name, $stLabel, [string]$r.Details)
+            $row = $grid.Rows[$idx]
+            $row.Cells[0].ToolTipText = [string]$r.Name
+            $row.Cells[2].ToolTipText = [string]$r.Details
+            if ($stColor.ContainsKey($st)) {
+                $row.Cells[1].Style.ForeColor = $stColor[$st]
+                $row.Cells[1].Style.SelectionForeColor = $stColor[$st]
+                $row.Cells[1].Style.Font = $boldFont
+            }
+        }
+        $grid.ResumeLayout()
+        $gridHost.Controls.Add($grid)
+        $f.Controls.Add($gridHost)
+
+        # --- нижняя панель с кнопкой ---
+        $footer = New-Object System.Windows.Forms.Panel
+        $footer.Dock = [System.Windows.Forms.DockStyle]::Bottom
+        $footer.Height = $footerH
+        $footer.BackColor = $pal.Panel2
+        $f.Controls.Add($footer)
+
+        $bOk = New-Object System.Windows.Forms.Button
+        $bOk.Text = 'OK'
+        $bOk.Size = New-Object System.Drawing.Size(110, 34)
+        $bOk.Location = New-Object System.Drawing.Point(($formW - $padX - 110), 15)
+        $bOk.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Right
+        $bOk.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+        $bOk.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 9)
+        $bOk.ForeColor = $pal.Text
+        $bOk.Cursor = [System.Windows.Forms.Cursors]::Hand
+        $bOk.DialogResult = [System.Windows.Forms.DialogResult]::OK
+        $bOk.FlatAppearance.BorderColor = $pal.Accent2
+        $bOk.BackColor = [System.Drawing.Color]::FromArgb(25, 55, 75)
+        $bOk.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(35, 78, 106)
+        $footer.Controls.Add($bOk)
+        $f.AcceptButton = $bOk; $f.CancelButton = $bOk
+
+        # --- шапка: значок + сводка ---
+        $head = New-Object System.Windows.Forms.Panel
+        $head.Dock = [System.Windows.Forms.DockStyle]::Top
+        $head.Height = $headH
+        $head.BackColor = $pal.Bg
+
+        $iconBmp = New-Object System.Drawing.Bitmap($iconSize, $iconSize)
+        $g = [System.Drawing.Graphics]::FromImage($iconBmp)
+        try {
+            $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+            $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::AntiAliasGridFit
+            $fill = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(44, $glyphColor))
+            $pen = New-Object System.Drawing.Pen($glyphColor, 2.0)
+            $gf = New-Object System.Drawing.Font('Segoe UI Semibold', 17)
+            $gb = New-Object System.Drawing.SolidBrush($glyphColor)
+            $sf = New-Object System.Drawing.StringFormat
+            $sf.Alignment = [System.Drawing.StringAlignment]::Center
+            $sf.LineAlignment = [System.Drawing.StringAlignment]::Center
+            $g.FillEllipse($fill, 2, 2, ($iconSize - 5), ($iconSize - 5))
+            $g.DrawEllipse($pen, 2, 2, ($iconSize - 5), ($iconSize - 5))
+            $g.DrawString($glyph, $gf, $gb, (New-Object System.Drawing.RectangleF(0, 0, $iconSize, ($iconSize + 1))), $sf)
+            $fill.Dispose(); $pen.Dispose(); $gf.Dispose(); $gb.Dispose(); $sf.Dispose()
+        } finally { $g.Dispose() }
+        $pic = New-Object System.Windows.Forms.PictureBox
+        $pic.Image = $iconBmp
+        $pic.SizeMode = [System.Windows.Forms.PictureBoxSizeMode]::Normal
+        $pic.BackColor = $pal.Bg
+        $pic.Size = New-Object System.Drawing.Size($iconSize, $iconSize)
+        $pic.Location = New-Object System.Drawing.Point($padX, ($topPad + [int](($headBlockH - $iconSize) / 2)))
+        $head.Controls.Add($pic)
+
+        $lbl = New-Object System.Windows.Forms.Label
+        $lbl.UseCompatibleTextRendering = $false
+        $lbl.AutoSize = $false
+        $lbl.Font = $font
+        $lbl.ForeColor = $pal.Text
+        $lbl.BackColor = $pal.Bg
+        $lbl.Text = $summaryText
+        $lbl.Location = New-Object System.Drawing.Point($textX, ($topPad + [int](($headBlockH - $textH) / 2)))
+        $lbl.Size = New-Object System.Drawing.Size($textW, $textH)
+        $lbl.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
+        $head.Controls.Add($lbl)
+        $f.Controls.Add($head)
+
+        $f.Tag = $grid
+        $f.Add_Shown({ try { $this.Tag.ClearSelection() } catch {} })
+        $f.ActiveControl = $bOk
+
+        if ($null -ne $ownerForm) { [void]$f.ShowDialog($ownerForm) } else { [void]$f.ShowDialog() }
+    } finally {
+        try { $f.Dispose() } catch {}
+        try { if ($null -ne $iconBmp) { $iconBmp.Dispose() } } catch {}
+        foreach ($fo in @($font, $cellFont, $boldFont, $hdrFont)) { try { $fo.Dispose() } catch {} }
     }
 }
 
@@ -5666,6 +6026,8 @@ function Load-Configuration {
                     $global:steamRestartMode = if ($srm -eq 'manual') { 'manual' } else { 'auto' }
                 }
                 if ($line.StartsWith("useExeIcons=")) { $global:useExeIcons = ([string]$line.Substring(12).Trim()).ToLowerInvariant() -eq "true" }
+                if ($line.StartsWith("autoUpdateUpscalers=")) { $global:autoUpdateUpscalers = ([string]$line.Substring(20).Trim()).ToLowerInvariant() -eq "true" }
+                if ($line.StartsWith("logoSteamFramesPreview=")) { $global:logoSteamFramesPreview = ([string]$line.Substring("logoSteamFramesPreview=".Length).Trim()).ToLowerInvariant() -eq "true" }
                 if ($line.StartsWith("logoDefaultEnabled=")) { $global:logoDefaultEnabled = ([string]$line.Substring("logoDefaultEnabled=".Length).Trim()).ToLowerInvariant() -eq "true" }
                 if ($line.StartsWith("logoDefaultPosition=")) { $global:logoDefaultPosition = [string]$line.Substring("logoDefaultPosition=".Length).Trim() }
                 if ($line.StartsWith("logoDefaultWidthPct=")) {
@@ -9659,6 +10021,14 @@ function Show-RomEmulatorPickerPopup {
         if ([string]$tilePanels[$i].Tag -eq [string]$global:activeEmulatorId) { $startFocus = $i; break }
     }
     $script:__emuPickerFocus = $startFocus
+    # Страница, на которой пользователь в прошлый раз выбрал эмулятор (только в
+    # пределах текущего запуска программы). При первом открытии — первая страница.
+    $startPage = 0
+    if ($pageCount -gt 1 -and $null -ne $script:__emuPickerLastPage) {
+        $startPage = [int]$script:__emuPickerLastPage
+        if ($startPage -ge $pageCount) { $startPage = $pageCount - 1 }
+        if ($startPage -lt 0) { $startPage = 0 }
+    }
     & $applyTileColors
 
     try {
@@ -9692,16 +10062,16 @@ function Show-RomEmulatorPickerPopup {
                 [EmuPickerWheel]::Dots = $dotsPanel
                 [EmuPickerWheel]::PageH = [int]$pageH
                 [EmuPickerWheel]::PageCount = [int]$pageCount
-                [EmuPickerWheel]::Page = 0
+                [EmuPickerWheel]::Page = [int]$startPage
                 [EmuPickerWheel]::Active = $true
-                [EmuPickerWheel]::GoToPage(0)
+                [EmuPickerWheel]::GoToPage([int]$startPage)
                 $script:__emuPickerWheelObj = New-Object EmuPickerWheel
                 [System.Windows.Forms.Application]::AddMessageFilter($script:__emuPickerWheelObj)
             } else {
-                $flow.Top = 0
+                $flow.Top = -([int]$startPage * $pageH)
             }
         } catch {
-            try { $flow.Top = 0 } catch {}
+            try { $flow.Top = -([int]$startPage * $pageH) } catch {}
         }
     }.GetNewClosure())
 
@@ -9792,6 +10162,8 @@ function Show-RomEmulatorPickerPopup {
     }
 
     if (-not [string]::IsNullOrWhiteSpace([string]$script:__emuPickerChosenId)) {
+        # Запоминаем страницу, на которой был сделан выбор (сбрасывается при перезапуске программы).
+        try { if ('EmuPickerWheel' -as [type]) { $script:__emuPickerLastPage = [int][EmuPickerWheel]::Page } } catch {}
         if ([string]$global:activeEmulatorId -ne [string]$script:__emuPickerChosenId) {
             $global:activeEmulatorId = [string]$script:__emuPickerChosenId
             try { Save-Configuration } catch {}
@@ -9939,6 +10311,16 @@ $pnlBatchActions.Add_Resize({
     } catch {}
 })
 
+# Пишет строку в config_error.log (рядом с config.ini). Сам никогда не бросает исключений.
+function Write-ConfigLog ([string]$Text) {
+    try {
+        $lp = Join-Path (Split-Path -Parent $global:configPath) 'config_error.log'
+        # Не даём логу разрастаться: при превышении ~512 КБ начинаем заново.
+        if ((Test-Path -LiteralPath $lp) -and ((Get-Item -LiteralPath $lp).Length -gt 524288)) { Remove-Item -LiteralPath $lp -Force -ErrorAction SilentlyContinue }
+        Add-Content -LiteralPath $lp -Value ("[{0}] {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Text) -Encoding UTF8 -ErrorAction SilentlyContinue
+    } catch {}
+}
+
 function Save-Configuration {
     try {
         $configData = @(
@@ -9949,12 +10331,14 @@ function Save-Configuration {
             "steamGridDbApiKey=$($global:steamGridDbApiKey)",
             "suggestGameLaunchers=$($global:suggestGameLaunchers)",
             "useExeIcons=$($global:useExeIcons)",
+            "autoUpdateUpscalers=$($global:autoUpdateUpscalers)",
             "steamRestartMode=$($global:steamRestartMode)",
             "steamApiKey=$($global:steamApiKey)",
             "backupFolderPath=$($global:backupFolderPath)",
             "language=$($global:language)",
             "steamCoverRegion=$($global:steamCoverRegion)",
             "logoDefaultEnabled=$([bool]$global:logoDefaultEnabled)",
+            "logoSteamFramesPreview=$([bool]$global:logoSteamFramesPreview)",
             "logoDefaultPosition=$($global:logoDefaultPosition)",
             "logoDefaultWidthPct=$(([double]$global:logoDefaultWidthPct).ToString([System.Globalization.CultureInfo]::InvariantCulture))",
             "logoDefaultHeightPct=$(([double]$global:logoDefaultHeightPct).ToString([System.Globalization.CultureInfo]::InvariantCulture))"
@@ -9969,9 +10353,29 @@ function Save-Configuration {
             if (-not [string]::IsNullOrWhiteSpace([string]$global:activeEmulatorId)) {
                 $configData += "activeEmulatorId=$($global:activeEmulatorId)"
             }
-        } catch {}
-        $configData | Out-File $global:configPath -Encoding UTF8 -Force -ErrorAction SilentlyContinue
-    } catch {}
+        } catch { Write-ConfigLog ("Не удалось сериализовать профили эмуляторов: " + $_.Exception.Message) }
+
+        # Безопасная запись: сначала во временный файл рядом с config.ini, затем подмена основного.
+        # Если запись прервётся (диск, права, antivirus), прежний config.ini остаётся целым.
+        $tmpPath = $global:configPath + '.tmp'
+        try {
+            $configData | Out-File -LiteralPath $tmpPath -Encoding UTF8 -Force -ErrorAction Stop
+            if (Test-Path -LiteralPath $global:configPath) {
+                [System.IO.File]::Replace($tmpPath, $global:configPath, [NullString]::Value)
+            } else {
+                [System.IO.File]::Move($tmpPath, $global:configPath)
+            }
+        } catch {
+            Write-ConfigLog ("Безопасная запись не удалась ('" + $global:configPath + "'): " + $_.Exception.Message + " — пробую прямую запись.")
+            try { if (Test-Path -LiteralPath $tmpPath) { Remove-Item -LiteralPath $tmpPath -Force -ErrorAction SilentlyContinue } } catch {}
+            # Запасной путь: прямая запись, как было раньше.
+            try {
+                $configData | Out-File -LiteralPath $global:configPath -Encoding UTF8 -Force -ErrorAction Stop
+            } catch {
+                Write-ConfigLog ("Не удалось сохранить настройки: " + $_.Exception.Message)
+            }
+        }
+    } catch { Write-ConfigLog ("Save-Configuration: " + $_.Exception.Message) }
 }
 
 $form.Add_FormClosing({ if ($script:moveInProgress) { $_.Cancel = $true; $labelHeader.Text = (T 'mv2_busy'); return }; try { if ($script:pendingShortcutWrites.Count -gt 0) { if (Test-SteamRunning) { [void](Wait-SteamClosedByUser) }; [void](Apply-PendingSteamShortcutWrites) } } catch {}; Stop-StartupBackgroundJobs; Save-Configuration; Remove-TemporaryCovers })
@@ -14642,6 +15046,8 @@ function Add-GameToSteamQuietly ($game) {
         }
         # Запоминаем полную папку игры из панели (корень для поиска DLSS в библиотеке).
         try { Set-GameFolderForShortcut $finalExe $finalLaunchQ ([string]$game.Path) } catch {}
+        # «Обновлять при добавлении»: апскейлеры новой игры — до версий, выбранных в Настройках.
+        try { if (-not [bool]$script:romsModeEnabled) { Invoke-UpscalerAutoUpdateForNewGame ([string]$game.Path) } } catch {}
 
         if (Test-CoversValid) {
             Copy-TempCoversDirectlyToGrid $newId | Out-Null
@@ -18331,6 +18737,24 @@ function Set-EditorMissingStateCore($slot, [bool]$missing) {
 # BottomLeft и 50/50 - как у Steam. Слот Logo скрыт, но по-прежнему хранит саму картинку логотипа.
 # Отступ логотипа от края фона (доля ширины фона); сверить со Steam на этапе 7.
 $script:EditorLogoPadFraction = 0.03
+# Калибровка по Steam (скриншот окна 1920x1080, hero 1635 px по ширине): логотип считается не от всего
+# hero 3840x1240, а от его «чёткой» верхней части (ниже фон сливается с интерфейсом и размыт).
+# Высота этой части отсчитывается от ВЕРХНЕГО края самого hero-изображения, а не от видимой области окна:
+# в Steam верх hero заходит под верхнюю панель (~72 px скрыты), поэтому видимые 320 px были неверной базой.
+# Реальная высота чёткой части - ~395 px при ширине 1635; отступы от её краёв: по горизонтали ~23 px, по вертикали ~15 px.
+# Константы уточнены по замерам логотипа в Steam при 50% и 100% (сопоставление масок, точность ~1 px карточки).
+# Если положение/размер в Steam снова разойдутся с карточкой - правятся только эти четыре числа (высота для положения, высота для размера, два отступа).
+$script:EditorLogoCrispHeightFraction = 395.3 / 1635.0
+# Размер логотипа считается от другой высоты, чем положение: по замерам Steam рамка логотипа (50%) соответствует
+# области ~320 px при ширине 1615 (с отступами), тогда как нижний край логотипа привязан к чёткой части 393 px.
+$script:EditorLogoSizeHeightFraction = 321.0 / 1635.0   # рамка логотипа 100% = 321 - 2*15 = 291 px при ширине 1635
+# Верхняя граница области логотипа в Steam: верх hero (~74 px при ширине 1635) скрыт под верхней панелью, поэтому
+# верхние положения (UpperLeft/UpperCenter) и центрирование по вертикали отсчитываются не от верха картинки, а от
+# верха ВИДИМОЙ области = высота «чёткой» части минус высота области размера (395.3 - 321.0). Проверено сопоставлением
+# скриншота Steam и превью карточки (смещение ~73.5 px при ширине 1635).
+$script:EditorLogoTopInsetFraction = (395.3 - 321.0) / 1635.0
+$script:EditorLogoPadXFraction = 22.6 / 1635.0
+$script:EditorLogoPadYFraction = 15.0 / 1635.0
 
 function Get-EditorComposeBackRect($heroImage, $clientSize) {
     # Прямоугольник фона внутри PictureBox: вписан по центру, пропорции сохранены.
@@ -18347,23 +18771,34 @@ function Get-EditorComposeBackRect($heroImage, $clientSize) {
 function Get-EditorLogoRect($logoImage, $backRect, $state) {
     # Реальные границы логотипа (в координатах PictureBox). Пустой прямоугольник - логотипа нет.
     # Эту же функцию использует проверка попадания клика на этапе 3.
+    # Как в Steam: область логотипа - «чёткая» верхняя часть фона (см. калибровку выше), а не весь hero.
     if ($null -eq $logoImage -or $logoImage.Width -le 0 -or $logoImage.Height -le 0 -or $backRect.Width -le 0) { return [System.Drawing.RectangleF]::Empty }
     $wp = 50.0; $hp = 50.0; $pos = 'BottomLeft'
     try { $wp = [double]$state.LogoWidthPct; $hp = [double]$state.LogoHeightPct; $pos = [string]$state.LogoPosition } catch {}
     $wp = [math]::Max(1.0, [math]::Min(100.0, $wp)); $hp = [math]::Max(1.0, [math]::Min(100.0, $hp))
-    $bw = [double]$backRect.Width * $wp / 100.0; $bh = [double]$backRect.Height * $hp / 100.0
-    $pad = [double]$backRect.Width * $script:EditorLogoPadFraction
-    # Логотип вместе с отступами не должен выходить за пределы фона (иначе при 100% он вылезает
-    # за край превью): рамка ограничивается областью фона минус отступ с каждой стороны.
-    $bw = [math]::Min($bw, [math]::Max(1.0, [double]$backRect.Width - 2.0 * $pad))
-    $bh = [math]::Min($bh, [math]::Max(1.0, [double]$backRect.Height - 2.0 * $pad))
-    $sc = [math]::Min($bw / [double]$logoImage.Width, $bh / [double]$logoImage.Height)
+
+    $bx = [double]$backRect.X; $by = [double]$backRect.Y
+    $bW = [double]$backRect.Width
+    $cH = [math]::Min([double]$backRect.Height, $bW * [double]$script:EditorLogoCrispHeightFraction)   # высота чёткой части
+    $padX = $bW * [double]$script:EditorLogoPadXFraction
+    $padY = $bW * [double]$script:EditorLogoPadYFraction
+
+    # Рамка логотипа: процент от чёткой области без отступов.
+    $availW = [math]::Max(1.0, $bW - 2.0 * $padX)
+    $sH = [math]::Min([double]$backRect.Height, $bW * [double]$script:EditorLogoSizeHeightFraction)   # высота, от которой считается размер
+    $availH = [math]::Max(1.0, $sH - 2.0 * $padY)
+    # Имена boxW/boxH, а не bw/bh: PowerShell не различает регистр, и $bw затирал $bW (ширину фона) - из-за этого "по центру" считалось от рамки логотипа.
+    $boxW = $availW * $wp / 100.0; $boxH = $availH * $hp / 100.0
+    $sc = [math]::Min($boxW / [double]$logoImage.Width, $boxH / [double]$logoImage.Height)
     $lw = [double]$logoImage.Width * $sc; $lh = [double]$logoImage.Height * $sc
-    $x = [double]$backRect.X + $pad
-    if ($pos -match 'Center') { $x = [double]$backRect.X + ([double]$backRect.Width - $lw) / 2.0 }
-    $y = [double]$backRect.Y + $pad
-    if ($pos -like 'Bottom*') { $y = [double]$backRect.Y + [double]$backRect.Height - $pad - $lh }
-    elseif ($pos -eq 'CenterCenter') { $y = [double]$backRect.Y + ([double]$backRect.Height - $lh) / 2.0 }
+
+    $x = $bx + $padX
+    if ($pos -match 'Center') { $x = $bx + ($bW - $lw) / 2.0 }
+    # Область логотипа по вертикали - видимая часть hero: от topInset (скрытая под панелью Steam верхушка) до низа чёткой части.
+    $topInset = [math]::Min($bW * [double]$script:EditorLogoTopInsetFraction, [math]::Max(0.0, $cH - 1.0))
+    $y = $by + $topInset + $padY
+    if ($pos -like 'Bottom*') { $y = $by + $cH - $padY - $lh }
+    elseif ($pos -eq 'CenterCenter') { $y = $by + $topInset + ($cH - $topInset - $lh) / 2.0 }
     return [System.Drawing.RectangleF]::new([single]$x, [single]$y, [single]$lw, [single]$lh)
 }
 
@@ -18411,21 +18846,43 @@ function Get-EditorComposeGeometry($hs) {
 }
 
 function Get-EditorLogoSnapPosition($logoImage, $back, $state, $dragRect) {
-    # Ближайшая из пяти позиций Steam: сравниваются центры логотипа в каждой позиции и перетаскиваемого логотипа.
-    $cx = [double]$dragRect.X + [double]$dragRect.Width / 2.0
-    $cy = [double]$dragRect.Y + [double]$dragRect.Height / 2.0
-    $best = [string]$state.LogoPosition
-    $bestDist = [double]::MaxValue
-    foreach ($pos in $script:EditorLogoPositions) {
-        $tmp = [PSCustomObject]@{ LogoWidthPct = $state.LogoWidthPct; LogoHeightPct = $state.LogoHeightPct; LogoPosition = $pos }
+    # Ближайшая из пяти позиций Steam. Раньше выбиралась по расстоянию между центрами логотипа в каждой позиции и
+    # перетаскиваемого логотипа. При крупном масштабе логотип почти целиком занимает видимую область, центры
+    # UpperLeft/CenterCenter/BottomLeft (и т.д.) совпадают с точностью до пикселя, и выбор становился случайным,
+    # не совпадая с подсвеченной меткой. Теперь колонка (слева/по центру) и строка (верх/центр/низ) определяются
+    # раздельно, а пороги по вертикали не могут сжаться меньше доли видимой области.
+    $dragCenterX = [double]$dragRect.X + [double]$dragRect.Width / 2.0
+    $dragCenterY = [double]$dragRect.Y + [double]$dragRect.Height / 2.0
+    $curPos = [string]$state.LogoPosition
+    $posCenters = @{}
+    foreach ($p in $script:EditorLogoPositions) {
+        $tmp = [PSCustomObject]@{ LogoWidthPct = $state.LogoWidthPct; LogoHeightPct = $state.LogoHeightPct; LogoPosition = $p }
         $r = Get-EditorLogoRect $logoImage $back $tmp
-        if ($r.Width -le 0) { continue }
-        $dx = ([double]$r.X + [double]$r.Width / 2.0) - $cx
-        $dy = ([double]$r.Y + [double]$r.Height / 2.0) - $cy
-        $d = $dx * $dx + $dy * $dy
-        if ($d -lt $bestDist) { $bestDist = $d; $best = $pos }
+        if ($r.Width -le 0) { return $curPos }
+        $posCenters[$p] = [PSCustomObject]@{ X = ([double]$r.X + [double]$r.Width / 2.0); Y = ([double]$r.Y + [double]$r.Height / 2.0) }
     }
-    return $best
+    # Высота видимой области hero (от скрытой верхушки до низа чёткой части) - как у зелёных меток.
+    $areaW = [double]$back.Width
+    $areaCrispH = [math]::Min([double]$back.Height, $areaW * [double]$script:EditorLogoCrispHeightFraction)
+    $areaTopInset = [math]::Min($areaW * [double]$script:EditorLogoTopInsetFraction, [math]::Max(0.0, $areaCrispH - 1.0))
+    $areaH = [math]::Max(1.0, $areaCrispH - $areaTopInset)
+
+    # Колонка: порог - середина между центрами логотипа слева и по центру.
+    $splitX = ([double]$posCenters['UpperLeft'].X + [double]$posCenters['UpperCenter'].X) / 2.0
+    $isCenterColumn = ($dragCenterX -ge $splitX)
+
+    # Строка: центры верхней и нижней позиций; если логотип крупный и они почти слиплись - раздвигаем до 28% высоты области.
+    $rowTopY = [double]$posCenters['UpperLeft'].Y
+    $rowBotY = [double]$posCenters['BottomLeft'].Y
+    $rowMidY = ($rowTopY + $rowBotY) / 2.0
+    $rowHalf = [math]::Max(($rowBotY - $rowTopY) / 2.0, $areaH * 0.28)
+    if (-not $isCenterColumn) {
+        if ($dragCenterY -lt $rowMidY) { return 'UpperLeft' }
+        return 'BottomLeft'
+    }
+    if ($dragCenterY -lt ($rowMidY - $rowHalf / 2.0)) { return 'UpperCenter' }
+    if ($dragCenterY -gt ($rowMidY + $rowHalf / 2.0)) { return 'BottomCenter' }
+    return 'CenterCenter'
 }
 
 function Set-EditorLogoScale($hs, [int]$percent) {
@@ -18557,7 +19014,12 @@ function Update-EditorComposeView($slot) {
         if ($null -ne $eye) {
             $eye.Visible = $hasLogo
             $eye.Enabled = -not $busy
-            $eye.Text = [string][char]$(if ($hidden) { 0xED1A } else { 0xE7B3 })
+            # Логотип скрыт - кнопка подсвечена акцентным цветом, как включённые «рамки Steam» и замок.
+            try {
+                if ($hidden) { $eye.BackColor = $steamUi.Accent; $eye.ForeColor = [System.Drawing.Color]::White; $eye.FlatAppearance.BorderColor = $steamUi.Accent }
+                else { $eye.BackColor = $steamUi.Panel; $eye.ForeColor = $steamUi.Text; $eye.FlatAppearance.BorderColor = $steamUi.Border }
+            } catch {}
+            $eye.Invalidate()   # значок (открытый/перечёркнутый глаз) рисуется в Add_Paint кнопки
             try { $hero.EyeTip.SetToolTip($eye, (T $(if ($hidden) { 'logo_eye_show' } else { 'logo_eye_hide' }))) } catch {}
             if ($hasLogo) { $eye.BringToFront() }
         }
@@ -18578,6 +19040,73 @@ function Update-EditorComposeView($slot) {
         else { try { $hero.Picture.Cursor = [System.Windows.Forms.Cursors]::Hand } catch {} }
         $hero.Picture.Invalidate()
     } catch {}
+}
+
+# Значки кнопок композиции рисуются кодом (GDI+), а не глифами шрифта Segoe MDL2 Assets: так они выглядят одинаково
+# в любой версии Windows и не превращаются в квадратики там, где шрифта нет. Рисунок построен на сетке 16x16 пикселей
+# с линией 1 px по координатам x.5 (без масштабирования), поэтому линии получаются чёткими, а не размытыми.
+function Invoke-EditorDrawIcon($g, [string]$kind, [System.Drawing.Color]$color, $clientSize, [bool]$flag) {
+    # kind: 'eye' (flag = логотип скрыт - глаз перечёркнут), 'lock' (flag = замок закрыт), 'frames' (flag = включено - уголки внутрь).
+    # Рисунок построен на сетке 20x20 (раньше 16x16) с линией 1.5 px и скруглёнными концами; при масштабе экрана > 100%
+    # сетка растёт вместе с DPI. Прямые линии стоят на x.5 - они попадают ровно в пиксель и остаются чёткими.
+    $pen = $null; $brush = $null
+    $state = $g.Save()
+    try {
+        $sc = 1.0
+        try { $sc = [math]::Max(1.0, [double]$g.DpiX / 96.0) } catch {}
+        $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+        $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::None
+        $g.CompositingQuality = [System.Drawing.Drawing2D.CompositingQuality]::HighQuality
+        $box = [math]::Round(20.0 * $sc)
+        $ox = [math]::Floor(([double]$clientSize.Width - $box) / 2.0)
+        $oy = [math]::Floor(([double]$clientSize.Height - $box) / 2.0)
+        $g.TranslateTransform([single]$ox, [single]$oy)
+        $g.ScaleTransform([single]$sc, [single]$sc)
+        $pen = New-Object System.Drawing.Pen($color, [single]1.5)
+        $pen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+        $pen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+        $pen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
+        $brush = New-Object System.Drawing.SolidBrush($color)
+        if ($kind -eq 'eye') {
+            $gp = New-Object System.Drawing.Drawing2D.GraphicsPath
+            try {
+                $gp.AddBezier([single]2.0, [single]10.0, [single]5.5, [single]4.5, [single]14.5, [single]4.5, [single]18.0, [single]10.0)
+                $gp.AddBezier([single]18.0, [single]10.0, [single]14.5, [single]15.5, [single]5.5, [single]15.5, [single]2.0, [single]10.0)
+                $g.DrawPath($pen, $gp)
+            } finally { $gp.Dispose() }
+            $g.FillEllipse($brush, [single]7.2, [single]7.2, [single]5.6, [single]5.6)
+            if ($flag) { $g.DrawLine($pen, [single]3.5, [single]3.5, [single]16.5, [single]16.5) }
+        }
+        elseif ($kind -eq 'lock') {
+            $g.DrawRectangle($pen, [single]4.5, [single]9.5, [single]11, [single]8)
+            $g.FillRectangle($brush, [single]9, [single]12, [single]2, [single]2.5)
+            # Дужка: закрытый замок - обе ножки доходят до корпуса; открытый - правая ножка убрана (дужка поднята).
+            $g.DrawLine($pen, [single]6.5, [single]9.5, [single]6.5, [single]6)
+            $g.DrawArc($pen, [single]6.5, [single]2.5, [single]7, [single]7, [single]180, [single]180)
+            if ($flag) { $g.DrawLine($pen, [single]13.5, [single]6, [single]13.5, [single]9.5) }
+        }
+        elseif ($kind -eq 'frames') {
+            if ($flag) {
+                $sets = @(@(3.5,8.5, 8.5,8.5, 8.5,3.5), @(11.5,3.5, 11.5,8.5, 16.5,8.5),
+                          @(3.5,11.5, 8.5,11.5, 8.5,16.5), @(16.5,11.5, 11.5,11.5, 11.5,16.5))
+            } else {
+                $sets = @(@(3.5,8.5, 3.5,3.5, 8.5,3.5), @(11.5,3.5, 16.5,3.5, 16.5,8.5),
+                          @(3.5,11.5, 3.5,16.5, 8.5,16.5), @(11.5,16.5, 16.5,16.5, 16.5,11.5))
+            }
+            foreach ($c in $sets) {
+                $pts = [System.Drawing.PointF[]]@(
+                    [System.Drawing.PointF]::new([single]$c[0], [single]$c[1]),
+                    [System.Drawing.PointF]::new([single]$c[2], [single]$c[3]),
+                    [System.Drawing.PointF]::new([single]$c[4], [single]$c[5]))
+                $g.DrawLines($pen, $pts)
+            }
+        }
+    } catch {}
+    finally {
+        if ($null -ne $pen) { $pen.Dispose() }
+        if ($null -ne $brush) { $brush.Dispose() }
+        try { $g.Restore($state) } catch {}
+    }
 }
 
 function Initialize-EditorCompose($heroSlot, $logoSlot) {
@@ -18651,12 +19180,126 @@ function Initialize-EditorCompose($heroSlot, $logoSlot) {
                 $bx = [int][math]::Round($back.X); $by = [int][math]::Round($back.Y); $bw = [int][math]::Round($back.Width); $bh = [int][math]::Round($back.Height)
                 $hb = Get-EditorComposeBitmap $ui 'Hero' $heroImg $bw $bh
                 if ($null -ne $hb) { $g.DrawImage($hb, $bx, $by, $bw, $bh) }
+                # Эффект Steam (цвет перехода - фон нашего окна, а не интерфейса Steam, чтобы превью сливалось с карточкой): скрытая под верхней панелью верхушка затемнена, а хвост ниже «чёткой» части размыт и плавно уходит в цвет интерфейса.
+                try {
+                    if ($null -ne $hb -and [bool]$global:logoSteamFramesPreview) {
+                        $fxCrisp = [math]::Min([double]$bh, [double]$bw * [double]$script:EditorLogoCrispHeightFraction)
+                        $fxTop = [math]::Min([double]$bw * [double]$script:EditorLogoTopInsetFraction, [math]::Max(0.0, $fxCrisp - 1.0))
+                        $fxTailY = [int][math]::Round($fxCrisp)
+                        $fxR = [int]$sender.BackColor.R; $fxGc = [int]$sender.BackColor.G; $fxB = [int]$sender.BackColor.B
+                        $fxTailH = $bh - $fxTailY
+                        if ($fxTailH -gt 2) {
+                            # Размытие: хвост уменьшаем в 8 раз и растягиваем обратно с билинейной интерполяцией.
+                            $fxSw = [math]::Max(2, [int]($bw / 8)); $fxSh = [math]::Max(2, [int]($fxTailH / 8))
+                            $fxSmall = New-Object System.Drawing.Bitmap($fxSw, $fxSh)
+                            try {
+                                $fxG = [System.Drawing.Graphics]::FromImage($fxSmall)
+                                try {
+                                    $fxG.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBilinear
+                                    $fxG.DrawImage($hb, [System.Drawing.Rectangle]::new(0, 0, $fxSw, $fxSh), [System.Drawing.Rectangle]::new(0, $fxTailY, $bw, $fxTailH), [System.Drawing.GraphicsUnit]::Pixel)
+                                } finally { $fxG.Dispose() }
+                                $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBilinear
+                                $g.DrawImage($fxSmall, [System.Drawing.Rectangle]::new($bx, $by + $fxTailY, $bw, $fxTailH))
+                                $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::Default
+                            } finally { $fxSmall.Dispose() }
+                            # Плавный переход в фон окна (~60 px при ширине 1635), дальше сплошной цвет.
+                            $fxFadeH = [math]::Max(1, [math]::Min($fxTailH, [int][math]::Round($bw * 60.0 / 1635.0)))
+                            $fxRectF = [System.Drawing.Rectangle]::new($bx, $by + $fxTailY, $bw, $fxFadeH)
+                            $fxGrad = New-Object System.Drawing.Drawing2D.LinearGradientBrush($fxRectF, [System.Drawing.Color]::FromArgb(150, $fxR, $fxGc, $fxB), [System.Drawing.Color]::FromArgb(255, $fxR, $fxGc, $fxB), [System.Drawing.Drawing2D.LinearGradientMode]::Vertical)
+                            try { $g.FillRectangle($fxGrad, $fxRectF) } finally { $fxGrad.Dispose() }
+                            if ($fxTailH -gt $fxFadeH) {
+                                $fxSolid = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, $fxR, $fxGc, $fxB))
+                                try { $g.FillRectangle($fxSolid, $bx, $by + $fxTailY + $fxFadeH, $bw, $fxTailH - $fxFadeH) } finally { $fxSolid.Dispose() }
+                            }
+                        }
+                        if ($fxTop -ge 1) {
+                            # Верхняя рамка - зеркально нижней: полоса размывается, затем плавный переход в цвет окна
+                            # (у границы с чёткой частью прозрачность как у нижней, к верхнему краю - сплошной цвет).
+                            $fxTopH = [int][math]::Round($fxTop)
+                            if ($fxTopH -gt 2) {
+                                $fxSw2 = [math]::Max(2, [int]($bw / 8)); $fxSh2 = [math]::Max(2, [int]($fxTopH / 8))
+                                $fxSmall2 = New-Object System.Drawing.Bitmap($fxSw2, $fxSh2)
+                                try {
+                                    $fxG2 = [System.Drawing.Graphics]::FromImage($fxSmall2)
+                                    try {
+                                        $fxG2.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBilinear
+                                        $fxG2.DrawImage($hb, [System.Drawing.Rectangle]::new(0, 0, $fxSw2, $fxSh2), [System.Drawing.Rectangle]::new(0, 0, $bw, $fxTopH), [System.Drawing.GraphicsUnit]::Pixel)
+                                    } finally { $fxG2.Dispose() }
+                                    $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBilinear
+                                    $g.DrawImage($fxSmall2, [System.Drawing.Rectangle]::new($bx, $by, $bw, $fxTopH))
+                                    $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::Default
+                                } finally { $fxSmall2.Dispose() }
+                                $fxFadeTopH = [math]::Max(1, [math]::Min($fxTopH, [int][math]::Round($bw * 60.0 / 1635.0)))
+                                $fxRectT = [System.Drawing.Rectangle]::new($bx, $by + $fxTopH - $fxFadeTopH, $bw, $fxFadeTopH)
+                                $fxGradT = New-Object System.Drawing.Drawing2D.LinearGradientBrush($fxRectT, [System.Drawing.Color]::FromArgb(255, $fxR, $fxGc, $fxB), [System.Drawing.Color]::FromArgb(150, $fxR, $fxGc, $fxB), [System.Drawing.Drawing2D.LinearGradientMode]::Vertical)
+                                try { $g.FillRectangle($fxGradT, $fxRectT) } finally { $fxGradT.Dispose() }
+                                if ($fxTopH -gt $fxFadeTopH) {
+                                    $fxSolidT = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, $fxR, $fxGc, $fxB))
+                                    try { $g.FillRectangle($fxSolidT, $bx, $by, $bw, $fxTopH - $fxFadeTopH) } finally { $fxSolidT.Dispose() }
+                                }
+                            }
+                            else {
+                                $fxTopBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, $fxR, $fxGc, $fxB))
+                                try { $g.FillRectangle($fxTopBrush, $bx, $by, $bw, $fxTopH) } finally { $fxTopBrush.Dispose() }
+                            }
+                        }
+                    }
+                } catch {}
             }
             else {
                 $stubBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 18, 22, 29))
                 try { $g.FillRectangle($stubBrush, $back) } finally { $stubBrush.Dispose() }
             }
             if ($null -ne $logoImg) {
+                # Во время перетаскивания, как в Steam, показываем зелёные метки пяти положений: уголки слева, полоски сверху/снизу
+                # по центру и квадрат в центре. Метка, к которой логотип прилипнет при отпускании, ярче и толще.
+                if ($null -ne $ui -and $ui.Dragging -and $ui.DragRect.Width -gt 0) {
+                    try {
+                        $snapPos = Get-EditorLogoSnapPosition $logoImg $back $hs.EditorState $ui.DragRect
+                        $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+                        # Область меток - видимая часть hero в Steam (от скрытой верхушки до низа чёткой части), как у логотипа.
+                        $mkW = [double]$back.Width
+                        $mkCrisp = [math]::Min([double]$back.Height, $mkW * [double]$script:EditorLogoCrispHeightFraction)
+                        $mkTop = [double]$back.Y + [math]::Min($mkW * [double]$script:EditorLogoTopInsetFraction, [math]::Max(0.0, $mkCrisp - 1.0))
+                        $mkBot = [double]$back.Y + $mkCrisp
+                        $mkLeft = [double]$back.X
+                        $mkCx = $mkLeft + $mkW / 2.0
+                        $mkCy = ($mkTop + $mkBot) / 2.0
+                        $mkS = [math]::Max(12.0, $mkW * 0.03)    # размер метки (в Steam ~1.5% ширины, здесь чуть крупнее для наглядности)
+                        $mkM = 2.5                                # отступ от края
+                        foreach ($cp in $script:EditorLogoPositions) {
+                            $mkAct = ([string]$cp -eq [string]$snapPos)
+                            $mkT = $(if ($mkAct) { 4.0 } else { 3.0 })
+                            $mkCol = $(if ($mkAct) { [System.Drawing.Color]::FromArgb(255, 150, 255, 150) } else { [System.Drawing.Color]::FromArgb(185, 76, 217, 100) })
+                            $mkPen = New-Object System.Drawing.Pen($mkCol, [single]$mkT)
+                            $mkPen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Miter
+                            try {
+                                $h2 = $mkT / 2.0
+                                if ($cp -eq 'UpperLeft') {
+                                    $x0 = $mkLeft + $mkM + $h2; $y0 = $mkTop + $mkM + $h2
+                                    $g.DrawLines($mkPen, [System.Drawing.PointF[]]@([System.Drawing.PointF]::new([single]$x0, [single]($y0 + $mkS)), [System.Drawing.PointF]::new([single]$x0, [single]$y0), [System.Drawing.PointF]::new([single]($x0 + $mkS), [single]$y0)))
+                                }
+                                elseif ($cp -eq 'BottomLeft') {
+                                    $x0 = $mkLeft + $mkM + $h2; $y0 = $mkBot - $mkM - $h2
+                                    $g.DrawLines($mkPen, [System.Drawing.PointF[]]@([System.Drawing.PointF]::new([single]$x0, [single]($y0 - $mkS)), [System.Drawing.PointF]::new([single]$x0, [single]$y0), [System.Drawing.PointF]::new([single]($x0 + $mkS), [single]$y0)))
+                                }
+                                elseif ($cp -eq 'UpperCenter') {
+                                    $y0 = $mkTop + $mkM + $h2
+                                    $g.DrawLine($mkPen, [single]($mkCx - $mkS * 0.55), [single]$y0, [single]($mkCx + $mkS * 0.55), [single]$y0)
+                                }
+                                elseif ($cp -eq 'BottomCenter') {
+                                    $y0 = $mkBot - $mkM - $h2
+                                    $g.DrawLine($mkPen, [single]($mkCx - $mkS * 0.55), [single]$y0, [single]($mkCx + $mkS * 0.55), [single]$y0)
+                                }
+                                elseif ($cp -eq 'CenterCenter') {
+                                    $q = $mkS * 1.1
+                                    $g.DrawRectangle($mkPen, [single]($mkCx - $q / 2.0), [single]($mkCy - $q / 2.0), [single]$q, [single]$q)
+                                }
+                            } finally { $mkPen.Dispose() }
+                        }
+                        $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
+                    } catch {}
+                }
                 $lr = Get-EditorLogoRect $logoImg $back $hs.EditorState
                 # Во время перетаскивания логотип рисуется там, где его держит курсор.
                 if ($null -ne $ui -and $ui.Dragging -and $ui.DragRect.Width -gt 0) { $lr = $ui.DragRect }
@@ -18717,9 +19360,8 @@ function Initialize-EditorCompose($heroSlot, $logoSlot) {
                         if ($prev.Width -le 0) { $prev = $geo.Logo }
                         $ui.DragRect = [System.Drawing.RectangleF]::new([single]$x, [single]$y, [single]$lw, [single]$lh)
                         $sender.Cursor = [System.Windows.Forms.Cursors]::SizeAll
-                        # Перерисовываем только объединение старого и нового положения логотипа, а не всё превью.
-                        $dirty = [System.Drawing.RectangleF]::Union($prev, $ui.DragRect)
-                        $sender.Invalidate([System.Drawing.Rectangle]::Ceiling([System.Drawing.RectangleF]::Inflate($dirty, 3, 3)))
+                        # Ячейки положений и подсветка ближайшей меняются при движении, поэтому перерисовываем всё превью (оно маленькое, с двойной буферизацией).
+                        $sender.Invalidate()
                     }
                 }
                 return
@@ -18789,7 +19431,16 @@ function Initialize-EditorCompose($heroSlot, $logoSlot) {
     $eye.ForeColor = $steamUi.Text
     $eye.Font = New-Object System.Drawing.Font('Segoe MDL2 Assets', 10)
     $eye.Padding = New-Object System.Windows.Forms.Padding(0)
-    $eye.Text = [string][char]0xE7B3
+    $eye.Text = ''
+    $eye.Add_Paint({
+        param($sender, $e)
+        try {
+            $hid = $false
+            try { $hid = [bool]$sender.Tag.EditorState.LogoHidden } catch {}
+            $col = $(if ($sender.Enabled) { $sender.ForeColor } else { [System.Drawing.Color]::FromArgb(110, $sender.ForeColor) })
+            Invoke-EditorDrawIcon $e.Graphics 'eye' $col $sender.ClientSize $hid
+        } catch {}
+    })
     $eye.Cursor = [System.Windows.Forms.Cursors]::Hand
     $eye.TabStop = $false
     $eye.Visible = $false
@@ -18805,8 +19456,58 @@ function Initialize-EditorCompose($heroSlot, $logoSlot) {
     })
     $heroSlot.Panel.Controls.Add($eye)
     $eye.BringToFront()
-    $heroSlot | Add-Member -NotePropertyName EyeButton -NotePropertyValue $eye -Force
+
+    # --- Кнопка «рамки Steam» (левее «глаза»): включает в превью вид как в клиенте Steam (скрытая верхушка, размытый низ).
+    # Выключено (по умолчанию) - рисуется весь фон. Состояние хранится в config.ini и действует для всех карточек.
+    $chkFrames = New-Object System.Windows.Forms.CheckBox
+    $chkFrames.Appearance = [System.Windows.Forms.Appearance]::Button
+    $chkFrames.AutoSize = $false
+    $chkFrames.Size = New-Object System.Drawing.Size(26, 24)
+    $chkFrames.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
+    $chkFrames.UseVisualStyleBackColor = $false
+    $chkFrames.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    $chkFrames.FlatAppearance.BorderColor = $steamUi.Border
+    $chkFrames.FlatAppearance.BorderSize = 1
+    $chkFrames.FlatAppearance.CheckedBackColor = $steamUi.Accent
+    $chkFrames.BackColor = $steamUi.Panel
+    $chkFrames.ForeColor = $steamUi.Text
+    $chkFrames.Font = New-Object System.Drawing.Font('Segoe MDL2 Assets', 10)
+    $chkFrames.Padding = New-Object System.Windows.Forms.Padding(0)
+    # Значок рисуется кодом (см. Add_Paint ниже), а не глифом шрифта: так он выглядит одинаково в любой системе.
+    $chkFrames.Text = ''
+    $chkFrames.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $chkFrames.TabStop = $false
+    $chkFrames.Tag = $heroSlot
+    $framesOffFore = $steamUi.Text
+    $heroSlot | Add-Member -NotePropertyName ChkFrames -NotePropertyValue $chkFrames -Force
     $heroSlot | Add-Member -NotePropertyName EyeTip -NotePropertyValue (New-Object System.Windows.Forms.ToolTip) -Force
+    # Начальное состояние берём из config.ini до подключения обработчика, чтобы не писать конфиг при открытии карточки.
+    $chkFrames.Checked = [bool]$global:logoSteamFramesPreview
+    if ([bool]$chkFrames.Checked) { $chkFrames.ForeColor = [System.Drawing.Color]::White }
+    try { $heroSlot.EyeTip.SetToolTip($chkFrames, (T $(if ([bool]$chkFrames.Checked) { 'logo_frames_hide' } else { 'logo_frames_show' }))) } catch {}
+    # Выключено: четыре уголка наружу (рамка кадра); включено: четыре уголка внутрь.
+    $chkFrames.Add_Paint({
+        param($sender, $e)
+        try { Invoke-EditorDrawIcon $e.Graphics 'frames' $sender.ForeColor $sender.ClientSize ([bool]$sender.Checked) } catch {}
+    })
+    $chkFrames.Add_CheckedChanged({
+        try {
+            # Цвет: белый на акцентном фоне - включено; значок (уголки наружу/внутрь) перерисовывается в Add_Paint.
+            if ([bool]$this.Checked) { $this.ForeColor = [System.Drawing.Color]::White }
+            else { $this.ForeColor = $framesOffFore }
+            $this.Invalidate()
+        } catch {}
+        try {
+            $hs = $this.Tag
+            $global:logoSteamFramesPreview = [bool]$this.Checked
+            try { $hs.EyeTip.SetToolTip($this, (T $(if ([bool]$this.Checked) { 'logo_frames_hide' } else { 'logo_frames_show' }))) } catch {}
+            Save-Configuration
+            $hs.Picture.Invalidate()
+        } catch {}
+    }.GetNewClosure())
+    $heroSlot.Panel.Controls.Add($chkFrames)
+    $chkFrames.BringToFront()
+    $heroSlot | Add-Member -NotePropertyName EyeButton -NotePropertyValue $eye -Force
 
     # --- Кнопки «Сменить логотип» / «Сменить фон» в заголовке слота (левее «глаза») ---
     $btnLogo = New-EditorComposeHeaderButton (T 'logo_btn_logo') $heroSlot
@@ -18870,8 +19571,8 @@ function Initialize-EditorCompose($heroSlot, $logoSlot) {
     $heroSlot.Panel.Controls.Add($lblScale)
     $heroSlot | Add-Member -NotePropertyName ScaleLabel -NotePropertyValue $lblScale -Force
     # Линия TrackBar рисуется выше середины его высоты, поэтому ползунок опущен на 4 px, чтобы линия шла по центру кнопки и подписи.
-    $tb.Location = New-Object System.Drawing.Point((10 + $scaleLblW + 4 + 26 + 4), ($rowY + 4))
-    $tb.Size = New-Object System.Drawing.Size(([int]$heroSlot.Panel.Width - 10 - (10 + $scaleLblW + 4 + 26 + 4)), 28)
+    $tb.Location = New-Object System.Drawing.Point((10 + $scaleLblW + 4 + 26 + 4 + 32), ($rowY + 4))
+    $tb.Size = New-Object System.Drawing.Size(([int]$heroSlot.Panel.Width - 10 - (10 + $scaleLblW + 4 + 26 + 4 + 32)), 28)
     $tb.BackColor = $heroSlot.Panel.BackColor
     $tb.Value = 50
     $tb.TabStop = $false
@@ -18911,7 +19612,11 @@ function Initialize-EditorCompose($heroSlot, $logoSlot) {
     $chkDef.ForeColor = $steamUi.Text
     $chkDef.Font = New-Object System.Drawing.Font('Segoe MDL2 Assets', 10)
     $chkDef.Padding = New-Object System.Windows.Forms.Padding(0)
-    $chkDef.Text = [string][char]0xE785   # открытый замок
+    $chkDef.Text = ''
+    $chkDef.Add_Paint({
+        param($sender, $e)
+        try { Invoke-EditorDrawIcon $e.Graphics 'lock' $sender.ForeColor $sender.ClientSize ([bool]$sender.Checked) } catch {}
+    })
     $chkDef.Cursor = [System.Windows.Forms.Cursors]::Hand
     $chkDef.TabStop = $false
     $chkDef.Tag = $heroSlot
@@ -18919,8 +19624,9 @@ function Initialize-EditorCompose($heroSlot, $logoSlot) {
     $chkDef.Add_CheckedChanged({
         try {
             # Значок и цвет: закрытый замок на акцентном фоне — включено.
-            if ([bool]$this.Checked) { $this.Text = [string][char]0xE72E; $this.ForeColor = [System.Drawing.Color]::White }
-            else { $this.Text = [string][char]0xE785; $this.ForeColor = $lockOffFore }
+            if ([bool]$this.Checked) { $this.ForeColor = [System.Drawing.Color]::White }
+            else { $this.ForeColor = $lockOffFore }
+            $this.Invalidate()
         } catch {}
         try {
             $hs = $this.Tag
@@ -18945,13 +19651,14 @@ function Initialize-EditorCompose($heroSlot, $logoSlot) {
         $heroSlot.EyeTip.SetToolTip($lblScale, (T 'logo_tip_slider'))
     } catch {}
 
-    # --- Раскладка нижней строки: [подпись] [глаз] [замок] [ползунок] ---
+    # --- Раскладка нижней строки: [подпись] [рамки Steam] [глаз] [замок] [ползунок] ---
     # Строка целиком стоит по центру свободной полосы между низом превью и нижним краем слота.
     $layoutRow = {
         try {
             $band = [int]$heroSlot.Panel.Height - (35 + $picH)
             $y0 = [int](35 + $picH + [Math]::Max(2, [Math]::Floor(($band - 28) / 2)))
-            $xEye = 10 + $scaleLblW + 4
+            $xFrames = 10 + $scaleLblW + 4
+            $xEye = $xFrames + 26 + 6
             # Две кнопки одинакового размера (26x24) с зазором 6 px, затем ползунок: у TrackBar линия начинается
             # примерно на 8 px правее его левого края, поэтому Left = конец замка + 4 даёт видимый зазор ~12 px.
             $xChk = $xEye + 26 + 6
@@ -18959,9 +19666,10 @@ function Initialize-EditorCompose($heroSlot, $logoSlot) {
             $lblScale.Location = New-Object System.Drawing.Point(10, ($y0 + 2))
             $chkDef.Location = New-Object System.Drawing.Point($xChk, ($y0 + 2))
             $eye.Location = New-Object System.Drawing.Point($xEye, ($y0 + 2))
+            $chkFrames.Location = New-Object System.Drawing.Point($xFrames, ($y0 + 2))
             $tb.Location = New-Object System.Drawing.Point($xTb, ($y0 + 4))
             $tb.Size = New-Object System.Drawing.Size([Math]::Max(40, ([int]$heroSlot.Panel.Width - 10 - $xTb)), 28)
-            try { $chkDef.BringToFront() } catch {}
+            try { $chkDef.BringToFront(); $chkFrames.BringToFront() } catch {}
         } catch {}
     }.GetNewClosure()
     & $layoutRow
@@ -21822,15 +22530,73 @@ function Add-UpscalerLibraryControls ($owner, $container) {
     $ctx.Bar = $bar
 
     $status = New-Object System.Windows.Forms.Label
-    # Статус — в одной строке с кнопками, правее них.
-    $status.Location = New-Object System.Drawing.Point((140 + 6 + 112 + 6 + 34 + 10), $rowY)
-    $status.Size = New-Object System.Drawing.Size(($W - (140 + 6 + 112 + 6 + 34 + 10)), 28)
+    # Статус — в строке заголовка, сразу после названия раздела, в скобках.
+    $statusLeft = [int]$secTitle.Width + 8
+    $status.Location = New-Object System.Drawing.Point($statusLeft, 1)
+    $status.Size = New-Object System.Drawing.Size(($W - $statusLeft), 26)
     $status.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
     $status.ForeColor = $steamUi.Muted
     $status.Font = New-Object System.Drawing.Font('Segoe UI', 8)
     $status.AutoEllipsis = $true
+    # Любой текст статуса автоматически берётся в скобки (пустой — остаётся пустым).
+    $status.Add_TextChanged({
+        param($snd, $evt)
+        try {
+            $tx = [string]$snd.Text
+            if ($tx.Length -gt 0 -and -not ($tx.StartsWith('(') -and $tx.EndsWith(')'))) { $snd.Text = '(' + $tx + ')' }
+        } catch {}
+    })
     $container.Controls.Add($status)
     $ctx.Status = $status
+
+    # --- Галочка «Обновлять при добавлении» — в строке кнопок, на месте прежнего статуса ---
+    $autoLeft = (140 + 6 + 112 + 6 + 34 + 10)
+    $chkAuto = New-Object System.Windows.Forms.Panel
+    $chkAuto.Location = New-Object System.Drawing.Point($autoLeft, ($rowY + 3))
+    $chkAuto.Size = New-Object System.Drawing.Size(22, 22)
+    $chkAuto.BackColor = $container.BackColor
+    $chkAuto.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $chkAuto.Tag = [bool]$global:autoUpdateUpscalers
+    $chkAuto.Add_Paint({
+        param($sender, $e)
+        $checked = [bool]$sender.Tag
+        $cbRect = New-Object System.Drawing.Rectangle(4, 4, 14, 14)
+        if ($checked) {
+            $cbBg = New-Object System.Drawing.SolidBrush($steamUi.Accent)
+            $e.Graphics.FillRectangle($cbBg, $cbRect)
+            $cbBg.Dispose()
+            $checkPen = New-Object System.Drawing.Pen([System.Drawing.Color]::White, 1.6)
+            $e.Graphics.DrawLine($checkPen, $cbRect.X + 3, $cbRect.Y + 7, $cbRect.X + 6, $cbRect.Y + 10)
+            $e.Graphics.DrawLine($checkPen, $cbRect.X + 6, $cbRect.Y + 10, $cbRect.X + 11, $cbRect.Y + 3)
+            $checkPen.Dispose()
+        } else {
+            $cbPen = New-Object System.Drawing.Pen($steamUi.Muted, 1.2)
+            $e.Graphics.DrawRectangle($cbPen, $cbRect)
+            $cbPen.Dispose()
+        }
+    })
+    $chkAutoLabel = New-Object System.Windows.Forms.Label
+    $chkAutoLabel.Text = (T 'upl_auto_update')
+    $chkAutoLabel.Location = New-Object System.Drawing.Point(($autoLeft + 26), $rowY)
+    $chkAutoLabel.Size = New-Object System.Drawing.Size(([Math]::Max(60, $W - ($autoLeft + 26))), 28)
+    $chkAutoLabel.ForeColor = $steamUi.Muted
+    $chkAutoLabel.BackColor = $container.BackColor
+    $chkAutoLabel.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
+    $chkAutoLabel.AutoEllipsis = $true
+    $chkAutoLabel.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $toggleAuto = {
+        & $ctx.ClearFocus
+        $chkAuto.Tag = -not [bool]$chkAuto.Tag
+        $chkAuto.Invalidate()
+    }.GetNewClosure()
+    $chkAuto.Add_Click($toggleAuto)
+    $chkAutoLabel.Add_Click($toggleAuto)
+    $tip.SetToolTip($chkAuto, (T 'upl_tip_auto_update'))
+    $tip.SetToolTip($chkAutoLabel, (T 'upl_tip_auto_update'))
+    $container.Controls.Add($chkAuto)
+    $container.Controls.Add($chkAutoLabel)
+    # Значение читает обработчик «Сохранить» окна настроек; до сохранения глобальная настройка не меняется.
+    $script:upscalerAutoChk = $chkAuto
 
     # --- Кнопки «Выбрать последние» и «Обновить все» — внизу слева, под плитками ---
     $btnAll = New-Object System.Windows.Forms.Button
@@ -24027,6 +24793,7 @@ function Show-ProgramSettingsDialog {
             $launchersSettingChanged = ([bool]$global:suggestGameLaunchers -ne [bool]$chkSuggestLaunchers.Tag)
             $global:suggestGameLaunchers = [bool]$chkSuggestLaunchers.Tag
             $global:useExeIcons = [bool]$chkUseExeIcons.Tag
+            try { if ($null -ne $script:upscalerAutoChk) { $global:autoUpdateUpscalers = [bool]$script:upscalerAutoChk.Tag } } catch {}
             $global:steamRestartMode = $(if ($cmbSteamRestart.SelectedIndex -eq 1) { 'manual' } else { 'auto' })
             if ($launchersSettingChanged) { $global:exeSelectionCache.Clear() }
             $global:steamApiKey = $txtSteamKey.Text.Trim()
@@ -31134,6 +31901,50 @@ function Get-UpscalerLatestLocalMap {
     return $map
 }
 
+# Версии, ВЫБРАННЫЕ в «Библиотеках апскейлеров» (Настройки): выбранная пользователем из скачанных,
+# иначе самая новая скачанная. Формат тот же, что у Get-UpscalerLatestLocalMap.
+function Get-UpscalerSelectedLocalMap {
+    $map = [ordered]@{}
+    $sel = Get-UpscalerSelection
+    foreach ($def in @(Get-UpscalerDefs)) {
+        try {
+            $k = [string]$def.Key
+            $lv = @(Get-UpscalerLocalVersions $k ([string]$def.File))
+            if ($lv.Count -eq 0) { continue }
+            $pick = $lv[0]
+            if ($sel.ContainsKey($k)) {
+                foreach ($x in $lv) { if ([string]$x.Id -eq [string]$sel[$k]) { $pick = $x; break } }
+            }
+            $map[$k] = [PSCustomObject]@{
+                Key = $k; Title = [string]$def.Title; File = [string]$def.File
+                Path = [string]$pick.Path; Ver = (ConvertTo-UpscalerFullVersion $pick.Num)
+            }
+        } catch {}
+    }
+    return $map
+}
+
+# Автообновление апскейлеров в только что добавленной игре (галочка «Обновлять при добавлении» в Настройках).
+# Заменяет DLL в папке игры на выбранные версии тем же безопасным способом, что и «Обновить апскейлеры»
+# (бэкап .sc_orig, откат при ошибке); версия в игре такая же или новее — файл не трогается.
+# Никогда не бросает исключений: сбой автообновления не должен мешать добавлению игры.
+function Invoke-UpscalerAutoUpdateForNewGame ([string]$GamePath) {
+    try {
+        if (-not [bool]$global:autoUpdateUpscalers) { return }
+        if ([string]::IsNullOrWhiteSpace($GamePath) -or -not [System.IO.Directory]::Exists($GamePath)) { return }
+        $map = Get-UpscalerSelectedLocalMap
+        if ($map.Count -eq 0) { return }
+        $r = $null
+        try { $r = Invoke-UpscalerUpdateBackground $GamePath $map }
+        catch { $r = Update-GameUpscalersInDir $GamePath $map }
+        try {
+            if ($null -ne $r -and [string]$r.Status -in @('updated', 'error')) {
+                Write-LauncherLog ('Upscaler auto-update: ' + $GamePath + ' -> ' + [string]$r.Status + ' ' + (@($r.Titles) -join ', ') + ' ' + [string]$r.Error)
+            }
+        } catch {}
+    } catch {}
+}
+
 # System.Version всегда из 4 частей (без -1), иначе 3.1.2 окажется «меньше» 3.1.2.0.
 function ConvertTo-UpscalerFullVersion ($V) {
     try {
@@ -35367,6 +36178,7 @@ function Show-SteamLibraryBrowser {
         $script:libUpdRunning = $true
         $script:libUpdCancel = $false
         $updated = 0; $replaced = 0; $same = 0; $none = 0
+        $repRows = New-Object System.Collections.Generic.List[object]
         $okLines = New-Object System.Collections.Generic.List[string]
         $failLines = New-Object System.Collections.Generic.List[string]
         $wasCancelled = $false
@@ -35393,10 +36205,10 @@ function Show-SteamLibraryBrowser {
                     catch { $r = Update-GameUpscalersInDir $gmDir $latest }
                 } catch { $r = [PSCustomObject]@{ Status = 'error'; Replaced = 0; Titles = @(); Error = [string]$_.Exception.Message } }
                 switch ([string]$r.Status) {
-                    'updated' { try { $script:libHasOrigCache[(Get-NormalizedGamePathKey (Get-LibDlssEntryDir $gm))] = $true } catch {}; $updated++; $replaced += [int]$r.Replaced; [void]$okLines.Add([string]$gm.Name + ': ' + ((@($r.Titles)) -join ', ')) }
-                    'same'    { $same++ }
-                    'error'   { [void]$failLines.Add([string]$gm.Name + ': ' + [string]$r.Error) }
-                    default   { $none++ }
+                    'updated' { try { $script:libHasOrigCache[(Get-NormalizedGamePathKey (Get-LibDlssEntryDir $gm))] = $true } catch {}; $updated++; $replaced += [int]$r.Replaced; [void]$okLines.Add([string]$gm.Name + ': ' + ((@($r.Titles)) -join ', ')); [void]$repRows.Add([PSCustomObject]@{ Status = 'ok'; Name = [string]$gm.Name; Details = ((@($r.Titles)) -join ', ') }) }
+                    'same'    { $same++; [void]$repRows.Add([PSCustomObject]@{ Status = 'same'; Name = [string]$gm.Name; Details = '' }) }
+                    'error'   { [void]$failLines.Add([string]$gm.Name + ': ' + [string]$r.Error); [void]$repRows.Add([PSCustomObject]@{ Status = 'fail'; Name = [string]$gm.Name; Details = [string]$r.Error }) }
+                    default   { $none++; [void]$repRows.Add([PSCustomObject]@{ Status = 'none'; Name = [string]$gm.Name; Details = '' }) }
                 }
                 try {
                     $libProgressBar.Value = [Math]::Min($libProgressBar.Maximum, $idx)
@@ -35431,8 +36243,10 @@ function Show-SteamLibraryBrowser {
         }
         $icon = if ($failLines.Count -gt 0) { [System.Windows.Forms.MessageBoxIcon]::Warning } else { [System.Windows.Forms.MessageBoxIcon]::Information }
         try {
-            Show-AppMessageBox($dlg, $msg, $global:appTitle, [System.Windows.Forms.MessageBoxButtons]::OK, $icon) | Out-Null
-        } catch {}
+            Show-LibActionReport -Owner $dlg -SummaryLines $lines.ToArray() -Rows $repRows.ToArray() -Icon $icon
+        } catch {
+            try { Show-AppMessageBox($dlg, $msg, $global:appTitle, [System.Windows.Forms.MessageBoxButtons]::OK, $icon) | Out-Null } catch {}
+        }
     })
 
     # «Вернуть бэкапы»: в отмеченных играх возвращает оригинальные DLL апскейлеров из <dll>.sc_orig
@@ -35455,6 +36269,7 @@ function Show-SteamLibraryBrowser {
         $script:libRestoreRunning = $true
         $script:libRestoreCancel = $false
         $restored = 0; $replaced = 0; $same = 0; $none = 0
+        $repRows = New-Object System.Collections.Generic.List[object]
         $okLines = New-Object System.Collections.Generic.List[string]
         $failLines = New-Object System.Collections.Generic.List[string]
         $wasCancelled = $false
@@ -35484,10 +36299,10 @@ function Show-SteamLibraryBrowser {
                     catch { $r = Restore-GameUpscalersInDir $gmDir $titleOf }
                 } catch { $r = [PSCustomObject]@{ Status = 'error'; Replaced = 0; Titles = @(); Error = [string]$_.Exception.Message } }
                 switch ([string]$r.Status) {
-                    'restored' { $restored++; $replaced += [int]$r.Replaced; [void]$okLines.Add([string]$gm.Name + ': ' + ((@($r.Titles)) -join ', ')) }
-                    'same'     { $same++ }
-                    'error'    { [void]$failLines.Add([string]$gm.Name + ': ' + [string]$r.Error) }
-                    default    { $none++ }
+                    'restored' { $restored++; $replaced += [int]$r.Replaced; [void]$okLines.Add([string]$gm.Name + ': ' + ((@($r.Titles)) -join ', ')); [void]$repRows.Add([PSCustomObject]@{ Status = 'ok'; Name = [string]$gm.Name; Details = ((@($r.Titles)) -join ', ') }) }
+                    'same'     { $same++; [void]$repRows.Add([PSCustomObject]@{ Status = 'same'; Name = [string]$gm.Name; Details = '' }) }
+                    'error'    { [void]$failLines.Add([string]$gm.Name + ': ' + [string]$r.Error); [void]$repRows.Add([PSCustomObject]@{ Status = 'fail'; Name = [string]$gm.Name; Details = [string]$r.Error }) }
+                    default    { $none++; [void]$repRows.Add([PSCustomObject]@{ Status = 'none'; Name = [string]$gm.Name; Details = '' }) }
                 }
                 try {
                     $libProgressBar.Value = [Math]::Min($libProgressBar.Maximum, $idx)
@@ -35522,8 +36337,10 @@ function Show-SteamLibraryBrowser {
         }
         $icon = if ($failLines.Count -gt 0) { [System.Windows.Forms.MessageBoxIcon]::Warning } else { [System.Windows.Forms.MessageBoxIcon]::Information }
         try {
-            Show-AppMessageBox($dlg, $msg, $global:appTitle, [System.Windows.Forms.MessageBoxButtons]::OK, $icon) | Out-Null
-        } catch {}
+            Show-LibActionReport -Owner $dlg -SummaryLines $lines.ToArray() -Rows $repRows.ToArray() -Icon $icon
+        } catch {
+            try { Show-AppMessageBox($dlg, $msg, $global:appTitle, [System.Windows.Forms.MessageBoxButtons]::OK, $icon) | Out-Null } catch {}
+        }
     })
 
     $btnImport.Add_Click({
@@ -40233,6 +41050,9 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
             if(-not $newId){$reason=if($global:lastShortcutError){[string]$global:lastShortcutError}else{(T 'reason_shortcut_fail')};throw $reason}
             # Запоминаем полную папку игры из панели (корень для поиска DLSS в библиотеке).
             try { if(-not $IsRomEntry -and -not [string]::IsNullOrWhiteSpace([string]$gamePath)){ Set-GameFolderForShortcut $finalExe $finalLaunch ([string]$gamePath) } } catch {}
+            # «Обновлять при добавлении»: если в карточке версии не меняли вручную (тогда они уже применены выше),
+            # апскейлеры новой игры обновляются до версий, выбранных в Настройках.
+            try { if(-not $IsRomEntry -and -not ($null -ne $libPlan -and @($libPlan.Targets).Count -gt 0)){ Invoke-UpscalerAutoUpdateForNewGame ([string]$gamePath) } } catch {}
             $hasCovers=$false
             try { $hasCovers=Test-CoversValid } catch { $hasCovers=$false }
             $logoPosNew = $null
@@ -40475,6 +41295,7 @@ function Set-PanelPathFromText($panelId, $pathText) {
     if ($panelId -eq 'C') { $global:dirC = $full; $lblPathC.Text = $full }
     else { $global:dirD = $full; $lblPathD.Text = $full }
     Refresh-Panels
+    try { Update-CheckedStatusHint -Force } catch {}
     Save-Configuration
     return $true
 }
@@ -40528,11 +41349,11 @@ function Install-PathFocusDismissHandlers {
 
 $btnSelectC.Add_Click({
     $res = Show-CenteredFolderDialog (T 'pick_extra_folder') $global:dirC
-    if ($res -ne $null) { $global:dirC = $res; Refresh-Panels; Save-Configuration }
+    if ($res -ne $null) { $global:dirC = $res; Refresh-Panels; try { Update-CheckedStatusHint -Force } catch {}; Save-Configuration }
 })
 $btnSelectD.Add_Click({
     $res = Show-CenteredFolderDialog (T 'pick_main_folder') $global:dirD
-    if ($res -ne $null) { $global:dirD = $res; Refresh-Panels; Save-Configuration }
+    if ($res -ne $null) { $global:dirD = $res; Refresh-Panels; try { Update-CheckedStatusHint -Force } catch {}; Save-Configuration }
 })
 
 function Get-MovedSteamPath ($oldGameRoot, $newGameRoot, $oldPath) {
@@ -41201,9 +42022,38 @@ $btnAddToSteam.Text = ''
     try { $listBoxC.Invalidate(); $listBoxD.Invalidate() } catch {}
 }
 
+# Автостатус главного окна: подсказка про Пробел при отметке игр и результат подсчёта
+# размера (Show-SelectedGameSize). Такой текст безопасно заменять при смене отметок или
+# папки — чужие статусы (перенос, импорт, ошибки) не трогаем.
+$script:autoStatusText = $null
+function Set-SizeStatus ([string]$text, $confident = $null) {
+    Set-MainStatusWithBadge $text $confident
+    $script:autoStatusText = [string]$labelHeader.Text
+}
+function Get-MainIdleStatusText {
+    $n = 0
+    try { $n = [int]$global:checkedC.Count + [int]$global:checkedD.Count } catch {}
+    if ($n -gt 0) { return (T 'hint_checked') }
+    return [string]$global:mainHintText
+}
+function Update-CheckedStatusHint ([switch]$Force) {
+    if ($script:moveInProgress -or $script:batchInProgress -or $script:smartBatchActive -or $script:libImportRunning) { return }
+    $cur = [string]$labelHeader.Text
+    if (-not $Force) {
+        $isIdle = ([string]::IsNullOrEmpty($cur) -or $cur -eq [string]$global:mainHintText -or ($null -ne $script:autoStatusText -and $cur -eq $script:autoStatusText))
+        if (-not $isIdle) { return }
+    }
+    $new = Get-MainIdleStatusText
+    if ($cur -ne $new -or $picStatusBadge.Visible) {
+        $labelHeader.Text = $new   # TextChanged сам прячет значок и возвращает цвет
+    }
+    $script:autoStatusText = $new
+}
+
 function Update-MainLibraryButtonState {
     # Галочка "выбрать всё" над списками обновляется при любом изменении отметок.
     try { Update-SelectAllCheckbox 'C'; Update-SelectAllCheckbox 'D' } catch {}
+    try { Update-CheckedStatusHint } catch {}
     try {
         if ($script:batchInProgress) { return }
 
@@ -41297,7 +42147,7 @@ function Show-SelectedGameSize($listBox, $source) {
         $size = Get-FolderSize $ctx.Path
         $global:folderSizeCache[$ctx.Path.ToLowerInvariant()] = $size
         $listBox.Invalidate()
-        Set-MainStatusWithBadge (T 'st_size_one' @($ctx.Name, ([string][Math]::Round($size / 1GB, 2)), (T 'unit_gb'))) $null
+        Set-SizeStatus (T 'st_size_one' @($ctx.Name, ([string][Math]::Round($size / 1GB, 2)), (T 'unit_gb'))) $null
         return
     }
 
@@ -41333,7 +42183,30 @@ function Show-SelectedGameSize($listBox, $source) {
     }
     try { $listBoxC.Invalidate(); $listBoxD.Invalidate() } catch { $listBox.Invalidate() }
 
-    $sizeText = Format-MoveGb $totalBytes
+    # Размер отмеченного — раздельно по панелям: «Слева (C:) 20.1 ГБ (2) · Справа (D:) 4012.5 ГБ (141)»
+    # (последние скобки — число отмеченных игр; панель без отметок не показываем). Главное — «слева/справа»:
+    # при одном томе буква диска у обеих панелей одна и та же.
+    $panelBytes = @{ C = [int64]0; D = [int64]0 }
+    $panelCount = @{ C = 0; D = 0 }
+    foreach ($t in @($tasks)) {
+        $panelBytes[[string]$t.From] = [int64]$panelBytes[[string]$t.From] + [int64]$t.Size
+        $panelCount[[string]$t.From] = [int]$panelCount[[string]$t.From] + 1
+    }
+    $panelParts = New-Object System.Collections.ArrayList
+    foreach ($side in @('C', 'D')) {
+        if ([int]$panelCount[$side] -le 0) { continue }
+        $drv = if ($side -eq 'C') { (T 'st_panel_left') } else { (T 'st_panel_right') }
+        try {
+            $root = Get-VolumeKey $(if ($side -eq 'C') { $global:dirC } else { $global:dirD })
+            if (-not [string]::IsNullOrWhiteSpace($root)) { $drv = $drv + ' (' + $root.TrimEnd('\') + ')' }
+        } catch {}
+        [void]$panelParts.Add(('{0} {1} ({2})' -f $drv, (Format-MoveGb ([int64]$panelBytes[$side])), [int]$panelCount[$side]))
+    }
+    # Отмечено в обеих панелях — добавляем общий итог по тому же шаблону.
+    if ($panelParts.Count -gt 1) {
+        [void]$panelParts.Add(('{0} {1} ({2})' -f (T 'st_panel_total'), (Format-MoveGb ([int64]$totalBytes)), [int]$totalCount))
+    }
+    $sizeText = ($panelParts -join ' · ')
     $countText = [string]$totalCount
 
     # Папки не заданы / один и тот же том — место не нужно.
@@ -41345,14 +42218,14 @@ function Show-SelectedGameSize($listBox, $source) {
     } catch {}
 
     if ($sameVolume) {
-        Set-MainStatusWithBadge (T 'st_move_same' @($countText, $sizeText)) $true
+        Set-SizeStatus (T 'st_move_same' @($countText, $sizeText)) $true
         return
     }
 
     $freeC = Get-PathFreeSpace $global:dirC
     $freeD = Get-PathFreeSpace $global:dirD
     if ($null -eq $freeC -or $null -eq $freeD) {
-        Set-MainStatusWithBadge (T 'st_move_free_unknown') $false
+        Set-SizeStatus (T 'st_move_free_unknown') $false
         return
     }
 
@@ -41362,25 +42235,32 @@ function Show-SelectedGameSize($listBox, $source) {
     $leftCount = @($plan.Left).Count
 
     if ($leftCount -eq 0) {
-        Set-MainStatusWithBadge (T 'st_move_ok' @($countText, $sizeText)) $true
+        Set-SizeStatus (T 'st_move_ok' @($countText, $sizeText)) $true
         return
     }
 
-    if ($canCount -eq 0) {
-        # Ни одну не влезает — сколько ещё нужно для самой «тяжёлой» из оставшихся.
-        $needExtra = [int64]0
-        foreach ($t in @($plan.Left)) {
-            $avail = [int64]$plan.Free[$t.To]
-            $need = [int64]($t.Size + $reserve - $avail)
-            if ($need -gt $needExtra) { $needExtra = $need }
-        }
-        if ($needExtra -lt 0) { $needExtra = 0 }
-        Set-MainStatusWithBadge (T 'st_move_none' @((Format-MoveGb $needExtra))) $false
-        return
+    # Что-то не влезает: показываем общий размер отмеченного и сколько места не хватает.
+    # Нехватка = максимум из двух оценок: по итоговому свободному месту каждого диска (с учётом того,
+    # что перенос в обе стороны освобождает место) и по самой тяжёлой игре, которая не влезла в план.
+    $inBytes  = @{ C = [int64]0; D = [int64]0 }
+    $outBytes = @{ C = [int64]0; D = [int64]0 }
+    foreach ($t in @($tasks)) {
+        $inBytes[[string]$t.To]    = [int64]$inBytes[[string]$t.To]    + [int64]$t.Size
+        $outBytes[[string]$t.From] = [int64]$outBytes[[string]$t.From] + [int64]$t.Size
     }
-
-    $canBytes = [int64]$plan.Bytes
-    Set-MainStatusWithBadge (T 'st_move_partial' @($canCount, $totalCount, (Format-MoveGb $canBytes))) $false
+    $needExtra = [int64]0
+    foreach ($side in @('C', 'D')) {
+        $freeNow = if ($side -eq 'C') { [int64]$freeC } else { [int64]$freeD }
+        $lack = [int64]($reserve - ($freeNow + [int64]$outBytes[$side] - [int64]$inBytes[$side]))
+        if ($lack -gt $needExtra) { $needExtra = $lack }
+    }
+    foreach ($t in @($plan.Left)) {
+        $avail = [int64]$plan.Free[$t.To]
+        $need = [int64]($t.Size + $reserve - $avail)
+        if ($need -gt $needExtra) { $needExtra = $need }
+    }
+    if ($needExtra -lt 0) { $needExtra = 0 }
+    Set-SizeStatus (T 'st_move_short' @($countText, $sizeText, (Format-MoveGb $needExtra))) $false
 }
 
 # Alt+Shift+Enter — считает размер ВСЕХ папок активной панели (не только
