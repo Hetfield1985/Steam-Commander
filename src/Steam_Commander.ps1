@@ -905,7 +905,7 @@ Set-SplashProgress 0.52
 # Единая версия приложения — используется в заголовке главного окна, в
 # подписи внизу окна настроек и в User-Agent HTTP-запросов. Меняйте только
 # здесь при выпуске новой версии.
-$global:appVersion = "2.0.9"
+$global:appVersion = "2.1.0"
 $global:appTitle = "Steam Commander"
 # Ссылки на исходный код и поддержку автора (окно «Поддержать» в настройках). Меняйте только здесь.
 $global:appRepoUrl = "https://github.com/Hetfield1985/Steam-Commander"
@@ -1186,6 +1186,7 @@ $script:I18n = @{
         sgdb_chooser_hint = 'Выберите вариант. Сначала показаны самые популярные. Загрузка миниатюр идёт в фоне.'
         src_tip_steam = 'Источник: Steam'
         src_tip_sgdb = 'Источник: SteamGridDB'
+        src_tip_nokey = 'SteamGridDB недоступен: укажите и проверьте API-ключ в настройках'
         sl_no_appid = 'App ID не указан — официальные обложки Steam недоступны.'
         icon_steam_none = 'В Steam для этой игры нет иконки.'
         sl_no_internet = 'Нет подключения к интернету — показаны заглушки миниатюр.'
@@ -1718,6 +1719,7 @@ $script:I18n = @{
         sgdb_chooser_hint = 'Choose an option. The most popular ones are shown first. Thumbnails load in the background.'
         src_tip_steam = 'Source: Steam'
         src_tip_sgdb = 'Source: SteamGridDB'
+        src_tip_nokey = 'SteamGridDB unavailable: enter and verify the API key in settings'
         sl_no_appid = 'App ID not specified — official Steam covers are unavailable.'
         icon_steam_none = 'Steam has no icon for this game.'
         sl_no_internet = 'No internet connection — showing placeholder thumbnails.'
@@ -12536,6 +12538,15 @@ function Copy-LicensedGridCoversToTemp ([string]$appId, [bool]$includeIcon = $fa
         } catch {}
     }
 
+    # ФИКС: в config\grid своей обложки нет и онлайн-загрузка ничего не дала - берём то, что
+    # показывает сам клиент Steam (appcache\librarycache, в т.ч. подпапки с хешем).
+    if (-not $loaded.ContainsKey('p') -and -not (Test-Path (Join-Path $global:tempCovers 'temp_p.jpg'))) {
+        $locP = Find-LocalSteamLibraryAsset $appId @('library_600x900_2x.jpg','library_600x900.jpg','library_capsule_2x.jpg','library_capsule.jpg')
+        if ($null -ne $locP) {
+            try { Copy-Item -LiteralPath $locP -Destination (Join-Path $global:tempCovers 'temp_p.jpg') -Force -ErrorAction Stop; $loaded['p'] = $true } catch {}
+        }
+    }
+
     if ($includeIcon) {
         $bestIcon = & $findNewest @(($appId + '_icon.png'), ($appId + '_icon.jpg'), ($appId + '_icon.ico'))
         if ($null -ne $bestIcon) {
@@ -13297,6 +13308,102 @@ function Get-SteamPicsAssetUrls ($appId, [string]$lang = 'english') {
     }
     if (@($out.Capsule).Count -eq 0 -and @($out.Hero).Count -eq 0 -and @($out.Header).Count -eq 0 -and @($out.Logo).Count -eq 0) { return $null }
     return $out
+}
+
+# ФИКС: положение/размер логотипа, которое разработчик задал в Steam (PICS:
+# common.library_assets_full.library_logo.logo_position). Раньше программа его вообще
+# не читала, поэтому у лицензионных игр логотип в карточке вставал «по умолчанию»
+# и не совпадал с клиентом Steam.
+function Get-SteamPicsLogoPosition ($appId) {
+    try {
+        $common = Get-SteamPicsCommon $appId
+        if ($common -eq $null -or $common.library_assets_full -eq $null) { return $null }
+        $node = $common.library_assets_full.library_logo
+        if ($node -eq $null) { return $null }
+        $lp = $node.logo_position
+        if ($lp -eq $null) { return $null }
+        $pp = [string]$lp.pinned_position
+        if (@('UpperLeft','UpperCenter','CenterCenter','BottomLeft','BottomCenter') -notcontains $pp) { return $null }
+        $ci = [System.Globalization.CultureInfo]::InvariantCulture
+        $w = 50.0; $h = 50.0; $tmp = 0.0
+        if ($null -ne $lp.width_pct  -and [double]::TryParse([string]$lp.width_pct,  [System.Globalization.NumberStyles]::Float, $ci, [ref]$tmp)) { $w = $tmp }
+        if ($null -ne $lp.height_pct -and [double]::TryParse([string]$lp.height_pct, [System.Globalization.NumberStyles]::Float, $ci, [ref]$tmp)) { $h = $tmp }
+        $w = [math]::Max(1.0, [math]::Min(100.0, $w)); $h = [math]::Max(1.0, [math]::Min(100.0, $h))
+        return [PSCustomObject]@{ Position = $pp; WidthPct = $w; HeightPct = $h }
+    } catch { return $null }
+}
+
+# ФИКС: ВСЕ возможные ссылки на вертикальную капсулу из PICS (image2x и image, язык
+# интерфейса, английский и любые другие языки). Раньше бралась ровно одна ссылка;
+# если именно этот файл на CDN отсутствовал (например, локализованный русский) -
+# вертикальная обложка оставалась пустой, хотя в Steam она есть.
+function Get-SteamPicsCapsuleCandidates ($appId, [string]$lang = 'english') {
+    $out = New-Object System.Collections.ArrayList
+    try {
+        $common = Get-SteamPicsCommon $appId
+        if ($common -eq $null) { return @() }
+        $files = New-Object System.Collections.ArrayList
+        $addFile = { param($f) if (-not [string]::IsNullOrEmpty([string]$f) -and -not $files.Contains([string]$f)) { [void]$files.Add([string]$f) } }
+        if ($common.library_assets_full -ne $null -and $common.library_assets_full.library_capsule -ne $null) {
+            $node = $common.library_assets_full.library_capsule
+            $langOrder = @([string]$lang, 'english')
+            foreach ($lg in $langOrder) {
+                foreach ($key in @('image2x','image')) {
+                    $img = $node.$key
+                    if ($img -eq $null) { continue }
+                    $v = $img.$lg
+                    if ($v -is [string]) { & $addFile $v }
+                }
+            }
+            foreach ($key in @('image2x','image')) {
+                $img = $node.$key
+                if ($img -eq $null) { continue }
+                foreach ($p in @($img.PSObject.Properties)) { if ($p.Value -is [string]) { & $addFile $p.Value } }
+            }
+        }
+        if ($common.library_assets -ne $null -and $common.library_assets.library_capsule -is [string]) { & $addFile $common.library_assets.library_capsule }
+        $cdn = @(
+            "https://shared.fastly.steamstatic.com/store_item_assets/",
+            "https://shared.akamai.steamstatic.com/store_item_assets/",
+            "https://shared.cloudflare.steamstatic.com/store_item_assets/"
+        )
+        foreach ($f in $files) {
+            foreach ($d in $cdn) { [void]$out.Add($d + "steam/apps/$appId/" + ($f -replace '^/','')) }
+        }
+    } catch {}
+    return @($out)
+}
+
+# ФИКС: ищет файл в локальном кэше клиента Steam. Новые версии клиента кладут картинки
+# в подпапки с хешем: appcache\librarycache\<appid>\<хеш>\library_600x900.jpg; старые -
+# плоско: <appid>_library_600x900.jpg. Раньше подпапки не просматривались.
+function Find-LocalSteamLibraryAsset ([string]$appId, [string[]]$namePatterns) {
+    try {
+        if ($appId -notmatch '^\d+$') { return $null }
+        $steamRoot = Get-ConfiguredSteamInstallPath
+        if ([string]::IsNullOrWhiteSpace($steamRoot)) { return $null }
+        $lib = [System.IO.Path]::Combine($steamRoot, 'appcache\librarycache')
+        $dir = [System.IO.Path]::Combine($lib, $appId)
+        foreach ($pat in $namePatterns) {
+            $best = $null
+            if ([System.IO.Directory]::Exists($dir)) {
+                foreach ($fp in [System.IO.Directory]::EnumerateFiles($dir, $pat, [System.IO.SearchOption]::AllDirectories)) {
+                    $fi = New-Object System.IO.FileInfo($fp)
+                    if ($fi.Length -lt 2048) { continue }
+                    if ($null -eq $best -or $fi.LastWriteTime -gt $best.LastWriteTime) { $best = $fi }
+                }
+            }
+            if ($null -eq $best -and [System.IO.Directory]::Exists($lib)) {
+                foreach ($fp in [System.IO.Directory]::EnumerateFiles($lib, ($appId + '_' + $pat))) {
+                    $fi = New-Object System.IO.FileInfo($fp)
+                    if ($fi.Length -lt 2048) { continue }
+                    if ($null -eq $best -or $fi.LastWriteTime -gt $best.LastWriteTime) { $best = $fi }
+                }
+            }
+            if ($null -ne $best) { return [string]$best.FullName }
+        }
+    } catch {}
+    return $null
 }
 
 # Путь к скачанной иконке в temp (ico предпочтительнее png/jpg).
@@ -14829,6 +14936,25 @@ function Download-CoversToTemp ($cleanAppID, [bool]$allowSgdbLogo = $true) {
                 }
             }
         }
+    }
+
+    # ФИКС: вертикальная обложка всё ещё не найдена, хотя в Steam она есть. Пробуем:
+    # 1) все варианты капсулы из PICS (image2x/image, язык интерфейса -> английский -> любой);
+    # 2) стандартные имена файлов на CDN (в т.ч. _2x и library_capsule);
+    # 3) локальный кэш клиента Steam (включая подпапки с хешем).
+    if (-not (Test-Path (Join-Path $global:tempCovers "temp_p.jpg")) -and -not (Test-EditorLoadCancelled)) {
+        try {
+            $tmpP = Join-Path $global:tempCovers "temp_p.jpg"
+            $capCands = New-Object System.Collections.ArrayList
+            foreach ($u in @(Get-SteamPicsCapsuleCandidates $cleanAppID $steamLang)) { [void]$capCands.Add($u) }
+            foreach ($nm in @('library_600x900_2x.jpg','library_600x900.jpg','library_capsule_2x.jpg','library_capsule.jpg')) { [void]$capCands.Add("${baseApps}${cleanAppID}/$nm") }
+            Save-FirstWorkingUrl @($capCands) $tmpP | Out-Null
+            if (-not (Test-Path $tmpP)) {
+                $locP = Find-LocalSteamLibraryAsset ([string]$cleanAppID) @('library_600x900_2x.jpg','library_600x900.jpg','library_capsule_2x.jpg','library_capsule.jpg')
+                if ($null -ne $locP) { Copy-Item -LiteralPath $locP -Destination $tmpP -Force -ErrorAction SilentlyContinue }
+            }
+            if ((Test-Path $tmpP) -and (Get-Item $tmpP).Length -lt 512) { Remove-Item $tmpP -Force -ErrorAction SilentlyContinue }
+        } catch {}
     }
 
     if ($allowSgdbLogo -and $null -eq (Get-TempIconPath)) {
@@ -18932,11 +19058,45 @@ function Set-EditorComposeTip($hs, [string]$kind) {
     } catch {}
 }
 
+function Get-EditorLogoDisplayScale($hs) {
+    # Масштаб для ползунка и подписи. Если ширина и высота рамки логотипа одинаковы (так их ставит сам ползунок) -
+    # это просто ширина. Если нет (Steam/разработчик задал, например, ширину 38% и высоту 100%), логотип вписывается
+    # в рамку по меньшей стороне, и ползунок по одной ширине показывал бы неверный размер. Тогда берём
+    # эквивалентный квадратный масштаб - тот, при котором логотип выглядит так же. Само сохранённое положение не меняется.
+    $fallback = 50
+    try { $fallback = [int][math]::Round([double]$hs.EditorState.LogoWidthPct) } catch {}
+    try {
+        $st = $hs.EditorState
+        $wp = [double]$st.LogoWidthPct; $hp = [double]$st.LogoHeightPct
+        if ([math]::Abs($wp - $hp) -lt 0.5) { return $fallback }
+        $hidden = $false
+        try { $hidden = [bool]$st.LogoHidden } catch {}
+        if ($hidden) { return $fallback }
+        $logoImg = $null
+        try { $logoImg = $hs.ComposeLogo.Picture.Image } catch {}
+        $pb = $hs.Picture
+        if ($null -eq $logoImg -or $null -eq $pb -or $null -eq $pb.Image -or $logoImg.Width -le 0 -or $logoImg.Height -le 0) { return $fallback }
+        $back = Get-EditorComposeBackRect $pb.Image $pb.ClientSize
+        if ($back.Width -le 0) { return $fallback }
+        $bW = [double]$back.Width
+        $padX = $bW * [double]$script:EditorLogoPadXFraction
+        $padY = $bW * [double]$script:EditorLogoPadYFraction
+        $availW = [math]::Max(1.0, $bW - 2.0 * $padX)
+        $sH = [math]::Min([double]$back.Height, $bW * [double]$script:EditorLogoSizeHeightFraction)
+        $availH = [math]::Max(1.0, $sH - 2.0 * $padY)
+        $lw = [double]$logoImg.Width; $lh = [double]$logoImg.Height
+        $base = [math]::Min($availW / $lw, $availH / $lh)
+        $sc = [math]::Min($availW * [math]::Max(1.0, [math]::Min(100.0, $wp)) / 100.0 / $lw, $availH * [math]::Max(1.0, [math]::Min(100.0, $hp)) / 100.0 / $lh)
+        if ($base -le 0) { return $fallback }
+        $eff = [int][math]::Round(100.0 * $sc / $base)
+        return [math]::Max($script:EditorLogoScaleMin, [math]::Min($script:EditorLogoScaleMax, $eff))
+    } catch { return $fallback }
+}
+
 function Update-EditorComposeScaleLabel($hs) {
     # Подпись у ползунка: «Размер логотипа: N%». Приглушена, пока ползунок недоступен.
     try {
-        $v = 50
-        try { $v = [int][math]::Round([double]$hs.EditorState.LogoWidthPct) } catch {}
+        $v = Get-EditorLogoDisplayScale $hs
         $hs.ScaleLabel.Text = (T 'logo_scale_label' @($v))
         if ($hs.Slider.Enabled) { $hs.ScaleLabel.ForeColor = $steamUi.Text } else { $hs.ScaleLabel.ForeColor = $steamUi.Muted }
     } catch {}
@@ -19028,8 +19188,7 @@ function Update-EditorComposeView($slot) {
         try {
             $sl = $hero.Slider
             if ($null -ne $sl) {
-                $v = 50
-                try { $v = [int][math]::Round([double]$hero.EditorState.LogoWidthPct) } catch {}
+                $v = Get-EditorLogoDisplayScale $hero
                 $v = [math]::Max($script:EditorLogoScaleMin, [math]::Min($script:EditorLogoScaleMax, $v))
                 if ($sl.Value -ne $v) { $sl.Value = $v }
                 $sl.Enabled = ($hasLogo -and -not $hidden -and -not $busy)
@@ -20006,10 +20165,24 @@ function Reload-EditorSteamCoversForLanguage($appId, $slots, $statusLabel, [stri
 
     $statusLabel.Text = (T 'covlang_loading' @($langName))
     Start-EditorLoading $targets $form
+    # Старый логотип (другого языка) на время загрузки убираем из композиции, чтобы он
+    # не висел поверх нового фона 1-2 секунды. Если новый не скачается — вернём прежний.
+    $logoSlot = $null; $oldLogoImg = $null; $logoReplaced = $false
+    try {
+        $logoSlot = $targets['Logo']
+        if ($null -ne $logoSlot -and $null -ne $logoSlot.Picture.Image) {
+            $oldLogoImg = $logoSlot.Picture.Image
+            $logoSlot.Picture.Image = $null
+            if ($script:LogoComposeEnabled) { Update-EditorComposeView $logoSlot }
+        }
+    } catch {}
     [System.Windows.Forms.Application]::DoEvents()
     $replaced = 0
     try {
         $pics = Get-SteamPicsAssetUrls $appId $lang
+        # Фаза 1: скачиваем ВСЕ обложки; фаза 2: подставляем их разом, без промежуточных
+        # состояний вроде «новый фон + старый логотип».
+        $downloaded = @()
         foreach ($d in $targetDefs) {
             $slot = $slots[[string]$d.Name]
             $urls = @()
@@ -20028,12 +20201,32 @@ function Reload-EditorSteamCoversForLanguage($appId, $slots, $statusLabel, [stri
             if ($urls.Count -gt 0) { $got = [bool](Save-FirstWorkingUrl $urls $tmp) }
             if ($got -and (Test-Path -LiteralPath $tmp)) {
                 Move-Item -LiteralPath $tmp -Destination $dest -Force
-                if (Set-EditorPreviewFile $slot $dest) { $replaced++ }
+                $downloaded += $d
             }
             Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
         }
+        foreach ($d in $downloaded) {
+            $slot = $slots[[string]$d.Name]
+            $dest = Join-Path $global:tempCovers ([string]$d.File)
+            if (Set-EditorPreviewFile $slot $dest) {
+                $replaced++
+                if ([string]$d.Name -eq 'Logo') { $logoReplaced = $true }
+            }
+        }
     } catch {
     } finally {
+        try {
+            if ($null -ne $oldLogoImg) {
+                if (-not $logoReplaced -and $null -eq $logoSlot.Picture.Image) {
+                    # Новый логотип не загрузился — возвращаем прежний.
+                    $logoSlot.Picture.Image = $oldLogoImg
+                    Set-EditorMissingState $logoSlot $false
+                    if ($script:LogoComposeEnabled) { Update-EditorComposeView $logoSlot }
+                } else {
+                    $oldLogoImg.Dispose()
+                }
+            }
+        } catch {}
         Stop-EditorLoading $targets $form
         foreach ($d in $targetDefs) {
             $slot = $slots[[string]$d.Name]
@@ -25932,7 +26125,7 @@ function Get-LibraryCoverPathCore ([string]$appId) {
             param([string]$dir, [int]$basePrio)
             if ([string]::IsNullOrWhiteSpace($dir) -or -not [System.IO.Directory]::Exists($dir)) { return }
             try {
-                foreach ($fp in [System.IO.Directory]::EnumerateFiles($dir)) {
+                foreach ($fp in [System.IO.Directory]::EnumerateFiles($dir, '*', [System.IO.SearchOption]::AllDirectories)) {
                     $n = [System.IO.Path]::GetFileName($fp).ToLowerInvariant()
                     if ($n -notmatch '\.(jpe?g|png)$') { continue }
                     if ($n -match 'logo|icon|clienticon|blur') { continue }
@@ -37050,17 +37243,29 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
 
     # Переключатель источника поиска. По умолчанию — Steam.
     # Steam использует Steam App ID, SGDB — SteamGridDB Game ID.
-    # Одна кнопка-переключатель: показывает текущий источник (Steam / SGDB),
-    # по клику источник меняется на другой. Размер и положение — как у «Обзор...»
-    # на строке ниже (90x28), чтобы кнопки в одном столбце выглядели единым рядом.
-    $searchSourceBtn = New-Object System.Windows.Forms.Button
-    $searchSourceBtn.Text='Steam'
+    # Сегментированный переключатель [ Steam | SGDB ]: оба источника видны сразу,
+    # активный подсвечен, переключение — кликом по нужной половине. Контейнер
+    # сохранил прежнее имя $searchSourceBtn (Visible/Enabled используются в других местах).
+    $searchSourceBtn = New-Object System.Windows.Forms.Panel
     $searchSourceBtn.Location = New-Object System.Drawing.Point(540,14)
-    $searchSourceBtn.Size = New-Object System.Drawing.Size(90,28)
-    $searchSourceBtn.FlatStyle='Flat'; $searchSourceBtn.FlatAppearance.BorderColor=$steamUi.Accent2
-    $searchSourceBtn.Font=New-Object System.Drawing.Font('Segoe UI Semibold',8.5)
-    $searchSourceBtn.Cursor=[System.Windows.Forms.Cursors]::Hand
+    $searchSourceBtn.Size = New-Object System.Drawing.Size(159,28)
+    $searchSourceBtn.BackColor = $steamUi.Panel
     $dlg.Controls.Add($searchSourceBtn)
+    $srcSegs = @{}
+    $srcUsable = @{ Steam = $true; SteamGridDB = $false }
+    foreach ($segDef in @(@{ Key = 'Steam'; Text = 'Steam'; X = 0; W = 80 }, @{ Key = 'SteamGridDB'; Text = 'SGDB'; X = 79; W = 80 })) {
+        $sb = New-Object System.Windows.Forms.Button
+        $sb.Location = New-Object System.Drawing.Point([int]$segDef.X, 0)
+        $sb.Size = New-Object System.Drawing.Size([int]$segDef.W, 28)
+        $sb.Text = [string]$segDef.Text
+        $sb.Tag = [string]$segDef.Key
+        $sb.FlatStyle = 'Flat'; $sb.FlatAppearance.BorderSize = 1
+        $sb.Font = New-Object System.Drawing.Font('Segoe UI Semibold',8.5)
+        $sb.TabStop = $false
+        $sb.Cursor = [System.Windows.Forms.Cursors]::Hand
+        $searchSourceBtn.Controls.Add($sb)
+        $srcSegs[[string]$segDef.Key] = $sb
+    }
     $searchSourceTip = New-Object System.Windows.Forms.ToolTip
 
     # Для ROM-карточек переключатель источника не показываем:
@@ -37083,11 +37288,14 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
         } catch {}
     }
     $searchSourceBtn.Tag = $srcIconPairs
-    $searchSourceBtn.ImageAlign = [System.Drawing.ContentAlignment]::MiddleLeft
-    $searchSourceBtn.TextAlign = [System.Drawing.ContentAlignment]::MiddleRight
-    $searchSourceBtn.TextImageRelation = [System.Windows.Forms.TextImageRelation]::ImageBeforeText
-    # Небольшой верхний «воздух» у Image: WinForms иначе сажает крупный значок ниже текста.
-    $searchSourceBtn.Padding = New-Object System.Windows.Forms.Padding(4, 0, 4, 2)
+    foreach ($sb in $srcSegs.Values) {
+        # Значок и текст центрируются вместе, как единая группа: так хватает минимальной ширины.
+        $sb.ImageAlign = [System.Drawing.ContentAlignment]::MiddleCenter
+        $sb.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
+        $sb.TextImageRelation = [System.Windows.Forms.TextImageRelation]::ImageBeforeText
+        # Небольшой верхний «воздух» у Image: WinForms иначе сажает крупный значок ниже текста.
+        $sb.Padding = New-Object System.Windows.Forms.Padding(0, 0, 0, 2)
+    }
 
     # SGDB доступен только после успешной проверки API-ключа. Пустой, изменённый,
     # невалидный или не проверенный ключ оставляет переключатель серым и неактивным.
@@ -37114,26 +37322,43 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
         # Кнопка всегда показывает ТЕКУЩИЙ источник. Из Steam в SGDB можно перейти
         # только с валидным API-ключом (иначе кнопка серая и неактивная), а из SGDB
         # обратно в Steam — всегда.
-        $canSwitch = ($isValid -or $isSgdb)
-        $searchSourceBtn.Text = $(if($isSgdb){ 'SGDB' } else { 'Steam' })
-        $searchSourceBtn.Enabled = $canSwitch
+        $searchSourceBtn.Enabled = $true
         $pairs = $searchSourceBtn.Tag
-        $pair = $null
-        try { $pair = $pairs[$(if($isSgdb){ 'SteamGridDB' } else { 'Steam' })] } catch {}
-        if($canSwitch){
-            $searchSourceBtn.BackColor=$steamUi.Accent2
-            $searchSourceBtn.ForeColor=[System.Drawing.Color]::White
-            $searchSourceBtn.FlatAppearance.BorderColor=$steamUi.Accent2
-            $searchSourceBtn.Cursor=[System.Windows.Forms.Cursors]::Hand
-            if ($pair -ne $null) { $searchSourceBtn.Image = $pair.Bright }
-        } else {
-            $searchSourceBtn.BackColor=[System.Drawing.Color]::FromArgb(45,45,45)
-            $searchSourceBtn.ForeColor=[System.Drawing.Color]::FromArgb(105,105,105)
-            $searchSourceBtn.FlatAppearance.BorderColor=[System.Drawing.Color]::FromArgb(65,65,65)
-            $searchSourceBtn.Cursor=[System.Windows.Forms.Cursors]::Default
-            if ($pair -ne $null) { $searchSourceBtn.Image = $pair.Dim }
+        foreach ($segKey in @('Steam', 'SteamGridDB')) {
+            $seg = $srcSegs[$segKey]
+            $active = (($segKey -eq 'SteamGridDB') -eq $isSgdb)
+            $usable = (($segKey -eq 'Steam') -or $isValid -or $isSgdb)
+            $srcUsable[$segKey] = $usable
+            $pair = $null
+            try { $pair = $pairs[$segKey] } catch {}
+            if ($active) {
+                # Текущий источник: яркая заливка и яркий значок.
+                $seg.BackColor = $steamUi.Accent2; $seg.ForeColor = [System.Drawing.Color]::White
+                $seg.FlatAppearance.BorderColor = $steamUi.Accent2
+                $seg.FlatAppearance.MouseOverBackColor = $steamUi.Accent2
+                $seg.Cursor = [System.Windows.Forms.Cursors]::Default
+                if ($pair -ne $null) { $seg.Image = $pair.Bright }
+                $seg.BringToFront()
+            } elseif ($usable) {
+                # Доступный, но не выбранный источник: приглушён, подсвечивается при наведении.
+                $seg.BackColor = $steamUi.Panel; $seg.ForeColor = $steamUi.Muted
+                $seg.FlatAppearance.BorderColor = $steamUi.Border
+                $seg.FlatAppearance.MouseOverBackColor = $steamUi.Panel2
+                $seg.Cursor = [System.Windows.Forms.Cursors]::Hand
+                if ($pair -ne $null) { $seg.Image = $pair.Dim }
+            } else {
+                # Недоступный (нет проверенного API-ключа SteamGridDB): серый, с пояснением в подсказке.
+                $seg.BackColor = [System.Drawing.Color]::FromArgb(45,45,45); $seg.ForeColor = [System.Drawing.Color]::FromArgb(105,105,105)
+                $seg.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(65,65,65)
+                $seg.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(45,45,45)
+                $seg.Cursor = [System.Windows.Forms.Cursors]::Default
+                if ($pair -ne $null) { $seg.Image = $pair.Dim }
+            }
+            try {
+                $tipKey = $(if (-not $usable) { 'src_tip_nokey' } elseif ($segKey -eq 'SteamGridDB') { 'src_tip_sgdb' } else { 'src_tip_steam' })
+                $searchSourceTip.SetToolTip($seg, (T $tipKey))
+            } catch {}
         }
-        try { $searchSourceTip.SetToolTip($searchSourceBtn, (T $(if($isSgdb){ 'src_tip_sgdb' } else { 'src_tip_steam' }))) } catch {}
         if (Test-StartupKeyChecksPending) { try { $sgdbPendingTimer.Start() } catch {} }
     }
     & $updateSgdbButtonState
@@ -37154,12 +37379,12 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     # одинаковая высота строки, фон, рамка и выделение.
     $titleCandidates=@(); $titleCandidateMap=@{}
 
-    $idLbl = New-Object System.Windows.Forms.Label; $idLbl.Text='App ID'; $idLbl.Location='702,14'; $idLbl.Size='55,28'; $idLbl.ForeColor=$steamUi.Muted; $idLbl.TextAlign=[System.Drawing.ContentAlignment]::MiddleLeft; $dlg.Controls.Add($idLbl)
+    $idLbl = New-Object System.Windows.Forms.Label; $idLbl.Text='App ID'; $idLbl.Location='716,14'; $idLbl.Size='62,28'; $idLbl.ForeColor=$steamUi.Muted; $idLbl.TextAlign=[System.Drawing.ContentAlignment]::MiddleLeft; $dlg.Controls.Add($idLbl)
     # Та же проблема и то же решение, что и у поля "Название" выше: однострочный
     # TextBox сам сжимает свою высоту под шрифт, поэтому рамку и фон рисует
     # Panel, а сам TextBox центрируется внутри неё вручную по вертикали.
     $pnlId = New-Object System.Windows.Forms.Panel
-    $pnlId.Location='757,14'; $pnlId.Size='103,28'
+    $pnlId.Location='780,14'; $pnlId.Size='80,28'
     $pnlId.BackColor=$steamUi.Input; $pnlId.BorderStyle='FixedSingle'
     $dlg.Controls.Add($pnlId)
 
@@ -39500,11 +39725,16 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
         }
     }
 
-    # Клик по кнопке источника переключает его на противоположный.
-    $searchSourceBtn.Add_Click({
-        $nextSource = $(if($editorState.SearchSource -eq 'Steam'){ 'SteamGridDB' } else { 'Steam' })
-        & $switchSearchSource $nextSource
-    })
+    # Клик по сегменту выбирает именно этот источник (повторный клик по активному ничего не делает;
+    # недоступный SteamGridDB без проверенного ключа игнорируется).
+    foreach ($seg in $srcSegs.Values) {
+        $seg.Add_Click({
+            $clickedSource = [string]$this.Tag
+            if ($clickedSource -eq 'SteamGridDB' -and -not [bool]$srcUsable['SteamGridDB']) { return }
+            if ([string]$editorState.SearchSource -eq $clickedSource) { return }
+            & $switchSearchSource $clickedSource
+        })
+    }
 
     # ВАЖНО: $exeCandidates раньше был обычным PS-массивом, и добавление через
     # "$exeCandidates += $x" создавало НОВЫЙ объект массива и переприсваивало
@@ -40681,16 +40911,74 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
                 if ($null -ne $savedLogoPos) { Set-EditorLogoStateFromCache $slots.Hero $savedLogoPos }
             }
         } catch {}
+        # ФИКС: у лицензионной игры без сохранённого положения берём то, что задал разработчик в Steam
+        # (PICS logo_position), а не жёсткие 50/50 «снизу слева». Официальное положение главнее общей
+        # галочки «по умолчанию для всех игр» (та продолжает действовать для остальных игр).
+        try {
+            if ($licensedMode -and $null -eq $savedLogoPos -and $licensedAppId -match '^\d+$' -and $script:LogoComposeEnabled -and $null -ne $slots.Hero.PSObject.Properties['ComposeLogo']) {
+                $picsLogoPos = Get-SteamPicsLogoPosition ([string]$licensedAppId)
+                if ($null -ne $picsLogoPos) {
+                    $savedLogoPos = $picsLogoPos
+                    Set-EditorLogoStateFromCache $slots.Hero $picsLogoPos
+                    # Это не сохранённое пользователем значение: при сохранении оно не пишется без изменений.
+                    try { $editorState.LogoFromCache = $false } catch {}
+                    # Официальное положение главнее общего «по умолчанию», но само общее значение не трогаем:
+                    # без этого флага сохранение карточки выключило бы галочку «по умолчанию для всех игр».
+                    try { $editorState | Add-Member -NotePropertyName LogoDefaultDeviated -NotePropertyValue $true -Force } catch {}
+                }
+            }
+        } catch {}
         # Галочка «по умолчанию» включена - новая карточка (и игра, у которой своего положения ещё нет)
         # открывается с общими положением и размером логотипа. Если у игры/рома уже есть сохранённое
         # положение, показываем его, а не общее: иначе карточка врёт, а сохранение затирает своё значение.
         try {
-            if ($null -eq $savedLogoPos -and $script:LogoComposeEnabled -and $null -ne $slots.Hero.PSObject.Properties['ComposeLogo']) {
+            # Общее «по умолчанию» подставляется только в карточки ещё не добавленных игр. У добавленных
+            # (лицензионных и готовых ярлыков) показывается реальное положение из Steam, замок при открытии не
+            # включается, но остаётся рабочим: нажатие делает текущие положение и размер новыми общими.
+            $isAddedGame = [bool]($licensedMode -or ($editMode -and $null -ne $existingShortcut))
+            if ($isAddedGame -and $script:LogoComposeEnabled -and $null -ne $slots.Hero.PSObject.Properties['ComposeLogo']) {
+                try { $editorState.LogoUseDefault = $false } catch {}
+                # Пока замок не нажат, сохранение такой карточки не должно отключать общее значение «по умолчанию».
+                # Нажатие на замок сбрасывает этот флаг (см. обработчик CheckedChanged) и обновляет общее значение.
+                try { $editorState | Add-Member -NotePropertyName LogoDefaultDeviated -NotePropertyValue $true -Force } catch {}
+            }
+            if (-not $isAddedGame -and $null -eq $savedLogoPos -and $script:LogoComposeEnabled -and $null -ne $slots.Hero.PSObject.Properties['ComposeLogo']) {
                 $logoDefOpen = Get-LogoDefaultPosition
                 if ($null -ne $logoDefOpen) {
                     Set-EditorLogoStateFromCache $slots.Hero $logoDefOpen
                     $editorState.LogoUseDefault = $true
                     $slots.Hero.ChkDefault.Checked = $true
+                }
+            }
+        } catch {}
+        # Положение и масштаб открытой карточки совпадают с общими «по умолчанию» - замок включён
+        # (это значит «выбрано значение по умолчанию»). Относится и к добавленным играм: берём то, что
+        # реально установлено в Steam, и просто сравниваем его с общим значением.
+        try {
+            if ($script:LogoComposeEnabled -and $null -ne $slots.Hero.PSObject.Properties['ComposeLogo'] -and -not [bool]$slots.Hero.ChkDefault.Checked) {
+                $logoDefCmp = Get-LogoDefaultPosition
+                if ($null -ne $logoDefCmp) {
+                    $stCmp = $editorState
+                    $sameScale = $false
+                    if ([math]::Abs([double]$stCmp.LogoWidthPct - [double]$logoDefCmp.WidthPct) -lt 0.5 -and
+                        [math]::Abs([double]$stCmp.LogoHeightPct - [double]$logoDefCmp.HeightPct) -lt 0.5) { $sameScale = $true }
+                    elseif ([string]$stCmp.LogoPosition -eq [string]$logoDefCmp.Position) {
+                        # Ширина/высота в Steam записаны по-разному, но логотип выглядит одинаково (тот же эквивалентный
+                        # масштаб, что показывает ползунок) - считаем значением по умолчанию.
+                        try {
+                            $defHs = [PSCustomObject]@{ EditorState = [PSCustomObject]@{ LogoWidthPct = $logoDefCmp.WidthPct; LogoHeightPct = $logoDefCmp.HeightPct; LogoHidden = $false }; ComposeLogo = $slots.Hero.ComposeLogo; Picture = $slots.Hero.Picture }
+                            $effDef = [int](Get-EditorLogoDisplayScale $defHs)
+                            $effCur = [int](Get-EditorLogoDisplayScale $slots.Hero)
+                            if ([math]::Abs($effDef - $effCur) -le 1) { $sameScale = $true }
+                        } catch {}
+                    }
+                    if ($sameScale -and [string]$stCmp.LogoPosition -eq [string]$logoDefCmp.Position) {
+                        # Подставляем общие значения как есть: иначе нажатие замка перезаписало бы общее значение сырыми числами этой игры.
+                        Set-EditorLogoStateFromCache $slots.Hero $logoDefCmp
+                        $editorState.LogoFromCache = $false
+                        $editorState.LogoUseDefault = $true
+                        $slots.Hero.ChkDefault.Checked = $true
+                    }
                 }
             }
         } catch {}
@@ -41518,6 +41806,21 @@ function Set-MoveProgress ([string]$name, [int64]$bytesNow, [int64]$bytesTotal, 
 }
 
 # Запускает внешний процесс и не даёт окну «зависнуть» (DoEvents), возвращает код выхода.
+if (-not ('SteamCmdProcIo' -as [type])) {
+    Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class SteamCmdProcIo {
+    [StructLayout(LayoutKind.Sequential)]
+    struct IO_COUNTERS { public ulong ReadOps, WriteOps, OtherOps, ReadBytes, WriteBytes, OtherBytes; }
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool GetProcessIoCounters(IntPtr h, out IO_COUNTERS c);
+    public static long GetWriteBytes(IntPtr h) { IO_COUNTERS c; return GetProcessIoCounters(h, out c) ? (long)c.WriteBytes : -1; }
+}
+'@
+}
+$script:ExtProc = $null
+
 function Invoke-ExternalPumped ([string]$file, [string]$arguments, $onTick) {
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = $file; $psi.Arguments = $arguments
@@ -41525,6 +41828,7 @@ function Invoke-ExternalPumped ([string]$file, [string]$arguments, $onTick) {
     $proc = New-Object System.Diagnostics.Process
     $proc.StartInfo = $psi
     [void]$proc.Start()
+    $script:ExtProc = $proc
     $lastTick = [DateTime]::MinValue
     while (-not $proc.HasExited) {
         Start-Sleep -Milliseconds 100
@@ -41535,6 +41839,7 @@ function Invoke-ExternalPumped ([string]$file, [string]$arguments, $onTick) {
         }
     }
     $proc.WaitForExit()
+    $script:ExtProc = $null
     $code = [int]$proc.ExitCode
     $proc.Dispose()
     return $code
@@ -41647,6 +41952,14 @@ function Copy-GameFolderStaged ($item, [string]$stage, [int64]$base, [int64]$tot
     $tick = {
         $c = $script:MoveCtx
         $cur = Get-DirBytesFast $c.Stage
+        # robocopy заранее выделяет место под файл, и его Length сразу равен полному размеру,
+        # поэтому бар «залпом» заполнялся. Берём реально записанные процессом байты.
+        try {
+            if ($null -ne $script:ExtProc -and -not $script:ExtProc.HasExited) {
+                $wb = [SteamCmdProcIo]::GetWriteBytes($script:ExtProc.Handle)
+                if ($wb -ge 0) { $cur = [Math]::Min([int64]$cur, [int64]$wb) }
+            }
+        } catch {}
         $now = [DateTime]::Now
         $dt = ($now - $c.LastTime).TotalSeconds
         $speed = 0
