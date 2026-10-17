@@ -6,6 +6,27 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [2.1.0] - 2026-10-17
+
+### Added
+* **The logo position set by the developer in Steam is used.** For a licensed game with no saved position, the card takes the official position and size from Steam (PICS `logo_position`) instead of the fixed "bottom left, 50 %".
+* **More places to look for the vertical cover.** If the usual one is missing, the program tries all capsule links from PICS (`image2x` / `image`, interface language, English, any other) on all three Steam CDN hosts, the standard file names, and the local Steam client cache.
+
+### Improved
+* **The logo scale is shown correctly when the logo frame is not square.** For example, with a width of 38 % and a height of 100 % the slider now shows the equivalent scale instead of the width only; the saved position is not changed.
+* **Logo defaults in cards of games already in Steam.** The *default for all games* value is applied only to games not added yet. For added games the real position from Steam is shown, the lock is not turned on when the card opens but still works (it makes the current position the new default), and it turns on by itself when the position and scale equal the default.
+* **Changing the cover language is cleaner.** The old logo is hidden while covers load, all covers are applied at once, and the previous logo is restored if the new one cannot be downloaded.
+* **Local Steam covers are searched in hashed subfolders** (`appcache\librarycache\<appid>\<hash>\`) as well, in the card and in the library.
+
+### Fixed
+* **The vertical cover stayed empty although it exists in Steam.** Only one capsule link was tried; if that file was missing on the CDN (for example the Russian one), nothing was shown. See the new fallbacks above.
+* **The progress bar of a move jumped to full at once** with `robocopy`, which pre-allocates the file. It now counts the bytes actually written.
+
+### Changed
+* **The search source switch is the segmented control `[ Steam | SGDB ]` again** instead of a single toggle button.
+
+---
+
 ## [2.0.9] - 2026-10-16
 
 ### Added
