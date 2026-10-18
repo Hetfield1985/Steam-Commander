@@ -6,6 +6,34 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [2.1.1] - 2026-10-18
+
+### Added
+* **Backup and restore of game saves.** New **Saves** group on the *Library / Import* toolbar with **Back up** and **Restore** buttons for the ticked games. Save locations come from the official Ludusavi database plus the known paths of emulators. If the saves did not change since the last backup, no new archive is created. Before a restore the current saves are put into a `pre-restore` safety archive; when a game has several backups, a picker lets you choose one. A table report shows the result for every game (*Created* / *Restored* / *Unchanged* / *No saves* / *No backup* / *Error*).
+* **Saves for a single game.** The game card has a **Saves** group of four icon buttons: open the saves folder, detect saves, back up, restore. The same actions (*Saves folder*, *Back up saves*, *Restore saves...*) are in the right-click menu of every tile in *Library / Import*.
+* **Saves detector.** The magnifier button in the card first looks the game up in the database; if nothing is found, it can launch the game, watch the files it creates and offer the most likely locations. The ticked locations are remembered for the game (the button turns green), and its right-click menu can detect again, track a game launch or reset the saved result.
+* **Saves section in Settings** with the state of the saves database, an **Update** button (downloads a fresh Ludusavi database; nothing happens if it is up to date) and the common backup folder.
+* **Launch button in the game card.** A button with a play icon, the same size as the *Browse* button, stands next to the EXE button (next to the ROM button in ROM cards) and starts the game: Steam games through Steam, shortcuts, launcher games and ROMs through their own executable and launch options. For a ROM it uses the saved library entry, so it is disabled for a ROM that has not been added yet.
+* **Launch in the tile menu.** The right-click menu of every game and ROM in *Library / Import* now starts with **Launch**.
+* **Full paths in the saves picker.** Hovering a location in the *Saves detector* window shows its full path in a tooltip, and the right-click menu **Open folder** opens it (a file is shown selected in Explorer) so you can check whether the save files are really there.
+
+### Improved
+* **New sharp icons on the save buttons.** The magnifier, floppy disk and restore buttons in the card, and the backup / restore buttons in the library (a larger variant), are drawn by code instead of emoji and symbol fonts, so they stay crisp at any scale and match the other icon buttons. The library *Refresh* button uses the same two-arrow icon as *Update upscalers*, and the library's upscaler restore button uses the restore icon.
+* **Cover paths are cached more precisely.** The cache entry of a game is invalidated only by changes to the files of that game (`config\grid`, `librarycache`, `appcache\librarycache`), not by any change in the shared folders, so editing one card or starting Steam no longer makes the covers of the whole library be searched again.
+* **Buttons stay in place while covers load.** The EXE button and the eye button no longer disappear during loading; they stay on top of the spinner and are only disabled.
+* **Group captions in the library toolbar** (*Emulators*, *Saves*, *Upscalers*) make the button groups easier to tell apart.
+
+### Fixed
+* **Tiles at the end of a long list disappeared** in a narrow library window with hundreds of games, because Windows does not draw child windows beyond ~32 767 px of height. A tall grid is now split into several sections laid out one under another; far sections are hidden. Short grids use one section as before.
+* **The Steam restart button in the library no longer breaks the grid.** It is an overlay strip over the bottom of the list, so showing or hiding it does not change the list size or recalculate the columns.
+
+### Changed
+* `SCLauncher.exe` is regenerated automatically (helper version 36).
+* Debug log files are no longer written.
+* Application version is now 2.1.1.
+
+---
+
 ## [2.1.0] - 2026-10-17
 
 ### Added
