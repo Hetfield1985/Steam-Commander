@@ -1280,7 +1280,7 @@ $script:I18n = @{
         icon_steam_none = 'В Steam для этой игры нет иконки.'
         sl_no_internet = 'Нет подключения к интернету — показаны заглушки миниатюр.'
         sl_steam_fetch = 'Получаю официальные ресурсы Steam для App ID {0}…'
-        sl_steam_found = 'Steam: найдено ресурсов — {0} из 4.'
+        sl_steam_found = 'Steam: найдено ресурсов — {0} из {1}.'
         covlang_tip = 'Регион обложек Steam: {0}. Нажмите, чтобы выбрать другой.'
         card_dlss_sr = 'DLSS'
         card_dlss_rr = 'Реконструкция лучей DLSS'
@@ -1906,7 +1906,7 @@ $script:I18n = @{
         icon_steam_none = 'Steam has no icon for this game.'
         sl_no_internet = 'No internet connection — showing placeholder thumbnails.'
         sl_steam_fetch = 'Fetching official Steam assets for App ID {0}…'
-        sl_steam_found = 'Steam: assets found — {0} of 4.'
+        sl_steam_found = 'Steam: assets found — {0} of {1}.'
         covlang_tip = 'Steam cover region: {0}. Click to choose another one.'
         card_dlss_sr = 'DLSS'
         card_dlss_rr = 'DLSS Ray Reconstruction'
@@ -2526,7 +2526,7 @@ $script:I18n = @{
         icon_steam_none = 'Steam 中没有该游戏的图标。'
         sl_no_internet = '没有网络连接 — 已显示占位缩略图。'
         sl_steam_fetch = '正在获取 App ID {0} 的 Steam 官方素材…'
-        sl_steam_found = 'Steam：已找到素材 — {0}/4。'
+        sl_steam_found = 'Steam：已找到素材 — {0}/{1}。'
         covlang_tip = 'Steam 封面区域：{0}。点击可选择其他区域。'
         card_dlss_sr = 'DLSS'
         card_dlss_rr = 'DLSS 光线重建'
@@ -3152,7 +3152,7 @@ $script:I18n = @{
         icon_steam_none = 'Steam no tiene icono para este juego.'
         sl_no_internet = 'Sin conexión a internet — se muestran miniaturas de marcador de posición.'
         sl_steam_fetch = 'Obteniendo los recursos oficiales de Steam para el App ID {0}…'
-        sl_steam_found = 'Steam: recursos encontrados — {0} de 4.'
+        sl_steam_found = 'Steam: recursos encontrados — {0} de {1}.'
         covlang_tip = 'Región de portadas de Steam: {0}. Haz clic para elegir otra.'
         card_dlss_sr = 'DLSS'
         card_dlss_rr = 'Reconstrucción de rayos DLSS'
@@ -3778,7 +3778,7 @@ $script:I18n = @{
         icon_steam_none = 'A Steam não tem ícone para este jogo.'
         sl_no_internet = 'Sem conexão com a internet — exibindo miniaturas de espaço reservado.'
         sl_steam_fetch = 'Obtendo os recursos oficiais da Steam para o App ID {0}…'
-        sl_steam_found = 'Steam: recursos encontrados — {0} de 4.'
+        sl_steam_found = 'Steam: recursos encontrados — {0} de {1}.'
         covlang_tip = 'Região das capas da Steam: {0}. Clique para escolher outra.'
         card_dlss_sr = 'DLSS'
         card_dlss_rr = 'Reconstrução de raios DLSS'
@@ -4404,7 +4404,7 @@ $script:I18n = @{
         icon_steam_none = 'Steam hat kein Symbol für dieses Spiel.'
         sl_no_internet = 'Keine Internetverbindung — Platzhalter-Miniaturansichten werden angezeigt.'
         sl_steam_fetch = 'Offizielle Steam-Assets für App-ID {0} werden abgerufen…'
-        sl_steam_found = 'Steam: Assets gefunden — {0} von 4.'
+        sl_steam_found = 'Steam: Assets gefunden — {0} von {1}.'
         covlang_tip = 'Steam-Cover-Region: {0}. Klicken, um eine andere auszuwählen.'
         card_dlss_sr = 'DLSS'
         card_dlss_rr = 'DLSS Strahlenrekonstruktion'
@@ -20880,7 +20880,8 @@ function Load-EditorSteamPreviews($appId, $slots, $statusLabel, [bool]$preferLoc
             $iconPrev = Get-TempIconPath
             if ($null -ne $iconPrev -and (Set-EditorPreviewFile $slots.Icon $iconPrev)) { Set-EditorSourceBadge $slots.Icon 'Steam'; $ok++ }
         }
-        $statusLabel.Text = (T 'sl_steam_found' @($ok))
+        $slotTotal = if ($null -ne $slots.Icon) { 5 } else { 4 }
+        $statusLabel.Text = (T 'sl_steam_found' @($ok, $slotTotal))
         # Список языков заполняется самой карточкой после завершения загрузки.
         # Здесь только запоминаем найденные коды в панели, чтобы не создавать
         # кнопки без обработчиков во время первичной загрузки.
