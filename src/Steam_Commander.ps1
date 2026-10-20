@@ -915,7 +915,7 @@ Set-SplashProgress 0.52
 # Единая версия приложения — используется в заголовке главного окна, в
 # подписи внизу окна настроек и в User-Agent HTTP-запросов. Меняйте только
 # здесь при выпуске новой версии.
-$global:appVersion = "2.1.1"
+$global:appVersion = "2.1.2"
 $global:appTitle = "Steam Commander"
 # Ссылки на исходный код и поддержку автора (окно «Поддержать» в настройках). Меняйте только здесь.
 $global:appRepoUrl = "https://github.com/Hetfield1985/Steam-Commander"
@@ -978,7 +978,7 @@ $script:I18n = @{
         batch_auto_tip = 'Если включено: при пакетном добавлении игры с уверенно определёнными названием и exe добавляются в библиотеку автоматически, без показа карточки. Карточка откроется только для игр, которые программа не смогла определить однозначно. В режиме ROMs (эмуляторы) карточка тоже не показывается, если название, эмулятор и ROM определены уверенно.'
         btn_add_batch = 'Добавить выбранные игры в библиотеку'
         btn_add_batch_n = 'Добавить выбранные игры в библиотеку ({0})'
-        btn_steam_library = 'Библиотека / Импорт'
+        btn_steam_library = 'Библиотека / Импорт / Сохранения / DLSS Swap'
         btn_swap_emulator = 'Сменить эмулятор на {0} ({1})'
         rom_swap_not_added = 'нет ярлыка в Steam'
         lib_browser_title = 'Библиотека/Импорт'
@@ -1017,6 +1017,8 @@ $script:I18n = @{
         lib_restore_tip = 'Вернуть в выбранных играх оригинальные DLL апскейлеров из сохранённых копий (.sc_orig). Копии остаются рядом, поэтому позже игры можно снова обновить.'
         lib_restore_confirm = 'Вернуть оригинальные библиотеки апскейлеров в выбранных играх: {0}.'
         lib_restore_confirm2 = 'Файлы будут заменены копиями .sc_orig, созданными перед обновлением. Закройте игры перед возвратом.'
+        lib_all_note = 'Игры не выделены: действие применится ко всем играм текущего списка (с учётом поиска и фильтра).'
+        lib_all_confirm = 'Игры не выделены. Выполнить поиск сохранений для всех игр текущего списка: {0}?'
         save_btn_backup = 'Бэкап'
         save_btn_restore = 'Вернуть'
         save_tip_backup = 'Бэкап сохранений в отмеченных играх (официальная база Ludusavi и пути эмуляторов). Если сохранения не менялись, новый архив не создаётся.'
@@ -1052,8 +1054,18 @@ $script:I18n = @{
         lib_ctx_save_backup_menu = 'Бэкап и восстановление сохранений'
         lib_ctx_save_backup = 'Сделать бэкап сохранений'
         lib_ctx_save_restore = 'Восстановить сохранения…'
+        lib_ctx_save_scan_sel = 'Найти сохранения ({0} игр)'
+        lib_ctx_save_backup_sel = 'Сделать бэкап сохранений ({0} игр)'
+        lib_ctx_save_restore_sel = 'Восстановить сохранения ({0} игр)'
+        lib_ctx_upd = 'Обновить апскейлеры'
+        lib_ctx_upd_sel = 'Обновить апскейлеры ({0} игр)'
+        lib_ctx_restore = 'Вернуть оригинальные апскейлеры'
+        lib_ctx_restore_sel = 'Вернуть оригинальные апскейлеры ({0} игр)'
+        lib_ctx_upd_confirm1 = 'Заменить библиотеки апскейлеров на последние скачанные в игре «{0}».'
+        lib_ctx_restore_confirm1 = 'Вернуть оригинальные библиотеки апскейлеров в игре «{0}».'
+        lib_ctx_save_scan = 'Найти сохранения'
         save_heur_label = 'Эвристика'
-        sdet_tip = 'Определить точные сохранения игры: сначала поиск по базе, а если не найдены — запуск игры и слежение за создаваемыми файлами. Правая кнопка — дополнительные действия.'
+        sdet_tip = 'Определить сохранения игры без запуска: сначала база и пути эмуляторов, затем Steam Cloud и эвристика. Если ничего не найдено — предложит запустить игру. Правая кнопка — запуск игры и другие действия.'
         sdet_tip_defined = 'Сохранения определены (мест: {0}). Нажмите, чтобы определить заново. Правая кнопка — дополнительные действия.'
         sdet_menu_auto = 'Определить сохранения'
         sdet_menu_track = 'Отследить запуск игры…'
@@ -1061,11 +1073,12 @@ $script:I18n = @{
         sdet_label = 'Определено детектором'
         sdet_title = 'Детектор сохранений'
         sdet_pick_hint_db = 'Сохранения найдены по базе. Отметьте места, которые нужно считать сохранениями игры:'
+        sdet_pick_hint_heur = 'Сохранения найдены через Steam Cloud / эвристику. Отметьте места, которые нужно считать сохранениями игры:'
         sdet_pick_hint_track = 'Во время игры файлы создавались или менялись здесь. Отметьте места сохранений игры:'
         sdet_btn_use = 'Принять'
         sdet_btn_track = 'Запустить игру'
         sdet_btn_finish = 'Завершить'
-        sdet_confirm_track = 'Сохранения игры «{0}» не найдены по базе. Запустить игру и отследить создаваемые ею файлы?'
+        sdet_confirm_track = 'Сохранения игры «{0}» не найдены (база, пути эмуляторов, Steam Cloud, эвристика). Запустить игру и отследить создаваемые ею файлы?'
         sdet_run_hint = 'Поиграйте, дойдите до сохранения (сделайте его вручную или дождитесь автосохранения) и закройте игру. Детектор завершится сам после выхода из игры либо по кнопке «Завершить».'
         sdet_status_baseline = 'Подготовка: замер фоновой активности файлов…'
         sdet_status_launch = 'Запуск игры…'
@@ -1083,6 +1096,17 @@ $script:I18n = @{
         sdet_unit_b = 'Б'
         lib_tmp_saves_scan = 'Поиск сохранений: {0} из {1}'
         lib_tmp_saves_done = 'Игр с найденными сохранениями: {0} из {1}'
+        save_scan_tip = 'Поиск сохранений в отмеченных играх без запуска игр. Шаг 1: база Ludusavi и пути эмуляторов — найденное запоминается как определённые сохранения. Если там ничего нет — Steam Cloud и эвристика, запоминается то, что нашлось. Уже определённые игры пропускаются. Если у игр найдено несколько мест сохранений, после поиска одним окном предложит отметить нужные.'
+        save_st_defined = 'Определено'
+        save_scan_recorded = 'Сохранения определены и запомнены: {0}'
+        save_scan_already = 'Уже определены раньше'
+        save_scan_noreg = 'Не запомнено: есть ключи реестра'
+        sdet_pick_hint_multi_all = 'Для этих игр найдено несколько мест сохранений. Отметьте те, что нужно считать сохранениями игры (галочка у названия игры отмечает все её места):'
+        sdet_btn_check_all = 'Отметить все'
+        sdet_btn_uncheck_all = 'Снять все'
+        sdet_btn_skip_all = 'Пропустить все'
+        save_scan_pick_skipped = 'Не запомнено: выбор пропущен'
+        save_card_found_tip = 'Сохранения этой игры найдены'
         save_card_created = 'Бэкап сохранений создан, файлов: {0}'
         save_card_same = 'Сохранения не менялись с последнего бэкапа'
         save_card_none = 'Сохранения этой игры не найдены'
@@ -1435,6 +1459,7 @@ $script:I18n = @{
         hd_queue_left = ' · ещё в очереди: {0}'
         hd_stopped = 'Остановлено: ок {0}, авто {1}, пропуск {2}.'
         hd_finished = 'Готово: {0} из {1} (авто: {2}, пропуск: {3}).'
+        hd_saves_found = 'Сохранения определены: {0}.'
         hd_auto_batch_err = 'Ошибка автоматического пакетного добавления: {0}'
         hd_cancelling = 'Отмена… завершаю текущую игру.'
         hd_tick_one = 'Отметьте галочкой хотя бы одну игру.'
@@ -1604,7 +1629,7 @@ $script:I18n = @{
         batch_auto_tip = 'If enabled: when adding several games at once, games whose name and exe are detected with confidence are added to the library automatically, without showing the card. The card opens only for games the program could not identify unambiguously. In ROMs (emulator) mode the card is also skipped when the title, emulator and ROM are detected with confidence.'
         btn_add_batch = 'Add selected games to library'
         btn_add_batch_n = 'Add selected games to library ({0})'
-        btn_steam_library = 'Library / Import'
+        btn_steam_library = 'Library / Import / Saves / DLSS Swap'
         btn_swap_emulator = 'Switch emulator to {0} ({1})'
         rom_swap_not_added = 'no shortcut in Steam'
         lib_browser_title = 'Library/Import'
@@ -1643,6 +1668,8 @@ $script:I18n = @{
         lib_restore_tip = 'Restore the original upscaler DLLs in the selected games from the saved copies (.sc_orig). The copies stay in place, so the games can be updated again later.'
         lib_restore_confirm = 'Restore the original upscaler libraries in the selected games: {0}.'
         lib_restore_confirm2 = 'Files will be replaced with the .sc_orig copies made before updating. Close the games before restoring.'
+        lib_all_note = 'No games are selected: the action will apply to all games in the current list (respecting search and filter).'
+        lib_all_confirm = 'No games are selected. Search for saves in all games of the current list: {0}?'
         save_btn_backup = 'Back up'
         save_btn_restore = 'Restore'
         save_tip_backup = 'Back up the saves of the selected games (official Ludusavi database and emulator paths). If the saves have not changed, no new archive is created.'
@@ -1678,8 +1705,18 @@ $script:I18n = @{
         lib_ctx_save_backup_menu = 'Saves backup and restore'
         lib_ctx_save_backup = 'Back up saves'
         lib_ctx_save_restore = 'Restore saves…'
+        lib_ctx_save_scan_sel = 'Find saves ({0} games)'
+        lib_ctx_save_backup_sel = 'Back up saves ({0} games)'
+        lib_ctx_save_restore_sel = 'Restore saves ({0} games)'
+        lib_ctx_upd = 'Update upscalers'
+        lib_ctx_upd_sel = 'Update upscalers ({0} games)'
+        lib_ctx_restore = 'Restore original upscalers'
+        lib_ctx_restore_sel = 'Restore original upscalers ({0} games)'
+        lib_ctx_upd_confirm1 = 'Replace the upscaler libraries with the latest downloaded versions in “{0}”.'
+        lib_ctx_restore_confirm1 = 'Restore the original upscaler libraries in “{0}”.'
+        lib_ctx_save_scan = 'Find saves'
         save_heur_label = 'Heuristic'
-        sdet_tip = 'Detect the exact saves of this game: first a database lookup, and if nothing is found, launch the game and watch the files it creates. Right-click for more actions.'
+        sdet_tip = 'Detect the saves of this game without launching it: first the database and emulator paths, then Steam Cloud and heuristics. If nothing is found, it offers to launch the game. Right-click: launch tracking and more.'
         sdet_tip_defined = 'Saves are defined ({0} location(s)). Click to detect again. Right-click for more actions.'
         sdet_menu_auto = 'Detect saves'
         sdet_menu_track = 'Track the game launch…'
@@ -1687,11 +1724,12 @@ $script:I18n = @{
         sdet_label = 'Detected'
         sdet_title = 'Save detector'
         sdet_pick_hint_db = 'Saves were found in the database. Tick the locations that should count as the game saves:'
+        sdet_pick_hint_heur = 'Saves were found via Steam Cloud / heuristics. Tick the locations that should count as the game saves:'
         sdet_pick_hint_track = 'Files were created or changed here while the game was running. Tick the save locations:'
         sdet_btn_use = 'Accept'
         sdet_btn_track = 'Launch the game'
         sdet_btn_finish = 'Finish'
-        sdet_confirm_track = 'The saves of {0} were not found in the database. Launch the game and watch the files it creates?'
+        sdet_confirm_track = 'The saves of {0} were not found (database, emulator paths, Steam Cloud, heuristics). Launch the game and watch the files it creates?'
         sdet_run_hint = 'Play until the game writes a save (save manually or wait for an autosave), then close the game. The detector finishes by itself when the game exits, or press Finish.'
         sdet_status_baseline = 'Preparing: measuring background file activity…'
         sdet_status_launch = 'Launching the game…'
@@ -1709,6 +1747,17 @@ $script:I18n = @{
         sdet_unit_b = 'B'
         lib_tmp_saves_scan = 'Looking for saves: {0} of {1}'
         lib_tmp_saves_done = 'Games with saves found: {0} of {1}'
+        save_scan_tip = 'Search for saves in the selected games without launching them. Step 1: Ludusavi database and emulator paths - whatever is found is stored as defined saves. If nothing is there - Steam Cloud and heuristics, and what they find is stored. Games with saves already defined are skipped. If several save locations are found for some games, one window will let you tick the right ones after the search.'
+        save_st_defined = 'Defined'
+        save_scan_recorded = 'Saves defined and stored: {0}'
+        save_scan_already = 'Already defined earlier'
+        save_scan_noreg = 'Not stored: registry keys are involved'
+        sdet_pick_hint_multi_all = 'Several save locations were found for these games. Tick the ones that should count as the game saves (the checkbox next to a game name toggles all its locations):'
+        sdet_btn_check_all = 'Check all'
+        sdet_btn_uncheck_all = 'Uncheck all'
+        sdet_btn_skip_all = 'Skip all'
+        save_scan_pick_skipped = 'Not stored: selection skipped'
+        save_card_found_tip = 'Saves of this game were found'
         save_card_created = 'Saves backup created, files: {0}'
         save_card_same = 'Saves have not changed since the last backup'
         save_card_none = 'No saves found for this game'
@@ -2061,6 +2110,7 @@ $script:I18n = @{
         hd_queue_left = ' · {0} more in queue'
         hd_stopped = 'Stopped: OK {0}, auto {1}, skipped {2}.'
         hd_finished = 'Done: {0} of {1} (auto: {2}, skipped: {3}).'
+        hd_saves_found = 'Saves defined: {0}.'
         hd_auto_batch_err = 'Automatic batch add failed: {0}'
         hd_cancelling = 'Cancelling… finishing the current game.'
         hd_tick_one = 'Tick at least one game.'
@@ -2230,7 +2280,7 @@ $script:I18n = @{
         batch_auto_tip = '启用后：一次添加多个游戏时，名称和 exe 能被明确识别的游戏会自动加入库中，不再显示卡片。仅对程序无法明确识别的游戏才会打开卡片。'
         btn_add_batch = '＋  将所选游戏添加到库'
         btn_add_batch_n = '＋  将所选游戏添加到库（{0}）'
-        btn_steam_library = '游戏库/导入'
+        btn_steam_library = '游戏库 / 导入 / 存档 / DLSS Swap'
         btn_swap_emulator = '切换模拟器为 {0}（{1}）'
         rom_swap_not_added = 'Steam 中没有快捷方式'
         lib_browser_title = '游戏库/导入'
@@ -2304,6 +2354,15 @@ $script:I18n = @{
         lib_ctx_save_backup_menu = '存档备份与还原'
         lib_ctx_save_backup = '备份存档'
         lib_ctx_save_restore = '还原存档…'
+        lib_ctx_save_scan_sel = '查找存档（{0} 个游戏）'
+        lib_ctx_save_backup_sel = '备份存档（{0} 个游戏）'
+        lib_ctx_save_restore_sel = '还原存档（{0} 个游戏）'
+        lib_ctx_upd = '更新超分库'
+        lib_ctx_upd_sel = '更新超分库（{0} 个游戏）'
+        lib_ctx_restore = '还原原始超分库'
+        lib_ctx_restore_sel = '还原原始超分库（{0} 个游戏）'
+        lib_ctx_upd_confirm1 = '将“{0}”中的超分库替换为已下载的最新版本。'
+        lib_ctx_restore_confirm1 = '还原“{0}”中的原始超分库。'
         save_heur_label = '启发式'
         sdet_tip = '检测此游戏的准确存档位置：先查数据库，若未找到则启动游戏并监视其创建的文件。右键查看更多操作。'
         sdet_tip_defined = '已确定存档位置（{0} 处）。点击可重新检测。右键查看更多操作。'
@@ -2335,6 +2394,12 @@ $script:I18n = @{
         sdet_unit_b = 'B'
         lib_tmp_saves_scan = '正在查找存档：{0} / {1}'
         lib_tmp_saves_done = '已找到存档的游戏：{0} / {1}'
+        save_scan_tip = '在不启动游戏的情况下搜索所选游戏的存档。第 1 步：Ludusavi 数据库和模拟器路径，找到的内容会保存为已定义存档；若没有结果，则使用 Steam Cloud 和启发式搜索，并保存其找到的内容。已定义存档的游戏会被跳过。'
+        save_st_defined = '已定义'
+        save_scan_recorded = '已定义并保存存档：{0}'
+        save_scan_already = '此前已定义'
+        save_scan_noreg = '未保存：涉及注册表项'
+        save_card_found_tip = '已找到此游戏的存档'
         save_card_created = '存档备份已创建，文件：{0}'
         save_card_same = '自上次备份以来存档无变化'
         save_card_none = '未找到此游戏的存档'
@@ -2856,7 +2921,7 @@ $script:I18n = @{
         batch_auto_tip = 'Si está activado: al añadir varios juegos a la vez, los juegos cuyo nombre y exe se detectan con seguridad se añaden a la biblioteca automáticamente, sin mostrar la ficha. La ficha solo se abre para los juegos que el programa no pudo identificar sin ambigüedad.'
         btn_add_batch = '＋  Añadir juegos seleccionados a la biblioteca'
         btn_add_batch_n = '＋  Añadir juegos seleccionados a la biblioteca ({0})'
-        btn_steam_library = 'Biblioteca / Importación'
+        btn_steam_library = 'Biblioteca / Importación / Partidas / DLSS Swap'
         btn_swap_emulator = 'Cambiar emulador a {0} ({1})'
         rom_swap_not_added = 'sin acceso directo en Steam'
         lib_browser_title = 'Biblioteca/Importación'
@@ -2930,6 +2995,15 @@ $script:I18n = @{
         lib_ctx_save_backup_menu = 'Copia y restauración de partidas'
         lib_ctx_save_backup = 'Copiar partidas'
         lib_ctx_save_restore = 'Restaurar partidas…'
+        lib_ctx_save_scan_sel = 'Buscar partidas ({0} juegos)'
+        lib_ctx_save_backup_sel = 'Copiar partidas ({0} juegos)'
+        lib_ctx_save_restore_sel = 'Restaurar partidas ({0} juegos)'
+        lib_ctx_upd = 'Actualizar escaladores'
+        lib_ctx_upd_sel = 'Actualizar escaladores ({0} juegos)'
+        lib_ctx_restore = 'Restaurar escaladores originales'
+        lib_ctx_restore_sel = 'Restaurar escaladores originales ({0} juegos)'
+        lib_ctx_upd_confirm1 = 'Reemplazar las bibliotecas de escalado por las últimas descargadas en «{0}».'
+        lib_ctx_restore_confirm1 = 'Restaurar las bibliotecas de escalado originales en «{0}».'
         save_heur_label = 'Heurística'
         sdet_tip = 'Detectar las partidas exactas de este juego: primero se busca en la base de datos y, si no hay resultado, se inicia el juego y se vigilan los archivos que crea. Clic derecho para más acciones.'
         sdet_tip_defined = 'Partidas definidas ({0} ubicación(es)). Haz clic para detectarlas de nuevo. Clic derecho para más acciones.'
@@ -2961,6 +3035,12 @@ $script:I18n = @{
         sdet_unit_b = 'B'
         lib_tmp_saves_scan = 'Buscando partidas: {0} de {1}'
         lib_tmp_saves_done = 'Juegos con partidas encontradas: {0} de {1}'
+        save_scan_tip = 'Buscar las partidas de los juegos seleccionados sin iniciarlos. Paso 1: base de datos Ludusavi y rutas de emuladores; lo encontrado se guarda como partidas definidas. Si no hay nada, Steam Cloud y heurística, y se guarda lo que encuentren. Los juegos con partidas ya definidas se omiten.'
+        save_st_defined = 'Definido'
+        save_scan_recorded = 'Partidas definidas y guardadas: {0}'
+        save_scan_already = 'Ya definidas antes'
+        save_scan_noreg = 'No guardado: hay claves del registro'
+        save_card_found_tip = 'Se encontraron las partidas de este juego'
         save_card_created = 'Copia de partidas creada, archivos: {0}'
         save_card_same = 'Las partidas no han cambiado desde la última copia'
         save_card_none = 'No se encontraron partidas de este juego'
@@ -3482,7 +3562,7 @@ $script:I18n = @{
         batch_auto_tip = 'Se ativado: ao adicionar vários jogos de uma vez, os jogos cujo nome e exe são detectados com segurança são adicionados à biblioteca automaticamente, sem mostrar a ficha. A ficha só é aberta para os jogos que o programa não conseguiu identificar sem ambiguidade.'
         btn_add_batch = '＋  Adicionar jogos selecionados à biblioteca'
         btn_add_batch_n = '＋  Adicionar jogos selecionados à biblioteca ({0})'
-        btn_steam_library = 'Biblioteca / Importação'
+        btn_steam_library = 'Biblioteca / Importação / Saves / DLSS Swap'
         btn_swap_emulator = 'Trocar emulador para {0} ({1})'
         rom_swap_not_added = 'sem atalho no Steam'
         lib_browser_title = 'Biblioteca/Importação'
@@ -3556,6 +3636,15 @@ $script:I18n = @{
         lib_ctx_save_backup_menu = 'Backup e restauração de saves'
         lib_ctx_save_backup = 'Fazer backup dos saves'
         lib_ctx_save_restore = 'Restaurar saves…'
+        lib_ctx_save_scan_sel = 'Procurar saves ({0} jogos)'
+        lib_ctx_save_backup_sel = 'Fazer backup dos saves ({0} jogos)'
+        lib_ctx_save_restore_sel = 'Restaurar saves ({0} jogos)'
+        lib_ctx_upd = 'Atualizar upscalers'
+        lib_ctx_upd_sel = 'Atualizar upscalers ({0} jogos)'
+        lib_ctx_restore = 'Restaurar upscalers originais'
+        lib_ctx_restore_sel = 'Restaurar upscalers originais ({0} jogos)'
+        lib_ctx_upd_confirm1 = 'Substituir as bibliotecas de upscaler pelas últimas baixadas em “{0}”.'
+        lib_ctx_restore_confirm1 = 'Restaurar as bibliotecas de upscaler originais em “{0}”.'
         save_heur_label = 'Heurística'
         sdet_tip = 'Detectar os saves exatos deste jogo: primeiro a busca na base de dados e, se nada for encontrado, o jogo é iniciado e os arquivos que ele cria são monitorados. Clique direito para mais ações.'
         sdet_tip_defined = 'Saves definidos ({0} local(is)). Clique para detectar de novo. Clique direito para mais ações.'
@@ -3587,6 +3676,12 @@ $script:I18n = @{
         sdet_unit_b = 'B'
         lib_tmp_saves_scan = 'Procurando saves: {0} de {1}'
         lib_tmp_saves_done = 'Jogos com saves encontrados: {0} de {1}'
+        save_scan_tip = 'Procurar os saves dos jogos selecionados sem iniciá-los. Passo 1: base Ludusavi e caminhos de emuladores; o que for encontrado é guardado como saves definidos. Se não houver nada, Steam Cloud e heurística, e o que encontrarem é guardado. Jogos com saves já definidos são ignorados.'
+        save_st_defined = 'Definido'
+        save_scan_recorded = 'Saves definidos e guardados: {0}'
+        save_scan_already = 'Já definidos antes'
+        save_scan_noreg = 'Não guardado: há chaves do registro'
+        save_card_found_tip = 'Os saves deste jogo foram encontrados'
         save_card_created = 'Backup de saves criado, arquivos: {0}'
         save_card_same = 'Os saves não mudaram desde o último backup'
         save_card_none = 'Nenhum save encontrado para este jogo'
@@ -4108,7 +4203,7 @@ $script:I18n = @{
         batch_auto_tip = 'Wenn aktiviert: Beim gleichzeitigen Hinzufügen mehrerer Spiele werden Spiele, deren Name und exe sicher erkannt wurden, automatisch der Bibliothek hinzugefügt, ohne dass die Karte angezeigt wird. Die Karte öffnet sich nur bei Spielen, die das Programm nicht eindeutig identifizieren konnte.'
         btn_add_batch = '＋  Ausgewählte Spiele zur Bibliothek hinzufügen'
         btn_add_batch_n = '＋  Ausgewählte Spiele zur Bibliothek hinzufügen ({0})'
-        btn_steam_library = 'Bibliothek / Import'
+        btn_steam_library = 'Bibliothek / Import / Spielstände / DLSS Swap'
         btn_swap_emulator = 'Emulator wechseln zu {0} ({1})'
         rom_swap_not_added = 'keine Verknüpfung in Steam'
         lib_browser_title = 'Bibliothek/Import'
@@ -4182,6 +4277,15 @@ $script:I18n = @{
         lib_ctx_save_backup_menu = 'Spielstände sichern und wiederherstellen'
         lib_ctx_save_backup = 'Spielstände sichern'
         lib_ctx_save_restore = 'Spielstände wiederherstellen…'
+        lib_ctx_save_scan_sel = 'Spielstände suchen ({0} Spiele)'
+        lib_ctx_save_backup_sel = 'Spielstände sichern ({0} Spiele)'
+        lib_ctx_save_restore_sel = 'Spielstände wiederherstellen ({0} Spiele)'
+        lib_ctx_upd = 'Upscaler aktualisieren'
+        lib_ctx_upd_sel = 'Upscaler aktualisieren ({0} Spiele)'
+        lib_ctx_restore = 'Original-Upscaler zurückspielen'
+        lib_ctx_restore_sel = 'Original-Upscaler zurückspielen ({0} Spiele)'
+        lib_ctx_upd_confirm1 = 'Upscaler-Bibliotheken in „{0}“ durch die neuesten heruntergeladenen Versionen ersetzen.'
+        lib_ctx_restore_confirm1 = 'Originale Upscaler-Bibliotheken in „{0}“ zurückspielen.'
         save_heur_label = 'Heuristik'
         sdet_tip = 'Die genauen Spielstände dieses Spiels ermitteln: zuerst Suche in der Datenbank, und wenn nichts gefunden wird, das Spiel starten und die von ihm erzeugten Dateien überwachen. Rechtsklick für weitere Aktionen.'
         sdet_tip_defined = 'Spielstände festgelegt ({0} Ort(e)). Klicken, um erneut zu ermitteln. Rechtsklick für weitere Aktionen.'
@@ -4213,6 +4317,12 @@ $script:I18n = @{
         sdet_unit_b = 'B'
         lib_tmp_saves_scan = 'Suche nach Spielständen: {0} von {1}'
         lib_tmp_saves_done = 'Spiele mit gefundenen Spielständen: {0} von {1}'
+        save_scan_tip = 'Spielstände der markierten Spiele ohne Spielstart suchen. Schritt 1: Ludusavi-Datenbank und Emulator-Pfade; Gefundenes wird als festgelegte Spielstände gespeichert. Gibt es dort nichts, folgen Steam Cloud und Heuristik, und deren Funde werden gespeichert. Spiele mit bereits festgelegten Spielständen werden übersprungen.'
+        save_st_defined = 'Festgelegt'
+        save_scan_recorded = 'Spielstände festgelegt und gespeichert: {0}'
+        save_scan_already = 'Bereits zuvor festgelegt'
+        save_scan_noreg = 'Nicht gespeichert: Registry-Schlüssel beteiligt'
+        save_card_found_tip = 'Spielstände dieses Spiels gefunden'
         save_card_created = 'Spielstand-Backup erstellt, Dateien: {0}'
         save_card_same = 'Die Spielstände haben sich seit dem letzten Backup nicht geändert'
         save_card_none = 'Keine Spielstände für dieses Spiel gefunden'
@@ -19003,9 +19113,6 @@ function Set-SteamButtonIcons {
         if ($null -eq $script:steamLibraryButtonIcon) {
             $script:steamLibraryButtonIcon = Get-SteamSourceIconBitmap
         }
-        if ($null -eq $script:libraryButtonLauncherIcons) {
-            $script:libraryButtonLauncherIcons = @(Get-LibraryButtonLauncherIcons)
-        }
         if ($null -ne $btnAddToSteam) { $btnAddToSteam.Invalidate() }
         if ($null -ne $btnSteamLibrary) { $btnSteamLibrary.Invalidate() }
     } catch {}
@@ -19035,23 +19142,9 @@ $drawSteamButtonContent = {
         $gap1 = if ($icon) { 7 } else { 0 }
         $gap2 = if ($plus) { 8 } else { 0 }
         $iconW = if ($icon) { 20 } else { 0 }
-        # Кнопка «Библиотека/Импорт»: после текста — значки всех поддерживаемых лаунчеров
-        # (в порядке вкладок библиотеки), каждый $global:LibIconSize x $global:LibIconSize (как на вкладках) с зазором 6 px.
-        $tailIcons = @()
-        if ($btn -eq $btnSteamLibrary) { $tailIcons = @($script:libraryButtonLauncherIcons | Where-Object { $null -ne $_ }) }
-        $tailSize = [int]$global:LibIconSize   # тот же размер, что и у значков на вкладках/плитках
-        $tailGap  = 6
-        $tailLead = -1  # поправка к зазору между текстом и значками (DrawString/MeasureString и сами значки уже дают ≈ 12 px; по скриншоту при 4 было ≈ 17 px)
-        $suffixLead = 8 # добавка к пробелу в начале « / DLSS Swap» (пробел ≈ 4 px; вместе ≈ 12 px — как перед значками)
-        $tailW = if ($tailIcons.Count -gt 0) { $tailLead + ($tailIcons.Count * $tailSize) + (($tailIcons.Count - 1) * $tailGap) } else { 0 }
-        # Кнопка «Библиотека/Импорт»: после значков лаунчеров — « / DLSS Swap» (пробел, /, пробел, DLSS Swap).
-        $suffixText = ''
-        $suffixW = 0.0
-        if ($btn -eq $btnSteamLibrary) {
-            $suffixText = ' / DLSS Swap'
-            $suffixW = [double]$g.MeasureString($suffixText, $font, 10000, [System.Drawing.StringFormat]::GenericTypographic).Width
-        }
-        $totalW = $iconW + $gap1 + $plusSize.Width + $gap2 + $textSize.Width + $tailW + $suffixW + $(if ($suffixText.Length -gt 0 -and $tailIcons.Count -gt 0) { $suffixLead } else { 0 })
+        # Кнопка библиотеки: весь текст уже в Tag (Библиотека / Импорт / Сохранения / DLSS Swap).
+        # Значки лаунчеров не рисуем — один ровный текстовый блок по центру.
+        $totalW = $iconW + $gap1 + $plusSize.Width + $gap2 + $textSize.Width
         $x = ($btn.ClientSize.Width - $totalW) / 2.0
         $yIcon = ($btn.ClientSize.Height - 20) / 2.0
         $yText = ($btn.ClientSize.Height - $textSize.Height) / 2.0
@@ -19093,22 +19186,6 @@ $drawSteamButtonContent = {
                 $x += $plusSize.Width + $gap2
             }
             $g.DrawString($mainText, $font, $brush, [float]$x, [float]$yText)
-            if ($tailIcons.Count -gt 0) {
-                $x += $textSize.Width + $tailLead
-                $yTail = ($btn.ClientSize.Height - $tailSize) / 2.0
-                $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
-                foreach ($ti in $tailIcons) {
-                    $g.DrawImage($ti, [float]$x, [float]$yTail, [float]$tailSize, [float]$tailSize)
-                    $x += $tailSize + $tailGap
-                }
-                $x -= $tailGap   # после последнего значка зазор задаёт пробел в начале суффикса + $suffixLead
-                if ($suffixText.Length -gt 0) { $x += $suffixLead }
-            } else {
-                $x += $textSize.Width
-            }
-            if ($suffixText.Length -gt 0) {
-                $g.DrawString($suffixText, $font, $brush, [float]$x, [float]$yText, [System.Drawing.StringFormat]::GenericTypographic)
-            }
         } finally { $brush.Dispose() }
     } catch {}
 }
@@ -22926,7 +23003,8 @@ function Find-GameSaveLocations {
         [string[]]$ExtraDirNames = @(),
         [switch]$SkipCrack,
         [switch]$SkipHeuristic,
-        [switch]$IgnoreDefined
+        [switch]$IgnoreDefined,
+        [switch]$ForceHeuristic
     )
     $out = @{ Entries = @(); Items = @(); AppIds = @() }
     # Сохранения, определённые детектором (кнопка в карточке игры), главнее общего поиска по базе и эвристике.
@@ -23018,14 +23096,17 @@ function Find-GameSaveLocations {
         }
     }
     # Игры нет в базе (на диске по базе и кряковым путям ничего не нашлось): эвристический поиск.
+    # -ForceHeuristic включает его всегда (максимальный поиск из библиотеки), даже если база что-то нашла.
     if (-not $SkipHeuristic) {
         $anyOnDisk = $false
         foreach ($it0 in $items) {
             if ([string]$it0.Kind -eq 'reg') { $anyOnDisk = $true; break }
             $p0 = [string]$it0.Path
-            if ($p0 -and ([System.IO.Directory]::Exists($p0) -or [System.IO.File]::Exists($p0))) { $anyOnDisk = $true; break }
+            # Папка считается «найденной», только если внутри есть файлы: пустая папка по пути из базы не должна глушить эвристику.
+            if ($p0 -and [System.IO.File]::Exists($p0)) { $anyOnDisk = $true; break }
+            if ($p0 -and [System.IO.Directory]::Exists($p0) -and (Test-SaveDirHasFiles $p0)) { $anyOnDisk = $true; break }
         }
-        if (-not $anyOnDisk) {
+        if ((-not $anyOnDisk) -or $ForceHeuristic) {
             foreach ($h in @(Find-SaveHeuristic -Name $Name -SteamAppId $SteamAppId -BaseDir $BaseDir -RootDir $RootDir -ExtraNames $ExtraDirNames)) {
                 if ($seen.Add([string]$h.Path)) { [void]$items.Add($h) }
             }
@@ -23612,6 +23693,25 @@ function Test-SaveReparse ([string]$Path) {
     try { return (([System.IO.File]::GetAttributes($Path) -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) } catch { return $true }
 }
 
+# Есть ли в папке хотя бы один файл (быстрая проверка с выходом на первом файле, ссылки не раскрываются).
+function Test-SaveDirHasFiles ([string]$Dir) {
+    try {
+        if (Test-SaveReparse $Dir) { return $false }
+        $stack = New-Object System.Collections.Stack
+        $stack.Push($Dir)
+        while ($stack.Count -gt 0) {
+            $d = [string]$stack.Pop()
+            try { foreach ($f in [System.IO.Directory]::EnumerateFiles($d)) { return $true } } catch {}
+            try {
+                foreach ($s in [System.IO.Directory]::EnumerateDirectories($d)) {
+                    if (-not (Test-SaveReparse $s)) { $stack.Push($s) }
+                }
+            } catch {}
+        }
+    } catch {}
+    return $false
+}
+
 # Файлы внутри папки без перехода по ссылкам.
 function Get-SaveFilesUnder ([string]$Dir) {
     $res = New-Object System.Collections.ArrayList
@@ -23627,6 +23727,20 @@ function Get-SaveFilesUnder ([string]$Dir) {
         } catch {}
     }
     return @($res)
+}
+
+# Обновление окна изнутри длинных циклов бэкапа/возврата, чтобы Windows не считала программу зависшей.
+# Включается только на время массовой операции в библиотеке ($script:saveUiPump), у остальных вызовов (карточка и т.д.) ничего не меняет.
+$script:saveUiPump = $false
+$script:saveUiPumpSw = $null
+function Invoke-SaveUiPump {
+    if (-not $script:saveUiPump) { return }
+    try {
+        if ($null -eq $script:saveUiPumpSw) { $script:saveUiPumpSw = [System.Diagnostics.Stopwatch]::StartNew(); return }
+        if ($script:saveUiPumpSw.ElapsedMilliseconds -lt 60) { return }
+        $script:saveUiPumpSw.Restart()
+        [System.Windows.Forms.Application]::DoEvents()
+    } catch {}
 }
 
 function Get-SaveFileSha ([string]$Path, $Sha) {
@@ -23672,6 +23786,89 @@ function Get-SaveRoots ($Items, [hashtable]$Ctx) {
         [void]$roots.Add(@{ Kind = 'file'; Path = $fp; Tpl = (ConvertTo-SaveTemplate $fp $Ctx); Label = [string]$f.Label; Source = [string]$f.Source; Files = @($fp) })
     }
     return @($roots)
+}
+
+# Сворачивает найденные места одной папки в один корень-папку. Работает с любыми корнями (файлы и папки) и в несколько проходов:
+# если база отдаёт для игры соседние файлы/папки (например, Player_1\GameProfile.sav + Player_1\Slots, затем Player_1 + Player_2),
+# в списке и в «определённых» сохранениях остаётся одна строка — их общая папка.
+# Не сворачивается: общие папки (AppData, Documents, My Games, Saved Games, профиль, Public, ProgramData, корень диска, папка игры),
+# папки-ссылки и папки, где больше 400 файлов. Папка, лежащая прямо в такой общей (например, Documents\<Издатель>), сворачивается только
+# если её имя совпадает с названием игры — иначе в бэкап попали бы чужие игры издателя. Вложенные в свёрнутую папку корни убираются.
+function Merge-SaveRootsByFolder ([object[]]$Roots, [string]$BaseDir = '', [string]$Name = '') {
+    # Пустой вызов (Get-SaveRoots ничего не вернул) превращался в один $null-корень: в окне детектора появлялась строка без пути («файлов: 1, 0 Б»).
+    $list = @(@($Roots) | Where-Object { $null -ne $_ -and -not [string]::IsNullOrWhiteSpace([string]$_.Path) })
+    try {
+        if ($list.Count -lt 2) { return $list }
+        $blocked = @{}
+        $cands = New-Object System.Collections.ArrayList
+        $up = [string]$env:USERPROFILE
+        $docs = ''
+        try { $docs = [Environment]::GetFolderPath('MyDocuments') } catch {}
+        $pub = [string]$env:PUBLIC
+        foreach ($b in @([string]$env:APPDATA, [string]$env:LOCALAPPDATA, [string]$env:ProgramData, $pub, $up, $docs, $BaseDir)) { if (-not [string]::IsNullOrWhiteSpace($b)) { [void]$cands.Add($b) } }
+        if ($up) { [void]$cands.Add((Join-Path $up 'AppData\LocalLow')); [void]$cands.Add((Join-Path $up 'Saved Games')) }
+        if ($docs) { [void]$cands.Add((Join-Path $docs 'My Games')) }
+        if ($pub) { [void]$cands.Add((Join-Path $pub 'Documents')) }
+        foreach ($b in $cands) { $blocked[([string]$b).TrimEnd('\', '/').ToLowerInvariant()] = $true }
+        $nameKey = ''
+        try { $nameKey = [string](Get-SaveHeurKey $Name) } catch {}
+
+        for ($pass = 0; $pass -lt 4; $pass++) {
+            if ($list.Count -lt 2) { break }
+            $byDir = @{}
+            foreach ($r in $list) {
+                $par = ''
+                try { $par = [System.IO.Path]::GetDirectoryName(([string]$r.Path).TrimEnd('\', '/')) } catch {}
+                if ([string]::IsNullOrWhiteSpace($par)) { continue }
+                $k = $par.TrimEnd('\', '/').ToLowerInvariant()
+                if (-not $byDir.ContainsKey($k)) { $byDir[$k] = New-Object System.Collections.ArrayList }
+                [void]$byDir[$k].Add($r)
+            }
+            $merged = New-Object System.Collections.ArrayList
+            foreach ($k in @($byDir.Keys)) {
+                $grp = $byDir[$k]
+                if ($grp.Count -lt 2) { continue }
+                if ($blocked.ContainsKey($k)) { continue }
+                $par = ([System.IO.Path]::GetDirectoryName(([string]$grp[0].Path).TrimEnd('\', '/'))).TrimEnd('\', '/')
+                $pp = $null
+                try { $pp = [System.IO.Path]::GetDirectoryName($par) } catch {}
+                if ([string]::IsNullOrWhiteSpace($pp)) { continue }
+                if ($blocked.ContainsKey($pp.TrimEnd('\', '/').ToLowerInvariant())) {
+                    $leafKey = ''
+                    try { $leafKey = [string](Get-SaveHeurKey ([System.IO.Path]::GetFileName($par))) } catch {}
+                    $okName = ($nameKey.Length -ge 4 -and $leafKey.Length -ge 4 -and ($nameKey.Contains($leafKey) -or $leafKey.Contains($nameKey)))
+                    if (-not $okName) { continue }
+                }
+                if (-not [System.IO.Directory]::Exists($par) -or (Test-SaveReparse $par)) { continue }
+                $fl = @(Get-SaveFilesUnder $par)
+                if ($fl.Count -eq 0 -or $fl.Count -gt 400) { continue }
+                [void]$merged.Add(@{ Kind = 'dir'; Path = $par; Tpl = ''; Label = [string]$grp[0].Label; Source = [string]$grp[0].Source; Files = $fl })
+            }
+            if ($merged.Count -eq 0) { break }
+            # Свёрнутая папка, лежащая внутри другой свёрнутой, не нужна (её файлы уже входят в большую).
+            $mergedTop = New-Object System.Collections.ArrayList
+            foreach ($m in $merged) {
+                $inside = $false
+                foreach ($o in $merged) {
+                    if ([object]::ReferenceEquals($m, $o)) { continue }
+                    if (([string]$m.Path).StartsWith(([string]$o.Path) + '\', [System.StringComparison]::OrdinalIgnoreCase)) { $inside = $true; break }
+                }
+                if (-not $inside) { [void]$mergedTop.Add($m) }
+            }
+            $out = New-Object System.Collections.ArrayList
+            foreach ($r in $list) {
+                $rp = ([string]$r.Path).TrimEnd('\', '/')
+                $nested = $false
+                foreach ($m in $mergedTop) {
+                    if ($rp.Equals([string]$m.Path, [System.StringComparison]::OrdinalIgnoreCase) -or $rp.StartsWith(([string]$m.Path) + '\', [System.StringComparison]::OrdinalIgnoreCase)) { $nested = $true; break }
+                }
+                if (-not $nested) { [void]$out.Add($r) }
+            }
+            foreach ($m in $mergedTop) { [void]$out.Add($m) }
+            $list = @($out)
+        }
+        return @($list)
+    } catch { return @($Roots) }
 }
 
 # Экспорт ключа реестра в .reg (reg.exe). $null, если не вышло.
@@ -23752,7 +23949,8 @@ function Write-SaveArchive ([string]$Dest, $Roots, $RegKeys, [hashtable]$Info, [
                 try {
                     $src = New-Object System.IO.FileStream($f, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, ([System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete))
                     $dst = $en.Open()
-                    $src.CopyTo($dst, 81920)
+                    $buf = New-Object byte[] 524288
+                    while (($nRead = $src.Read($buf, 0, $buf.Length)) -gt 0) { $dst.Write($buf, 0, $nRead); Invoke-SaveUiPump }
                     $count++; $bytes += $src.Length
                 } finally { if ($null -ne $dst) { $dst.Dispose() }; if ($null -ne $src) { $src.Dispose() } }
             }
@@ -23810,6 +24008,7 @@ function Get-SaveSetHash ($Roots, $RegKeys, [string]$TmpDir) {
             foreach ($f in @($r.Files)) {
                 $rel = if ([string]$r.Kind -eq 'dir') { $f.Substring(([string]$r.Path).Length) } else { '' }
                 $h = Get-SaveFileSha $f $sha
+                Invoke-SaveUiPump
                 if ($null -eq $h) { $h = 'locked' }
                 [void]$lines.Add(([string]$r.Tpl + '|' + $rel.ToLowerInvariant() + '|' + $h))
             }
@@ -23843,8 +24042,10 @@ function Backup-GameSaves {
     try {
         $loc = Find-GameSaveLocations -Name $Name -SteamAppId $SteamAppId -GogId $GogId -BaseDir $BaseDir -RootDir $RootDir -ExtraDirNames $ExtraDirNames
         $res.Entries = @($loc.Entries)
+        Invoke-SaveUiPump
         $ctx = New-SaveContext $BaseDir $RootDir
         $roots = @(Get-SaveRoots $loc.Items $ctx)
+        Invoke-SaveUiPump
         $regs = @($loc.Items | Where-Object { [string]$_.Kind -eq 'reg' } | ForEach-Object { [string]$_.Key })
         if ($roots.Count -eq 0 -and $regs.Count -eq 0) { $res.Status = 'nosaves'; return $res }
         [void][System.IO.Directory]::CreateDirectory($hashTmp)
@@ -23937,6 +24138,7 @@ function Restore-GameSaves {
             if (-not [System.IO.Directory]::Exists($td)) { [void][System.IO.Directory]::CreateDirectory($td) }
             [System.IO.Compression.ZipFileExtensions]::ExtractToFile($e, $target, $true)
             $res.Files++
+            Invoke-SaveUiPump
         }
 
         foreach ($rg in @($meta.Regs)) {
@@ -23969,6 +24171,34 @@ function Restore-GameSaves {
 }
 
 
+# Steam App ID и название игры по папке ...\steamapps\common\<папка> (через appmanifest_*.acf рядом).
+# Нужно карточке, открытой из панелей C/D: там нет записи библиотеки, а ключ определённых сохранений = имя + App ID.
+function Get-SaveSteamInfoFromFolder ([string]$Path) {
+    try {
+        $p = ([string]$Path).Trim().Trim('"').TrimEnd('\', '/')
+        if ([string]::IsNullOrWhiteSpace($p)) { return $null }
+        $leaf = [System.IO.Path]::GetFileName($p)
+        $common = [System.IO.Path]::GetDirectoryName($p)
+        if ([string]::IsNullOrWhiteSpace($common)) { return $null }
+        if (-not ([System.IO.Path]::GetFileName($common)).Equals('common', [System.StringComparison]::OrdinalIgnoreCase)) { return $null }
+        $apps = [System.IO.Path]::GetDirectoryName($common)
+        if ([string]::IsNullOrWhiteSpace($apps) -or -not [System.IO.Directory]::Exists($apps)) { return $null }
+        foreach ($f in [System.IO.Directory]::GetFiles($apps, 'appmanifest_*.acf')) {
+            $txt = ''
+            try { $txt = [System.IO.File]::ReadAllText($f) } catch { continue }
+            $mi = [regex]::Match($txt, '"installdir"\s+"([^"]*)"')
+            if (-not $mi.Success -or -not $mi.Groups[1].Value.Equals($leaf, [System.StringComparison]::OrdinalIgnoreCase)) { continue }
+            $ma = [regex]::Match($txt, '"appid"\s+"(\d+)"')
+            if (-not $ma.Success) { continue }
+            $mn = [regex]::Match($txt, '"name"\s+"([^"]*)"')
+            $nm = ''
+            if ($mn.Success) { $nm = [string]$mn.Groups[1].Value }
+            return @{ AppId = [string]$ma.Groups[1].Value; Name = $nm }
+        }
+    } catch {}
+    return $null
+}
+
 # ----- Сохранения игр, этап 3: помощники окна библиотеки -----
 # Параметры поиска сохранений по записи библиотеки (Steam / ярлык / игра лаунчера).
 # Для ярлыков AppId — это не Steam App ID, поэтому игра ищется по названию и папке установки.
@@ -23987,15 +24217,29 @@ function Get-SaveGameParams ($Entry) {
 $script:saveHasBackupCache = @{}
 function Reset-SaveBackupCache { $script:saveHasBackupCache = @{} }
 
-# ВРЕМЕННО (для проверки поиска сохранений): есть ли у игры хоть что-то, что попало бы в бэкап
+# Есть ли у игры хоть что-то, что попало бы в бэкап (используется галочкой «сохранения найдены» в карточке)
 # (папки/файлы с файлами внутри или существующие ключи реестра). Ничего не архивирует.
 function Test-GameSavesExist ($Params) {
     try {
         $loc = Find-GameSaveLocations -Name $Params.Name -SteamAppId $Params.SteamAppId -GogId $Params.GogId -BaseDir $Params.BaseDir
         foreach ($it in @($loc.Items)) { if ([string]$it.Kind -eq 'reg') { return $true } }
-        $ctx = New-SaveContext $Params.BaseDir ''
-        return (@(Get-SaveRoots $loc.Items $ctx).Count -gt 0)
-    } catch { return $false }
+        # Та же логика «найдено», что у кнопки «папка сохранений»: существующий файл или папка, в которой что-то лежит.
+        # Get-SaveRoots здесь не используется: он отбрасывает папки-ссылки (junction/OneDrive) и из-за этого галочка не появлялась,
+        # хотя меню кнопки «папка» показывало найденные места.
+        foreach ($it in @($loc.Items)) {
+            if ([string]$it.Kind -ne 'file') { continue }
+            $pth = [string]$it.Path
+            if ([string]::IsNullOrWhiteSpace($pth)) { continue }
+            if ([System.IO.File]::Exists($pth)) { return $true }
+            if ([System.IO.Directory]::Exists($pth)) {
+                try { foreach ($e in [System.IO.Directory]::EnumerateFileSystemEntries($pth)) { return $true } } catch {}
+            }
+        }
+        return $false
+    } catch {
+        try { [System.IO.File]::AppendAllText((Join-Path (Get-SaveStoreRoot) 'card_check.log'), ((Get-Date).ToString('s') + ' exist: ' + [string]$_.Exception.Message + [Environment]::NewLine)) } catch {}
+        return $false
+    }
 }
 
 # Есть ли у игры хотя бы один обычный бэкап (страховочные pre-restore не считаются). Результат кэшируется до сброса.
@@ -24116,7 +24360,7 @@ function Read-SaveDefinedStore {
             foreach ($p in @($obj.PSObject.Properties)) {
                 $paths = New-Object System.Collections.ArrayList
                 foreach ($x in @($p.Value.Paths)) { if (-not [string]::IsNullOrWhiteSpace([string]$x)) { [void]$paths.Add([string]$x) } }
-                $data[[string]$p.Name] = @{ Name = [string]$p.Value.Name; Paths = @($paths); Date = [string]$p.Value.Date }
+                $data[[string]$p.Name] = @{ Name = [string]$p.Value.Name; Paths = @($paths); Date = [string]$p.Value.Date; Source = [string]$p.Value.Source }
             }
         }
         $script:saveDefData = $data
@@ -24134,7 +24378,7 @@ function Write-SaveDefinedStore ($Data) {
         $f = Get-SaveDefinedFile
         $obj = [ordered]@{}
         foreach ($k in @($Data.Keys | Sort-Object)) {
-            $obj[[string]$k] = [ordered]@{ Name = [string]$Data[$k].Name; Paths = @($Data[$k].Paths); Date = [string]$Data[$k].Date }
+            $obj[[string]$k] = [ordered]@{ Name = [string]$Data[$k].Name; Paths = @($Data[$k].Paths); Date = [string]$Data[$k].Date; Source = [string]$Data[$k].Source }
         }
         $json = ConvertTo-Json -InputObject $obj -Depth 5
         $tmp = $f + '.tmp'
@@ -24156,12 +24400,13 @@ function Get-SaveDefined ([string]$Name, [long]$SteamAppId = 0) {
     return $null
 }
 
-function Set-SaveDefined ([string]$Name, [long]$SteamAppId, [string[]]$Paths) {
+# Source: 'track' — места определены вручную слежением за запуском игры (лупа в карточке горит только для таких), 'auto' — поиском без запуска.
+function Set-SaveDefined ([string]$Name, [long]$SteamAppId, [string[]]$Paths, [string]$Source = 'auto') {
     try {
         $d = Read-SaveDefinedStore
         $copy = @{}
         foreach ($k in @($d.Keys)) { $copy[[string]$k] = $d[$k] }
-        $copy[(Get-SaveDefinedKey $Name $SteamAppId)] = @{ Name = [string]$Name; Paths = @($Paths); Date = [datetime]::Now.ToString('yyyy-MM-dd HH:mm:ss') }
+        $copy[(Get-SaveDefinedKey $Name $SteamAppId)] = @{ Name = [string]$Name; Paths = @($Paths); Date = [datetime]::Now.ToString('yyyy-MM-dd HH:mm:ss'); Source = $Source }
         return (Write-SaveDefinedStore $copy)
     } catch { return $false }
 }
@@ -24192,6 +24437,70 @@ function Get-SaveDefinedItems ([string]$Name, [long]$SteamAppId = 0) {
         }
     } catch {}
     return @($items)
+}
+
+# «Найденные» сохранения: их записывает массовый поиск в библиотеке для игр, у которых места НЕ попали в defined_saves.json
+# (ключи реестра, несколько мест без выбора). Нужны только для зелёной галочки и кнопки «папка» в карточке; в бэкап не участвуют.
+function Get-SaveFoundFile { return (Join-Path (Get-SaveStoreRoot) 'found_saves.json') }
+
+function Read-SaveFoundStore {
+    try {
+        $f = Get-SaveFoundFile
+        if (-not [System.IO.File]::Exists($f)) { $script:saveFoundData = @{}; $script:saveFoundStamp = ''; return $script:saveFoundData }
+        $stamp = [string][System.IO.File]::GetLastWriteTimeUtc($f).Ticks
+        if ($null -ne $script:saveFoundData -and $script:saveFoundStamp -eq $stamp) { return $script:saveFoundData }
+        $data = @{}
+        $raw = [System.IO.File]::ReadAllText($f, [System.Text.Encoding]::UTF8)
+        if (-not [string]::IsNullOrWhiteSpace($raw)) {
+            $obj = ConvertFrom-Json -InputObject $raw
+            foreach ($p in @($obj.PSObject.Properties)) {
+                $paths = New-Object System.Collections.ArrayList
+                foreach ($x in @($p.Value.Paths)) { if (-not [string]::IsNullOrWhiteSpace([string]$x)) { [void]$paths.Add([string]$x) } }
+                $data[[string]$p.Name] = @{ Paths = @($paths); HasReg = [bool]$p.Value.HasReg }
+            }
+        }
+        $script:saveFoundData = $data
+        $script:saveFoundStamp = $stamp
+        return $data
+    } catch {
+        if ($null -eq $script:saveFoundData) { $script:saveFoundData = @{} }
+        return $script:saveFoundData
+    }
+}
+
+function Set-SaveFound ([string]$Name, [long]$SteamAppId, [string[]]$Paths, [bool]$HasReg = $false) {
+    try {
+        $d = Read-SaveFoundStore
+        $obj = [ordered]@{}
+        $key = Get-SaveDefinedKey $Name $SteamAppId
+        foreach ($k in @($d.Keys | Sort-Object)) {
+            if ([string]$k -eq $key) { continue }
+            $obj[[string]$k] = [ordered]@{ Paths = @($d[$k].Paths); HasReg = [bool]$d[$k].HasReg }
+        }
+        $obj[$key] = [ordered]@{ Paths = @($Paths | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }); HasReg = [bool]$HasReg }
+        $f = Get-SaveFoundFile
+        $tmp = $f + '.tmp'
+        [System.IO.File]::WriteAllText($tmp, (ConvertTo-Json -InputObject $obj -Depth 5), (New-Object System.Text.UTF8Encoding($false)))
+        if ([System.IO.File]::Exists($f)) { [System.IO.File]::Replace($tmp, $f, [NullString]::Value) } else { [System.IO.File]::Move($tmp, $f) }
+        $script:saveFoundData = $null
+        $script:saveFoundStamp = ''
+        return $true
+    } catch { return $false }
+}
+
+# Найденное массовым поиском: @{ Items (существующие на диске места); HasReg } или $null, если игры нет в списке.
+function Get-SaveFoundInfo ([string]$Name, [long]$SteamAppId = 0) {
+    try {
+        $d = Read-SaveFoundStore
+        $k = Get-SaveDefinedKey $Name $SteamAppId
+        if (-not $d.ContainsKey($k)) { return $null }
+        $items = New-Object System.Collections.ArrayList
+        foreach ($pp in @($d[$k].Paths)) {
+            $pth = [string]$pp
+            if ([System.IO.Directory]::Exists($pth) -or [System.IO.File]::Exists($pth)) { [void]$items.Add(@{ Kind = 'file'; Path = $pth; Source = 'found'; Label = '' }) }
+        }
+        return @{ Items = @($items); HasReg = [bool]$d[$k].HasReg }
+    } catch { return $null }
 }
 
 # Слежение за файлами (C# 5, как и остальной встроенный код): FileSystemWatcher по нескольким корням складывает
@@ -24496,12 +24805,17 @@ function Format-SaveDetectorSize ([long]$Bytes) {
 }
 
 # Кандидаты по базе (без запуска игры): корни, которые Get-SaveRoots считает существующими и непустыми.
-function Get-SaveDetectorDbCandidates ($Params) {
+# Шаг 1 (по умолчанию): база Ludusavi + пути эмуляторов. Шаг 2 (-Heuristic): Steam Cloud и эвристика — как в библиотеке.
+function Get-SaveDetectorDbCandidates ($Params, [switch]$Heuristic, [string[]]$ExtraDirNames = @()) {
     $out = New-Object System.Collections.ArrayList
     try {
-        $loc = Find-GameSaveLocations -Name $Params.Name -SteamAppId $Params.SteamAppId -GogId $Params.GogId -BaseDir $Params.BaseDir -SkipHeuristic -IgnoreDefined
+        if ($Heuristic) {
+            $loc = Find-GameSaveLocations -Name $Params.Name -SteamAppId $Params.SteamAppId -GogId $Params.GogId -BaseDir $Params.BaseDir -ExtraDirNames $ExtraDirNames -IgnoreDefined -ForceHeuristic
+        } else {
+            $loc = Find-GameSaveLocations -Name $Params.Name -SteamAppId $Params.SteamAppId -GogId $Params.GogId -BaseDir $Params.BaseDir -ExtraDirNames $ExtraDirNames -IgnoreDefined -SkipHeuristic
+        }
         $ctx = New-SaveContext $Params.BaseDir ''
-        foreach ($r in @(Get-SaveRoots $loc.Items $ctx)) {
+        foreach ($r in @(Merge-SaveRootsByFolder (Get-SaveRoots $loc.Items $ctx) ([string]$Params.BaseDir) ([string]$Params.Name))) {
             $bytes = [long]0
             $last = [datetime]::MinValue
             foreach ($fp in @($r.Files)) {
@@ -24517,6 +24831,27 @@ function Get-SaveDetectorDbCandidates ($Params) {
             })
         }
     } catch {}
+    return @($out)
+}
+
+# Кандидаты для окна выбора из уже найденных корней (Get-SaveRoots): то же, что делает Get-SaveDetectorDbCandidates, но без нового поиска.
+function New-SaveDetectorCandidatesFromRoots ([object[]]$Roots) {
+    $out = New-Object System.Collections.ArrayList
+    foreach ($r in @($Roots)) {
+        $bytes = [long]0
+        $last = [datetime]::MinValue
+        foreach ($fp in @($r.Files)) {
+            try {
+                $fi = New-Object System.IO.FileInfo([string]$fp)
+                $bytes += [long]$fi.Length
+                if ($fi.LastWriteTime -gt $last) { $last = $fi.LastWriteTime }
+            } catch {}
+        }
+        [void]$out.Add([PSCustomObject]@{
+            Path = [string]$r.Path; Kind = [string]$r.Kind; Files = @($r.Files).Count; Bytes = $bytes
+            Last = $last; Score = 100; Checked = $true
+        })
+    }
     return @($out)
 }
 
@@ -24703,19 +25038,89 @@ function Show-SaveDetectorPicker {
         $lbl.Text = (T $HintKey); $lbl.Location = New-Object System.Drawing.Point(16, 14); $lbl.Size = New-Object System.Drawing.Size(($dlgW - 32), 40)
         $lbl.ForeColor = $pal.Text
         $f.Controls.Add($lbl)
-        $clb = New-Object System.Windows.Forms.CheckedListBox
+        # Список мест: свой рисунок (квадратные галочки как в списках игр программы). Отметка ставится ТОЛЬКО щелчком по самой галочке
+        # (или пробелом), двойной щелчок по строке открывает папку, одиночный щелчок по тексту только выделяет строку.
+        $selCol = [System.Drawing.Color]::FromArgb(38, 76, 108)
+        $altCol = $pal.Bg
+        $accCol = [System.Drawing.Color]::FromArgb(102, 192, 244)
+        try { if ($null -ne $steamUi) { if ($null -ne $steamUi.Selected) { $selCol = $steamUi.Selected }; if ($null -ne $steamUi.Panel) { $altCol = $steamUi.Panel }; if ($null -ne $steamUi.Accent) { $accCol = $steamUi.Accent } } } catch {}
+        $rowFont = New-Object System.Drawing.Font('Segoe UI', 9.5)
+        $state = New-Object 'System.Collections.Generic.List[bool]'
+        $infos = New-Object System.Collections.ArrayList
+        $clb = New-Object System.Windows.Forms.ListBox
         $clb.Location = New-Object System.Drawing.Point(16, 58); $clb.Size = New-Object System.Drawing.Size(($dlgW - 32), 214)
         $clb.BackColor = $pal.Panel2; $clb.ForeColor = $pal.Text; $clb.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
-        $clb.CheckOnClick = $true; $clb.HorizontalScrollbar = $true; $clb.IntegralHeight = $false
-        $clb.Font = New-Object System.Drawing.Font('Segoe UI', 9.5)
+        $clb.DrawMode = [System.Windows.Forms.DrawMode]::OwnerDrawFixed
+        $clb.ItemHeight = 26; $clb.IntegralHeight = $false
+        $clb.Font = $rowFont
         foreach ($c in $cands) {
             $when = ''
             try { if ([datetime]$c.Last -gt [datetime]::MinValue) { $when = ([datetime]$c.Last).ToString('yyyy-MM-dd HH:mm') } } catch {}
-            $info = (T 'sdet_info' @([int]$c.Files, (Format-SaveDetectorSize ([long]$c.Bytes)), $when))
-            $idx = $clb.Items.Add(([string]$c.Path + '    [' + $info + ']'))
-            $clb.SetItemChecked($idx, [bool]$c.Checked)
+            [void]$infos.Add((T 'sdet_info' @([int]$c.Files, (Format-SaveDetectorSize ([long]$c.Bytes)), $when)))
+            [void]$clb.Items.Add([string]$c.Path)
+            $state.Add([bool]$c.Checked)
         }
+        $clb.Add_DrawItem({
+            param($s, $e)
+            try {
+                if ($e.Index -lt 0 -or $e.Index -ge $cands.Count) { return }
+                $g = $e.Graphics
+                $sel = $e.State.HasFlag([System.Windows.Forms.DrawItemState]::Selected)
+                $bgc = $altCol
+                if ($sel) { $bgc = $selCol } elseif (($e.Index % 2) -eq 0) { $bgc = $pal.Panel2 }
+                $bb = New-Object System.Drawing.SolidBrush($bgc)
+                try { $g.FillRectangle($bb, $e.Bounds) } finally { $bb.Dispose() }
+                $cb = New-Object System.Drawing.Rectangle(($e.Bounds.X + 8), ($e.Bounds.Y + [int](($e.Bounds.Height - 14) / 2)), 14, 14)
+                if ([bool]$state[$e.Index]) {
+                    $fb = New-Object System.Drawing.SolidBrush($accCol)
+                    try { $g.FillRectangle($fb, $cb) } finally { $fb.Dispose() }
+                    $cp = New-Object System.Drawing.Pen([System.Drawing.Color]::White, 1.6)
+                    try {
+                        $g.DrawLine($cp, ($cb.X + 3), ($cb.Y + 7), ($cb.X + 6), ($cb.Y + 10))
+                        $g.DrawLine($cp, ($cb.X + 6), ($cb.Y + 10), ($cb.X + 11), ($cb.Y + 3))
+                    } finally { $cp.Dispose() }
+                } else {
+                    $bc = $pal.Muted
+                    if ($sel) { $bc = [System.Drawing.Color]::White }
+                    $bp = New-Object System.Drawing.Pen($bc, 1.2)
+                    try { $g.DrawRectangle($bp, $cb) } finally { $bp.Dispose() }
+                }
+                $fl = [System.Windows.Forms.TextFormatFlags]::Left -bor [System.Windows.Forms.TextFormatFlags]::VerticalCenter -bor [System.Windows.Forms.TextFormatFlags]::EndEllipsis -bor [System.Windows.Forms.TextFormatFlags]::NoPrefix -bor [System.Windows.Forms.TextFormatFlags]::NoPadding
+                $inf = '[' + [string]$infos[$e.Index] + ']'
+                $infW = [System.Windows.Forms.TextRenderer]::MeasureText($g, $inf, $rowFont).Width
+                $infX = [Math]::Max(($e.Bounds.X + 30 + 120), ($e.Bounds.Right - $infW - 10))
+                $pathRect = New-Object System.Drawing.Rectangle(($e.Bounds.X + 30), $e.Bounds.Y, [Math]::Max(10, ($infX - ($e.Bounds.X + 30) - 8)), $e.Bounds.Height)
+                [System.Windows.Forms.TextRenderer]::DrawText($g, [string]$cands[$e.Index].Path, $rowFont, $pathRect, $pal.Text, $fl)
+                $infMuted = $pal.Muted
+                if ($sel) { $infMuted = [System.Drawing.Color]::FromArgb(225, 225, 225) }
+                $infRect = New-Object System.Drawing.Rectangle($infX, $e.Bounds.Y, [Math]::Max(10, ($e.Bounds.Right - $infX - 4)), $e.Bounds.Height)
+                [System.Windows.Forms.TextRenderer]::DrawText($g, $inf, $rowFont, $infRect, $infMuted, $fl)
+            } catch {}
+        }.GetNewClosure())
         $f.Controls.Add($clb)
+        # Отметка — только по самой галочке (зона 0..30 px по горизонтали); пробел — отметить выделенную строку.
+        $clb.Add_MouseDown({
+            param($s, $ev)
+            try {
+                if ($ev.Button -ne [System.Windows.Forms.MouseButtons]::Left) { return }
+                $i = $s.IndexFromPoint($ev.Location)
+                if ($i -lt 0 -or $i -ge $cands.Count) { return }
+                if ($ev.X -lt 30) {
+                    $state[$i] = (-not [bool]$state[$i])
+                    $s.Invalidate($s.GetItemRectangle($i))
+                }
+            } catch {}
+        }.GetNewClosure())
+        $clb.Add_KeyDown({
+            param($s, $ev)
+            try {
+                if ($ev.KeyCode -eq [System.Windows.Forms.Keys]::Space) {
+                    $i = $s.SelectedIndex
+                    if ($i -ge 0 -and $i -lt $cands.Count) { $state[$i] = (-not [bool]$state[$i]); $s.Invalidate($s.GetItemRectangle($i)) }
+                    $ev.Handled = $true; $ev.SuppressKeyPress = $true
+                }
+            } catch {}
+        }.GetNewClosure())
         # Подсказка с полным путём при наведении и меню «Открыть папку» по правой кнопке.
         $pathTip = New-Object System.Windows.Forms.ToolTip
         $pathTip.InitialDelay = 300; $pathTip.AutoPopDelay = 30000; $pathTip.ReshowDelay = 100
@@ -24732,15 +25137,9 @@ function Show-SaveDetectorPicker {
             } catch {}
         }.GetNewClosure())
         $clb.Add_MouseLeave({ try { $tipState.Last = -1; $pathTip.Hide($clb) } catch {} }.GetNewClosure())
-        $ctx = New-Object System.Windows.Forms.ContextMenuStrip
-        $ctx.BackColor = $pal.Panel2; $ctx.ForeColor = $pal.Text
-        # Тёмный рендерер меню (как в остальных меню программы): иначе слева торчит белая колонка под значки.
-        try { Initialize-SCFilterRenderer; $ctx.Renderer = (New-Object SCFilterRenderer) } catch {}
-        $miOpen = $ctx.Items.Add((T 'sdet_open_folder'))
-        $menuState = @{ Path = '' }
-        $miOpen.Add_Click({
+        $openPath = {
+            param([string]$pth)
             try {
-                $pth = [string]$menuState.Path
                 if ([string]::IsNullOrWhiteSpace($pth)) { return }
                 if (Test-Path -LiteralPath $pth -PathType Container) {
                     Start-Process -FilePath 'explorer.exe' -ArgumentList ('"' + $pth + '"')
@@ -24751,7 +25150,24 @@ function Show-SaveDetectorPicker {
                     if ($par -and (Test-Path -LiteralPath $par)) { Start-Process -FilePath 'explorer.exe' -ArgumentList ('"' + $par + '"') }
                 }
             } catch {}
+        }.GetNewClosure()
+        # Двойной щелчок по строке (не по галочке) открывает папку.
+        $clb.Add_MouseDoubleClick({
+            param($s, $ev)
+            try {
+                if ($ev.Button -ne [System.Windows.Forms.MouseButtons]::Left -or $ev.X -lt 30) { return }
+                $i = $s.IndexFromPoint($ev.Location)
+                if ($i -lt 0 -or $i -ge $cands.Count) { return }
+                & $openPath ([string]$cands[$i].Path)
+            } catch {}
         }.GetNewClosure())
+        $ctx = New-Object System.Windows.Forms.ContextMenuStrip
+        $ctx.BackColor = $pal.Panel2; $ctx.ForeColor = $pal.Text
+        # Тёмный рендерер меню (как в остальных меню программы): иначе слева торчит белая колонка под значки.
+        try { Initialize-SCFilterRenderer; $ctx.Renderer = (New-Object SCFilterRenderer) } catch {}
+        $miOpen = $ctx.Items.Add((T 'sdet_open_folder'))
+        $menuState = @{ Path = '' }
+        $miOpen.Add_Click({ try { & $openPath ([string]$menuState.Path) } catch {} }.GetNewClosure())
         $clb.Add_MouseDown({
             param($s, $ev)
             try {
@@ -24770,7 +25186,7 @@ function Show-SaveDetectorPicker {
         $btnTrack.Visible = $AllowTrack
         $btnUse.Add_Click({
             $paths = New-Object System.Collections.ArrayList
-            foreach ($i in $clb.CheckedIndices) { [void]$paths.Add([string]$cands[[int]$i].Path) }
+            for ($i = 0; $i -lt $cands.Count; $i++) { if ([bool]$state[$i]) { [void]$paths.Add([string]$cands[$i].Path) } }
             if ($paths.Count -eq 0) { return }
             $result.Action = 'use'
             $result.Paths = @($paths)
@@ -24783,6 +25199,259 @@ function Show-SaveDetectorPicker {
         $btnCancel.Add_Click({ $f.DialogResult = [System.Windows.Forms.DialogResult]::Cancel }.GetNewClosure())
         $f.Controls.Add($btnUse); $f.Controls.Add($btnTrack); $f.Controls.Add($btnCancel)
         $f.AcceptButton = $btnUse; $f.CancelButton = $btnCancel
+        if ($Owner -is [System.Windows.Forms.Form]) { [void]$f.ShowDialog($Owner) } else { [void]$f.ShowDialog() }
+    } finally { try { $f.Dispose() } catch {} }
+    return $result
+}
+
+# Общее окно выбора для нескольких игр сразу (массовый поиск в библиотеке): список сгруппирован по играм,
+# у каждого места — своя галочка, у названия игры — галочка «все места игры» (частичная отметка показывается квадратом).
+# Groups — массив @{ Name; Cands } (Cands — как у Show-SaveDetectorPicker). Результат: @{ Action = 'use' | 'cancel'; Chosen = @{ индекс игры = string[] } }.
+function Show-SaveDetectorMultiPicker {
+    param($Owner, [object[]]$Groups)
+    $result = @{ Action = 'cancel'; Chosen = @{} }
+    $pal = Get-SaveDetectorPalette
+    $f = New-Object System.Windows.Forms.Form
+    try {
+        $f.Text = (T 'sdet_title')
+        $f.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::Sizable
+        $f.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterParent
+        $f.MaximizeBox = $true; $f.MinimizeBox = $false; $f.ShowInTaskbar = $false
+        $f.ClientSize = New-Object System.Drawing.Size(860, 540)
+        $f.MinimumSize = New-Object System.Drawing.Size(640, 380)
+        $dlgW = [int]$f.ClientSize.Width; $dlgH = [int]$f.ClientSize.Height
+        $f.BackColor = $pal.Bg; $f.ForeColor = $pal.Text
+        $f.Font = New-Object System.Drawing.Font('Segoe UI', 9.5)
+        $lbl = New-Object System.Windows.Forms.Label
+        $lbl.Text = (T 'sdet_pick_hint_multi_all'); $lbl.Location = New-Object System.Drawing.Point(16, 14)
+        $lbl.Size = New-Object System.Drawing.Size(($dlgW - 32), 40); $lbl.ForeColor = $pal.Text
+        $lbl.Anchor = [System.Windows.Forms.AnchorStyles]'Top, Left, Right'
+        $f.Controls.Add($lbl)
+
+        $selCol = [System.Drawing.Color]::FromArgb(38, 76, 108)
+        $accCol = [System.Drawing.Color]::FromArgb(102, 192, 244)
+        $hdrCol = [System.Drawing.Color]::FromArgb(34, 48, 64)
+        try { if ($null -ne $steamUi) { if ($null -ne $steamUi.Selected) { $selCol = $steamUi.Selected }; if ($null -ne $steamUi.Accent) { $accCol = $steamUi.Accent } } } catch {}
+        $rowFont = New-Object System.Drawing.Font('Segoe UI', 9.5)
+        $hdrFont = New-Object System.Drawing.Font('Segoe UI Semibold', 9.5)
+
+        # Плоский список строк: заголовок игры + её места. state — отметки (для строк-заголовков не используется).
+        $rows = New-Object System.Collections.ArrayList
+        $state = New-Object 'System.Collections.Generic.List[bool]'
+        $gRows = @{}
+        for ($g = 0; $g -lt @($Groups).Count; $g++) {
+            $grp = @($Groups)[$g]
+            $gRows[$g] = New-Object System.Collections.ArrayList
+            [void]$rows.Add([PSCustomObject]@{ Kind = 'game'; G = $g; Text = ([string]$grp.Name + '  (' + @($grp.Cands).Count + ')'); Path = ''; Info = '' })
+            $state.Add($false)
+            foreach ($c in @($grp.Cands)) {
+                $when = ''
+                try { if ([datetime]$c.Last -gt [datetime]::MinValue) { $when = ([datetime]$c.Last).ToString('yyyy-MM-dd HH:mm') } } catch {}
+                $inf = (T 'sdet_info' @([int]$c.Files, (Format-SaveDetectorSize ([long]$c.Bytes)), $when))
+                [void]$gRows[$g].Add($rows.Count)
+                [void]$rows.Add([PSCustomObject]@{ Kind = 'path'; G = $g; Text = ''; Path = [string]$c.Path; Info = $inf })
+                $state.Add([bool]$c.Checked)
+            }
+        }
+
+        $clb = New-Object System.Windows.Forms.ListBox
+        $clb.Location = New-Object System.Drawing.Point(16, 58); $clb.Size = New-Object System.Drawing.Size(($dlgW - 32), ($dlgH - 58 - 60))
+        $clb.Anchor = [System.Windows.Forms.AnchorStyles]'Top, Bottom, Left, Right'
+        $clb.BackColor = $pal.Panel2; $clb.ForeColor = $pal.Text; $clb.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+        $clb.DrawMode = [System.Windows.Forms.DrawMode]::OwnerDrawFixed
+        $clb.ItemHeight = 26; $clb.IntegralHeight = $false; $clb.Font = $rowFont
+        for ($i = 0; $i -lt $rows.Count; $i++) { [void]$clb.Items.Add([string]$i) }
+
+        # Состояние галочки заголовка: 0 — нет, 1 — все, 2 — часть.
+        $groupState = {
+            param([int]$g)
+            $n = 0; $tot = 0
+            foreach ($ri in $gRows[$g]) { $tot++; if ([bool]$state[[int]$ri]) { $n++ } }
+            if ($tot -eq 0 -or $n -eq 0) { return 0 }
+            if ($n -eq $tot) { return 1 }
+            return 2
+        }.GetNewClosure()
+        $toggleRow = {
+            param([int]$i)
+            if ($i -lt 0 -or $i -ge $rows.Count) { return }
+            if ([string]$rows[$i].Kind -eq 'game') {
+                $g = [int]$rows[$i].G
+                $newVal = ((& $groupState $g) -ne 1)
+                foreach ($ri in $gRows[$g]) { $state[[int]$ri] = $newVal }
+                $clb.Invalidate()
+            } else {
+                $state[$i] = (-not [bool]$state[$i])
+                $clb.Invalidate()
+            }
+        }.GetNewClosure()
+
+        $clb.Add_DrawItem({
+            param($s, $e)
+            try {
+                if ($e.Index -lt 0 -or $e.Index -ge $rows.Count) { return }
+                $g = $e.Graphics
+                $row = $rows[$e.Index]
+                $isGame = ([string]$row.Kind -eq 'game')
+                $sel = $e.State.HasFlag([System.Windows.Forms.DrawItemState]::Selected)
+                $bgc = $pal.Panel2
+                if ($isGame) { $bgc = $hdrCol }
+                if ($sel) { $bgc = $selCol }
+                $bb = New-Object System.Drawing.SolidBrush($bgc)
+                try { $g.FillRectangle($bb, $e.Bounds) } finally { $bb.Dispose() }
+                $cx = $e.Bounds.X + 8
+                if (-not $isGame) { $cx = $e.Bounds.X + 28 }
+                $cb = New-Object System.Drawing.Rectangle($cx, ($e.Bounds.Y + [int](($e.Bounds.Height - 14) / 2)), 14, 14)
+                $st = 0
+                if ($isGame) { $st = [int](& $groupState ([int]$row.G)) } elseif ([bool]$state[$e.Index]) { $st = 1 }
+                if ($st -ne 0) {
+                    $fb = New-Object System.Drawing.SolidBrush($accCol)
+                    try { $g.FillRectangle($fb, $cb) } finally { $fb.Dispose() }
+                    $cp = New-Object System.Drawing.Pen([System.Drawing.Color]::White, 1.6)
+                    try {
+                        if ($st -eq 1) {
+                            $g.DrawLine($cp, ($cb.X + 3), ($cb.Y + 7), ($cb.X + 6), ($cb.Y + 10))
+                            $g.DrawLine($cp, ($cb.X + 6), ($cb.Y + 10), ($cb.X + 11), ($cb.Y + 3))
+                        } else {
+                            $g.DrawLine($cp, ($cb.X + 3), ($cb.Y + 7), ($cb.X + 11), ($cb.Y + 7))
+                        }
+                    } finally { $cp.Dispose() }
+                } else {
+                    $bc = $pal.Muted
+                    if ($sel) { $bc = [System.Drawing.Color]::White }
+                    $bp = New-Object System.Drawing.Pen($bc, 1.2)
+                    try { $g.DrawRectangle($bp, $cb) } finally { $bp.Dispose() }
+                }
+                $fl = [System.Windows.Forms.TextFormatFlags]::Left -bor [System.Windows.Forms.TextFormatFlags]::VerticalCenter -bor [System.Windows.Forms.TextFormatFlags]::EndEllipsis -bor [System.Windows.Forms.TextFormatFlags]::NoPrefix -bor [System.Windows.Forms.TextFormatFlags]::NoPadding
+                $tx = $cb.Right + 8
+                if ($isGame) {
+                    $r1 = New-Object System.Drawing.Rectangle($tx, $e.Bounds.Y, [Math]::Max(10, ($e.Bounds.Right - $tx - 6)), $e.Bounds.Height)
+                    [System.Windows.Forms.TextRenderer]::DrawText($g, [string]$row.Text, $hdrFont, $r1, $pal.Text, $fl)
+                } else {
+                    $inf = '[' + [string]$row.Info + ']'
+                    $infW = [System.Windows.Forms.TextRenderer]::MeasureText($g, $inf, $rowFont).Width
+                    $infX = [Math]::Max(($tx + 120), ($e.Bounds.Right - $infW - 10))
+                    $pathRect = New-Object System.Drawing.Rectangle($tx, $e.Bounds.Y, [Math]::Max(10, ($infX - $tx - 8)), $e.Bounds.Height)
+                    [System.Windows.Forms.TextRenderer]::DrawText($g, [string]$row.Path, $rowFont, $pathRect, $pal.Text, $fl)
+                    $infMuted = $pal.Muted
+                    if ($sel) { $infMuted = [System.Drawing.Color]::FromArgb(225, 225, 225) }
+                    $infRect = New-Object System.Drawing.Rectangle($infX, $e.Bounds.Y, [Math]::Max(10, ($e.Bounds.Right - $infX - 4)), $e.Bounds.Height)
+                    [System.Windows.Forms.TextRenderer]::DrawText($g, $inf, $rowFont, $infRect, $infMuted, $fl)
+                }
+            } catch {}
+        }.GetNewClosure())
+        $f.Controls.Add($clb)
+
+        # Отметка — только по самой галочке (левая зона) или пробелом; двойной щелчок по месту открывает папку.
+        $clb.Add_MouseDown({
+            param($s, $ev)
+            try {
+                if ($ev.Button -ne [System.Windows.Forms.MouseButtons]::Left) { return }
+                $i = $s.IndexFromPoint($ev.Location)
+                if ($i -lt 0 -or $i -ge $rows.Count) { return }
+                $zone = 30
+                if ([string]$rows[$i].Kind -eq 'path') { $zone = 50 }
+                if ($ev.X -lt $zone) { & $toggleRow $i }
+            } catch {}
+        }.GetNewClosure())
+        $clb.Add_KeyDown({
+            param($s, $ev)
+            try {
+                if ($ev.KeyCode -eq [System.Windows.Forms.Keys]::Space) {
+                    & $toggleRow ([int]$s.SelectedIndex)
+                    $ev.Handled = $true; $ev.SuppressKeyPress = $true
+                }
+            } catch {}
+        }.GetNewClosure())
+
+        $pathTip = New-Object System.Windows.Forms.ToolTip
+        $pathTip.InitialDelay = 300; $pathTip.AutoPopDelay = 30000; $pathTip.ReshowDelay = 100
+        $tipState = @{ Last = -1 }
+        $clb.Add_MouseMove({
+            param($s, $ev)
+            try {
+                $i = $s.IndexFromPoint($ev.Location)
+                if ($i -lt 0 -or $i -ge $rows.Count -or [string]$rows[$i].Kind -ne 'path') { if ($tipState.Last -ne -1) { $tipState.Last = -1; $pathTip.Hide($s) }; return }
+                if ($i -ne $tipState.Last) {
+                    $tipState.Last = $i
+                    $pathTip.Show([string]$rows[$i].Path, $s, ($ev.X + 14), ($ev.Y + 22), 30000)
+                }
+            } catch {}
+        }.GetNewClosure())
+        $clb.Add_MouseLeave({ try { $tipState.Last = -1; $pathTip.Hide($clb) } catch {} }.GetNewClosure())
+        $openPath = {
+            param([string]$pth)
+            try {
+                if ([string]::IsNullOrWhiteSpace($pth)) { return }
+                if (Test-Path -LiteralPath $pth -PathType Container) {
+                    Start-Process -FilePath 'explorer.exe' -ArgumentList ('"' + $pth + '"')
+                } elseif (Test-Path -LiteralPath $pth -PathType Leaf) {
+                    Start-Process -FilePath 'explorer.exe' -ArgumentList ('/select,"' + $pth + '"')
+                } else {
+                    $par = Split-Path -Path $pth -Parent
+                    if ($par -and (Test-Path -LiteralPath $par)) { Start-Process -FilePath 'explorer.exe' -ArgumentList ('"' + $par + '"') }
+                }
+            } catch {}
+        }.GetNewClosure()
+        $clb.Add_MouseDoubleClick({
+            param($s, $ev)
+            try {
+                if ($ev.Button -ne [System.Windows.Forms.MouseButtons]::Left -or $ev.X -lt 50) { return }
+                $i = $s.IndexFromPoint($ev.Location)
+                if ($i -lt 0 -or $i -ge $rows.Count -or [string]$rows[$i].Kind -ne 'path') { return }
+                & $openPath ([string]$rows[$i].Path)
+            } catch {}
+        }.GetNewClosure())
+        $ctx = New-Object System.Windows.Forms.ContextMenuStrip
+        $ctx.BackColor = $pal.Panel2; $ctx.ForeColor = $pal.Text
+        try { Initialize-SCFilterRenderer; $ctx.Renderer = (New-Object SCFilterRenderer) } catch {}
+        $miOpen = $ctx.Items.Add((T 'sdet_open_folder'))
+        $menuState = @{ Path = '' }
+        $miOpen.Add_Click({ try { & $openPath ([string]$menuState.Path) } catch {} }.GetNewClosure())
+        $clb.Add_MouseDown({
+            param($s, $ev)
+            try {
+                if ($ev.Button -ne [System.Windows.Forms.MouseButtons]::Right) { return }
+                $i = $s.IndexFromPoint($ev.Location)
+                if ($i -lt 0 -or $i -ge $rows.Count -or [string]$rows[$i].Kind -ne 'path') { return }
+                $s.SelectedIndex = $i
+                $menuState.Path = [string]$rows[$i].Path
+                $pathTip.Hide($s); $tipState.Last = -1
+                $ctx.Show($s, $ev.Location)
+            } catch {}
+        }.GetNewClosure())
+
+        $by = $dlgH - 46
+        $btnUse = New-SaveDetectorButton $pal (T 'sdet_btn_use') 16 $by 130 $true
+        $btnAll = New-SaveDetectorButton $pal (T 'sdet_btn_check_all') 154 $by 150 $false
+        $btnNone = New-SaveDetectorButton $pal (T 'sdet_btn_uncheck_all') 312 $by 150 $false
+        $btnSkip = New-SaveDetectorButton $pal (T 'sdet_btn_skip_all') ($dlgW - 16 - 150) $by 150 $false
+        foreach ($b0 in @($btnUse, $btnAll, $btnNone)) { $b0.Anchor = [System.Windows.Forms.AnchorStyles]'Bottom, Left' }
+        $btnSkip.Anchor = [System.Windows.Forms.AnchorStyles]'Bottom, Right'
+        $btnAll.Add_Click({
+            for ($i = 0; $i -lt $rows.Count; $i++) { if ([string]$rows[$i].Kind -eq 'path') { $state[$i] = $true } }
+            $clb.Invalidate()
+        }.GetNewClosure())
+        $btnNone.Add_Click({
+            for ($i = 0; $i -lt $rows.Count; $i++) { $state[$i] = $false }
+            $clb.Invalidate()
+        }.GetNewClosure())
+        $btnUse.Add_Click({
+            $chosen = @{}
+            for ($i = 0; $i -lt $rows.Count; $i++) {
+                if ([string]$rows[$i].Kind -ne 'path' -or -not [bool]$state[$i]) { continue }
+                $g = [int]$rows[$i].G
+                if (-not $chosen.ContainsKey($g)) { $chosen[$g] = New-Object System.Collections.ArrayList }
+                [void]$chosen[$g].Add([string]$rows[$i].Path)
+            }
+            $out = @{}
+            foreach ($k in @($chosen.Keys)) { $out[[int]$k] = [string[]]@($chosen[$k]) }
+            $result.Action = 'use'
+            $result.Chosen = $out
+            $f.DialogResult = [System.Windows.Forms.DialogResult]::OK
+        }.GetNewClosure())
+        $btnSkip.Add_Click({ $f.DialogResult = [System.Windows.Forms.DialogResult]::Cancel }.GetNewClosure())
+        $f.Controls.Add($btnUse); $f.Controls.Add($btnAll); $f.Controls.Add($btnNone); $f.Controls.Add($btnSkip)
+        $f.AcceptButton = $btnUse; $f.CancelButton = $btnSkip
         if ($Owner -is [System.Windows.Forms.Form]) { [void]$f.ShowDialog($Owner) } else { [void]$f.ShowDialog() }
     } finally { try { $f.Dispose() } catch {} }
     return $result
@@ -24921,6 +25590,47 @@ function Show-SaveDetectorTrackDialog {
 
 # Весь сценарий детектора для одной игры. Params — из Get-SaveGameParams; Entry — запись игры (Kind steam/shortcut/launcher/folder);
 # SelectedExe — exe, выбранный в карточке (для игр из папки). Результат: @{ Status = 'set' | 'none' | 'cancel' | 'fail'; Count; Error }.
+# Отметки в окне выбора восстанавливаются из ранее сохранённого выбора (defined_saves.json): отмечены только те места, что были выбраны раньше;
+# ранее выбранные места, которых поиск сейчас не вернул (но они есть на диске), добавляются в список отмеченными. Если выбора ещё не было — отметки по умолчанию.
+function Set-SaveDetectorCheckedFromDefined ($Cands, [string]$Name, [long]$SteamAppId) {
+    $list = @($Cands)
+    try {
+        $def = Get-SaveDefined $Name $SteamAppId
+        if ($null -eq $def) { return $list }
+        $defKeys = @{}
+        foreach ($dp in @($def.Paths)) {
+            $k = ([string]$dp).TrimEnd('\', '/').ToLowerInvariant()
+            if ($k) { $defKeys[$k] = [string]$dp }
+        }
+        if ($defKeys.Count -eq 0) { return $list }
+        $have = @{}
+        foreach ($c in $list) {
+            $k = ([string]$c.Path).TrimEnd('\', '/').ToLowerInvariant()
+            $have[$k] = $true
+            $c.Checked = $defKeys.ContainsKey($k)
+        }
+        $extra = New-Object System.Collections.ArrayList
+        foreach ($k in @($defKeys.Keys)) {
+            if ($have.ContainsKey($k)) { continue }
+            $pth = [string]$defKeys[$k]
+            $files = @()
+            if ([System.IO.Directory]::Exists($pth)) { $files = @(Get-SaveFilesUnder $pth) }
+            elseif ([System.IO.File]::Exists($pth)) { $files = @($pth) }
+            else { continue }
+            $bytes = [long]0; $last = [datetime]::MinValue
+            foreach ($fp in $files) {
+                try {
+                    $fi = New-Object System.IO.FileInfo([string]$fp)
+                    $bytes += [long]$fi.Length
+                    if ($fi.LastWriteTime -gt $last) { $last = $fi.LastWriteTime }
+                } catch {}
+            }
+            [void]$extra.Add([PSCustomObject]@{ Path = $pth; Kind = 'dir'; Files = $files.Count; Bytes = $bytes; Last = $last; Score = 100; Checked = $true })
+        }
+        return @($list + @($extra))
+    } catch { return $list }
+}
+
 function Invoke-SaveDetector {
     param($Owner, [hashtable]$Params, $Entry = $null, [string]$SelectedExe = '', [bool]$ForceTrack = $false)
     $res = @{ Status = 'cancel'; Count = 0; Error = '' }
@@ -24931,10 +25641,24 @@ function Invoke-SaveDetector {
 
         # 1) По базе, без запуска игры.
         if (-not $needTrack) {
+            # Ступенчатый поиск без запуска игры (как в библиотеке): 1) база + эмуляторы, 2) Steam Cloud + эвристика.
+            # Запуск игры предлагается, только если ни на одном шаге ничего не найдено (иначе — правая кнопка → «Отследить запуск игры»).
             $db = @()
-            try { if (Initialize-SaveEngine) { $db = @(Get-SaveDetectorDbCandidates $Params) } } catch { $db = @() }
+            $hintKey = 'sdet_pick_hint_db'
+            try {
+                if (Initialize-SaveEngine) {
+                    $extra = @()
+                    try { $extra = @(@((Get-SaveDetectorLaunchInfo $Entry $SelectedExe).ProcNames) | ForEach-Object { [System.IO.Path]::GetFileNameWithoutExtension([string]$_) } | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }) } catch { $extra = @() }
+                    $db = @(Get-SaveDetectorDbCandidates $Params -ExtraDirNames ([string[]]@($extra)))
+                    if ($db.Count -eq 0) {
+                        $db = @(Get-SaveDetectorDbCandidates $Params -Heuristic -ExtraDirNames ([string[]]@($extra)))
+                        $hintKey = 'sdet_pick_hint_heur'
+                    }
+                }
+            } catch { $db = @() }
             if ($db.Count -gt 0) {
-                $pick = Show-SaveDetectorPicker -Owner $Owner -Candidates $db -HintKey 'sdet_pick_hint_db' -AllowTrack $true
+                $db = @(Set-SaveDetectorCheckedFromDefined $db $name $appId)
+                $pick = Show-SaveDetectorPicker -Owner $Owner -Candidates $db -HintKey $hintKey -AllowTrack $false
                 if ([string]$pick.Action -eq 'use') {
                     if (Set-SaveDefined $name $appId ([string[]]@($pick.Paths))) { $res.Status = 'set'; $res.Count = @($pick.Paths).Count } else { $res.Status = 'fail'; $res.Error = 'defined_saves.json' }
                     return $res
@@ -24953,9 +25677,10 @@ function Invoke-SaveDetector {
         if ($cands.Count -eq 0) { $res.Status = 'none'; return $res }
 
         # 3) Подтверждение и запоминание.
+        $cands = @(Set-SaveDetectorCheckedFromDefined $cands $name $appId)
         $pick2 = Show-SaveDetectorPicker -Owner $Owner -Candidates $cands -HintKey 'sdet_pick_hint_track' -AllowTrack $false
         if ([string]$pick2.Action -ne 'use') { return $res }
-        if (Set-SaveDefined $name $appId ([string[]]@($pick2.Paths))) { $res.Status = 'set'; $res.Count = @($pick2.Paths).Count } else { $res.Status = 'fail'; $res.Error = 'defined_saves.json' }
+        if (Set-SaveDefined $name $appId ([string[]]@($pick2.Paths)) 'track') { $res.Status = 'set'; $res.Count = @($pick2.Paths).Count } else { $res.Status = 'fail'; $res.Error = 'defined_saves.json' }
     } catch {
         $res.Status = 'fail'; $res.Error = [string]$_.Exception.Message
     }
@@ -36392,6 +37117,10 @@ function Show-SteamLibraryBrowser {
     $btnSaveRestore.Text = ''
     $dlg.Controls.Add($btnSaveBackup)
     $dlg.Controls.Add($btnSaveRestore)
+    # «Поиск сохранений» (лупа) стоит левее «Бэкап»: максимальный поиск у отмеченных игр без запуска игр.
+    $btnSaveScan = & $newSaveBtn
+    $btnSaveScan.Text = ''
+    $dlg.Controls.Add($btnSaveScan)
 
     # Значок компактного режима (лоток со стрелкой вниз — бэкап, вверх — возврат); рисуется, только когда у кнопки нет текста.
     $paintSaveIcon = {
@@ -36415,6 +37144,13 @@ function Show-SteamLibraryBrowser {
             $cx = [single]($w / 2.0); $cy = [single]($h / 2.0)
             $pf = { param($x, $y) New-Object System.Drawing.PointF([single]$x, [single]$y) }
             # Дискета (бэкап) и «вернуть» (возврат сохранений и апскейлеров) - те же значки, что в карточке игры, но крупнее.
+            # Лупа («Поиск сохранений»): кольцо и ручка, тот же стиль, что значок детектора в карточке игры.
+            if ($kind -eq 'scan') {
+                $r = 6.4
+                $g.DrawEllipse($pen, [single]($cx - 2.2 - $r), [single]($cy - 2.2 - $r), [single](2 * $r), [single](2 * $r))
+                $g.DrawLine($pen, [single]($cx + 2.4), [single]($cy + 2.4), [single]($cx + 8.2), [single]($cy + 8.2))
+                return
+            }
             if ($kind -eq 'backup' -or $kind -eq 'restore' -or $kind -eq 'undo') {
                 $pen.Dispose()
                 $pen = New-Object System.Drawing.Pen($col, 1.4)
@@ -36485,6 +37221,7 @@ function Show-SteamLibraryBrowser {
     }
     $btnSaveBackup.Add_Paint({ param($s, $e) & $paintSaveIcon $s $e 'backup' })
     $btnSaveRestore.Add_Paint({ param($s, $e) & $paintSaveIcon $s $e 'restore' })
+    $btnSaveScan.Add_Paint({ param($s, $e) & $paintSaveIcon $s $e 'scan' })
     $btnUpdUp.Add_Paint({ param($s, $e) & $paintSaveIcon $s $e 'upd' })
     $btnRestoreUp.Add_Paint({ param($s, $e) & $paintSaveIcon $s $e 'undo' })
 
@@ -37039,6 +37776,7 @@ function Show-SteamLibraryBrowser {
     $libToolTip.SetToolTip($btnRestoreUp, (T 'lib_restore_tip'))
     $libToolTip.SetToolTip($btnSaveBackup, (T 'save_tip_backup'))
     $libToolTip.SetToolTip($btnSaveRestore, (T 'save_tip_restore'))
+    $libToolTip.SetToolTip($btnSaveScan, (T 'save_scan_tip'))
     $toggleAuto.Add_Click({ $toggleAuto.Checked = -not $toggleAuto.Checked })
     $lblAutoImport.Add_Click({ $toggleAuto.Checked = -not $toggleAuto.Checked })
     $toggleAuto.Add_CheckedChanged({
@@ -38885,6 +39623,183 @@ function Show-SteamLibraryBrowser {
             try { & $updateSelectionUi } catch {}
         }
     }
+    # Цели для пунктов сохранений в контекстном меню плитки - та же схема, что у апскейлеров: если эта игра отмечена галочкой,
+    # действие применяется ко всем отмеченным играм (ROM-ярлыки исключены), иначе только к ней. $mode: scan | backup | restore.
+    # Для «restore» подходят только игры, у которых уже есть бэкап (и сама игра под курсором тоже должна его иметь).
+    $getCtxSaveTargets = {
+        param($en, [string]$mode)
+        $elig = {
+            param($x, [string]$m)
+            try { if (Test-ShortcutIsRomEntry $x) { return $false } } catch {}
+            if ($m -eq 'restore') { try { return [bool](Test-SaveHasBackup (Get-SaveGameParams $x)) } catch { return $false } }
+            return $true
+        }
+        if (-not [bool](& $elig $en $mode)) { return @() }
+        $res = New-Object System.Collections.Generic.List[object]
+        try {
+            if ($script:libSteamSelected.ContainsKey([string](& $getSteamEntryKey $en))) {
+                foreach ($x in @(& $getSelectedSteamEntries)) { if (& $elig $x $mode) { [void]$res.Add($x) } }
+            }
+        } catch {}
+        if ($res.Count -gt 1) { return $res.ToArray() }
+        return @($en)
+    }
+    # Обновление / возврат апскейлеров из контекстного меню плитки. Те же действия, что у кнопок «Обновить апскейлеры»
+    # и «Вернуть бэкапы» на панели, но для одной игры - или для всех отмеченных, если эта игра среди них.
+    $getCtxUpscalerTargets = {
+        param($en, [string]$mode)
+        $elig = {
+            param($x, [string]$m)
+            try { if (Test-ShortcutIsRomEntry $x) { return $false } } catch {}
+            if ($m -eq 'upd') { return [bool](& $getEntryHasLibs $x) }
+            return [bool](& $getEntryHasOrig $x)
+        }
+        if (-not [bool](& $elig $en $mode)) { return @() }
+        $res = New-Object System.Collections.Generic.List[object]
+        try {
+            if ($script:libSteamSelected.ContainsKey([string](& $getSteamEntryKey $en))) {
+                foreach ($x in @(& $getSelectedSteamEntries)) { if (& $elig $x $mode) { [void]$res.Add($x) } }
+            }
+        } catch {}
+        if ($res.Count -gt 1) { return $res.ToArray() }
+        return @($en)
+    }
+    $ctxUpscalers = {
+        param($targets, [string]$mode)
+        if ($script:libCtxSaveBusy -or $script:libUpdRunning -or $script:libRestoreRunning -or $script:libImportRunning -or $script:libSaveRunning) { return }
+        $games = @(@($targets) | Where-Object { $null -ne $_ })
+        if ($games.Count -eq 0) { return }
+        $isUpd = ($mode -eq 'upd')
+        $latest = $null
+        try {
+            $lblLibStatus.Text = ''
+            if ($isUpd) {
+                $latest = Get-UpscalerLatestLocalMap
+                if ($latest.Count -eq 0) {
+                    Show-AppMessageBox($dlg, (T 'lib_upd_none_dl'), $global:appTitle,
+                        [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
+                    return
+                }
+                $head = $(if ($games.Count -eq 1) { T 'lib_ctx_upd_confirm1' @([string]$games[0].Name) } else { T 'lib_upd_confirm' @($games.Count) })
+                $body = $head + "`n`n" + (T 'lib_upd_confirm2')
+            } else {
+                $head = $(if ($games.Count -eq 1) { T 'lib_ctx_restore_confirm1' @([string]$games[0].Name) } else { T 'lib_restore_confirm' @($games.Count) })
+                $body = $head + "`n`n" + (T 'lib_restore_confirm2')
+            }
+            $answer = Show-AppMessageBox($dlg, $body, $global:appTitle,
+                [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
+            if ($answer -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+        } catch { return }
+
+        $script:libCtxSaveBusy = $true
+        $dlg.UseWaitCursor = $true
+        $done = 0; $replaced = 0; $same = 0; $none = 0
+        $repRows = New-Object System.Collections.Generic.List[object]
+        $failLines = New-Object System.Collections.Generic.List[string]
+        try {
+            try { & $setLibImportLock $true } catch {}
+            $titleOf = @{}
+            if (-not $isUpd) { foreach ($def in @(Get-UpscalerDefs)) { $titleOf[[string]$def.File] = [string]$def.Title } }
+            $idx = 0
+            foreach ($gm in $games) {
+                $idx++
+                $pk = $(if ($isUpd) { 'lib_upd_progress' } else { 'lib_restore_progress' })
+                $lblLibStatus.Text = ((T $pk @($idx, $games.Count)) + ' — ' + [string]$gm.Name)
+                [System.Windows.Forms.Application]::DoEvents()
+                $r = $null
+                try {
+                    $gmDir = [string](Get-LibDlssEntryDir $gm)
+                    if ($isUpd) {
+                        try { $r = Invoke-UpscalerUpdateBackground $gmDir $latest }
+                        catch { $r = Update-GameUpscalersInDir $gmDir $latest }
+                    } else {
+                        try { $r = Invoke-UpscalerRestoreBackground $gmDir $titleOf }
+                        catch { $r = Restore-GameUpscalersInDir $gmDir $titleOf }
+                    }
+                } catch { $r = [PSCustomObject]@{ Status = 'error'; Replaced = 0; Titles = @(); Error = [string]$_.Exception.Message } }
+                $okSt = $(if ($isUpd) { 'updated' } else { 'restored' })
+                $st = [string]$r.Status
+                if ($st -eq $okSt) {
+                    $done++; $replaced += [int]$r.Replaced
+                    if ($isUpd) { try { $script:libHasOrigCache[(Get-NormalizedGamePathKey (Get-LibDlssEntryDir $gm))] = $true } catch {} }
+                    [void]$repRows.Add([PSCustomObject]@{ Status = 'ok'; Name = [string]$gm.Name; Details = ((@($r.Titles)) -join ', ') })
+                } elseif ($st -eq 'same') {
+                    $same++; [void]$repRows.Add([PSCustomObject]@{ Status = 'same'; Name = [string]$gm.Name; Details = '' })
+                } elseif ($st -eq 'error') {
+                    [void]$failLines.Add([string]$gm.Name + ': ' + [string]$r.Error)
+                    [void]$repRows.Add([PSCustomObject]@{ Status = 'fail'; Name = [string]$gm.Name; Details = [string]$r.Error })
+                } else {
+                    $none++; [void]$repRows.Add([PSCustomObject]@{ Status = 'none'; Name = [string]$gm.Name; Details = '' })
+                }
+            }
+        } finally {
+            $dlg.UseWaitCursor = $false
+            $script:libCtxSaveBusy = $false
+            try { & $setLibImportLock $false } catch {}
+            try { & $updateSelectionUi } catch {}
+        }
+        # Версии в плитках (полоса DLSS) перечитываем заново.
+        try { Start-LibDlssScan $script:libBrowserEntries; $libDlssTimer.Start() } catch {}
+
+        $lines = New-Object System.Collections.Generic.List[string]
+        if ($isUpd) {
+            [void]$lines.Add((T 'lib_upd_res_updated' @($done, $replaced)))
+            [void]$lines.Add((T 'lib_upd_res_same' @($same)))
+            [void]$lines.Add((T 'lib_upd_res_none' @($none)))
+            if ($failLines.Count -gt 0) { [void]$lines.Add((T 'lib_upd_res_fail' @($failLines.Count))) }
+        } else {
+            [void]$lines.Add((T 'lib_restore_res_restored' @($done, $replaced)))
+            [void]$lines.Add((T 'lib_restore_res_same' @($same)))
+            [void]$lines.Add((T 'lib_restore_res_none' @($none)))
+            if ($failLines.Count -gt 0) { [void]$lines.Add((T 'lib_restore_res_fail' @($failLines.Count))) }
+        }
+        if ($games.Count -eq 1) {
+            # Одна игра: короткий итог в строке состояния, без окна отчёта.
+            $row = $repRows[0]
+            $one = ''
+            switch ([string]$row.Status) {
+                'ok'   { $one = $(if ($isUpd) { T 'lib_upd_res_updated' @(1, $replaced) } else { T 'lib_restore_res_restored' @(1, $replaced) }) + $(if ($row.Details) { ' (' + [string]$row.Details + ')' } else { '' }) }
+                'same' { $one = $(if ($isUpd) { T 'lib_upd_res_same' @(1) } else { T 'lib_restore_res_same' @(1) }) }
+                'fail' { $one = [string]$row.Details }
+                default { $one = $(if ($isUpd) { T 'lib_upd_res_none' @(1) } else { T 'lib_restore_res_none' @(1) }) }
+            }
+            $lblLibStatus.Text = ([string]$games[0].Name + ': ' + $one)
+            return
+        }
+        $icon = $(if ($failLines.Count -gt 0) { [System.Windows.Forms.MessageBoxIcon]::Warning } else { [System.Windows.Forms.MessageBoxIcon]::Information })
+        try {
+            Show-LibActionReport -Owner $dlg -SummaryLines $lines.ToArray() -Rows $repRows.ToArray() -Icon $icon
+        } catch {
+            try { Show-AppMessageBox($dlg, ($lines -join "`n"), $global:appTitle, [System.Windows.Forms.MessageBoxButtons]::OK, $icon) | Out-Null } catch {}
+        }
+    }
+    $addUpscalerMenuItems = {
+        param($snd, $en, [bool]$withSeparator)
+        $bgC = [System.Drawing.Color]::FromArgb(22, 28, 36)
+        $updT = @()
+        $rstT = @()
+        try { $updT = @(& $getCtxUpscalerTargets $en 'upd') } catch {}
+        try { $rstT = @(& $getCtxUpscalerTargets $en 'restore') } catch {}
+        if ($withSeparator -and $snd.Items.Count -gt 0) { [void]$snd.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)) }
+
+        $txtU = $(if ($updT.Count -gt 1) { T 'lib_ctx_upd_sel' @($updT.Count) } else { T 'lib_ctx_upd' })
+        $itU = New-Object System.Windows.Forms.ToolStripMenuItem($txtU)
+        $canU = ($updT.Count -gt 0)
+        $itU.BackColor = $bgC; $itU.Enabled = $canU
+        $itU.ForeColor = $(if ($canU) { $steamUi.Text } else { $steamUi.Muted })
+        $itU.Tag = [PSCustomObject]@{ Targets = $updT; Mode = 'upd' }
+        $itU.Add_Click({ param($s2, $e2) try { & $ctxUpscalers @($s2.Tag.Targets) ([string]$s2.Tag.Mode) } catch {} })
+        [void]$snd.Items.Add($itU)
+
+        $txtR = $(if ($rstT.Count -gt 1) { T 'lib_ctx_restore_sel' @($rstT.Count) } else { T 'lib_ctx_restore' })
+        $itR = New-Object System.Windows.Forms.ToolStripMenuItem($txtR)
+        $canR = ($rstT.Count -gt 0)
+        $itR.BackColor = $bgC; $itR.Enabled = $canR
+        $itR.ForeColor = $(if ($canR) { $steamUi.Text } else { $steamUi.Muted })
+        $itR.Tag = [PSCustomObject]@{ Targets = $rstT; Mode = 'restore' }
+        $itR.Add_Click({ param($s2, $e2) try { & $ctxUpscalers @($s2.Tag.Targets) ([string]$s2.Tag.Mode) } catch {} })
+        [void]$snd.Items.Add($itR)
+    }
     # Запуск игры из контекстного меню плитки: Steam - steam://rungameid, ярлыки/лаунчеры/ROM - их exe с параметрами.
     $ctxLaunchGame = {
         param($en)
@@ -38920,22 +39835,67 @@ function Show-SteamLibraryBrowser {
         $hasBk = $false
         try { $hasBk = [bool](Test-SaveHasBackup (Get-SaveGameParams $en)) } catch {}
 
+        # Цели для «Найти / Бэкап / Восстановить»: одна игра или все отмеченные (если эта среди них) - как у апскейлеров.
+        $scanT = @(); $bkT = @(); $rsT = @()
+        try { $scanT = @(& $getCtxSaveTargets $en 'scan') } catch { $scanT = @($en) }
+        try { $bkT = @(& $getCtxSaveTargets $en 'backup') } catch { $bkT = @($en) }
+        try { $rsT = @(& $getCtxSaveTargets $en 'restore') } catch { $rsT = @() }
+
+        # «Найти сохранения»: поиск для этой игры (или всех отмеченных) - тот же, что у лупы на панели. Доступен всегда -
+        # именно им определяются сохранения, из-за отсутствия которых остальные пункты серые.
+        $txtS = $(if ($scanT.Count -gt 1) { T 'lib_ctx_save_scan_sel' @($scanT.Count) } else { T 'lib_ctx_save_scan' })
+        $itScan = New-Object System.Windows.Forms.ToolStripMenuItem($txtS)
+        $itScan.BackColor = $bgC; $itScan.Tag = [PSCustomObject]@{ Targets = $scanT }; $itScan.ForeColor = $steamUi.Text
+        $itScan.Add_Click({
+            param($s2, $e2)
+            try {
+                & $runSaveScan @($s2.Tag.Targets)
+                $script:libCtxSaveInfoCache = @{}
+                try { Reset-SaveBackupCache } catch {}
+            } catch {}
+        })
+        [void]$snd.Items.Add($itScan)
+
+        # Папка сохранений - всегда для одной игры (открывать десятки папок разом незачем).
         $itOpen = New-Object System.Windows.Forms.ToolStripMenuItem((T 'lib_ctx_save_folder'))
         $itOpen.BackColor = $bgC; $itOpen.Tag = $en; $itOpen.Enabled = $hasFolder
         $itOpen.ForeColor = $(if ($hasFolder) { $steamUi.Text } else { $steamUi.Muted })
         $itOpen.Add_Click({ param($s2, $e2) try { & $ctxSaveOpen $s2.Tag } catch {} })
         [void]$snd.Items.Add($itOpen)
 
-        $itBk = New-Object System.Windows.Forms.ToolStripMenuItem((T 'lib_ctx_save_backup'))
-        $itBk.BackColor = $bgC; $itBk.Tag = $en; $itBk.Enabled = $hasSaves
-        $itBk.ForeColor = $(if ($hasSaves) { $steamUi.Text } else { $steamUi.Muted })
-        $itBk.Add_Click({ param($s2, $e2) try { & $ctxSaveBackup $s2.Tag } catch {} })
+        # Бэкап: для нескольких игр доступен всегда (у кого сохранений нет - попадут в отчёт как «Нет сейвов», как у кнопки панели);
+        # для одной игры - только если у неё найдены сохранения.
+        $multiB = ($bkT.Count -gt 1)
+        $canB = ($multiB -or $hasSaves)
+        $txtB = $(if ($multiB) { T 'lib_ctx_save_backup_sel' @($bkT.Count) } else { T 'lib_ctx_save_backup' })
+        $itBk = New-Object System.Windows.Forms.ToolStripMenuItem($txtB)
+        $itBk.BackColor = $bgC; $itBk.Enabled = $canB
+        $itBk.Tag = [PSCustomObject]@{ Targets = $bkT; Entry = $en }
+        $itBk.ForeColor = $(if ($canB) { $steamUi.Text } else { $steamUi.Muted })
+        $itBk.Add_Click({
+            param($s2, $e2)
+            try {
+                $tg = @($s2.Tag.Targets)
+                if ($tg.Count -gt 1) { & $runSaveOp 'backup' $tg } else { & $ctxSaveBackup $s2.Tag.Entry }
+            } catch {}
+        })
         [void]$snd.Items.Add($itBk)
 
-        $itRs = New-Object System.Windows.Forms.ToolStripMenuItem((T 'lib_ctx_save_restore'))
-        $itRs.BackColor = $bgC; $itRs.Tag = $en; $itRs.Enabled = $hasBk
-        $itRs.ForeColor = $(if ($hasBk) { $steamUi.Text } else { $steamUi.Muted })
-        $itRs.Add_Click({ param($s2, $e2) try { & $ctxSaveRestore $s2.Tag } catch {} })
+        # Восстановление: для нескольких игр - из последних бэкапов (как кнопка «Вернуть»); для одной - с выбором бэкапа, если их несколько.
+        $multiR = ($rsT.Count -gt 1)
+        $canR = ($multiR -or $hasBk)
+        $txtR = $(if ($multiR) { T 'lib_ctx_save_restore_sel' @($rsT.Count) } else { T 'lib_ctx_save_restore' })
+        $itRs = New-Object System.Windows.Forms.ToolStripMenuItem($txtR)
+        $itRs.BackColor = $bgC; $itRs.Enabled = $canR
+        $itRs.Tag = [PSCustomObject]@{ Targets = $rsT; Entry = $en }
+        $itRs.ForeColor = $(if ($canR) { $steamUi.Text } else { $steamUi.Muted })
+        $itRs.Add_Click({
+            param($s2, $e2)
+            try {
+                $tg = @($s2.Tag.Targets)
+                if ($tg.Count -gt 1) { & $runSaveOp 'restore' $tg } else { & $ctxSaveRestore $s2.Tag.Entry }
+            } catch {}
+        })
         [void]$snd.Items.Add($itRs)
     }
 
@@ -38955,6 +39915,7 @@ function Show-SteamLibraryBrowser {
                 $snd.Items.Clear()
                 & $addLaunchMenuItem $snd $en
                 & $addSaveMenuItems $snd $en $false
+                try { & $addUpscalerMenuItems $snd $en $true } catch {}
                 $script:libRomMenuBuilt = ($snd.Items.Count -gt 0)
                 return
             }
@@ -40121,6 +41082,17 @@ function Show-SteamLibraryBrowser {
         $res.ToArray()
     }
 
+    # Выделенные игры; если выделения нет - все видимые (с учётом поиска и фильтра).
+    $getEffectiveSteamEntries = {
+        $sel = @(& $getSelectedSteamEntries)
+        if ($sel.Count -gt 0) { return $sel }
+        return @(& $getVisibleSteamEntries)
+    }
+    # Действие запущено без выделения на вкладке Steam, то есть применится ко всем видимым играм.
+    $isImplicitAllSteam = {
+        return (([string]$script:libActiveTab -eq 'steam') -and (@(& $getSelectedSteamEntries).Count -eq 0))
+    }
+
     # Есть ли в папке игры хоть одна библиотека апскейлера (результат фонового поиска; true запоминаем на сессию окна).
     # Нормализованный ключ папки игры считается на запись один раз (кэш сбрасывается вместе со списком записей).
     $script:libDirKeyCache = @{}
@@ -40157,7 +41129,7 @@ function Show-SteamLibraryBrowser {
     # Отмеченные игры, которым есть что обновлять: с библиотеками апскейлеров, не ROM-ярлыки.
     $getUpdatableSteamEntries = {
         $res = New-Object System.Collections.Generic.List[object]
-        foreach ($en in @(& $getSelectedSteamEntries)) {
+        foreach ($en in @(& $getEffectiveSteamEntries)) {
             try { if (Test-ShortcutIsRomEntry $en) { continue } } catch {}
             if (-not (& $getEntryHasLibs $en)) { continue }
             [void]$res.Add($en)
@@ -40291,10 +41263,13 @@ function Show-SteamLibraryBrowser {
     # Панель внизу и кнопки выбора: на вкладке Steam — «Обновить апскейлеры», на вкладках
     # лаунчеров — автоимпорт и «Импорт». Счётчик выбранных и подписи кнопок.
     # Игры для бэкапа сохранений: отмеченные на текущей вкладке (на Steam — без ROM-ярлыков; на вкладках лаунчеров — отмеченные игры лаунчеров).
+    # $selectedOnly = $true - только выделенные (для «Вернуть»); иначе на вкладке Steam без выделения берутся все видимые игры.
     $getSaveTargetGames = {
+        param([bool]$selectedOnly = $false)
         $res = New-Object System.Collections.Generic.List[object]
         if ([string]$script:libActiveTab -eq 'steam') {
-            foreach ($en in @(& $getSelectedSteamEntries)) {
+            $steamSrc = $(if ($selectedOnly) { @(& $getSelectedSteamEntries) } else { @(& $getEffectiveSteamEntries) })
+            foreach ($en in $steamSrc) {
                 $rom = $false
                 try { $rom = ([string](& $getEntryFilterCat $en) -ceq 'rom') } catch {}
                 if (-not $rom) { try { if (Test-ShortcutIsRomEntry $en) { $rom = $true } } catch {} }
@@ -40319,15 +41294,16 @@ function Show-SteamLibraryBrowser {
                 $limit = [int]$toggleAuto.Left - 10
             }
             $w = 36
-            foreach ($b in @($btnSaveBackup, $btnSaveRestore)) { $b.Width = $w; $b.Visible = $true }
+            foreach ($b in @($btnSaveScan, $btnSaveBackup, $btnSaveRestore)) { $b.Width = $w; $b.Visible = $true }
             $btnSaveRestore.Left = $limit - $w
             $btnSaveBackup.Left = $btnSaveRestore.Left - 8 - $w
-            $lblCapSaves.Left = [int]$btnSaveBackup.Left - 6 - [int]$lblCapSaves.Width
+            $btnSaveScan.Left = $btnSaveBackup.Left - 8 - $w
+            $lblCapSaves.Left = [int]$btnSaveScan.Left - 6 - [int]$lblCapSaves.Width
             $lblCapSaves.Visible = ([int]$lblCapSaves.Left -ge ([int]$lblCount.Left + 96 + 8))
             # Группа «Эмуляторы» (только вкладка Steam): подпись + кнопка смены эмулятора, левее «Сохранения».
             try {
                 if (-not $isL) {
-                    $grpLeft = [int]$btnSaveBackup.Left - 6 - [int]$lblCapSaves.Width
+                    $grpLeft = [int]$btnSaveScan.Left - 6 - [int]$lblCapSaves.Width
                     $btnSwapEmu.Top = 12
                     $btnSwapEmu.Left = $grpLeft - 16 - [int]$btnSwapEmu.Width
                     $lblCapEmus.Left = [int]$btnSwapEmu.Left - 6 - [int]$lblCapEmus.Width
@@ -40337,10 +41313,11 @@ function Show-SteamLibraryBrowser {
                 }
             } catch {}
             if (-not $script:libSaveRunning) {
+                $btnSaveScan.Text = ''
                 $btnSaveBackup.Text = ''
                 $btnSaveRestore.Text = ''
             }
-            $btnSaveBackup.Invalidate(); $btnSaveRestore.Invalidate()
+            $btnSaveScan.Invalidate(); $btnSaveBackup.Invalidate(); $btnSaveRestore.Invalidate()
         } catch {}
     }
 
@@ -40352,11 +41329,10 @@ function Show-SteamLibraryBrowser {
             $busy = ($script:libUpdRunning -or $script:libRestoreRunning -or $script:libImportRunning)
             $cB = 0; $cR = 0
             if (-not $busy) {
-                $sel = @(& $getSaveTargetGames)
-                $cB = $sel.Count
-                foreach ($g in $sel) { if (Test-SaveHasBackup (Get-SaveGameParams $g)) { $cR++ } }
+                $cB = @(& $getSaveTargetGames).Count
+                foreach ($g in @(& $getSaveTargetGames $true)) { if (Test-SaveHasBackup (Get-SaveGameParams $g)) { $cR++ } }
             }
-            foreach ($pair in @(@($btnSaveBackup, $cB), @($btnSaveRestore, $cR))) {
+            foreach ($pair in @(@($btnSaveScan, $cB), @($btnSaveBackup, $cB), @($btnSaveRestore, $cR))) {
                 $b = $pair[0]
                 $b.Enabled = ([int]$pair[1] -gt 0)
                 if ([int]$pair[1] -gt 0) { $b.FlatAppearance.BorderColor = $steamUi.Accent2; $b.ForeColor = $steamUi.Text }
@@ -40400,13 +41376,15 @@ function Show-SteamLibraryBrowser {
                 # «Обновить апскейлеры» горит, только если среди отмеченных есть игра с библиотеками (ROM и игры без библиотек не считаются).
                 # Один проход по отмеченным (раньше выбор пересобирался заново для каждой из кнопок, а ROM-проверка шла дважды).
                 $cntU = 0; $cntR = 0
-                foreach ($se in $selS) {
+                # Без выделения «Обновить апскейлеры» работает по всем видимым играм; «Вернуть оригиналы» - только по выделенным.
+                $effS = $(if ($cntS -gt 0) { $selS } else { @(& $getVisibleSteamEntries) })
+                foreach ($se in $effS) {
                     # Категория уже кэшируется ($getEntryFilterCat считает её по Test-ShortcutIsRomEntry один раз на запись).
                     $seRom = $false
                     try { $seRom = ([string](& $getEntryFilterCat $se) -ceq 'rom') } catch {}
                     if ($seRom) { continue }
                     if (& $getEntryHasLibs $se) { $cntU++ }
-                    if (& $getEntryHasOrig $se) { $cntR++ }
+                    if ($cntS -gt 0 -and (& $getEntryHasOrig $se)) { $cntR++ }
                 }
                 $btnUpdUp.Enabled = ($cntU -gt 0)
                 $btnRestoreUp.Enabled = ($cntR -gt 0)
@@ -41161,7 +42139,7 @@ function Show-SteamLibraryBrowser {
     $script:libImportRunning = $false
     $setLibImportLock = {
         param([bool]$locked)
-        foreach ($c in @($txtSearch, $btnSelectAll, $btnDeselectAll, $btnSwapEmu, $toggleAuto, $lblAutoImport, $btnLibBack, $tabBar, $btnRestoreUp, $btnSaveBackup, $btnSaveRestore, $btnFilter, $btnLibRefresh)) {
+        foreach ($c in @($txtSearch, $btnSelectAll, $btnDeselectAll, $btnSwapEmu, $toggleAuto, $lblAutoImport, $btnLibBack, $tabBar, $btnRestoreUp, $btnSaveScan, $btnSaveBackup, $btnSaveRestore, $btnFilter, $btnLibRefresh)) {
             try { $c.Enabled = (-not $locked) } catch {}
         }
     }
@@ -41185,7 +42163,9 @@ function Show-SteamLibraryBrowser {
                     [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
                 return
             }
-            $answer = Show-AppMessageBox($dlg, ((T 'lib_upd_confirm' @($games.Count)) + "`n`n" + (T 'lib_upd_confirm2')), $global:appTitle,
+            $implNote = ''
+            try { if (& $isImplicitAllSteam) { $implNote = ((T 'lib_all_note') + "`n`n") } } catch {}
+            $answer = Show-AppMessageBox($dlg, ($implNote + (T 'lib_upd_confirm' @($games.Count)) + "`n`n" + (T 'lib_upd_confirm2')), $global:appTitle,
                 [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
             if ($answer -ne [System.Windows.Forms.DialogResult]::Yes) { return }
         } catch { return }
@@ -41361,7 +42341,7 @@ function Show-SteamLibraryBrowser {
     # «Бэкап» / «Вернуть» сохранений: работают с отмеченными играми текущей вкладки (ROM-ярлыки исключены).
     # По одной игре за проход с прогрессом и отменой (текущая игра дорабатывается до конца), в конце — окно отчёта.
     $runSaveOp = {
-        param([string]$mode)
+        param([string]$mode, $onlyGames = $null)
         $isBackup = ($mode -eq 'backup')
         $btn = if ($isBackup) { $btnSaveBackup } else { $btnSaveRestore }
         if ($script:libSaveRunning) {
@@ -41371,7 +42351,8 @@ function Show-SteamLibraryBrowser {
         }
         $games = @()
         try {
-            $all = @(& $getSaveTargetGames)
+            # Из контекстного меню плитки передаётся список игр (отмеченные); с кнопок панели - выделенные или все видимые.
+            $all = $(if ($null -ne $onlyGames) { @($onlyGames | Where-Object { $null -ne $_ }) } else { @(& $getSaveTargetGames (-not $isBackup)) })
             if ($isBackup) { $games = $all }
             else { $games = @($all | Where-Object { [bool](Test-SaveHasBackup (Get-SaveGameParams $_)) }) }
             if ($games.Count -eq 0) { return }
@@ -41382,6 +42363,7 @@ function Show-SteamLibraryBrowser {
             }
             if ($isBackup) { $msgConfirm = (T 'save_confirm_backup' @($games.Count)) + "`n`n" + (T 'save_confirm_backup2' @((Get-SaveBackupFolderPath))) }
             else { $msgConfirm = (T 'save_confirm_restore' @($games.Count)) + "`n`n" + (T 'save_confirm_restore2') }
+            try { if ($isBackup -and $null -eq $onlyGames -and (& $isImplicitAllSteam)) { $msgConfirm = ((T 'lib_all_note') + "`n`n" + $msgConfirm) } } catch {}
             $answer = Show-AppMessageBox($dlg, $msgConfirm, $global:appTitle,
                 [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
             if ($answer -ne [System.Windows.Forms.DialogResult]::Yes) { return }
@@ -41389,6 +42371,8 @@ function Show-SteamLibraryBrowser {
 
         $script:libSaveRunning = $true
         $script:libSaveCancel = $false
+        $script:saveUiPump = $true
+        $script:saveUiPumpSw = $null
         $cDone = 0; $cFiles = 0; $cSame = 0; $cNone = 0; $cFail = 0
         $repRows = New-Object System.Collections.Generic.List[object]
         $wasCancelled = $false
@@ -41449,6 +42433,7 @@ function Show-SteamLibraryBrowser {
                 [System.Windows.Forms.Application]::DoEvents()
             }
         } finally {
+            $script:saveUiPump = $false
             $script:libSaveRunning = $false
             $script:libSaveCancel = $false
             try { Reset-SaveBackupCache } catch {}
@@ -41479,6 +42464,197 @@ function Show-SteamLibraryBrowser {
     }
     $btnSaveBackup.Add_Click({ & $runSaveOp 'backup' })
     $btnSaveRestore.Add_Click({ & $runSaveOp 'restore' })
+
+    # «Поиск сохранений» (лупа): ступенчатый поиск у отмеченных игр текущей вкладки (ROM-ярлыки исключены) БЕЗ запуска игр:
+    #   1) база Ludusavi + пути эмуляторов — если нашлось, пути записываются как определённые сохранения (defined_saves.json);
+    #   2) если по базе на диске пусто — Steam Cloud и эвристика, записывается то, что нашлось.
+    # Игры, у которых сохранения уже определены, пропускаются; игры с ключами реестра не записываются (определённые хранят только пути к файлам).
+    # Имена exe запуска игры идут в подсказки названий для эвристики. Прогресс — в общем баре библиотеки;
+    # повторное нажатие (кнопка превращается в «✕») отменяет поиск после текущей игры. В конце — отчёт «игра / результат / где».
+    $runSaveScan = {
+        param($onlyGames = $null)
+        $btn = $btnSaveScan
+        if ($script:libSaveRunning) {
+            $script:libSaveCancel = $true
+            try { $lblLibStatus.Text = (T 'hd_cancelling') } catch {}
+            return
+        }
+        $games = @()
+        try {
+            # Из контекстного меню передаётся одна игра; с кнопки панели - выделенные или все видимые.
+            $games = $(if ($null -ne $onlyGames) { @($onlyGames) } else { @(& $getSaveTargetGames) })
+            if ($games.Count -eq 0) { return }
+            if (-not (Initialize-SaveEngine)) {
+                Show-AppMessageBox($dlg, (T 'save_engine_fail'), $global:appTitle,
+                    [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
+                return
+            }
+            if ($null -eq $onlyGames -and (& $isImplicitAllSteam)) {
+                $answerScan = Show-AppMessageBox($dlg, (T 'lib_all_confirm' @($games.Count)), $global:appTitle,
+                    [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
+                if ($answerScan -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+            }
+        } catch { return }
+
+        $script:libSaveRunning = $true
+        $script:libSaveCancel = $false
+        $cDone = 0; $cRec = 0; $cSkip = 0; $cNone = 0; $cFail = 0
+        $repRows = New-Object System.Collections.Generic.List[object]
+        $pendingPick = New-Object System.Collections.Generic.List[object]   # игры с несколькими найденными местами: выбор — одним окном после поиска
+        $wasCancelled = $false
+        try {
+            & $setLibImportLock $true
+            $btnUpdUp.Enabled = $false
+            $btn.Text = $(if ($script:libSaveWide) { (T 'lib_import_cancel') } else { [string][char]0x2715 })
+            $btn.Enabled = $true
+            $libProgressBar.Minimum = 0
+            $libProgressBar.Maximum = [Math]::Max(1, $games.Count)
+            $libProgressBar.Value = 0
+            & $showLibProgress $true
+            $lblLibPercent.Text = '0%'
+            $idx = 0
+            foreach ($gm in $games) {
+                if ($script:libSaveCancel) { $wasCancelled = $true; break }
+                $idx++
+                $nm = [string]$gm.Name
+                $lblLibStatus.Text = ((T 'lib_tmp_saves_scan' @($idx, $games.Count)) + ' — ' + $nm)
+                try { $lblLibPercent.Text = ([string][int](100.0 * ($idx - 1) / [Math]::Max(1, $games.Count)) + '%') } catch {}
+                [System.Windows.Forms.Application]::DoEvents()
+                try {
+                    $gp = Get-SaveGameParams $gm
+                    $cDone++
+                    if ($null -ne (Get-SaveDefined $gp.Name $gp.SteamAppId)) {
+                        # Сохранения уже определены вручную (детектор) — выбор пользователя не трогаем.
+                        $cSkip++
+                        [void]$repRows.Add([PSCustomObject]@{ Status = 'same'; Name = $nm; Details = (T 'save_scan_already') })
+                    } else {
+                        $extra = @()
+                        try {
+                            $extra = @(@((Get-SaveDetectorLaunchInfo $gm '').ProcNames) | ForEach-Object { [System.IO.Path]::GetFileNameWithoutExtension([string]$_) } | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+                        } catch { $extra = @() }
+                        $ctxS = New-SaveContext $gp.BaseDir ''
+                        # Шаг 1: база Ludusavi + пути эмуляторов (без эвристики).
+                        $loc = Find-GameSaveLocations -Name $gp.Name -SteamAppId $gp.SteamAppId -GogId $gp.GogId -BaseDir $gp.BaseDir -ExtraDirNames ([string[]]@($extra)) -IgnoreDefined -SkipHeuristic
+                        $roots = @(Merge-SaveRootsByFolder (Get-SaveRoots $loc.Items $ctxS) ([string]$gp.BaseDir) ([string]$gp.Name))
+                        $regs = @($loc.Items | Where-Object { [string]$_.Kind -eq 'reg' })
+                        if ($roots.Count -eq 0 -and $regs.Count -eq 0) {
+                            # Шаг 2: в базе ничего нет на диске — Steam Cloud и эвристика.
+                            $loc = Find-GameSaveLocations -Name $gp.Name -SteamAppId $gp.SteamAppId -GogId $gp.GogId -BaseDir $gp.BaseDir -ExtraDirNames ([string[]]@($extra)) -IgnoreDefined -ForceHeuristic
+                            $roots = @(Merge-SaveRootsByFolder (Get-SaveRoots $loc.Items $ctxS) ([string]$gp.BaseDir) ([string]$gp.Name))
+                            $regs = @($loc.Items | Where-Object { [string]$_.Kind -eq 'reg' })
+                        }
+                        if ($roots.Count -eq 0 -and $regs.Count -eq 0) {
+                            $cNone++
+                            [void]$repRows.Add([PSCustomObject]@{ Status = 'none'; Name = $nm; Details = '' })
+                        } else {
+                            $nFiles = 0
+                            $srcs = New-Object System.Collections.ArrayList
+                            foreach ($rt in $roots) {
+                                $nFiles += @($rt.Files).Count
+                                $sn = $(if ([string]$rt.Source -eq 'manifest') { 'Ludusavi' } else { [string]$rt.Label })
+                                if (-not [string]::IsNullOrWhiteSpace($sn) -and -not $srcs.Contains($sn)) { [void]$srcs.Add($sn) }
+                            }
+                            if ($regs.Count -gt 0) { [void]$srcs.Add('Registry') }
+                            $det = (T 'save_row_files' @($nFiles))
+                            if ($srcs.Count -gt 0) { $det += (' — ' + ((@($srcs | Select-Object -First 3)) -join ', ')) }
+                            if ($roots.Count -gt 0) { $det += (' — ' + [string]$roots[0].Path) }
+                            # Найдено — запоминаем для галочки в карточке (даже если места не попадут в «определённые»: реестр, несколько мест).
+                            try { [void](Set-SaveFound $gp.Name $gp.SteamAppId ([string[]]@($roots | ForEach-Object { [string]$_.Path })) ($regs.Count -gt 0)) } catch {}
+                            if ($regs.Count -gt 0) {
+                                # Определённые сохранения хранят только пути к файлам: ключи реестра выпали бы из бэкапа, поэтому не записываем.
+                                $cSkip++
+                                [void]$repRows.Add([PSCustomObject]@{ Status = 'same'; Name = $nm; Details = ((T 'save_scan_noreg') + ' — ' + $det) })
+                            } elseif ($roots.Count -gt 1) {
+                                # Несколько мест сохранений: автоматически не записываем — пользователь отметит нужные галочками.
+                                [void]$pendingPick.Add([PSCustomObject]@{ Name = $nm; GP = $gp; Roots = @($roots) })
+                            } elseif (Set-SaveDefined $gp.Name $gp.SteamAppId ([string[]]@($roots | ForEach-Object { [string]$_.Path }))) {
+                                $cRec++
+                                [void]$repRows.Add([PSCustomObject]@{ Status = 'ok'; Name = $nm; Details = $det })
+                            } else {
+                                $cFail++
+                                [void]$repRows.Add([PSCustomObject]@{ Status = 'fail'; Name = $nm; Details = 'defined_saves.json' })
+                            }
+                        }
+                    }
+                } catch {
+                    $cFail++
+                    [void]$repRows.Add([PSCustomObject]@{ Status = 'fail'; Name = $nm; Details = [string]$_.Exception.Message })
+                }
+                try {
+                    $libProgressBar.Value = [Math]::Min($libProgressBar.Maximum, $idx)
+                    $lblLibPercent.Text = ([string][int](100.0 * $idx / [Math]::Max(1, $games.Count)) + '%')
+                } catch {}
+                [System.Windows.Forms.Application]::DoEvents()
+            }
+        } finally {
+            $script:libSaveRunning = $false
+            $script:libSaveCancel = $false
+            try { & $setLibImportLock $false } catch {}
+            try { & $showLibProgress $false } catch {}
+            try { & $updateSelectionUi } catch {}
+        }
+
+        # Игры с несколькими найденными местами сохранений: ОДНО окно со всеми играми (как в карточке, галочками).
+        # «Принять» — запоминаются отмеченные места (игра без отметок пропускается); «Пропустить все» — ничего не запоминается.
+        if ($pendingPick.Count -gt 0) {
+            $groups = New-Object System.Collections.ArrayList
+            foreach ($pp in $pendingPick) {
+                [void]$groups.Add([PSCustomObject]@{ Name = [string]$pp.Name; Cands = @(New-SaveDetectorCandidatesFromRoots $pp.Roots) })
+            }
+            $pick = $null
+            try { $pick = Show-SaveDetectorMultiPicker -Owner $dlg -Groups @($groups) } catch { $pick = $null }
+            for ($gi = 0; $gi -lt $pendingPick.Count; $gi++) {
+                $pp = $pendingPick[$gi]
+                $paths = @()
+                if ($null -ne $pick -and [string]$pick.Action -eq 'use' -and $pick.Chosen.ContainsKey($gi)) { $paths = @($pick.Chosen[$gi]) }
+                if ($paths.Count -eq 0) {
+                    $cSkip++
+                    [void]$repRows.Add([PSCustomObject]@{ Status = 'same'; Name = $pp.Name; Details = (T 'save_scan_pick_skipped') })
+                    continue
+                }
+                try {
+                    $chosen = @($pp.Roots | Where-Object { $paths -contains [string]$_.Path })
+                    $nFiles = 0
+                    $srcs = New-Object System.Collections.ArrayList
+                    foreach ($rt in $chosen) {
+                        $nFiles += @($rt.Files).Count
+                        $sn = $(if ([string]$rt.Source -eq 'manifest') { 'Ludusavi' } else { [string]$rt.Label })
+                        if (-not [string]::IsNullOrWhiteSpace($sn) -and -not $srcs.Contains($sn)) { [void]$srcs.Add($sn) }
+                    }
+                    $det = (T 'save_row_files' @($nFiles))
+                    if ($srcs.Count -gt 0) { $det += (' — ' + ((@($srcs | Select-Object -First 3)) -join ', ')) }
+                    $det += (' — ' + [string]$paths[0])
+                    if ($paths.Count -gt 1) { $det += (' (+' + ($paths.Count - 1) + ')') }
+                    if (Set-SaveDefined $pp.GP.Name $pp.GP.SteamAppId ([string[]]$paths)) {
+                        $cRec++
+                        [void]$repRows.Add([PSCustomObject]@{ Status = 'ok'; Name = $pp.Name; Details = $det })
+                    } else {
+                        $cFail++
+                        [void]$repRows.Add([PSCustomObject]@{ Status = 'fail'; Name = $pp.Name; Details = 'defined_saves.json' })
+                    }
+                } catch {
+                    $cFail++
+                    [void]$repRows.Add([PSCustomObject]@{ Status = 'fail'; Name = $pp.Name; Details = [string]$_.Exception.Message })
+                }
+            }
+            try { & $updateSelectionUi } catch {}
+        }
+
+        $lines = New-Object System.Collections.Generic.List[string]
+        [void]$lines.Add((T 'save_scan_recorded' @($cRec)))
+        [void]$lines.Add((T 'save_res_unchanged' @($cSkip)))
+        [void]$lines.Add((T 'save_res_nosaves' @($cNone)))
+        if ($cFail -gt 0) { [void]$lines.Add((T 'save_res_fail' @($cFail))) }
+        if ($wasCancelled) { [void]$lines.Add((T 'lib_upd_cancelled')) }
+        $labels = @{ ok = (T 'save_st_defined'); same = (T 'save_st_same'); none = (T 'save_st_nosaves'); fail = (T 'save_st_fail') }
+        $icon = if ($cFail -gt 0) { [System.Windows.Forms.MessageBoxIcon]::Warning } else { [System.Windows.Forms.MessageBoxIcon]::Information }
+        try {
+            Show-LibActionReport -Owner $dlg -SummaryLines $lines.ToArray() -Rows $repRows.ToArray() -Icon $icon -StatusLabels $labels
+        } catch {
+            try { Show-AppMessageBox($dlg, ($lines -join "`n"), $global:appTitle, [System.Windows.Forms.MessageBoxButtons]::OK, $icon) | Out-Null } catch {}
+        }
+    }
+    $btnSaveScan.Add_Click({ & $runSaveScan })
 
     $btnImport.Add_Click({
         if ($script:libImportRunning) {
@@ -44779,13 +45955,26 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     [System.Collections.Generic.List[object]]$exeCandidates = New-Object System.Collections.Generic.List[object]
     $exeDisplay = New-Object System.Collections.Generic.List[object]
     # ----- Сохранения игры: «Бэкап» / «Вернуть» (справа от строки «Запуск»; у ROM и в пакетном режиме скрыты) -----
+    $cardSteamInfo = $null
+    if (($null -eq $libraryEntry) -and ($null -eq $LauncherEntry) -and (-not $IsRomEntry) -and (-not $batchMode)) {
+        try { $cardSteamInfo = Get-SaveSteamInfoFromFolder ([string]$gamePath) } catch { $cardSteamInfo = $null }
+    }
     $getCardSaveParams = {
         $ent = $null
         if ($null -ne $libraryEntry) { $ent = $libraryEntry }
         elseif ($null -ne $LauncherEntry) { $ent = $LauncherEntry }
+        elseif ($null -ne $existingShortcut) {
+            # Только для поиска сохранений: игра, уже добавленная в Steam ярлыком, ищется под тем же именем (AppName), что и в библиотеке.
+            $ent = [PSCustomObject]@{ Name = $(if (-not [string]::IsNullOrWhiteSpace([string]$existingShortcut.AppName)) { [string]$existingShortcut.AppName } else { [string]$originalCardName })
+                AppId = ''; Kind = 'shortcut'; Launcher = ''; GameId = ''
+                Path = [string]$existingShortcut.StartDir; Exe = [string]$existingShortcut.Exe; StartDir = [string]$existingShortcut.StartDir
+                LaunchOptions = [string]$existingShortcut.LaunchOptions; ShortcutRecord = $existingShortcut }
+        }
         else {
             $ent = [PSCustomObject]@{ Name = [string]$originalCardName; AppId = ''; Kind = 'folder'; Launcher = ''; GameId = ''
                 Path = [string]$gamePath; Exe = ''; StartDir = [string]$gamePath; LaunchOptions = ''; ShortcutRecord = $null }
+            # Карточка из панелей C/D: берём App ID и название из appmanifest, иначе ключ сохранений не совпадёт с библиотекой.
+            if ($null -ne $cardSteamInfo) { $ent.Kind = 'steam'; $ent.AppId = [string]$cardSteamInfo.AppId; if (-not [string]::IsNullOrWhiteSpace([string]$cardSteamInfo.Name)) { $ent.Name = [string]$cardSteamInfo.Name } }
         }
         return (Get-SaveGameParams $ent)
     }
@@ -44797,6 +45986,8 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
         else {
             $ent = [PSCustomObject]@{ Name = [string]$originalCardName; AppId = ''; Kind = 'folder'; Launcher = ''; GameId = ''
                 Path = [string]$gamePath; Exe = ''; StartDir = [string]$gamePath; LaunchOptions = ''; ShortcutRecord = $null }
+            # Карточка из панелей C/D: берём App ID и название из appmanifest, иначе ключ сохранений не совпадёт с библиотекой.
+            if ($null -ne $cardSteamInfo) { $ent.Kind = 'steam'; $ent.AppId = [string]$cardSteamInfo.AppId; if (-not [string]::IsNullOrWhiteSpace([string]$cardSteamInfo.Name)) { $ent.Name = [string]$cardSteamInfo.Name } }
         }
         return $ent
     }
@@ -44812,12 +46003,24 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     $cardSaveLbl.UseMnemonic = $false
     $cardSaveLbl.AutoEllipsis = $false
     $cardSaveLblW = [System.Windows.Forms.TextRenderer]::MeasureText([string]$cardSaveLbl.Text, $cardSaveLbl.Font).Width + 12
-    $cardSaveLbl.Location = New-Object System.Drawing.Point(($cardSaveBtnsX - 6 - $cardSaveLblW), 50)
+    $cardSaveLbl.Location = New-Object System.Drawing.Point(($cardSaveBtnsX - 22 - 8 - $cardSaveLblW), 50)
     $cardSaveLbl.Size = New-Object System.Drawing.Size($cardSaveLblW, 28)
     $cardSaveLbl.ForeColor = $steamUi.Muted
     $cardSaveLbl.TextAlign = [System.Drawing.ContentAlignment]::MiddleRight
     $cardSaveLbl.Visible = $cardSaveVisible
     $dlg.Controls.Add($cardSaveLbl)
+    # Зелёная галочка между подписью «Сохранения» и кнопкой «папка»: сохранения игры найдены (определены, база, эмуляторы, Steam Cloud, эвристика).
+    # Скрыта, пока проверка не закончилась или ничего не найдено; место под неё зарезервировано (подпись сдвинута на 16 px левее).
+    # Тот же круглый зелёный значок с белой галочкой, что у полей «Название» и «Запуск» (Get-ConfidenceBadgeBitmap).
+    $cardSaveOk = New-Object System.Windows.Forms.PictureBox
+    $cardSaveOk.BackColor = [System.Drawing.Color]::Transparent
+    $cardSaveOk.SizeMode = [System.Windows.Forms.PictureBoxSizeMode]::Zoom
+    $cardSaveOk.Cursor = [System.Windows.Forms.Cursors]::Default
+    $cardSaveOk.Location = New-Object System.Drawing.Point(($cardSaveBtnsX - 22), 55)
+    $cardSaveOk.Size = New-Object System.Drawing.Size(18, 18)
+    $cardSaveOk.Image = (Get-ConfidenceBadgeBitmap $true)
+    $cardSaveOk.Visible = $false
+    $dlg.Controls.Add($cardSaveOk)
     $newCardSaveBtn = {
         param([string]$text, [int]$x, [string]$fontName)
         $b = New-Object System.Windows.Forms.Button
@@ -44954,6 +46157,10 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
         } catch { $status.Text = (T 'lib_ctx_launch_fail') }
     })
 
+    # Галочка «сохранения найдены» и кнопка «папка» при открытии карточки НЕ ищут сохранения: берутся только определённые места
+    # (defined_saves.json — их записывает поиск в библиотеке и лупа карточки), и проверяется лишь, что путь есть на диске.
+    $cardSaveFoundBox = @{ Dirs = @() }
+
     # Вид кнопок: «Бэкап» всегда доступна, «Вернуть» — только если у игры уже есть бэкап.
     $refreshCardSaveBtns = {
         try {
@@ -44961,46 +46168,66 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
             try { Reset-SaveBackupCache; $hasBk = [bool](Test-SaveHasBackup (& $getCardSaveParams)) } catch {}
             $btnCardSaveBackup.Enabled = $true
             $btnCardSaveBackup.FlatAppearance.BorderColor = $steamUi.Accent2; $btnCardSaveBackup.ForeColor = $steamUi.Text
-            # Детектор: зелёная рамка и подсказка с числом мест, если сохранения уже определены.
+            # Детектор: если сохранения определены детектором — кнопка залита стандартным синим (как активные кнопки, например EN) и подсказка с числом мест.
+            # Галочка — по факту: определённые пути существуют на диске (поиска нет).
             $defN = 0
-            try { $gpD = & $getCardSaveParams; $dfD = Get-SaveDefined $gpD.Name $gpD.SteamAppId; if ($null -ne $dfD) { $defN = @($dfD.Paths).Count } } catch {}
+            $defTrack = $false
+            try { $gpD = & $getCardSaveParams; $dfD = Get-SaveDefined $gpD.Name $gpD.SteamAppId; if ($null -ne $dfD) { $defN = @($dfD.Paths).Count; $defTrack = ([string]$dfD.Source -eq 'track') } } catch {}
             $btnCardSaveDetect.Enabled = $true
-            if ($defN -gt 0) {
-                $btnCardSaveDetect.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(76, 175, 80)
-                $btnCardSaveDetect.BackColor = [System.Drawing.Color]::FromArgb(28, 84, 52)
+            # Лупа горит ТОЛЬКО после ручного определения слежением за запуском игры; иначе она дублировала бы зелёную галочку.
+            if ($defN -gt 0 -and $defTrack) {
+                $btnCardSaveDetect.FlatAppearance.BorderColor = $steamUi.Accent2
+                $btnCardSaveDetect.BackColor = $steamUi.Accent2
                 $cardSaveTip.SetToolTip($btnCardSaveDetect, (T 'sdet_tip_defined' @($defN)))
             } else {
                 $btnCardSaveDetect.FlatAppearance.BorderColor = $steamUi.Accent2
                 $btnCardSaveDetect.BackColor = [System.Drawing.Color]::FromArgb(25, 55, 75)
-                $cardSaveTip.SetToolTip($btnCardSaveDetect, (T 'sdet_tip'))
+                if ($defN -gt 0) { $cardSaveTip.SetToolTip($btnCardSaveDetect, (T 'sdet_tip_defined' @($defN))) } else { $cardSaveTip.SetToolTip($btnCardSaveDetect, (T 'sdet_tip')) }
             }
             $btnCardSaveRestore.Enabled = $hasBk
             if ($hasBk) { $btnCardSaveRestore.FlatAppearance.BorderColor = $steamUi.Accent2; $btnCardSaveRestore.ForeColor = $steamUi.Text }
             else { $btnCardSaveRestore.FlatAppearance.BorderColor = $steamUi.Border; $btnCardSaveRestore.ForeColor = $steamUi.Muted }
+            # Галочка и список для кнопки «папка»: определённые места, которые реально есть на диске.
+            $fdirs = New-Object System.Collections.ArrayList
+            $foundRegF = $false
+            try {
+                $gpF = & $getCardSaveParams
+                $seenF = @{}
+                $srcItemsF = @(Get-SaveDefinedItems $gpF.Name $gpF.SteamAppId)
+                if ($srcItemsF.Count -eq 0) {
+                    # Не определено вручную — берём то, что нашёл массовый поиск в библиотеке.
+                    $fiF = Get-SaveFoundInfo $gpF.Name $gpF.SteamAppId
+                    if ($null -ne $fiF) { $srcItemsF = @($fiF.Items); $foundRegF = [bool]$fiF.HasReg }
+                }
+                foreach ($it in $srcItemsF) {
+                    $pth = [string]$it.Path
+                    $d = ''
+                    if ([System.IO.Directory]::Exists($pth)) { $d = $pth }
+                    elseif ([System.IO.File]::Exists($pth)) { $d = [System.IO.Path]::GetDirectoryName($pth) }
+                    if ([string]::IsNullOrWhiteSpace($d)) { continue }
+                    $kF = $d.TrimEnd('\', '/').ToLowerInvariant()
+                    if ($seenF.ContainsKey($kF)) { continue }
+                    $seenF[$kF] = $true
+                    [void]$fdirs.Add(@{ Path = $d; Label = [string]$it.Label })
+                }
+            } catch {}
+            $cardSaveFoundBox.Dirs = @($fdirs)
+            $cardSaveOk.Visible = ($fdirs.Count -gt 0 -or $foundRegF)
+            if ($fdirs.Count -gt 0 -or $foundRegF) { $cardSaveTip.SetToolTip($cardSaveOk, (T 'save_card_found_tip')) }
         } catch {}
     }
-    if ($btnCardSaveBackup.Visible) { & $refreshCardSaveBtns }
+    # Не $btnCardSaveBackup.Visible: до показа формы геттер Visible у дочернего контрола всегда $false (родитель ещё не видим),
+    # из-за чего первичное обновление (галочка, подсветка детектора, кнопка «Вернуть») не выполнялось вообще.
+    if ($cardSaveVisible) { & $refreshCardSaveBtns }
 
     # Папка сохранений: одна найденная — открывается сразу, несколько — выбор из меню под кнопкой.
     $btnCardSaveOpen.Add_Click({
         try {
             $status.Text = ''
-            if (-not (Initialize-SaveEngine)) { $status.Text = (T 'save_engine_fail'); return }
-            $gp = & $getCardSaveParams
-            $loc = Find-GameSaveLocations -Name $gp.Name -SteamAppId $gp.SteamAppId -GogId $gp.GogId -BaseDir $gp.BaseDir
+            # Поиска здесь нет: открываются определённые места (те же, по которым стоит галочка).
             $found = New-Object System.Collections.ArrayList
-            $seenDirs = @{}
-            foreach ($it in @($loc.Items)) {
-                if ([string]$it.Kind -ne 'file') { continue }
-                $pth = [string]$it.Path
-                $d = ''
-                if ([System.IO.Directory]::Exists($pth)) { $d = $pth }
-                elseif ([System.IO.File]::Exists($pth)) { $d = [System.IO.Path]::GetDirectoryName($pth) }
-                if ([string]::IsNullOrWhiteSpace($d)) { continue }
-                $k = $d.TrimEnd('\', '/').ToLowerInvariant()
-                if ($seenDirs.ContainsKey($k)) { continue }
-                $seenDirs[$k] = $true
-                [void]$found.Add(@{ Path = $d; Label = [string]$it.Label })
+            foreach ($fd in @($cardSaveFoundBox.Dirs)) {
+                if ([System.IO.Directory]::Exists([string]$fd.Path)) { [void]$found.Add($fd) }
             }
             if ($found.Count -eq 0) { $status.Text = (T 'save_card_none'); return }
             if ($found.Count -eq 1) { Start-Process -FilePath 'explorer.exe' -ArgumentList ('"' + [string]$found[0].Path + '"'); return }
@@ -46772,7 +47999,24 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
             $script:editorSavedChanges = $true
             Set-SteamRestartNeeded
             if(-not $batchMode){Start-SteamIfAuto $steamPathProperty}
-            $status.Text=if($hasCovers){(T 'st_done_added_covers')}else{(T 'st_done_added_nocovers')}
+            # «Лёгкий» поиск сохранений новой игры при обычном (не пакетном) добавлении: база Ludusavi и пути эмуляторов, без запуска игры.
+            # Одно найденное место записывается сразу; несколько — то же окно с галочками, что и в карточке. В пакете это делает Invoke-SmartBatchAdd.
+            $saveNoteCard = ''
+            if(-not $batchMode -and -not $IsRomEntry){
+                try {
+                    $gSave = $(if ($null -ne $LauncherEntry) { $LauncherEntry } else { [PSCustomObject]@{ Name = [string]$name; Path = [string]$gamePath } })
+                    $pendSave = New-Object System.Collections.Generic.List[object]
+                    $recSave = [int](Invoke-SaveLightAfterAdd $gSave $pendSave)
+                    if ($pendSave.Count -gt 0) {
+                        $pkSave = Show-SaveDetectorPicker -Owner $dlg -Candidates @(New-SaveDetectorCandidatesFromRoots $pendSave[0].Roots) -HintKey 'sdet_pick_hint_db' -AllowTrack $false
+                        if ([string]$pkSave.Action -eq 'use' -and @($pkSave.Paths).Count -gt 0) {
+                            if (Set-SaveDefined $pendSave[0].GP.Name $pendSave[0].GP.SteamAppId ([string[]]@($pkSave.Paths))) { $recSave = 1 }
+                        }
+                    }
+                    if ($recSave -gt 0) { $saveNoteCard = ' ' + (T 'hd_saves_found' @($recSave)) }
+                } catch {}
+            }
+            $status.Text=$(if($hasCovers){(T 'st_done_added_covers')}else{(T 'st_done_added_nocovers')}) + $saveNoteCard
             [System.Media.SystemSounds]::Asterisk.Play()
             [System.Windows.Forms.Application]::DoEvents()
             Start-Sleep -Milliseconds 500
@@ -48238,6 +49482,57 @@ function Stop-SteamProcessResponsive {
     }
 }
 
+# «Лёгкий» поиск сохранений для только что добавленной игры (пакетное добавление): только база Ludusavi и пути эмуляторов —
+# без Steam Cloud и эвристики и без запуска игры. Одно найденное место записывается сразу (как в массовом поиске в библиотеке);
+# несколько мест откладываются в $Pending — выбор одним общим окном после всего пакета. Игры с ключами реестра не записываются.
+# Ключ записи строится по финальному названию ярлыка (AppName), как у массового поиска.
+# Возвращает 1, если сохранения записаны, иначе 0.
+function Invoke-SaveLightAfterAdd ($Game, $Pending) {
+    try {
+        if ($script:romsModeEnabled -and -not (Test-IsLauncherEntry $Game)) { return 0 }
+        if (-not (Initialize-SaveEngine)) { return 0 }
+        $nm = ''
+        try { $rec = Find-SteamShortcutRecord ([string]$Game.Name) ([string]$Game.Path); if ($null -ne $rec) { $nm = [string]$rec.AppName } } catch {}
+        if ([string]::IsNullOrWhiteSpace($nm)) { $nm = [string]$Game.Name }
+        $ent = [PSCustomObject]@{ Name = $nm; AppId = ''; Kind = 'folder'; Launcher = ''; GameId = ''
+            Path = [string]$Game.Path; Exe = ''; StartDir = [string]$Game.Path; LaunchOptions = ''; ShortcutRecord = $null }
+        $gp = Get-SaveGameParams $ent
+        if ($null -ne (Get-SaveDefined $gp.Name $gp.SteamAppId)) { return 0 }
+        $ctx = New-SaveContext $gp.BaseDir ''
+        $loc = Find-GameSaveLocations -Name $gp.Name -SteamAppId $gp.SteamAppId -GogId $gp.GogId -BaseDir $gp.BaseDir -ExtraDirNames ([string[]]@()) -IgnoreDefined -SkipHeuristic
+        $roots = @(Merge-SaveRootsByFolder (Get-SaveRoots $loc.Items $ctx) ([string]$gp.BaseDir) ([string]$gp.Name))
+        $regs = @($loc.Items | Where-Object { [string]$_.Kind -eq 'reg' })
+        if ($roots.Count -eq 0 -or $regs.Count -gt 0) { return 0 }
+        if ($roots.Count -eq 1) {
+            if (Set-SaveDefined $gp.Name $gp.SteamAppId ([string[]]@([string]$roots[0].Path))) { return 1 }
+            return 0
+        }
+        [void]$Pending.Add([PSCustomObject]@{ Name = $nm; GP = $gp; Roots = @($roots) })
+    } catch {}
+    return 0
+}
+
+# Общее окно выбора для игр с несколькими найденными местами (после пакетного добавления). Возвращает число записанных игр.
+function Resolve-SaveLightPending ($Pending, $Owner) {
+    $rec = 0
+    try {
+        $groups = New-Object System.Collections.ArrayList
+        foreach ($pp in $Pending) {
+            [void]$groups.Add([PSCustomObject]@{ Name = [string]$pp.Name; Cands = @(New-SaveDetectorCandidatesFromRoots $pp.Roots) })
+        }
+        $pick = Show-SaveDetectorMultiPicker -Owner $Owner -Groups @($groups)
+        if ($null -eq $pick -or [string]$pick.Action -ne 'use') { return 0 }
+        for ($gi = 0; $gi -lt $Pending.Count; $gi++) {
+            if (-not $pick.Chosen.ContainsKey($gi)) { continue }
+            $paths = @($pick.Chosen[$gi])
+            if ($paths.Count -eq 0) { continue }
+            $pp = $Pending[$gi]
+            if (Set-SaveDefined $pp.GP.Name $pp.GP.SteamAppId ([string[]]$paths)) { $rec++ }
+        }
+    } catch {}
+    return $rec
+}
+
 function Invoke-SmartBatchAdd ($selectedGames, [bool]$AutoFill = $true, $OwnerWin = $null, [scriptblock]$StatusHook = $null, [scriptblock]$ProgressHook = $null) {
     $script:batchStatusHook = $StatusHook
     $script:batchProgressHook = $ProgressHook
@@ -48262,6 +49557,8 @@ function Invoke-SmartBatchAdd ($selectedGames, [bool]$AutoFill = $true, $OwnerWi
         $autoList = New-Object System.Collections.Generic.List[object]
         $cardList = New-Object System.Collections.Generic.List[object]
         $done = 0
+        $saveRec = 0                                                   # игры, у которых «лёгкий» поиск записал сохранения
+        $savePending = New-Object System.Collections.Generic.List[object]   # игры с несколькими найденными местами
 
         Set-BatchProgressValue ([int](0))
         Set-BatchStatusText ([string]((T 'hd_classify')))
@@ -48348,6 +49645,7 @@ function Invoke-SmartBatchAdd ($selectedGames, [bool]$AutoFill = $true, $OwnerWi
                 if ($quiet.Handled -and $quiet.Success) {
                     $script:batchResults.Ok++
                     $script:batchResults.AutoAdded++
+                    try { $saveRec += [int](Invoke-SaveLightAfterAdd $game $savePending) } catch {}
                 } elseif ($quiet.Handled) {
                     $script:batchResults.Failed++
                     Set-BatchStatusText ([string]((T 'hd_game_error' @($game.Name, $quiet.Reason))))
@@ -48384,17 +49682,23 @@ function Invoke-SmartBatchAdd ($selectedGames, [bool]$AutoFill = $true, $OwnerWi
             elseif ($script:batchCardSkipRequested) { $script:batchResults.Skipped++ }
             else {
                 $script:batchResults.Ok++
+                try { $saveRec += [int](Invoke-SaveLightAfterAdd $game $savePending) } catch {}
             }
             $done++
             Set-BatchProgressValue ([int]([Math]::Min(100, [int](($done / $totalGames) * 100))))
             [System.Windows.Forms.Application]::DoEvents()
         }
 
+        # Игры с несколькими найденными местами сохранений — одним общим окном (при отмене пакета не спрашиваем).
+        if ($savePending.Count -gt 0 -and -not $script:batchCardCancelRequested) {
+            try { $saveRec += [int](Resolve-SaveLightPending $savePending $OwnerWin) } catch {}
+        }
+        $saveNote = $(if ($saveRec -gt 0) { ' ' + (T 'hd_saves_found' @($saveRec)) } else { '' })
         if ($script:batchCardCancelRequested) {
-            Set-BatchStatusText ([string]((T 'hd_stopped' @($script:batchResults.Ok, $script:batchResults.AutoAdded, $script:batchResults.Skipped))))
+            Set-BatchStatusText ([string]((T 'hd_stopped' @($script:batchResults.Ok, $script:batchResults.AutoAdded, $script:batchResults.Skipped)) + $saveNote))
         } else {
             Set-BatchProgressValue ([int](100))
-            Set-BatchStatusText ([string]((T 'hd_finished' @($script:batchResults.Ok, $totalGames, $script:batchResults.AutoAdded, $script:batchResults.Skipped))))
+            Set-BatchStatusText ([string]((T 'hd_finished' @($script:batchResults.Ok, $totalGames, $script:batchResults.AutoAdded, $script:batchResults.Skipped)) + $saveNote))
         }
         [System.Windows.Forms.Application]::DoEvents()
         [System.Media.SystemSounds]::Asterisk.Play()
