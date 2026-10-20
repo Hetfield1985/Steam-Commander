@@ -6,6 +6,32 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [2.1.2] - 2026-10-20
+
+### Added
+* **Saves search without launching games.** New magnifier button in the *Saves* group of the *Library / Import* toolbar finds the saves of the ticked games (database, emulators, Steam Cloud, heuristics) and remembers them. Games with several locations are shown in one window with check boxes; a report is shown at the end.
+* **Actions without a selection.** With no games selected, *Update upscalers*, *Back up* and *Find saves* apply to all games of the current list.
+* **Upscalers and saves in the tile menu.** The right-click menu now has *Find saves*, *Update upscalers* and *Restore original upscalers*, for one game or for all ticked ones.
+* **Green check mark in the game card** when the saves of the game are found.
+* **Saves are searched when a game is added** to Steam, without launching it.
+
+### Improved
+* **The saves detector in the card works without launching the game;** launching is offered only if nothing is found.
+* **Cleaner list of save locations:** neighbouring files and folders are merged into their common folder.
+* **Bulk backup and restore no longer make the window freeze.**
+* **The library button is plain text:** *Library / Import / Saves / DLSS Swap*; the launcher icons are removed.
+
+### Fixed
+* **The check mark did not appear for saves in junction or OneDrive folders.**
+* **The buttons of the card were not refreshed when it opened.**
+* **An empty database folder stopped the heuristic search.**
+* **An empty line without a path appeared in the detector window.**
+
+### Changed
+* Application version is now 2.1.2.
+
+---
+
 ## [2.1.1] - 2026-10-18
 
 ### Added
