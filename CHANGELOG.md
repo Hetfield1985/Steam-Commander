@@ -6,6 +6,27 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [2.1.3] - 2026-10-21
+
+### Added
+* **Update of Steam shortcuts when an emulator profile changes.** After you change the path, the arguments, the extensions or *Extract archives* of an emulator, the program finds the shortcuts that use it and asks once whether to update all of them (Steam is closed and started again; launch options edited by hand in game cards are replaced). Shortcuts that would not change are not offered. Closing the question with the cross or Esc returns to the emulator window with the values already entered; shortcuts that could not be updated are listed in the status line.
+
+### Improved
+* **Windows no longer flash white rectangles.** Every window of the program is now fully drawn before it becomes visible, including the main window under the splash screen, Settings and Library.
+* **The system open / close animation is switched off for overlay windows** (Settings, Library, cards, dialogs), so closing them no longer looks like minimising.
+* **The main window no longer steals focus** if you switched to another program while the program was loading.
+* **New logo size slider in the game card,** in the Steam style: blue fill up to a round white thumb; the thumb follows the cursor smoothly and is aligned with the neighbouring buttons.
+* **Even gaps for check marks.** In Settings the check marks of *Steam folder*, *Profile*, *SteamGridDB* and *Steam* keys are 6 px from their fields, and the saves check mark in the game card is 6 px from the *Folder* button, exactly like the check marks of *Title* and *Launch*.
+
+### Fixed
+* **Archive formats were lost in the emulator's list of extensions.** With *Extract archives* on, the archive formats are now always saved with the profile, even if the *Extensions* field was edited by hand afterwards; when the option is switched off in an already saved profile, they are removed again. Duplicates are dropped, and commas, semicolons and spaces are accepted as separators.
+* **The *Saves* buttons were shown on launcher tabs** of the library, where they do nothing; the caption and all three buttons are now hidden there.
+
+### Changed
+* Application version is now 2.1.3.
+
+---
+
 ## [2.1.2] - 2026-10-20
 
 ### Added
