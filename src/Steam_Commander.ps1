@@ -316,6 +316,109 @@ function Initialize-FormForSmallScreen {
 # ShowScrollBar(hWnd, SB_HORZ, false) не трогает вертикальную полосу и не
 # требует пересчёта AutoScrollMinSize — просто гарантированно убирает
 # горизонтальную полосу с экрана.
+# Синхронная отрисовка окна вместе со всеми дочерними контролами. Пока контрол не получил первый WM_PAINT,
+# Windows показывает вместо него белый фон; вызываем это ДО показа окна (до Opacity = 1 / закрытия заставки).
+if (-not ('FormPaintHelper' -as [type])) {
+    try {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class FormPaintHelper
+{
+    [DllImport("user32.dll")]
+    private static extern bool RedrawWindow(IntPtr h, IntPtr r, IntPtr rgn, uint flags);
+    // RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW
+    public static void PaintNow(IntPtr h)
+    {
+        if (h == IntPtr.Zero) return;
+        try { RedrawWindow(h, IntPtr.Zero, IntPtr.Zero, 0x0001 | 0x0004 | 0x0080 | 0x0100); } catch {}
+    }
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int val, int size);
+
+    // DWMWA_TRANSITIONS_FORCEDISABLED = 3: отключает системную анимацию окна (сворачивание/закрытие/появление).
+    // Нужно окнам-перекрытиям (библиотека, настройки, карточки): при закрытии они «превращаются» в главное окно,
+    // а анимация закрытия выглядела как сворачивание и ломала ощущение цельности.
+    public static void DisableTransitions(IntPtr h)
+    {
+        if (h == IntPtr.Zero) return;
+        try { int on = 1; DwmSetWindowAttribute(h, 3, ref on, 4); } catch {}
+    }
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
+
+    // true, если передний план у окна этого же процесса (заставка или главное окно) или его нет совсем;
+    // false — пользователь переключился в другую программу.
+    public static bool IsForegroundOurs()
+    {
+        try
+        {
+            IntPtr fg = GetForegroundWindow();
+            if (fg == IntPtr.Zero) return true;
+            uint pid;
+            GetWindowThreadProcessId(fg, out pid);
+            return pid == (uint)System.Diagnostics.Process.GetCurrentProcess().Id;
+        }
+        catch { return true; }
+    }
+}
+'@
+    } catch {}
+}
+function Invoke-PaintNow ($Form) {
+    try { if ($null -ne $Form -and $Form.IsHandleCreated) { [FormPaintHelper]::PaintNow($Form.Handle) } } catch {}
+}
+
+# Фабрика окон программы: окно появляется только после того, как все его контролы отрисованы.
+# Пока контрол не получил первый WM_PAINT, Windows показывает вместо него белый прямоугольник, а обработчики Paint
+# на PowerShell медленные, поэтому белое успевает попасть на экран. Окно СРАЗУ при создании (до создания хэндла —
+# как у окон настроек и библиотеки) получает Opacity = 0; в первом Shown (он зарегистрирован раньше пользовательских)
+# оно синхронно рисуется целиком вместе со всеми дочерними окнами и только потом становится видимым.
+# Окна настроек и библиотеки управляют прозрачностью сами и создаются обычным New-Object Form.
+# Без компиляции C#: только обработчики событий. Функции скрипта из замыканий GetNewClosure не видны — только .NET-типы.
+function New-SCForm {
+    $f = New-Object System.Windows.Forms.Form
+    try {
+        $f.Opacity = 0
+        $st = @{ Auto = $true; Timer = $null }
+        $stopTimer = {
+            try { if ($null -ne $st.Timer) { $st.Timer.Stop(); $st.Timer.Dispose() } } catch {}
+            $st.Timer = $null
+        }.GetNewClosure()
+        $reveal = {
+            param($frm)
+            if (-not $st.Auto) { return }
+            $st.Auto = $false
+            & $stopTimer
+            try { if ($frm.IsDisposed) { return } } catch { return }
+            try { [FormPaintHelper]::PaintNow($frm.Handle) } catch { try { $frm.Refresh() } catch {} }
+            try { $frm.Opacity = 1.0 } catch {}
+        }.GetNewClosure()
+        # Страховка стартует только при показе окна: если Shown не придёт, окно не должно остаться невидимым.
+        # Интервал большой: первая отрисовка тяжёлого окна может идти секунды, и срабатывание страховки посреди
+        # неё показало бы недорисованное окно.
+        $f.Add_Load({
+            try {
+                if ($st.Auto) {
+                    $t = New-Object System.Windows.Forms.Timer
+                    $t.Interval = 30000
+                    $t.Add_Tick({ try { & $reveal $f } catch {} }.GetNewClosure())
+                    $st.Timer = $t
+                    $t.Start()
+                }
+            } catch {}
+        }.GetNewClosure())
+        $f.Add_HandleCreated({ param($s, $e); try { [FormPaintHelper]::DisableTransitions($s.Handle) } catch {} })
+        $f.Add_Shown({ param($s, $e); try { & $reveal $s } catch {} }.GetNewClosure())
+        $f.Add_FormClosed({ try { & $stopTimer } catch {} }.GetNewClosure())
+    } catch {}
+    return $f
+}
+
 if (-not ('Win32ScrollBarHelper' -as [type])) {
     try {
         Add-Type -TypeDefinition @'
@@ -611,6 +714,216 @@ public class SmartExeComboBox : ComboBox
     }
 }
 '@
+
+# Ползунок в стиле Steam (как «Масштаб интерфейса» в настройках Steam): синяя заливка слева от бегунка, серая дорожка
+# справа, белый круглый бегунок. Бегунок во время перетаскивания идёт за курсором плавно (по пикселям, а не по целым процентам). Замена штатного TrackBar,
+# чей вид не настраивается. Интерфейс совместим с TrackBar: Minimum/Maximum/Value/SmallChange/LargeChange/Enabled и
+# событие Scroll (срабатывает только от действий пользователя, не от присвоения Value).
+if (-not ('SteamSlider' -as [type])) {
+    try {
+        Add-Type -ReferencedAssemblies @('System.Drawing','System.Windows.Forms') -TypeDefinition @'
+using System;
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Windows.Forms;
+
+public class SteamSlider : Control
+{
+    private int _min = 0, _max = 100, _val = 0, _small = 1, _large = 10;
+    private double _disp = 0;   // положение бегунка для рисования (дробное, пока идёт перетаскивание)
+    private bool _drag = false;
+    private const int ThumbD = 16;
+    private const int TrackH = 4;
+
+    public event EventHandler Scroll;
+    public event EventHandler ValueChanged;
+
+    public SteamSlider()
+    {
+        SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
+                 ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw |
+                 ControlStyles.Selectable | ControlStyles.StandardClick, true);
+        TabStop = false;
+        Height = 28;
+        Cursor = Cursors.Hand;
+    }
+
+    public int Minimum { get { return _min; } set { _min = value; if (_max < _min) _max = _min; Value = _val; Invalidate(); } }
+    public int Maximum { get { return _max; } set { _max = value; if (_min > _max) _min = _max; Value = _val; Invalidate(); } }
+    public int SmallChange { get { return _small; } set { _small = Math.Max(1, value); } }
+    public int LargeChange { get { return _large; } set { _large = Math.Max(1, value); } }
+
+    public int Value
+    {
+        get { return _val; }
+        set
+        {
+            int v = Math.Max(_min, Math.Min(_max, value));
+            if (v == _val) return;
+            _val = v;
+            if (!_drag) _disp = v;
+            Invalidate();
+            EventHandler h = ValueChanged;
+            if (h != null) h(this, EventArgs.Empty);
+        }
+    }
+
+    private float Pad { get { return ThumbD / 2f + 1f; } }
+
+    private float XFor(double v)
+    {
+        float w = Width - 2f * Pad;
+        if (_max <= _min || w <= 0f) return Pad;
+        return (float)(Pad + w * (v - _min) / (double)(_max - _min));
+    }
+
+    // Дробное значение под курсором (без округления до целого процента).
+    private double FracFor(int x)
+    {
+        float w = Width - 2f * Pad;
+        if (_max <= _min || w <= 0f) return _min;
+        double r = (x - Pad) / w;
+        if (r < 0) r = 0; if (r > 1) r = 1;
+        return _min + r * (_max - _min);
+    }
+
+    private void RaiseScroll()
+    {
+        EventHandler h = Scroll;
+        if (h != null) h(this, EventArgs.Empty);
+    }
+
+    private void SetFromUser(int nv)
+    {
+        nv = Math.Max(_min, Math.Min(_max, nv));
+        if (nv == _val) return;
+        Value = nv;
+        RaiseScroll();
+    }
+
+    // Перетаскивание: бегунок сразу рисуется под курсором (Update - синхронно, до обработчика Scroll, который может быть
+    // небыстрым), а целое значение и событие Scroll обновляются, только когда округлённое значение изменилось.
+    private void SetFromMouse(int x)
+    {
+        double fv = FracFor(x);
+        _disp = fv;
+        Invalidate();
+        Update();
+        int nv = (int)Math.Round(fv);
+        nv = Math.Max(_min, Math.Min(_max, nv));
+        if (nv != _val)
+        {
+            Value = nv;
+            RaiseScroll();
+        }
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        Graphics g = e.Graphics;
+        g.Clear(BackColor);
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        bool on = Enabled;
+        Color cTrack = on ? Color.FromArgb(68, 76, 88) : Color.FromArgb(44, 52, 62);
+        Color cFill = on ? Color.FromArgb(26, 159, 255) : Color.FromArgb(70, 84, 100);
+        Color cThumb = on ? Color.White : Color.FromArgb(128, 136, 146);
+
+        float cy = Height / 2f;
+        float x0 = Pad, x1 = Width - Pad;
+        float tx = XFor(_disp);
+
+        using (Pen pt = new Pen(cTrack, TrackH))
+        {
+            pt.StartCap = LineCap.Round; pt.EndCap = LineCap.Round;
+            g.DrawLine(pt, x0, cy, x1, cy);
+        }
+        if (tx > x0)
+        {
+            using (Pen pf = new Pen(cFill, TrackH))
+            {
+                pf.StartCap = LineCap.Round; pf.EndCap = LineCap.Round;
+                g.DrawLine(pf, x0, cy, tx, cy);
+            }
+        }
+        using (SolidBrush bt = new SolidBrush(cThumb))
+        {
+            g.FillEllipse(bt, tx - ThumbD / 2f, cy - ThumbD / 2f, ThumbD, ThumbD);
+        }
+    }
+
+    protected override void OnMouseDown(MouseEventArgs e)
+    {
+        base.OnMouseDown(e);
+        if (e.Button != MouseButtons.Left || !Enabled) return;
+        try { Focus(); } catch { }
+        _drag = true;
+        Capture = true;
+        SetFromMouse(e.X);
+    }
+
+    protected override void OnMouseMove(MouseEventArgs e)
+    {
+        base.OnMouseMove(e);
+        if (_drag) SetFromMouse(e.X);
+    }
+
+    protected override void OnMouseUp(MouseEventArgs e)
+    {
+        base.OnMouseUp(e);
+        _drag = false;
+        Capture = false;
+        _disp = _val;
+        Invalidate();
+    }
+
+    protected override void OnMouseCaptureChanged(EventArgs e)
+    {
+        base.OnMouseCaptureChanged(e);
+        if (_drag && !Capture) { _drag = false; _disp = _val; Invalidate(); }
+    }
+
+    protected override void OnMouseWheel(MouseEventArgs e)
+    {
+        base.OnMouseWheel(e);
+        if (!Enabled) return;
+        SetFromUser(_val + (e.Delta > 0 ? _small : -_small));
+    }
+
+    protected override bool IsInputKey(Keys keyData)
+    {
+        switch (keyData & Keys.KeyCode)
+        {
+            case Keys.Left: case Keys.Right: case Keys.Up: case Keys.Down:
+            case Keys.Home: case Keys.End: case Keys.PageUp: case Keys.PageDown:
+                return true;
+        }
+        return base.IsInputKey(keyData);
+    }
+
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        base.OnKeyDown(e);
+        if (!Enabled) return;
+        int nv = _val;
+        switch (e.KeyCode)
+        {
+            case Keys.Left: case Keys.Down: nv = _val - _small; break;
+            case Keys.Right: case Keys.Up: nv = _val + _small; break;
+            case Keys.PageDown: nv = _val - _large; break;
+            case Keys.PageUp: nv = _val + _large; break;
+            case Keys.Home: nv = _min; break;
+            case Keys.End: nv = _max; break;
+            default: return;
+        }
+        e.Handled = true;
+        SetFromUser(nv);
+    }
+
+    protected override void OnEnabledChanged(EventArgs e) { base.OnEnabledChanged(e); Invalidate(); }
+}
+'@ -ErrorAction Stop
+    } catch {}
+}
 
 Set-SplashProgress 0.22
 Add-Type -ReferencedAssemblies @('System.Drawing','System.Windows.Forms') -TypeDefinition @'
@@ -915,7 +1228,7 @@ Set-SplashProgress 0.52
 # Единая версия приложения — используется в заголовке главного окна, в
 # подписи внизу окна настроек и в User-Agent HTTP-запросов. Меняйте только
 # здесь при выпуске новой версии.
-$global:appVersion = "2.1.2"
+$global:appVersion = "2.1.3"
 $global:appTitle = "Steam Commander"
 # Ссылки на исходный код и поддержку автора (окно «Поддержать» в настройках). Меняйте только здесь.
 $global:appRepoUrl = "https://github.com/Hetfield1985/Steam-Commander"
@@ -1481,6 +1794,8 @@ $script:I18n = @{
         rom_swap_menu_sel = 'Сменить эмулятор у выбранных ({0})'
         rom_swap_menu_all = 'Сменить у всех игр «{0}» ({1})'
         rom_swap_done = 'Эмулятор «{1}» назначен играм: {0}.'
+        emu_upd_ask = 'Изменены путь, параметры или распаковка архивов эмулятора «{1}».\n\nОбновить ярлыки Steam с этим эмулятором: {0}?\n\nSteam будет закрыт и запущен заново. Параметры запуска, изменённые вручную в карточках игр, будут заменены.'
+        emu_upd_done = 'Ярлыки обновлены: {0} (эмулятор «{1}»).'
         rom_swap_skipped = 'Пропущено: {0}'
         rom_swap_fail = 'Не удалось изменить игр: {0}. {1}'
         rom_swap_no_rom = 'файл ROM не найден'
@@ -2132,6 +2447,8 @@ $script:I18n = @{
         rom_swap_menu_sel = 'Change emulator for selected ({0})'
         rom_swap_menu_all = 'Change for all "{0}" games ({1})'
         rom_swap_done = 'Emulator "{1}" assigned to {0} game(s).'
+        emu_upd_ask = 'Path, arguments or archive extraction of emulator "{1}" were changed.\n\nUpdate the Steam shortcuts that use this emulator: {0}?\n\nSteam will be closed and started again. Launch options changed manually in game cards will be replaced.'
+        emu_upd_done = 'Shortcuts updated: {0} (emulator "{1}").'
         rom_swap_skipped = 'Skipped: {0}'
         rom_swap_fail = 'Could not change {0} game(s). {1}'
         rom_swap_no_rom = 'ROM file not found'
@@ -2765,6 +3082,8 @@ $script:I18n = @{
         rom_swap_menu_sel = '为所选游戏更换模拟器（{0}）'
         rom_swap_menu_all = '为所有“{0}”游戏更换（{1}）'
         rom_swap_done = '已将模拟器“{1}”分配给 {0} 个游戏。'
+        emu_upd_ask = '模拟器“{1}”的路径、参数或压缩包解压设置已更改。\n\n是否更新使用该模拟器的 Steam 快捷方式：{0}？\n\nSteam 将被关闭并重新启动。在游戏卡片中手动修改的启动选项将被替换。'
+        emu_upd_done = '已更新快捷方式：{0}（模拟器“{1}”）。'
         rom_swap_skipped = '已跳过：{0}'
         rom_swap_fail = '无法更改的游戏数：{0}。{1}'
         rom_swap_no_rom = '未找到 ROM 文件'
@@ -3406,6 +3725,8 @@ $script:I18n = @{
         rom_swap_menu_sel = 'Cambiar emulador de los seleccionados ({0})'
         rom_swap_menu_all = 'Cambiar en todos los juegos de «{0}» ({1})'
         rom_swap_done = 'Emulador «{1}» asignado a {0} juego(s).'
+        emu_upd_ask = 'Se cambiaron la ruta, los argumentos o la extracción de archivos del emulador «{1}».\n\n¿Actualizar los accesos directos de Steam que usan este emulador: {0}?\n\nSteam se cerrará y se iniciará de nuevo. Las opciones de lanzamiento cambiadas manualmente en las tarjetas de juego se reemplazarán.'
+        emu_upd_done = 'Accesos directos actualizados: {0} (emulador «{1}»).'
         rom_swap_skipped = 'Omitidos: {0}'
         rom_swap_fail = 'No se pudieron cambiar {0} juego(s). {1}'
         rom_swap_no_rom = 'no se encontró el archivo ROM'
@@ -4047,6 +4368,8 @@ $script:I18n = @{
         rom_swap_menu_sel = 'Trocar emulador dos selecionados ({0})'
         rom_swap_menu_all = 'Trocar em todos os jogos de «{0}» ({1})'
         rom_swap_done = 'Emulador «{1}» atribuído a {0} jogo(s).'
+        emu_upd_ask = 'O caminho, os argumentos ou a extração de arquivos do emulador «{1}» foram alterados.\n\nAtualizar os atalhos do Steam que usam este emulador: {0}?\n\nO Steam será fechado e iniciado novamente. As opções de inicialização alteradas manualmente nos cartões de jogo serão substituídas.'
+        emu_upd_done = 'Atalhos atualizados: {0} (emulador «{1}»).'
         rom_swap_skipped = 'Ignorados: {0}'
         rom_swap_fail = 'Não foi possível alterar {0} jogo(s). {1}'
         rom_swap_no_rom = 'arquivo ROM não encontrado'
@@ -4688,6 +5011,8 @@ $script:I18n = @{
         rom_swap_menu_sel = 'Emulator für Ausgewählte wechseln ({0})'
         rom_swap_menu_all = 'Bei allen Spielen von «{0}» wechseln ({1})'
         rom_swap_done = 'Emulator «{1}» wurde {0} Spiel(en) zugewiesen.'
+        emu_upd_ask = 'Pfad, Argumente oder Archiv-Entpackung des Emulators «{1}» wurden geändert.\n\nSteam-Verknüpfungen aktualisieren, die diesen Emulator verwenden: {0}?\n\nSteam wird geschlossen und neu gestartet. Manuell in den Spielkarten geänderte Startoptionen werden ersetzt.'
+        emu_upd_done = 'Verknüpfungen aktualisiert: {0} (Emulator «{1}»).'
         rom_swap_skipped = 'Übersprungen: {0}'
         rom_swap_fail = '{0} Spiel(e) konnten nicht geändert werden. {1}'
         rom_swap_no_rom = 'ROM-Datei nicht gefunden'
@@ -5149,6 +5474,8 @@ function Show-AppMessageBox {
     $btnInt  = if ($a.Count -gt $i + 2) { [int]$a[$i + 2] } else { 0 }
     $iconInt = if ($a.Count -gt $i + 3) { [int]$a[$i + 3] } else { 0 }
     $isYesNo = ($btnInt -eq 4 -or $btnInt -eq 3)
+    # 5-й аргумент ($true): крестик и Esc возвращают Cancel (вернуться назад), а не молча считаются «Нет».
+    $cancelOnClose = if ($a.Count -gt $i + 4) { [bool]$a[$i + 4] } else { $false }
 
     $ownerForm = $null
     if ($owner -is [System.Windows.Forms.Form] -and -not $owner.IsDisposed -and $owner.Visible) { $ownerForm = $owner }
@@ -5195,7 +5522,7 @@ function Show-AppMessageBox {
     $areaH = [Math]::Max($(if ($null -ne $glyph) { $iconSize } else { 0 }), $panelH)
     $panelW = $textW + $(if ($needScroll) { [System.Windows.Forms.SystemInformation]::VerticalScrollBarWidth } else { 0 })
 
-    $f = New-Object System.Windows.Forms.Form
+    $f = New-SCForm
     $iconBmp = $null
     try {
         $f.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::None
@@ -5294,6 +5621,16 @@ function Show-AppMessageBox {
             $bYes = & $mkBtn (T 'confirm_yes') ([System.Windows.Forms.DialogResult]::Yes) $true  ($xRight - 120)
             $footer.Controls.Add($bNo); $footer.Controls.Add($bYes)
             $f.AcceptButton = $bYes; $f.CancelButton = $bNo
+            if ($cancelOnClose) {
+                # Скрытая за краем формы кнопка Cancel: по Esc диалог закрывается с результатом Cancel.
+                $bBack = New-Object System.Windows.Forms.Button
+                $bBack.Size = New-Object System.Drawing.Size(1, 1)
+                $bBack.Location = New-Object System.Drawing.Point(-10, -10)
+                $bBack.TabStop = $false
+                $bBack.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+                $f.Controls.Add($bBack)
+                $f.CancelButton = $bBack
+            }
             $f.ActiveControl = $bYes
         } else {
             $bOk = & $mkBtn 'OK' ([System.Windows.Forms.DialogResult]::OK) $true $xRight
@@ -5303,7 +5640,7 @@ function Show-AppMessageBox {
         }
 
         $res = if ($null -ne $ownerForm) { $f.ShowDialog($ownerForm) } else { $f.ShowDialog() }
-        if ($res -eq [System.Windows.Forms.DialogResult]::Cancel -or $res -eq [System.Windows.Forms.DialogResult]::None) {
+        if (-not $cancelOnClose -and ($res -eq [System.Windows.Forms.DialogResult]::Cancel -or $res -eq [System.Windows.Forms.DialogResult]::None)) {
             $res = if ($isYesNo) { [System.Windows.Forms.DialogResult]::No } else { [System.Windows.Forms.DialogResult]::OK }
         }
         return $res
@@ -5376,7 +5713,7 @@ function Show-LibActionReport {
         if ($clientH -gt $maxClient) { $clientH = [Math]::Max(320, $maxClient) }
     } catch {}
 
-    $f = New-Object System.Windows.Forms.Form
+    $f = New-SCForm
     $iconBmp = $null
     try {
         $f.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::None
@@ -6401,7 +6738,7 @@ function Start-SteamIfAuto([string]$exePath) {
 # операцию. Возвращает $true, если Steam закрыт (можно писать), и $false при отмене.
 function Wait-SteamClosedByUser {
     if (-not (Test-SteamRunning)) { return $true }
-    $wf = New-Object System.Windows.Forms.Form
+    $wf = New-SCForm
     $wf.Text = [string]$global:appTitle
     $wf.StartPosition = 'CenterParent'
     $wf.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedDialog
@@ -9107,7 +9444,7 @@ function Show-ThemedConfirm {
     if ([string]::IsNullOrEmpty($yesText)) { $yesText = (T 'confirm_yes') }
     if ([string]::IsNullOrEmpty($noText)) { $noText = (T 'confirm_no') }
 
-    $confirm = New-Object System.Windows.Forms.Form
+    $confirm = New-SCForm
     $confirm.Text = $titleText
     $confirm.StartPosition = 'CenterParent'
     $confirm.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedDialog
@@ -9204,7 +9541,7 @@ function Get-AppIcon {
 }
 
 Set-SplashProgress 0.58
-$form = New-Object System.Windows.Forms.Form
+$form = New-SCForm
 $form.Text = "$($global:appTitle) $($global:appVersion)"
 try { $appIconObj = Get-AppIcon; if ($null -ne $appIconObj) { $form.Icon = $appIconObj } } catch {}
 # ClientSize, а не Size: нужно, чтобы 1080x700 было ИМЕННО внутренней рабочей
@@ -10468,7 +10805,7 @@ function Show-RomEmulatorPickerPopup {
     # C# фильтр колёсика: сам двигает Flow.Top и инвалидирует точки.
     # Никакого PowerShell из C#, никакого Timer — поэтому колесо реально работает.
 
-    $popup = New-Object System.Windows.Forms.Form
+    $popup = New-SCForm
     $popup.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
     $popup.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
     $popup.ShowInTaskbar = $false
@@ -12364,7 +12701,7 @@ function Refresh-Panels {
 }
 
 function Show-ExeSelectionDialog ($exeList, $rootPath, $gameName) {
-    $dialog = New-Object System.Windows.Forms.Form; $dialog.Text = (T 'exe_dlg_title' @($gameName)); $dialog.Size = "640, 400"; $dialog.StartPosition = "CenterParent"; $dialog.FormBorderStyle = "FixedDialog"; $dialog.MaximizeBox = $false; $dialog.MinimizeBox = $false
+    $dialog = New-SCForm; $dialog.Text = (T 'exe_dlg_title' @($gameName)); $dialog.Size = "640, 400"; $dialog.StartPosition = "CenterParent"; $dialog.FormBorderStyle = "FixedDialog"; $dialog.MaximizeBox = $false; $dialog.MinimizeBox = $false
     $lbl = New-Object System.Windows.Forms.Label; $lbl.Text = (T 'exe_dlg_hint'); $lbl.Location = "15, 15"; $lbl.Size = "590, 20"; $lbl.Font = New-Object System.Drawing.Font("Arial", 9.5, [System.Drawing.FontStyle]::Bold); $dialog.Controls.Add($lbl)
 
     # Значки реального exe (а не абстрактный список путей) помогают сразу
@@ -12965,6 +13302,97 @@ function Invoke-MainRomEmulatorSwap {
         try { $labelHeader.Text = ($lines.ToArray() -join '  |  ') } catch {}
     } catch {
         try { $owner.UseWaitCursor = $false } catch {}
+        try { $labelHeader.Text = [string]$_.Exception.Message } catch {}
+    }
+}
+
+# ===================== Обновление ярлыков при изменении профиля эмулятора =====================
+# Ярлыки Steam привязаны к эмулятору по пути к exe, а параметры запуска зашиты в ярлык при добавлении, поэтому после
+# смены пути/параметров/«Распаковывать архивы» старые ярлыки остаются со старыми значениями. Планы пересчитываются ДО
+# замены профиля в $global:emulatorProfiles (ROM-путь восстанавливается по шаблону ещё старого профиля), а применяются
+# после подтверждения — одним вопросом для всех найденных ярлыков.
+function Get-EmulatorShortcutUpdatePlans ($OldProfile, $NewProfile) {
+    $res = [PSCustomObject]@{ Plans = @(); Skipped = @() }
+    try {
+        $plans = New-Object System.Collections.Generic.List[object]
+        $skipped = New-Object System.Collections.Generic.List[string]
+        $oldId = [string]$OldProfile.Id
+        foreach ($en in @(Get-SteamLibraryEntries)) {
+            if ([string]$en.Kind -ne 'shortcut') { continue }
+            $p = $null
+            try { $p = Get-EntryEmulatorProfile $en } catch {}
+            if ($null -eq $p -or [string]$p.Id -ne $oldId) { continue }
+            $core = ''
+            try { if (Test-IsRetroArchProfile ([string]$NewProfile.Name) ([string]$NewProfile.ExePath)) { $core = [string](Get-EntryRetroArchCore $en) } } catch {}
+            $pl = Get-RomShortcutSwapPlan $en $NewProfile $core
+            if (-not $pl.Ok) { [void]$skipped.Add(([string]$en.Name + ' - ' + [string]$pl.Reason)); continue }
+            # Ярлык, у которого Exe, StartDir и LaunchOptions уже совпадают с планом (например, ярлык на обычный ром при
+            # смене «Распаковывать архивы» или списка расширений), обновлять незачем - в вопрос он не попадает.
+            $sameExe = [string]::Equals(([string]$en.Exe).Trim().Trim('"'), ([string]$pl.Exe).Trim().Trim('"'), [System.StringComparison]::OrdinalIgnoreCase)
+            $sameDir = [string]::Equals(([string]$en.StartDir).Trim().Trim('"'), ([string]$pl.StartDir).Trim().Trim('"'), [System.StringComparison]::OrdinalIgnoreCase)
+            $sameLaunch = [string]::Equals(([string]$en.LaunchOptions).Trim(), ([string]$pl.Launch).Trim(), [System.StringComparison]::Ordinal)
+            if ($sameExe -and $sameDir -and $sameLaunch) { continue }
+            [void]$plans.Add([PSCustomObject]@{ Entry = $en; Exe = [string]$pl.Exe; StartDir = [string]$pl.StartDir; Launch = [string]$pl.Launch; Mismatch = [bool]$pl.Mismatch })
+        }
+        $res.Plans = @($plans.ToArray())
+        $res.Skipped = @($skipped.ToArray())
+    } catch {}
+    return $res
+}
+
+# Вопрос про обновление ярлыков. Возвращает 'yes' / 'no' / 'back' (окно закрыто крестиком или Esc - вернуться в профиль эмулятора).
+function Confirm-EmulatorShortcutUpdate ($Plans, $NewProfile, $Owner) {
+    $ans = Show-AppMessageBox($Owner, ((T 'emu_upd_ask' @(@($Plans).Count, [string]$NewProfile.Name)).Replace('\n', "`n")), $global:appTitle, [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question, $true)
+    if ($ans -eq [System.Windows.Forms.DialogResult]::Yes) { return 'yes' }
+    if ($ans -eq [System.Windows.Forms.DialogResult]::No) { return 'no' }
+    return 'back'
+}
+
+function Invoke-EmulatorShortcutUpdate ($Plans, $Skipped, $NewProfile, $Owner, $SkipAsk = $false) {
+    $plans = @($Plans)
+    $skipped = @($Skipped)
+    try {
+        if ($plans.Count -eq 0) {
+            if ($skipped.Count -gt 0) { try { $labelHeader.Text = (T 'rom_swap_skipped' @((@($skipped | Select-Object -First 8)) -join '; ')) } catch {} }
+            return
+        }
+        # Один вопрос на все найденные ярлыки.
+        if (-not $SkipAsk) {
+            $ans = Show-AppMessageBox($Owner, ((T 'emu_upd_ask' @($plans.Count, [string]$NewProfile.Name)).Replace('\n', "`n")), $global:appTitle, [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
+            if ($ans -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+        }
+
+        try { $Owner.UseWaitCursor = $true; [System.Windows.Forms.Application]::DoEvents() } catch {}
+        $updRes = $null
+        $steamWasRunning = $false
+        $cancelled = $false
+        try {
+            try { $steamWasRunning = Test-SteamRunning } catch {}
+            if ($steamWasRunning) { if (-not (Close-SteamForWrite)) { $cancelled = $true } }
+            if (-not $cancelled) { $updRes = Set-ShortcutsEmulatorBatch $plans }
+        } finally {
+            if ($steamWasRunning -and (Get-SteamRestartMode) -eq 'auto') {
+                try {
+                    $steamExeUpd = [string](Get-ConfiguredSteamExePath)
+                    if ([string]::IsNullOrWhiteSpace($steamExeUpd) -or -not (Test-Path -LiteralPath $steamExeUpd)) {
+                        $steamExeUpd = [string](Get-ItemProperty -Path 'HKCU:\Software\Valve\Steam' -Name 'SteamExe' -ErrorAction SilentlyContinue).SteamExe
+                    }
+                    if ([string]::IsNullOrWhiteSpace($steamExeUpd) -or -not (Test-Path -LiteralPath $steamExeUpd)) { $steamExeUpd = 'C:\Program Files (x86)\Steam\steam.exe' }
+                    if (Test-Path -LiteralPath $steamExeUpd) { Start-Process -FilePath $steamExeUpd }
+                } catch {}
+            }
+            try { $Owner.UseWaitCursor = $false } catch {}
+        }
+        try { Refresh-Panels } catch {}
+
+        $lines = New-Object System.Collections.Generic.List[string]
+        if ($null -ne $updRes -and [int]$updRes.Done -gt 0) { [void]$lines.Add((T 'emu_upd_done' @([int]$updRes.Done, [string]$NewProfile.Name))) }
+        if ($null -ne $updRes -and [int]$updRes.Failed -gt 0) { [void]$lines.Add((T 'rom_swap_fail' @([int]$updRes.Failed, [string]$updRes.Error))) }
+        if ($skipped.Count -gt 0) { [void]$lines.Add((T 'rom_swap_skipped' @((@($skipped | Select-Object -First 8)) -join '; '))) }
+        if ($cancelled) { [void]$lines.Add((T 'steam_close_cancelled')) }
+        try { $labelHeader.Text = ($lines.ToArray() -join '  |  ') } catch {}
+    } catch {
+        try { $Owner.UseWaitCursor = $false } catch {}
         try { $labelHeader.Text = [string]$_.Exception.Message } catch {}
     }
 }
@@ -17696,7 +18124,7 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
     $script:sgdbChooserPickedBytes=$null
     $script:sgdbChooserPickedIsFull=$false
 
-    $dlg=New-Object System.Windows.Forms.Form
+    $dlg=New-SCForm
     $dlg.Text="SteamGridDB — $title"
     try { $sgdbIco = Get-SteamGridDbFormIcon; if ($null -ne $sgdbIco) { $dlg.Icon = $sgdbIco } } catch {}
     # ВАЖНО про тёмный отступ снизу: раньше здесь стоял жёстко заданный
@@ -20378,13 +20806,12 @@ function Initialize-EditorCompose($heroSlot, $logoSlot) {
     } catch {}
 
     # --- Ползунок масштаба в свободной полосе под превью ---
-    $tb = New-Object System.Windows.Forms.TrackBar
-    $tb.AutoSize = $false
+    # Ползунок в стиле Steam (см. класс SteamSlider): синяя заливка до бегунка, белый круглый бегунок.
+    $tb = New-Object SteamSlider
     $tb.Minimum = [int]$script:EditorLogoScaleMin
     $tb.Maximum = [int]$script:EditorLogoScaleMax
     $tb.SmallChange = [int]$script:EditorLogoScaleStep
     $tb.LargeChange = 10
-    $tb.TickStyle = [System.Windows.Forms.TickStyle]::None
     $scaleLblW = 170
     $lblScale = New-Object System.Windows.Forms.Label
     $lblScale.AutoSize = $false
@@ -20397,8 +20824,8 @@ function Initialize-EditorCompose($heroSlot, $logoSlot) {
     $lblScale.Size = New-Object System.Drawing.Size($scaleLblW, 24)
     $heroSlot.Panel.Controls.Add($lblScale)
     $heroSlot | Add-Member -NotePropertyName ScaleLabel -NotePropertyValue $lblScale -Force
-    # Линия TrackBar рисуется выше середины его высоты, поэтому ползунок опущен на 4 px, чтобы линия шла по центру кнопки и подписи.
-    $tb.Location = New-Object System.Drawing.Point((10 + $scaleLblW + 4 + 26 + 4 + 32), ($rowY + 4))
+    # Дорожка SteamSlider рисуется ровно по центру элемента (высота 28), поэтому он стоит на одной оси с кнопками (высота 24, Top = y + 2).
+    $tb.Location = New-Object System.Drawing.Point((10 + $scaleLblW + 4 + 26 + 4 + 32), $rowY)
     $tb.Size = New-Object System.Drawing.Size(([int]$heroSlot.Panel.Width - 10 - (10 + $scaleLblW + 4 + 26 + 4 + 32)), 28)
     $tb.BackColor = $heroSlot.Panel.BackColor
     $tb.Value = 50
@@ -20486,15 +20913,15 @@ function Initialize-EditorCompose($heroSlot, $logoSlot) {
             $y0 = [int](35 + $picH + [Math]::Max(2, [Math]::Floor(($band - 28) / 2)))
             $xFrames = 10 + $scaleLblW + 4
             $xEye = $xFrames + 26 + 6
-            # Две кнопки одинакового размера (26x24) с зазором 6 px, затем ползунок: у TrackBar линия начинается
-            # примерно на 8 px правее его левого края, поэтому Left = конец замка + 4 даёт видимый зазор ~12 px.
+            # Две кнопки одинакового размера (26x24) с зазором 6 px, затем ползунок: у SteamSlider дорожка начинается
+            # на 9 px правее его левого края, поэтому Left = конец замка + 4 даёт видимый зазор ~13 px.
             $xChk = $xEye + 26 + 6
             $xTb = $xChk + 26 + 4
             $lblScale.Location = New-Object System.Drawing.Point(10, ($y0 + 2))
             $chkDef.Location = New-Object System.Drawing.Point($xChk, ($y0 + 2))
             $eye.Location = New-Object System.Drawing.Point($xEye, ($y0 + 2))
             $chkFrames.Location = New-Object System.Drawing.Point($xFrames, ($y0 + 2))
-            $tb.Location = New-Object System.Drawing.Point($xTb, ($y0 + 4))
+            $tb.Location = New-Object System.Drawing.Point($xTb, $y0)
             $tb.Size = New-Object System.Drawing.Size([Math]::Max(40, ([int]$heroSlot.Panel.Width - 10 - $xTb)), 28)
             try { $chkDef.BringToFront(); $chkFrames.BringToFront() } catch {}
         } catch {}
@@ -21744,7 +22171,7 @@ function Add-SupportCopyRow ($dlg, [int]$y, [string]$network, [string]$address) 
 }
 
 function Show-SupportDialog ($owner) {
-    $dlg = New-Object System.Windows.Forms.Form
+    $dlg = New-SCForm
     $dlg.Text = (T 'support_title')
     $dlg.ClientSize = New-Object System.Drawing.Size(520, 392)
     $dlg.StartPosition = 'CenterParent'
@@ -21845,7 +22272,7 @@ function Show-SupportDialog ($owner) {
 # либо $null при добавлении нового. Возвращает обновлённую хэштаблицу или
 # $null, если пользователь нажал «Отмена».
 function Show-EmulatorEditDialog ($owner, $existing = $null) {
-    $dlg = New-Object System.Windows.Forms.Form
+    $dlg = New-SCForm
     $dlg.Text = if ($existing -eq $null) { (T 'emu_dlg_new') } else { (T 'emu_dlg_edit') }
     $dlg.ClientSize = New-Object System.Drawing.Size(480, 296)
     $dlg.StartPosition = 'CenterParent'
@@ -22073,6 +22500,14 @@ function Show-EmulatorEditDialog ($owner, $existing = $null) {
     # (тот же приём, что и LaunchOptSuppressReopen/SuppressLaunchOptionOnce
     # у параметров запуска в карточке игры).
     $extState = [PSCustomObject]@{ SuppressReopen = $false; AddedArchiveExts = @() }
+    # Профиль уже сохранён с включённой галочкой: форматы архивов в его списке дописаны ею (при сохранении, см. ниже), поэтому
+    # при снятии галочки в этом окне они должны убираться так же, как при снятии сразу после установки.
+    try {
+        if ($existing -ne $null -and [bool]$existing.ExtractArchives) {
+            $arcAll = @(Get-RomArchiveExtensions)
+            $extState.AddedArchiveExts = @(@([string]$txtExt.Text -split '[,;\s]+') | ForEach-Object { $_.Trim().TrimStart('.').ToLowerInvariant() } | Where-Object { $arcAll -contains $_ } | Select-Object -Unique)
+        }
+    } catch {}
 
     # Заполняет список подходящими платформами: без текста в поле — показывает
     # все платформы, с текстом — фильтрует по названию платформы ИЛИ по
@@ -22394,7 +22829,16 @@ function Show-EmulatorEditDialog ($owner, $existing = $null) {
         return $null
     }
 
-    $cleanExt = (@($txtExt.Text -split ',') | ForEach-Object { $_.Trim().TrimStart('.').ToLowerInvariant() } | Where-Object { $_ -ne '' }) -join ','
+    $extList = @(@($txtExt.Text -split '[,;\s]+') | ForEach-Object { $_.Trim().TrimStart('.').ToLowerInvariant() } | Where-Object { $_ -ne '' } | Select-Object -Unique)
+    # При включённой галочке «Распаковывать архивы» форматы архивов всегда входят в сохраняемый список, даже если пользователь
+    # переписал поле «Расширения» вручную уже после установки галочки (CheckedChanged в этом случае не срабатывает).
+    # Пустой список по-прежнему означает «без фильтра», в него ничего не дописываем.
+    if ([bool]$chkExtract.Checked -and $extList.Count -gt 0) {
+        foreach ($a in @(Get-RomArchiveExtensions)) {
+            if ($extList -notcontains $a) { $extList += $a }
+        }
+    }
+    $cleanExt = $extList -join ','
 
     return @{
         Id         = if ($existing -ne $null -and -not [string]::IsNullOrWhiteSpace([string]$existing.Id)) { [string]$existing.Id } else { New-EmulatorProfileId }
@@ -24269,7 +24713,7 @@ function Show-SaveBackupPicker {
     }
     try { if ($null -ne $steamUi) { foreach ($k in @('Bg', 'Panel2', 'Border', 'Text', 'Muted', 'Accent2')) { if ($null -ne $steamUi[$k]) { $pal[$k] = $steamUi[$k] } } } } catch {}
     $script:savePickPath = $null
-    $f = New-Object System.Windows.Forms.Form
+    $f = New-SCForm
     try {
         $f.Text = (T 'save_pick_title')
         $f.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedDialog
@@ -25024,7 +25468,7 @@ function Show-SaveDetectorPicker {
     $result = @{ Action = 'cancel'; Paths = @() }
     $pal = Get-SaveDetectorPalette
     $cands = @($Candidates)
-    $f = New-Object System.Windows.Forms.Form
+    $f = New-SCForm
     try {
         $f.Text = (T 'sdet_title')
         $f.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedDialog
@@ -25211,7 +25655,7 @@ function Show-SaveDetectorMultiPicker {
     param($Owner, [object[]]$Groups)
     $result = @{ Action = 'cancel'; Chosen = @{} }
     $pal = Get-SaveDetectorPalette
-    $f = New-Object System.Windows.Forms.Form
+    $f = New-SCForm
     try {
         $f.Text = (T 'sdet_title')
         $f.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::Sizable
@@ -25485,7 +25929,7 @@ function Show-SaveDetectorTrackDialog {
         Ignore = [string[]]@('unitycrashhandler64.exe', 'unitycrashhandler32.exe', 'crashpad_handler.exe', 'crashreportclient.exe', 'steam.exe', 'steamwebhelper.exe', 'sclauncher.exe')
         Name = [string]$Params.Name; BaseDir = $baseDir
     }
-    $form = New-Object System.Windows.Forms.Form
+    $form = New-SCForm
     $timer = New-Object System.Windows.Forms.Timer
     try {
         $form.Text = (T 'sdet_title')
@@ -27275,13 +27719,48 @@ function Add-EmulatorsManagerControls ($owner, $container) {
             $existingProfile = $null
             foreach ($ep in @($global:emulatorProfiles)) { if ([string]$ep.Id -eq $selId) { $existingProfile = $ep; break } }
             if ($existingProfile -eq $null) { return }
-            $updatedProfile = Show-EmulatorEditDialog $owner $existingProfile
+            # Окно «Обновить ярлыки?» спрашиваем ДО сохранения профиля. Закрытие его крестиком/Esc возвращает в окно
+            # профиля эмулятора с уже введёнными значениями; «Да»/«Нет» - сохраняет профиль (и обновляет ярлыки при «Да»).
+            $draftProfile = $existingProfile
+            $updatedProfile = $null
+            $updPlans = @(); $updSkipped = @(); $updAnswer = 'no'
+            while ($true) {
+                $updatedProfile = Show-EmulatorEditDialog $owner $draftProfile
+                if ($updatedProfile -eq $null) { break }
+                $updPlans = @(); $updSkipped = @(); $updAnswer = 'no'
+                try {
+                    $oldExe = ([string]$existingProfile.ExePath).Trim().Trim('"')
+                    $newExe = ([string]$updatedProfile.ExePath).Trim().Trim('"')
+                    $emuHardChanged = (-not [string]::Equals($oldExe, $newExe, [System.StringComparison]::OrdinalIgnoreCase)) -or
+                        (([string]$existingProfile.Args).Trim() -ne ([string]$updatedProfile.Args).Trim())
+                    # Расширения зашиты в ярлыки на архивы (--exts у SCLauncher), «Распаковывать архивы» меняет их запуск.
+                    $emuSoftChanged = ([bool]$existingProfile.ExtractArchives -ne [bool]$updatedProfile.ExtractArchives) -or
+                        (([string]$existingProfile.Extensions).Trim() -ne ([string]$updatedProfile.Extensions).Trim())
+                    $emuLaunchChanged = $emuHardChanged -or $emuSoftChanged
+                    if ($emuLaunchChanged) {
+                        try { $owner.UseWaitCursor = $true; [System.Windows.Forms.Application]::DoEvents() } catch {}
+                        try {
+                            $prep = Get-EmulatorShortcutUpdatePlans $existingProfile $updatedProfile
+                            $updPlans = @($prep.Plans); $updSkipped = @($prep.Skipped)
+                        } finally { try { $owner.UseWaitCursor = $false } catch {} }
+                        # При смене только расширений/галочки без реально меняющихся ярлыков не шумим списком «пропущено».
+                        if (-not $emuHardChanged -and $updPlans.Count -eq 0) { $updSkipped = @() }
+                    }
+                } catch {}
+                if ($updPlans.Count -gt 0) {
+                    $updAnswer = Confirm-EmulatorShortcutUpdate $updPlans $updatedProfile $owner
+                    if ($updAnswer -eq 'back') { $draftProfile = $updatedProfile; continue }
+                }
+                break
+            }
             if ($updatedProfile -ne $null) {
                 $global:emulatorProfiles = @($global:emulatorProfiles | ForEach-Object { if ([string]$_.Id -eq $selId) { $updatedProfile } else { $_ } })
                 try { [void](Save-EmulatorIconCache $updatedProfile) } catch {}
                 Save-Configuration
                 & $reloadList
                 try { Update-RomEmulatorIndicator } catch {}
+                if ($updPlans.Count -gt 0 -and $updAnswer -eq 'yes') { Invoke-EmulatorShortcutUpdate $updPlans $updSkipped $updatedProfile $owner $true }
+                elseif ($updPlans.Count -eq 0 -and $updSkipped.Count -gt 0) { Invoke-EmulatorShortcutUpdate $updPlans $updSkipped $updatedProfile $owner }
             }
         } catch {
             # См. комментарий в btnAddEmu.Add_Click — та же временная диагностика.
@@ -27396,6 +27875,7 @@ function Show-ProgramSettingsDialog {
     } elseif ($mainFormWasVisible) { try { $form.Hide() } catch {} }
 
     $dlg = New-Object System.Windows.Forms.Form
+    $dlg.Add_HandleCreated({ param($s, $e); try { [FormPaintHelper]::DisableTransitions($s.Handle) } catch {} })
     $dlg.Text = (T 'settings_title')
     $dlg.StartPosition = 'CenterScreen'
     $dlg.FormBorderStyle = 'FixedSingle'
@@ -27612,7 +28092,7 @@ function Show-ProgramSettingsDialog {
     # Значок ошибки — красный !, если папка Steam не найдена (или в ней нет
     # steam.exe). Тот же значок, что используется для ключей API, стоит
     # непосредственно перед полем ввода и обновляется вживую при правке пути.
-    $steamPathValidationBadge = New-ConfidenceBadge $dlg 100 97
+    $steamPathValidationBadge = New-ConfidenceBadge $dlg 96 97
 
     # Текст в однострочных полях: отступ слева как у выпадающих списков (≈12 px) и по центру по вертикали.
     # У TextBox с AutoSize = $false текст прижат к верху, поэтому высоту ставим по шрифту и центрируем в панели.
@@ -27665,7 +28145,7 @@ function Show-ProgramSettingsDialog {
 
     # Тот же значок ошибки, что и у пути Steam — показывается, если профиль
     # не выбран или выбранный userdata-профиль не найден на диске.
-    $steamProfileValidationBadge = New-ConfidenceBadge $dlg 100 137
+    $steamProfileValidationBadge = New-ConfidenceBadge $dlg 96 137
 
     $pnlSteamProfile = New-Object System.Windows.Forms.Panel
     $pnlSteamProfile.Location = New-Object System.Drawing.Point(120, 132)
@@ -27963,7 +28443,7 @@ function Show-ProgramSettingsDialog {
     # Значок состояния API-ключа — точно такой же, как в карточке игры:
     # зелёная галочка для валидного ключа, красный ! для невалидного.
     # Он находится непосредственно перед полем ввода.
-    $apiKeyValidationBadge = New-ConfidenceBadge $dlg 100 321
+    $apiKeyValidationBadge = New-ConfidenceBadge $dlg 96 321
 
     $keyPanel = New-Object System.Windows.Forms.Panel
     $keyPanel.Location = New-Object System.Drawing.Point(120, 316)
@@ -28094,7 +28574,7 @@ function Show-ProgramSettingsDialog {
     $dlg.Controls.Add($swKeyLabel)
     try { $langToolTip.SetToolTip($swKeyLabel, (T 'sw_section')) } catch {}
 
-    $swKeyValidationBadge = New-ConfidenceBadge $dlg 100 349
+    $swKeyValidationBadge = New-ConfidenceBadge $dlg 96 349
 
     $swKeyPanel = New-Object System.Windows.Forms.Panel
     $swKeyPanel.Location = New-Object System.Drawing.Point(120, 404)
@@ -28796,7 +29276,7 @@ function Show-ProgramSettingsDialog {
             [string]$messageText
         )
 
-        $confirm = New-Object System.Windows.Forms.Form
+        $confirm = New-SCForm
         $confirm.Text = $windowTitle
         $confirm.StartPosition = 'CenterParent'
         $confirm.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedDialog
@@ -29235,6 +29715,7 @@ function Show-ProgramSettingsDialog {
     $dlg.CancelButton = $btnCancel
     # При открытии настроек ничего не выделяем и не ставим курсор в поле ключа.
     $dlg.Add_Shown({
+        try { Invoke-PaintNow $dlg } catch {}
         if ($settingsSeamless) {
             # Ставим окно по центру главного (внутри рабочей области), затем одним кадром меняем их местами.
             try {
@@ -29253,6 +29734,7 @@ function Show-ProgramSettingsDialog {
                 if ($ny -lt $wa.Top) { $ny = $wa.Top }
                 $dlg.Location = New-Object System.Drawing.Point($nx, $ny)
             } catch {}
+            try { Invoke-PaintNow $dlg } catch {}
             $dlg.Opacity = 1
             try { $form.Opacity = 0; $form.UseWaitCursor = $false } catch {}
         }
@@ -36619,7 +37101,7 @@ function Show-RetroArchCorePicker ($owner, $coreList, [string]$curCore, [string]
         [void]$all.Add([PSCustomObject]@{ Text = [string]$ci.DisplayName; Core = [string]$ci.FileCore; Search = (([string]$ci.DisplayName + ' ' + [string]$ci.FileCore).ToLowerInvariant()) })
     }
 
-    $f = New-Object System.Windows.Forms.Form
+    $f = New-SCForm
     $f.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
     $f.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
     $f.ShowInTaskbar = $false
@@ -36783,6 +37265,7 @@ function Show-SteamLibraryBrowser {
     # не меняет ClientSize и не запускает пересчёт колонок (это ломало сетку).
     try { Initialize-LibDlssNative } catch {}
     $dlg = New-Object System.Windows.Forms.Form
+    $dlg.Add_HandleCreated({ param($s, $e); try { [FormPaintHelper]::DisableTransitions($s.Handle) } catch {} })
     $dlg.Text = (T 'lib_browser_title')
     $dlg.Size = New-Object System.Drawing.Size(980, 720)
     $dlg.MinimumSize = New-Object System.Drawing.Size(1040, 480)
@@ -41286,6 +41769,11 @@ function Show-SteamLibraryBrowser {
         try {
             $isL = ([string]$script:libActiveTab -ne 'steam')
             $script:libSaveWide = $false
+            # На вкладках лаунчеров (импорт) кнопок сохранений нет: прячем подпись и все три кнопки.
+            if ($isL) {
+                foreach ($hc in @($btnSaveScan, $btnSaveBackup, $btnSaveRestore, $lblCapSaves)) { $hc.Visible = $false }
+                return
+            }
             # Справа налево: [Апскейлеры: 2 кнопки] (только вкладка Steam), левее — [Сохранения: 2 кнопки].
             if (-not $isL) {
                 $lblCapUpscalers.Left = [int]$btnUpdUp.Left - 6 - [int]$lblCapUpscalers.Width
@@ -42991,6 +43479,7 @@ function Show-SteamLibraryBrowser {
             $scroll.ResumeLayout($true)
             $dlg.ResumeLayout($true)
             # Один финальный кадр — уже с сеткой, без промежуточных «пустых» отрисовок.
+            try { Invoke-PaintNow $dlg } catch {}
             $dlg.Opacity = 1
             # Библиотека перекрыла главное окно: делаем его невидимым, но НЕ прячем — Hide() владельца спрятал бы
             # и саму библиотеку, а кнопка программы на панели задач должна остаться. Возвращается в FormClosing.
@@ -43313,7 +43802,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     }
     # Все элементы верхней строки выровнены по общей вертикали: Y=14, высота=28 px.
     # Подписи центрируются относительно этой строки отдельной координатой Y=17.
-    $dlg = New-Object System.Windows.Forms.Form
+    $dlg = New-SCForm
     # Пока карточка открыта, фоновые таймеры окна библиотеки (дозагрузка плиток и обложек, поиск DLSS)
     # приостанавливаем: DoEvents карточки иначе выполняет их тики прямо в её потоке, и обложки грузятся секундами.
     # После закрытия карточки те, что работали, запускаются снова.
@@ -46003,7 +46492,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     $cardSaveLbl.UseMnemonic = $false
     $cardSaveLbl.AutoEllipsis = $false
     $cardSaveLblW = [System.Windows.Forms.TextRenderer]::MeasureText([string]$cardSaveLbl.Text, $cardSaveLbl.Font).Width + 12
-    $cardSaveLbl.Location = New-Object System.Drawing.Point(($cardSaveBtnsX - 22 - 8 - $cardSaveLblW), 50)
+    $cardSaveLbl.Location = New-Object System.Drawing.Point(($cardSaveBtnsX - 24 - 8 - $cardSaveLblW), 50)
     $cardSaveLbl.Size = New-Object System.Drawing.Size($cardSaveLblW, 28)
     $cardSaveLbl.ForeColor = $steamUi.Muted
     $cardSaveLbl.TextAlign = [System.Drawing.ContentAlignment]::MiddleRight
@@ -46016,7 +46505,8 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     $cardSaveOk.BackColor = [System.Drawing.Color]::Transparent
     $cardSaveOk.SizeMode = [System.Windows.Forms.PictureBoxSizeMode]::Zoom
     $cardSaveOk.Cursor = [System.Windows.Forms.Cursors]::Default
-    $cardSaveOk.Location = New-Object System.Drawing.Point(($cardSaveBtnsX - 22), 55)
+    # Зазор между галочкой и кнопкой «папка» — 6 px, как между галочкой и полем у «Название» и «Запуск» (значок 18 px, x=91; поле x=115).
+$cardSaveOk.Location = New-Object System.Drawing.Point(($cardSaveBtnsX - 24), 55)
     $cardSaveOk.Size = New-Object System.Drawing.Size(18, 18)
     $cardSaveOk.Image = (Get-ConfidenceBadgeBitmap $true)
     $cardSaveOk.Visible = $false
@@ -49939,14 +50429,24 @@ $form.Add_KeyDown({
 })
 
 $form.Add_Shown({
+    # Сначала рисуем все контролы (под заставкой), и только потом её закрываем — иначе видны белые прямоугольники.
+    try { Invoke-PaintNow $form } catch {}
+    # Передний план у нас (заставка) — выводим главное окно вперёд; если пользователь за время загрузки переключился
+    # в другую программу, фокус у неё не отбираем (окно появится позади, кнопка в панели задач мигнёт).
+    $keepFront = $true
+    try { $keepFront = [bool][FormPaintHelper]::IsForegroundOurs() } catch {}
     # Окно должно остаться развёрнутым и на переднем плане: сначала восстанавливаем и активируем его (пока
     # передний план ещё у процесса — у загрузочного экрана), и только потом закрываем загрузочный экран.
     try { if ($form.WindowState -eq [System.Windows.Forms.FormWindowState]::Minimized) { $form.WindowState = [System.Windows.Forms.FormWindowState]::Normal } } catch {}
-    try { $form.Activate(); $form.BringToFront() } catch {}
+    if ($keepFront) { try { $form.Activate(); $form.BringToFront() } catch {} }
     try { Set-SplashProgress 1.0 } catch {}
     try { Close-Splash } catch {}
     try { if ($form.WindowState -eq [System.Windows.Forms.FormWindowState]::Minimized) { $form.WindowState = [System.Windows.Forms.FormWindowState]::Normal } } catch {}
-    try { $form.Activate() } catch {}
+    if ($keepFront) {
+        try { $form.Activate() } catch {}
+        # Окно должно остаться поверх остальных после закрытия заставки (иначе Windows может оставить его на заднем плане).
+        try { $form.TopMost = $true; $form.TopMost = $false; $form.Activate() } catch {}
+    }
     try { $form.ActiveControl = $null } catch {}
     # Прогрев попапа выбора эмулятора: компиляция C#-типов и загрузка иконок в
     # память — когда окно уже на экране, а не на первом клике по значку эмулятора.
