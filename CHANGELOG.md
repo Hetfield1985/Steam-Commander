@@ -6,6 +6,20 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [2.1.4] - 2026-10-22
+
+### Added
+* **The fastest Steam CDN mirror is chosen automatically.** Steam serves the same images through several mirrors (akamai, fastly, cloudflare), and the fastest one differs between users and changes over time. At startup the program downloads 256 KB of the same file from each mirror in the background (`curl.exe`, the window is not blocked), sorts the mirrors by time and remembers the order in `config.ini` (`steamCdnOrder`, `steamCdnProbeUtc`). The check is repeated no more than once in 6 hours and also after a slow or failed cover download. The current leader is not replaced by a mirror that is less than ~30 % (+50 ms) faster, so the order does not jump around; if no mirror answers (no network), the previous order is kept.
+* **The current CDN mirror is shown in the status line of the card** (`... · CDN: akamai`).
+* **Launch options are passed when a Steam game is launched from the card.** The *Launch* button now starts a Steam game with the text of the *Launch options* field (`steam://run/<AppId>//<options>/`); without options it works as before.
+
+### Improved
+* **Covers of a game load much faster when a CDN mirror is slow.** The four images (vertical cover, header, background, logo) are downloaded at the same time, one `curl.exe` per file; if a file does not arrive, the next mirror is tried in rounds. The mirror that really delivered files is remembered and tried first next time. Before, images were downloaded one after another through up to three mirrors, and a card could wait 15-60 seconds.
+* **A Steam PICS failure no longer stalls the card.** A failed request to `api.steamcmd.net` is remembered: for 45 seconds after a network failure and 5 minutes after "no data for this game", the same request is not repeated by the capsule, language, icon and logo-position lookups, so each of them no longer waits for its own timeout. The request timeout is 15 s instead of 20 s, and the second attempt through .NET runs in the background (8 s) instead of blocking the window for another 15 + 20 s.
+* **The *Launch* button of the card starts what is shown in the card right now,** without saving it first: the selected EXE or emulator, the ROM and the *Launch options* field. For a ROM with archive extraction it goes through `SCLauncher.exe`, like when saving. The button is now available for a ROM that is not added yet, and the status line shows what exactly was started.
+
+---
+
 ## [2.1.3] - 2026-10-21
 
 ### Added
