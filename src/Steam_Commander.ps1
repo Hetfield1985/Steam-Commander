@@ -1228,7 +1228,7 @@ Set-SplashProgress 0.52
 # Единая версия приложения — используется в заголовке главного окна, в
 # подписи внизу окна настроек и в User-Agent HTTP-запросов. Меняйте только
 # здесь при выпуске новой версии.
-$global:appVersion = "2.1.3"
+$global:appVersion = "2.1.4"
 $global:appTitle = "Steam Commander"
 # Ссылки на исходный код и поддержку автора (окно «Поддержать» в настройках). Меняйте только здесь.
 $global:appRepoUrl = "https://github.com/Hetfield1985/Steam-Commander"
@@ -5442,6 +5442,9 @@ $global:logoSteamFramesPreview = $false
 # и используется как язык ассетов по умолчанию (кнопки EN/РУ на карточке,
 # загрузка официальных обложек). Пустое значение = брать из языка интерфейса.
 $global:steamCoverRegion = ''
+# Порядок зеркал CDN Steam от быстрого к медленному (замеряется при запуске) и время последнего замера (UTC).
+$global:steamCdnOrder = ''
+$global:steamCdnProbeUtc = ''
 
 # Публичный ключ Steam Web API (steamcommunity.com/dev/apikey) — отдельный от
 # ключа SteamGridDB. Используется только для скачивания полного списка
@@ -7083,6 +7086,8 @@ function Load-Configuration {
                 if ($line.StartsWith("saveBackupFolderPath=")) { $global:saveBackupFolderPath = $line.Substring(21).Trim() }
                 if ($line.StartsWith("language=")) { $global:language = $line.Substring(9).Trim() }
                 if ($line.StartsWith("steamCoverRegion=")) { $global:steamCoverRegion = $line.Substring(17).Trim() }
+                if ($line.StartsWith("steamCdnOrder=")) { $global:steamCdnOrder = $line.Substring(14).Trim() }
+                if ($line.StartsWith("steamCdnProbeUtc=")) { $global:steamCdnProbeUtc = $line.Substring(17).Trim() }
             }
         } catch {}
     }
@@ -11377,6 +11382,8 @@ function Save-Configuration {
             "saveBackupFolderPath=$($global:saveBackupFolderPath)",
             "language=$($global:language)",
             "steamCoverRegion=$($global:steamCoverRegion)",
+            "steamCdnOrder=$($global:steamCdnOrder)",
+            "steamCdnProbeUtc=$($global:steamCdnProbeUtc)",
             "logoDefaultEnabled=$([bool]$global:logoDefaultEnabled)",
             "logoSteamFramesPreview=$([bool]$global:logoSteamFramesPreview)",
             "logoDefaultPosition=$($global:logoDefaultPosition)",
@@ -14178,10 +14185,7 @@ function Get-SteamAssetUrlsViaApi ($appId, [string]$lang = 'english') {
     # Steam может раздавать один и тот же asset через разные CDN-хосты.
     # Возвращаем список кандидатов, чтобы загрузчик мог попробовать второй,
     # если первый CDN временно недоступен.
-    $cdnDomains = @(
-        "https://shared.fastly.steamstatic.com/store_item_assets/",
-        "https://shared.akamai.steamstatic.com/store_item_assets/"
-    )
+    $cdnDomains = @(Get-SteamCdnBases 'store_item_assets/')
     $buildUrls = {
         param($filenameField)
         if ([string]::IsNullOrEmpty([string]$filenameField)) { return @() }
@@ -14298,44 +14302,74 @@ function Get-SteamPicsAvailableLanguages ($appId) {
 # Кэш узла common из PICS по App ID: и загрузка обложек, и кнопка выбора региона
 # в карточке спрашивают одни и те же данные — второй запрос к сети не нужен.
 $script:picsCommonCache = @{}
+# Неудачные запросы PICS помним коротко. Раньше каждый вызов (капсулы, языки, иконка, позиция логотипа)
+# заново ждал таймаут api.steamcmd.net, и при его сбое загрузка обложек растягивалась на минуту и больше.
+$script:picsFailUntil = @{}
+$script:picsHostDownUntil = [datetime]::MinValue
 function Get-SteamPicsCommon ($appId) {
     $cacheKey = [string]$appId
     if ($script:picsCommonCache.ContainsKey($cacheKey)) { return $script:picsCommonCache[$cacheKey] }
+    $nowTs = Get-Date
+    if ($script:picsFailUntil.ContainsKey($cacheKey) -and $nowTs -lt $script:picsFailUntil[$cacheKey]) { return $null }
+    if ($nowTs -lt $script:picsHostDownUntil) { return $null }
     if (-not (Test-InternetConnectivity)) { return $null }
 
     try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch {}
 
     $url  = "https://api.steamcmd.net/v1/info/$appId"
     $data = $null
+    $pumped = $null
 
     # В карточке игры не блокируем UI-поток: тянем JSON отдельным curl.exe,
     # прокачивая очередь сообщений (тот же приём, что и для картинок).
     if ($global:uiPumpDuringDownload) {
         $tmpJson = Join-Path $env:TEMP ("steamorg_pics_{0}.json" -f $appId)
         Remove-Item $tmpJson -Force -ErrorAction SilentlyContinue
-        $pumped = Invoke-UiPumpingDownload $url $tmpJson 20
+        $pumped = Invoke-UiPumpingDownload $url $tmpJson 15
         if ($pumped -eq $true) {
             try { $data = (Get-Content -LiteralPath $tmpJson -Raw) | ConvertFrom-Json -ErrorAction Stop } catch { $data = $null }
         }
         Remove-Item $tmpJson -Force -ErrorAction SilentlyContinue
     }
 
-    if ($data -eq $null) {
-        try {
-            $data = Invoke-RestMethod -Uri $url -UserAgent "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" -TimeoutSec 15 -ErrorAction Stop
-        } catch {
+    if ($data -eq $null -and -not (Test-EditorLoadCancelled)) {
+        if ($global:uiPumpDuringDownload -and $pumped -eq $false) {
+            # curl.exe отработал, но ответа не получил. Второй заход средствами .NET - в фоне и коротко,
+            # чтобы не блокировать окно (раньше здесь шли ещё 15 + 20 секунд прямо в UI-потоке).
+            $data = Invoke-BackgroundJsonRequest {
+                param($u)
+                try { return (Invoke-RestMethod -Uri $u -UserAgent "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" -TimeoutSec 8 -ErrorAction Stop) } catch { return $null }
+            } @($url) 10
+        } else {
             try {
-                $raw = (curl.exe -s -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" --connect-timeout 10 --max-time 20 $url) -join ""
-                if (-not [string]::IsNullOrWhiteSpace($raw)) { $data = $raw | ConvertFrom-Json -ErrorAction Stop }
-            } catch {}
+                $data = Invoke-RestMethod -Uri $url -UserAgent "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" -TimeoutSec 15 -ErrorAction Stop
+            } catch {
+                try {
+                    $raw = (curl.exe -s -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" --connect-timeout 10 --max-time 20 $url) -join ""
+                    if (-not [string]::IsNullOrWhiteSpace($raw)) { $data = $raw | ConvertFrom-Json -ErrorAction Stop }
+                } catch {}
+            }
         }
     }
-    if ($data -eq $null -or $data.data -eq $null) { return $null }
 
-    $appNode = $data.data.PSObject.Properties | Where-Object { $_.Name -eq [string]$appId } | Select-Object -First 1
-    if ($appNode -eq $null) { return $null }
-    $common = $appNode.Value.common
-    if ($common -eq $null) { return $null }
+    $common = $null
+    if ($data -ne $null -and $data.data -ne $null) {
+        $appNode = $data.data.PSObject.Properties | Where-Object { $_.Name -eq [string]$appId } | Select-Object -First 1
+        if ($appNode -ne $null) { $common = $appNode.Value.common }
+    }
+    if ($common -eq $null) {
+        if (-not (Test-EditorLoadCancelled)) {
+            if ($data -eq $null -or $data.data -eq $null) {
+                # Сбой сети/сервиса: ближайшие 45 секунд PICS не опрашиваем, обложки берутся другими путями.
+                $script:picsHostDownUntil = (Get-Date).AddSeconds(45)
+                $script:picsFailUntil[$cacheKey] = (Get-Date).AddSeconds(45)
+            } else {
+                # Сервис ответил, но данных по этой игре нет.
+                $script:picsFailUntil[$cacheKey] = (Get-Date).AddSeconds(300)
+            }
+        }
+        return $null
+    }
     $script:picsCommonCache[$cacheKey] = $common
     return $common
 }
@@ -14416,11 +14450,7 @@ function Get-SteamPicsAssetUrls ($appId, [string]$lang = 'english') {
         }
     }
 
-    $cdnDomains = @(
-        "https://shared.fastly.steamstatic.com/store_item_assets/",
-        "https://shared.akamai.steamstatic.com/store_item_assets/",
-        "https://shared.cloudflare.steamstatic.com/store_item_assets/"
-    )
+    $cdnDomains = @(Get-SteamCdnBases 'store_item_assets/')
     $buildUrls = {
         param($filenameField)
         if ([string]::IsNullOrEmpty([string]$filenameField)) { return @() }
@@ -14491,11 +14521,7 @@ function Get-SteamPicsCapsuleCandidates ($appId, [string]$lang = 'english') {
             }
         }
         if ($common.library_assets -ne $null -and $common.library_assets.library_capsule -is [string]) { & $addFile $common.library_assets.library_capsule }
-        $cdn = @(
-            "https://shared.fastly.steamstatic.com/store_item_assets/",
-            "https://shared.akamai.steamstatic.com/store_item_assets/",
-            "https://shared.cloudflare.steamstatic.com/store_item_assets/"
-        )
+        $cdn = @(Get-SteamCdnBases 'store_item_assets/')
         foreach ($f in $files) {
             foreach ($d in $cdn) { [void]$out.Add($d + "steam/apps/$appId/" + ($f -replace '^/','')) }
         }
@@ -14784,9 +14810,7 @@ function Download-SteamIconToTemp ([string]$appId, [bool]$force = $false, [bool]
             $script:steamIconMissing[$id] = $true
             return $false
         }
-        $hosts = @(
-            'https://shared.fastly.steamstatic.com/community_assets/images/apps',
-            'https://shared.akamai.steamstatic.com/community_assets/images/apps',
+        $hosts = @(Get-SteamCdnBases 'community_assets/images/apps') + @(
             'https://cdn.cloudflare.steamstatic.com/steamcommunity/public/images/apps',
             'https://cdn.akamai.steamstatic.com/steamcommunity/public/images/apps',
             'https://media.steampowered.com/steamcommunity/public/images/apps',
@@ -15422,9 +15446,22 @@ function Test-InternetConnectivity ([int]$TimeoutMs = 1000, [switch]$Force) {
 
 function Save-FirstWorkingUrl ($urls, $destPath, [int]$minSize = 512) {
     if ($urls -eq $null) { return $false }
-    foreach ($candidateUrl in @($urls)) {
-        if ([string]::IsNullOrEmpty([string]$candidateUrl)) { continue }
-        if (Download-RemoteImage ([string]$candidateUrl) $destPath $minSize) { return $true }
+    $list = @(@($urls) | Where-Object { -not [string]::IsNullOrEmpty([string]$_) })
+    # Зеркало CDN, с которого файлы последний раз реально скачались, пробуем первым.
+    $prefHost = [string]$script:steamCdnPreferredHost
+    if (-not [string]::IsNullOrEmpty($prefHost)) {
+        $pref = @($list | Where-Object { ([string]$_).StartsWith($prefHost) })
+        $rest = @($list | Where-Object { -not ([string]$_).StartsWith($prefHost) })
+        $list = @($pref) + @($rest)
+    }
+    foreach ($candidateUrl in $list) {
+        if (Download-RemoteImage ([string]$candidateUrl) $destPath $minSize) {
+            try {
+                $mm = [regex]::Match([string]$candidateUrl, '^(https://shared\.(?:akamai|fastly|cloudflare)\.steamstatic\.com/)')
+                if ($mm.Success) { $script:steamCdnPreferredHost = $mm.Groups[1].Value }
+            } catch {}
+            return $true
+        }
     }
     return $false
 }
@@ -15857,6 +15894,219 @@ function Invoke-UiPumpingDownload ($url, $targetPath, [int]$maxSeconds = 40, [in
     return $false
 }
 
+# Качает несколько файлов ОДНОВРЕМЕННО (отдельный curl.exe на каждый), пока UI продолжает
+# перерисовываться. $items - массив @{ Url = ...; Path = ... }. Ничего не возвращает:
+# что не скачалось - того файла просто нет, дальше срабатывают обычные запасные пути.
+function Invoke-ParallelUiDownload ($items, [int]$maxSeconds = 25, [int]$minSize = 512) {
+    $procs = New-Object System.Collections.ArrayList
+    foreach ($it in @($items)) {
+        try {
+            $psi = New-Object System.Diagnostics.ProcessStartInfo
+            $psi.FileName = 'curl.exe'
+            $psi.Arguments = '-L -s -S -f --connect-timeout 6 --speed-time 5 --speed-limit 10240 --max-time {0} -A "Mozilla/5.0" -o "{1}" "{2}"' -f $maxSeconds, $it.Path, $it.Url
+            $psi.UseShellExecute = $false
+            $psi.CreateNoWindow = $true
+            $pr = New-Object System.Diagnostics.Process
+            $pr.StartInfo = $psi
+            if ($pr.Start()) { [void]$procs.Add(@{ Proc = $pr; Path = [string]$it.Path; Url = [string]$it.Url }) }
+        } catch {}
+    }
+    if ($procs.Count -eq 0) { return }
+    try {
+        $deadline = (Get-Date).AddSeconds($maxSeconds + 5)
+        while ($true) {
+            $running = 0
+            foreach ($e in $procs) { try { if (-not $e.Proc.HasExited) { $running++ } } catch {} }
+            if ($running -eq 0) { break }
+            [System.Windows.Forms.Application]::DoEvents()
+            if ($global:editorLoadAbortRequested) { foreach ($e in $procs) { try { if (-not $e.Proc.HasExited) { $e.Proc.Kill() } } catch {} }; break }
+            Start-Sleep -Milliseconds 30
+            if ((Get-Date) -gt $deadline) { foreach ($e in $procs) { try { if (-not $e.Proc.HasExited) { $e.Proc.Kill() } } catch {} }; break }
+        }
+    } finally {
+        foreach ($e in $procs) {
+            $ec = 1
+            try { $e.Proc.WaitForExit(2000) | Out-Null; $ec = [int]$e.Proc.ExitCode } catch {}
+            try { $e.Proc.Dispose() } catch {}
+            try {
+                if ($ec -ne 0 -or -not (Test-Path $e.Path) -or (Get-Item $e.Path -ErrorAction SilentlyContinue).Length -lt $minSize) {
+                    Remove-Item $e.Path -Force -ErrorAction SilentlyContinue
+                }
+            } catch {}
+        }
+    }
+}
+
+# Скачивает несколько картинок параллельно, перебирая зеркала CDN раундами: в каждом раунде для каждой ещё
+# не скачанной картинки пробуется следующая ссылка из её списка. Раньше всё шло по очереди (4 картинки x до 3
+# зеркал, каждая попытка до 10 с на соединение), и при медленном зеркале карточка ждала 15-60 секунд.
+# Зеркало, давшее файл, запоминается и на следующих загрузках пробуется первым.
+# $jobs - массив @{ Urls = <список ссылок>; Path = <куда сохранить> }.
+# ===================== ВЫБОР БЫСТРОГО ЗЕРКАЛА CDN STEAM =====================
+# Steam раздаёт одни и те же картинки через несколько зеркал (akamai, fastly, cloudflare). У разных
+# пользователей быстрое зеркало разное и со временем меняется (на одном из замеров fastly отдавал файл
+# в 50 раз медленнее akamai). При запуске программа в фоне качает по 256 КБ одного и того же файла с каждого
+# зеркала, сортирует зеркала по времени и запоминает порядок в config.ini (steamCdnOrder). Замер повторяется
+# не чаще раза в 6 часов, а также после медленной или неудачной загрузки обложек.
+# Если замер не удался (нет сети), остаётся прежний порядок, а по умолчанию - akamai, fastly, cloudflare.
+$script:steamCdnAllMirrors = @('akamai', 'fastly', 'cloudflare')
+$script:steamCdnProbeState = $null
+$script:steamCdnReprobePending = $false
+$script:steamCdnLastProbeStart = [datetime]::MinValue
+$script:steamCdnPreferredHost = $null
+
+# Имена зеркал от лучшего к худшему (запомненный порядок, остальные - в порядке по умолчанию).
+function Get-SteamCdnMirrorNames {
+    try { Update-SteamCdnMirrorProbe } catch {}
+    $order = @()
+    foreach ($n in @(([string]$global:steamCdnOrder).Split(',') | ForEach-Object { $_.Trim().ToLowerInvariant() })) {
+        if (($script:steamCdnAllMirrors -contains $n) -and ($order -notcontains $n)) { $order += $n }
+    }
+    foreach ($n in $script:steamCdnAllMirrors) { if ($order -notcontains $n) { $order += $n } }
+    return $order
+}
+
+# Порядок зеркал с учётом текущей сессии: зеркало, с которого файлы реально скачались в последний раз, идёт первым
+# (иначе - первое из замера). Первое имя - то зеркало, что показывается в строке статуса карточки.
+function Get-SteamCdnEffectiveNames {
+    $names = @(Get-SteamCdnMirrorNames)
+    try {
+        $mm = [regex]::Match([string]$script:steamCdnPreferredHost, '^https://shared\.([a-z]+)\.')
+        if ($mm.Success) {
+            $pn = $mm.Groups[1].Value
+            if ($names -contains $pn) { $names = @($pn) + @($names | Where-Object { $_ -ne $pn }) }
+        }
+    } catch {}
+    return $names
+}
+
+function Get-SteamCdnCurrentName { return (@(Get-SteamCdnEffectiveNames))[0] }
+
+# Добавляет к тексту статуса карточки пометку текущего зеркала CDN (финальная точка заменяется разделителем).
+function Add-SteamCdnStatusSuffix ([string]$text) {
+    try { return ($text.TrimEnd('.', [char]0x3002) + '  ·  CDN: ' + (Get-SteamCdnCurrentName)) } catch { return $text }
+}
+
+# Базовые адреса зеркал в порядке скорости: Get-SteamCdnBases 'store_item_assets/' -> https://shared.<зеркало>.steamstatic.com/store_item_assets/
+function Get-SteamCdnBases ([string]$suffix) {
+    $out = @()
+    foreach ($n in @(Get-SteamCdnMirrorNames)) { $out += ('https://shared.' + $n + '.steamstatic.com/' + $suffix) }
+    return $out
+}
+
+function Start-SteamCdnMirrorProbe {
+    if ($null -ne $script:steamCdnProbeState) { return }
+    if (((Get-Date) - $script:steamCdnLastProbeStart).TotalSeconds -lt 120) { return }
+    $script:steamCdnLastProbeStart = Get-Date
+    $script:steamCdnReprobePending = $false
+    $procs = @()
+    foreach ($n in $script:steamCdnAllMirrors) {
+        try {
+            $tmp = Join-Path $env:TEMP ('sc_cdnprobe_' + $n + '.bin')
+            Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
+            $probeUrl = "https://shared.${n}.steamstatic.com/store_item_assets/steam/apps/1086940/library_hero_2x.jpg"
+            $psi = New-Object System.Diagnostics.ProcessStartInfo
+            $psi.FileName = 'curl.exe'
+            $psi.Arguments = '-L -s -S -f -r 0-262143 --connect-timeout 4 --max-time 6 -A "Mozilla/5.0" -o "{0}" "{1}"' -f $tmp, $probeUrl
+            $psi.UseShellExecute = $false
+            $psi.CreateNoWindow = $true
+            $pr = New-Object System.Diagnostics.Process
+            $pr.StartInfo = $psi
+            if ($pr.Start()) { $procs += @{ Name = $n; Proc = $pr; Path = $tmp } }
+        } catch {}
+    }
+    if ($procs.Count -eq 0) { return }
+    $script:steamCdnProbeState = @{ Procs = $procs; Started = (Get-Date) }
+}
+
+# Забирает результат замера, когда все процессы завершились (или вышло время). Дешёвый вызов, UI не блокирует.
+function Update-SteamCdnMirrorProbe {
+    $st = $script:steamCdnProbeState
+    if ($null -eq $st) { return }
+    $allDone = $true
+    foreach ($e in $st.Procs) { try { if (-not $e.Proc.HasExited) { $allDone = $false } } catch {} }
+    if (-not $allDone -and ((Get-Date) - $st.Started).TotalSeconds -lt 9) { return }
+    $script:steamCdnProbeState = $null
+
+    $scores = @()
+    foreach ($e in $st.Procs) {
+        $ms = 99999
+        try {
+            if (-not $e.Proc.HasExited) {
+                try { $e.Proc.Kill() } catch {}
+                try { $e.Proc.WaitForExit(500) | Out-Null } catch {}
+            } else {
+                $ec = [int]$e.Proc.ExitCode
+                $sz = 0
+                if (Test-Path -LiteralPath $e.Path) { $sz = (Get-Item -LiteralPath $e.Path).Length }
+                if ($ec -eq 0 -and $sz -ge 65536) { $ms = [int](($e.Proc.ExitTime - $e.Proc.StartTime).TotalMilliseconds) }
+            }
+        } catch {}
+        try { $e.Proc.Dispose() } catch {}
+        try { Remove-Item -LiteralPath $e.Path -Force -ErrorAction SilentlyContinue } catch {}
+        $scores += [PSCustomObject]@{ Name = [string]$e.Name; Ms = $ms }
+    }
+    # Ни одно зеркало не ответило (скорее всего, нет сети) - прежний порядок и время замера не трогаем.
+    if (@($scores | Where-Object { $_.Ms -lt 99999 }).Count -eq 0) { return }
+
+    $ranked = @($scores | Sort-Object @{ Expression = { $_.Ms } }, @{ Expression = { [array]::IndexOf($script:steamCdnAllMirrors, $_.Name) } })
+    $names = @($ranked | ForEach-Object { $_.Name })
+    # Чтобы порядок не прыгал из-за небольшой разницы: действующее первое зеркало остаётся, если оно не
+    # медленнее лучшего более чем на 30% (+50 мс).
+    $cur = (@(Get-SteamCdnMirrorNames))[0]
+    $curScore = $scores | Where-Object { $_.Name -eq $cur } | Select-Object -First 1
+    if ($null -ne $curScore -and $curScore.Ms -lt 99999 -and $names[0] -ne $cur -and $curScore.Ms -le ($ranked[0].Ms * 1.3 + 50)) {
+        $names = @($cur) + @($names | Where-Object { $_ -ne $cur })
+    }
+    $global:steamCdnOrder = ($names -join ',')
+    $global:steamCdnProbeUtc = [DateTime]::UtcNow.ToString('o')
+    $script:steamCdnPreferredHost = 'https://shared.' + $names[0] + '.steamstatic.com/'
+    try { Save-Configuration } catch {}
+}
+
+# Запускает замер при старте, если прошлый был больше 6 часов назад (или его ещё не было).
+function Start-SteamCdnMirrorProbeIfDue {
+    $due = $true
+    try {
+        $t = [datetime]::MinValue
+        if ([datetime]::TryParse([string]$global:steamCdnProbeUtc, [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::RoundtripKind, [ref]$t)) {
+            if (([datetime]::UtcNow - $t.ToUniversalTime()).TotalHours -lt 6) { $due = $false }
+        }
+    } catch {}
+    if ($due) { Start-SteamCdnMirrorProbe }
+}
+
+function Save-FirstWorkingUrlsParallel ($jobs, [int]$maxSeconds = 20, [int]$minSize = 512) {
+    $maxRound = 0
+    foreach ($j in @($jobs)) { $maxRound = [Math]::Max($maxRound, @($j.Urls).Count) }
+    for ($round = 0; $round -lt $maxRound; $round++) {
+        $prefHost = [string]$script:steamCdnPreferredHost
+        if ([string]::IsNullOrEmpty($prefHost)) { $prefHost = 'https://shared.' + (@(Get-SteamCdnMirrorNames))[0] + '.steamstatic.com/' }
+        $items = @()
+        foreach ($j in @($jobs)) {
+            if (Test-Path -LiteralPath $j.Path) { continue }
+            $urls = @($j.Urls | Where-Object { -not [string]::IsNullOrEmpty([string]$_) })
+            $pref = @($urls | Where-Object { ([string]$_).StartsWith($prefHost) })
+            $rest = @($urls | Where-Object { -not ([string]$_).StartsWith($prefHost) })
+            $urls = @($pref) + @($rest)
+            if ($round -lt $urls.Count) { $items += @{ Url = [string]$urls[$round]; Path = [string]$j.Path } }
+        }
+        if ($items.Count -eq 0) { break }
+        if (Test-EditorLoadCancelled) { break }
+        $swRound = [System.Diagnostics.Stopwatch]::StartNew()
+        Invoke-ParallelUiDownload $items $maxSeconds $minSize
+        $swRound.Stop()
+        $anyFailed = $false
+        foreach ($it in $items) {
+            if (Test-Path -LiteralPath $it.Path) {
+                try { $m = [regex]::Match([string]$it.Url, '^https://[^/]+/'); if ($m.Success) { $script:steamCdnPreferredHost = $m.Value } } catch {}
+            } else { $anyFailed = $true }
+        }
+        # Раунд шёл долго и часть файлов не пришла - вероятно, зеркало деградировало; перемеряем зеркала.
+        if ($round -eq 0 -and $anyFailed -and $swRound.Elapsed.TotalSeconds -gt 6) { $script:steamCdnReprobePending = $true }
+    }
+}
+
 function Download-RemoteImage ($url, $targetPath, [int]$minSize = 512) {
     if ([string]::IsNullOrWhiteSpace([string]$url)) { return $false }
     try {
@@ -15950,6 +16200,9 @@ function Download-CoversToTemp ($cleanAppID, [bool]$allowSgdbLogo = $true) {
     $bytesApps = New-Object byte[] ($hexApps.Length / 2)
     for ($i = 0; $i -lt $hexApps.Length; $i += 2) { $bytesApps[$i/2] = [Convert]::ToByte($hexApps.Substring($i, 2), 16) }
     $baseApps = [System.Text.Encoding]::ASCII.GetString($bytesApps)
+    # Зеркало CDN: самое быстрое по замеру (первое) и запасное (второе).
+    $mirrorNames = @(Get-SteamCdnEffectiveNames)
+    $baseApps = $baseApps.Replace('shared.akamai.steamstatic.com', 'shared.' + $mirrorNames[0] + '.steamstatic.com')
     
     # БАГ-ФИКС: без флага -f curl.exe при ответе 404 от CDN (у некоторых
     # изданий/бандлов нет всех четырёх картинок) всё равно СОЗДАВАЛ файл
@@ -15965,6 +16218,7 @@ function Download-CoversToTemp ($cleanAppID, [bool]$allowSgdbLogo = $true) {
     # по языкам). Прямые ссылки ниже всегда отдают стандартную (английскую)
     # версию, поэтому они используются только для того, чего ещё не хватает.
     # Если у игры нет локализованных ассетов — PICS сам отдаёт английские.
+    if ($script:steamCdnReprobePending) { try { Start-SteamCdnMirrorProbe } catch {} }
     $steamLang = Get-SteamAssetLanguage
     $pics = $null
     # Язык, на котором в итоге загрузились обложки (показывает кнопка региона в карточке).
@@ -15972,10 +16226,18 @@ function Download-CoversToTemp ($cleanAppID, [bool]$allowSgdbLogo = $true) {
     if ($steamLang -ne 'english') {
         $pics = Get-SteamPicsAssetUrls $cleanAppID $steamLang
         if ($pics -ne $null) {
+            if ($global:uiPumpDuringDownload) {
+                Save-FirstWorkingUrlsParallel @(
+                    @{ Urls = $pics.Capsule; Path = (Join-Path $global:tempCovers "temp_p.jpg") },
+                    @{ Urls = $pics.Hero;    Path = (Join-Path $global:tempCovers "temp_hero.jpg") },
+                    @{ Urls = $pics.Header;  Path = (Join-Path $global:tempCovers "temp_header.jpg") },
+                    @{ Urls = $pics.Logo;    Path = (Join-Path $global:tempCovers "temp_logo.png") })
+            } else {
             Save-FirstWorkingUrl $pics.Capsule (Join-Path $global:tempCovers "temp_p.jpg")      | Out-Null
             Save-FirstWorkingUrl $pics.Hero    (Join-Path $global:tempCovers "temp_hero.jpg")   | Out-Null
             Save-FirstWorkingUrl $pics.Header  (Join-Path $global:tempCovers "temp_header.jpg") | Out-Null
             Save-FirstWorkingUrl $pics.Logo    (Join-Path $global:tempCovers "temp_logo.png")   | Out-Null
+            }
             foreach ($picsFile in @("temp_p.jpg", "temp_hero.jpg", "temp_header.jpg", "temp_logo.png")) {
                 if (Test-Path (Join-Path $global:tempCovers $picsFile)) { $script:lastCoversLanguage = [string]$pics.Language; break }
             }
@@ -15983,10 +16245,41 @@ function Download-CoversToTemp ($cleanAppID, [bool]$allowSgdbLogo = $true) {
     }
 
     if (Test-EditorLoadCancelled) { return }
+    # Недостающие картинки качаем параллельно (раньше - по очереди, время складывалось).
+    # Что не скачалось - добирают обычные последовательные строки ниже и запасные пути.
+    if ($global:uiPumpDuringDownload) {
+        $parItems = @()
+        foreach ($pd in @(
+            @{ F = 'temp_p.jpg';      U = "${baseApps}${cleanAppID}/library_600x900.jpg" },
+            @{ F = 'temp_hero.jpg';   U = "${baseApps}${cleanAppID}/library_hero.jpg" },
+            @{ F = 'temp_logo.png';   U = "${baseApps}${cleanAppID}/logo.png" },
+            @{ F = 'temp_header.jpg'; U = "${baseApps}${cleanAppID}/header.jpg" })) {
+            $pdPath = Join-Path $global:tempCovers $pd.F
+            if (-not (Test-Path $pdPath)) { $parItems += @{ Url = $pd.U; Path = $pdPath } }
+        }
+        if ($parItems.Count -gt 0) { Invoke-ParallelUiDownload $parItems 25 512 }
+        if (Test-EditorLoadCancelled) { return }
+    }
+    if ($global:uiPumpDuringDownload) {
+        # Те же ссылки только что пробовались параллельно; повтор по очереди лишь удваивал ожидание
+        # (каждая - до 40 с). Вместо этого один параллельный проход по другому зеркалу CDN.
+        $baseAppsAlt = $baseApps -replace 'shared\.[a-z]+\.steamstatic\.com', ('shared.' + $mirrorNames[1] + '.steamstatic.com')
+        $altItems = @()
+        foreach ($pd in @(
+            @{ F = 'temp_p.jpg';      U = "${baseAppsAlt}${cleanAppID}/library_600x900.jpg" },
+            @{ F = 'temp_hero.jpg';   U = "${baseAppsAlt}${cleanAppID}/library_hero.jpg" },
+            @{ F = 'temp_logo.png';   U = "${baseAppsAlt}${cleanAppID}/logo.png" },
+            @{ F = 'temp_header.jpg'; U = "${baseAppsAlt}${cleanAppID}/header.jpg" })) {
+            $pdPath = Join-Path $global:tempCovers $pd.F
+            if (-not (Test-Path $pdPath)) { $altItems += @{ Url = $pd.U; Path = $pdPath } }
+        }
+        if ($altItems.Count -gt 0 -and -not (Test-EditorLoadCancelled)) { Invoke-ParallelUiDownload $altItems 20 512 }
+    } else {
     if (-not (Test-Path (Join-Path $global:tempCovers "temp_p.jpg")))      { Download-RemoteImage "${baseApps}${cleanAppID}/library_600x900.jpg" (Join-Path $global:tempCovers "temp_p.jpg") | Out-Null }
     if (-not (Test-Path (Join-Path $global:tempCovers "temp_hero.jpg")))   { Download-RemoteImage "${baseApps}${cleanAppID}/library_hero.jpg" (Join-Path $global:tempCovers "temp_hero.jpg") | Out-Null }
     if (-not (Test-Path (Join-Path $global:tempCovers "temp_logo.png")))   { Download-RemoteImage "${baseApps}${cleanAppID}/logo.png" (Join-Path $global:tempCovers "temp_logo.png") | Out-Null }
     if (-not (Test-Path (Join-Path $global:tempCovers "temp_header.jpg"))) { Download-RemoteImage "${baseApps}${cleanAppID}/header.jpg" (Join-Path $global:tempCovers "temp_header.jpg") | Out-Null }
+    }
 
     if (Test-EditorLoadCancelled) { return }
     # Иконка приложения (clienticon/.ico или icon/.jpg → temp_icon.png).
@@ -16054,10 +16347,18 @@ function Download-CoversToTemp ($cleanAppID, [bool]$allowSgdbLogo = $true) {
     if (($missingCapsule -or $missingHero -or $missingHeader -or $missingLogo) -and $pics -eq $null) {
         $pics = Get-SteamPicsAssetUrls $cleanAppID $steamLang
         if ($pics -ne $null) {
+            if ($global:uiPumpDuringDownload) {
+                Save-FirstWorkingUrlsParallel @(
+                    @{ Urls = $pics.Capsule; Path = (Join-Path $global:tempCovers "temp_p.jpg") },
+                    @{ Urls = $pics.Hero;    Path = (Join-Path $global:tempCovers "temp_hero.jpg") },
+                    @{ Urls = $pics.Header;  Path = (Join-Path $global:tempCovers "temp_header.jpg") },
+                    @{ Urls = $pics.Logo;    Path = (Join-Path $global:tempCovers "temp_logo.png") })
+            } else {
             if ($missingCapsule) { Save-FirstWorkingUrl $pics.Capsule (Join-Path $global:tempCovers "temp_p.jpg")      | Out-Null }
             if ($missingHero)    { Save-FirstWorkingUrl $pics.Hero    (Join-Path $global:tempCovers "temp_hero.jpg")   | Out-Null }
             if ($missingHeader)  { Save-FirstWorkingUrl $pics.Header  (Join-Path $global:tempCovers "temp_header.jpg") | Out-Null }
             if ($missingLogo)    { Save-FirstWorkingUrl $pics.Logo    (Join-Path $global:tempCovers "temp_logo.png")   | Out-Null }
+            }
             foreach ($tempFile in @("temp_p.jpg", "temp_hero.jpg", "temp_logo.png", "temp_header.jpg")) {
                 $tempFilePath = Join-Path $global:tempCovers $tempFile
                 if ((Test-Path $tempFilePath) -and (Get-Item $tempFilePath).Length -lt 512) {
@@ -21283,10 +21584,7 @@ function Reload-EditorSteamCoversForLanguage($appId, $slots, $statusLabel, [stri
             if ($pics -ne $null) { $urls = @($pics.([string]$d.Prop)) }
             if ($urls.Count -eq 0 -and $lang -eq 'english') {
                 # Английский — стандартная версия: если PICS недоступен, берём прямые ссылки.
-                $urls = @(
-                    "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/$appId/$($d.Legacy)",
-                    "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/$appId/$($d.Legacy)"
-                )
+                $urls = @(Get-SteamCdnBases 'store_item_assets/' | ForEach-Object { $_ + "steam/apps/$appId/$($d.Legacy)" })
             }
             $dest = Join-Path $global:tempCovers ([string]$d.File)
             $tmp = $dest + '.new'
@@ -21327,7 +21625,7 @@ function Reload-EditorSteamCoversForLanguage($appId, $slots, $statusLabel, [stri
             try { if (-not [bool]$slot.PendingMissing) { Set-EditorSourceBadge $slot 'Steam' } } catch {}
         }
     }
-    if ($replaced -gt 0) { $statusLabel.Text = (T 'covlang_done' @($langName, $replaced)) }
+    if ($replaced -gt 0) { $statusLabel.Text = (Add-SteamCdnStatusSuffix (T 'covlang_done' @($langName, $replaced))) }
     else { $statusLabel.Text = (T 'covlang_fail' @($langName)) }
     return [int]$replaced
 }
@@ -21386,6 +21684,8 @@ function Load-EditorSteamPreviews($appId, $slots, $statusLabel, [bool]$preferLoc
         }
         $slotTotal = if ($null -ne $slots.Icon) { 5 } else { 4 }
         $statusLabel.Text = (T 'sl_steam_found' @($ok, $slotTotal))
+        # Пометка текущего зеркала CDN в строке статуса (без финальной точки, чтобы не было "5 из 5. · CDN").
+        $statusLabel.Text = (Add-SteamCdnStatusSuffix $statusLabel.Text)
         # Список языков заполняется самой карточкой после завершения загрузки.
         # Здесь только запоминаем найденные коды в панели, чтобы не создавать
         # кнопки без обработчиков во время первичной загрузки.
@@ -25226,7 +25526,14 @@ function Start-SaveDetectorGame ($Launch) {
     try {
         switch ([string]$Launch.Mode) {
             'steam' {
-                Start-Process -FilePath ('steam://rungameid/' + [string]$Launch.AppId) -ErrorAction Stop
+                # Параметры (карточка игры, кнопка «Запуск»): steam://run/<AppId>//<параметры>/ — Steam запускает игру сам и передаёт их ей.
+                $stArgs = ''
+                try { $stArgs = [string]$Launch.Args } catch {}
+                if (-not [string]::IsNullOrWhiteSpace($stArgs)) {
+                    Start-Process -FilePath ('steam://run/' + [string]$Launch.AppId + '//' + [System.Uri]::EscapeDataString($stArgs.Trim()) + '/') -ErrorAction Stop
+                } else {
+                    Start-Process -FilePath ('steam://rungameid/' + [string]$Launch.AppId) -ErrorAction Stop
+                }
                 return $true
             }
             'exe' {
@@ -44893,7 +45200,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
                 $editorState.LaunchOptSuppressReopen = $false
                 return
             }
-            $appIdForLookup = $txtId.Text.Trim()
+            $appIdForLookup = [string](& $getLaunchLookupId)
             if ($appIdForLookup -notmatch '^\d+$') { return }
             if (-not $global:steamLaunchOptionsCache.ContainsKey($appIdForLookup)) {
                 $status.Text = (T 'st_lo_search')
@@ -44936,6 +45243,95 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
             $launchOptResults.Visible=$false; $launchOptResults.SelectedIndex=-1
         }
     })
+
+    # Серая подсказка внутри пустого поля "Параметры": найдены ли у игры параметры запуска
+    # (и сколько). Это нативный cue banner (EM_SETCUEBANNER, wParam=0) - он не является
+    # текстом поля: пропадает, как только поле получает фокус (клик), и в shortcuts.vdf
+    # не попадает. Дальше поле ведёт себя как раньше: можно вписать своё или выбрать из списка.
+    # Параметры запуска ищутся по Steam App ID. В режиме SteamGridDB в поле ID лежит SGDB ID -
+    # им Steam-данные искать нельзя, поэтому берём Steam App ID, запомненный при переключении.
+    $getLaunchLookupId = {
+        try {
+            if ([string]$editorState.SearchSource -eq 'SteamGridDB') {
+                $lsa = ''
+                try { $lsa = [string]$editorState.LastSteamAppId } catch {}
+                if ($lsa -match '^\d+$') { return $lsa }
+                return ''
+            }
+        } catch {}
+        return ([string]$txtId.Text).Trim()
+    }
+    # Значок у "Параметры" показывается ТОЛЬКО если текст в поле совпадает с одним из
+    # официальных вариантов запуска из Steam (список берётся из кэша, без запросов в сеть).
+    # Нет совпадения, поле пустое или список ещё не загружен - значка и подсказки нет.
+    $refreshLaunchOptBadge = {
+        try {
+            $curText = ([string]$txtLaunchOptions.Text).Trim()
+            $matched = $null
+            if ($curText.Length -gt 0) {
+                $lookupId = [string](& $getLaunchLookupId)
+                if ($lookupId -match '^\d+$' -and $global:steamLaunchOptionsCache.ContainsKey($lookupId)) {
+                    $official = @($global:steamLaunchOptionsCache[$lookupId]) | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_.Arguments) }
+                    $curExe = $null
+                    try {
+                        if ($cmbExe.SelectedIndex -ge 0 -and $cmbExe.SelectedIndex -lt $exeCandidates.Count) {
+                            $curExe = [System.IO.Path]::GetFileName([string]$exeCandidates[$cmbExe.SelectedIndex].FullName)
+                        }
+                    } catch {}
+                    foreach ($o in $official) {
+                        if (-not [string]::Equals(([string]$o.Arguments).Trim(), $curText, [System.StringComparison]::Ordinal)) { continue }
+                        if ($null -eq $matched) { $matched = $o }
+                        # Если одинаковые аргументы есть у нескольких EXE - предпочитаем подходящий выбранному
+                        try {
+                            if ($curExe -and [string]::Equals([System.IO.Path]::GetFileName([string]$o.Executable), $curExe, [System.StringComparison]::OrdinalIgnoreCase)) { $matched = $o; break }
+                        } catch {}
+                    }
+                }
+            }
+            if ($null -eq $matched) {
+                $editorState.LaunchOptExpectedEntry = $null
+                $launchOptConfidenceBadge.Visible = $false
+                $lblLaunchOptionsHint.Text = ''
+                try { $launchOptionsHintTip.SetToolTip($lblLaunchOptionsHint, '') } catch {}
+            } else {
+                $editorState.LaunchOptExpectedEntry = $matched
+                & $updateLaunchOptExeMatch
+            }
+        } catch {}
+    }
+    $txtLaunchOptions.Add_TextChanged({ & $refreshLaunchOptBadge })
+
+    $editorState | Add-Member -NotePropertyName LaunchOptProbeBusy -NotePropertyValue $false -Force
+    $launchOptProbeTimer = New-Object System.Windows.Forms.Timer
+    $launchOptProbeTimer.Interval = 700
+    $launchOptProbeTimer.Add_Tick({
+        $launchOptProbeTimer.Stop()
+        if ($editorState.LaunchOptProbeBusy) { return }
+        $editorState.LaunchOptProbeBusy = $true
+        try {
+            $probeId = [string](& $getLaunchLookupId)
+            if ($probeId -notmatch '^\d+$') { Set-TextBoxCue $txtLaunchOptions ''; return }
+            $probeEntries = @(Get-SteamDbLaunchOptions $probeId) | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_.Arguments) }
+            # За время запроса App ID могли сменить - результат устарел, проверим заново.
+            if ([string](& $getLaunchLookupId) -ne $probeId) { $launchOptProbeTimer.Start(); return }
+            if (@($probeEntries).Count -gt 0) {
+                Set-TextBoxCue $txtLaunchOptions (T 'st_lo_found' @(@($probeEntries).Count))
+            } else {
+                Set-TextBoxCue $txtLaunchOptions (T 'st_lo_none')
+            }
+            & $refreshLaunchOptBadge
+        } catch {
+        } finally { $editorState.LaunchOptProbeBusy = $false }
+    })
+    $txtId.Add_TextChanged({
+        try {
+            Set-TextBoxCue $txtLaunchOptions ''
+            & $refreshLaunchOptBadge
+            $launchOptProbeTimer.Stop(); $launchOptProbeTimer.Start()
+        } catch {}
+    })
+    $dlg.Add_FormClosed({ try { $launchOptProbeTimer.Stop(); $launchOptProbeTimer.Dispose() } catch {} })
+    $launchOptProbeTimer.Start()
 
     # Это поле напрямую записывается в shortcuts.vdf -> LaunchOptions.
     # Выпадающий список launchOptResults при открытии временно перекрывает
@@ -46632,18 +47028,101 @@ $cardSaveOk.Location = New-Object System.Drawing.Point(($cardSaveBtnsX - 24), 55
     $btnCardPlay.Text = ''; $btnCardPlay.Cursor = [System.Windows.Forms.Cursors]::Hand; $btnCardPlay.TabStop = $false
     $btnCardPlay.Visible = (-not $batchMode)
     # У ROM запуск берётся из сохранённой записи библиотеки; у новой, ещё не сохранённой ROM-игры кнопка недоступна.
-    $btnCardPlay.Enabled = ((-not $IsRomEntry) -or ($null -ne $libraryEntry) -or ($null -ne $LauncherEntry))
+    # Запуск собирается из того, что сейчас показано в карточке (см. $getCardLiveLaunch), поэтому доступен и для ещё не сохранённой ROM-игры.
+    $btnCardPlay.Enabled = $true
     $btnCardPlay.Add_Paint({ param($s, $e) & $paintCardSaveIcon $s $e 'play' })
     $dlg.Controls.Add($btnCardPlay)
     $cardSaveTip.SetToolTip($btnCardPlay, (T 'lib_ctx_launch'))
+    # Тестовый запуск из карточки: берётся ТО, ЧТО ПОКАЗАНО В КАРТОЧКЕ ПРЯМО СЕЙЧАС (выбранный exe / эмулятор / ROM и поле «Параметры»),
+    # без сохранения. Логика та же, что у кнопки «Сохранить изменения» при записи ярлыка, только вместо записи в shortcuts.vdf — запуск.
+    #   Steam-игра: steam://rungameid/<AppId>; если в «Параметрах» что-то введено — steam://run/<AppId>//<параметры>/.
+    #   ROM: выбранный в карточке эмулятор + поле «Параметры» (при включённой распаковке архивов — через SCLauncher.exe, как при сохранении).
+    #   Игра лаунчера с обёрткой: SCLauncher.exe с параметрами обёртки (как при сохранении, поле «Параметры» там не используется).
+    #   Остальные: выбранный в списке exe + поле «Параметры», рабочая папка — папка exe.
+    $getCardLiveLaunch = {
+        $r = @{ Ok = $false; Mode = 'none'; AppId = ''; Exe = ''; Args = ''; WorkDir = ''; Error = '' }
+        try {
+            $argsLive = [string]$txtLaunchOptions.Text.Trim()
+            if ($licensedMode) {
+                if ([string]$licensedAppId -match '^\d+$') { $r.Mode = 'steam'; $r.AppId = [string]$licensedAppId; $r.Args = $argsLive; $r.Ok = $true }
+                else { $r.Error = (T 'lib_ctx_launch_fail') }
+                return $r
+            }
+            if ($IsRomEntry) {
+                if ($romCandidates.Count -gt 0 -and $cmbRom.SelectedIndex -lt 0) { $r.Error = (T 'rom_pick_file'); return $r }
+                $romLive = [string](& $getSelectedRomPath)
+                if ($cmbRom.SelectedIndex -ge 0 -and -not (Test-Path -LiteralPath $romLive)) { $r.Error = (T 'rom_file_gone'); return $r }
+                $ei = $cmbEmulator.SelectedIndex
+                if ($ei -lt 0 -or $ei -ge $emuProfiles.Count) { $r.Error = (T 'st_pick_emulator'); return $r }
+                $prof = $emuProfiles[$ei]
+                $emuExe = [string]$prof.ExePath
+                if ([string]::IsNullOrWhiteSpace($emuExe) -or -not (Test-Path -LiteralPath $emuExe)) { $r.Error = (T 'st_emulator_gone'); return $r }
+                $wdRom = [System.IO.Path]::GetDirectoryName($emuExe)
+                if ([string]::IsNullOrWhiteSpace($wdRom) -or -not (Test-Path -LiteralPath $wdRom -PathType Container)) { $r.Error = (T 'st_no_workdir'); return $r }
+                $r.Exe = $emuExe; $r.Args = $argsLive; $r.WorkDir = $wdRom
+                $romWrapLive = $null
+                $extractLive = $false
+                try {
+                    $extractLive = Test-EmulatorExtractArchives $prof
+                    if ($extractLive) {
+                        $status.Text = (T 'rom_arc_checking')
+                        [System.Windows.Forms.Application]::DoEvents()
+                        if (Test-IsRetroArchProfile ([string]$prof.Name) $emuExe) {
+                            $romWrapLive = Get-RomArchiveWrapPlan $romLive $emuExe $argsLive ([string](& $getSelectedRomEntry))
+                        } else {
+                            $romWrapLive = Get-EmulatorArchiveWrapPlan $romLive $emuExe $argsLive ([string]$prof.Extensions) ([string](& $getSelectedRomEntry))
+                        }
+                    }
+                } catch {
+                    try { Write-LauncherLog ('rom live launch wrap plan failed: ' + [string]$_.Exception.Message) } catch {}
+                    if ($extractLive) { $r.Error = (T 'st_launcher_wrap_fail'); return $r }
+                }
+                if ($null -ne $romWrapLive) {
+                    if (-not $romWrapLive.Ok) { $r.Error = [string]$romWrapLive.Reason; return $r }
+                    if ($romWrapLive.Wrapped) { $r.Exe = [string]$romWrapLive.Exe; $r.Args = [string]$romWrapLive.Args }
+                }
+                if ([string]::IsNullOrWhiteSpace($r.Exe) -or -not (Test-Path -LiteralPath $r.Exe)) { $r.Error = (T 'st_emulator_gone'); return $r }
+                $r.Mode = 'exe'; $r.Ok = $true
+                return $r
+            }
+            # Обычная игра / ярлык / игра лаунчера.
+            $wrappedLive = ((-not $editMode) -and (Test-LauncherEntryWrapped $LauncherEntry))
+            $exeLive = ''
+            $ix = $cmbExe.SelectedIndex
+            if ($ix -ge 0) {
+                if ($ix -ge $exeCandidates.Count) { $r.Error = (T 'st_exe_gone'); return $r }
+                $exeLive = [string]$exeCandidates[$ix].FullName
+            }
+            if ($wrappedLive) {
+                $planLive = Get-LauncherWrapPlan $LauncherEntry
+                if (-not $planLive.Ok) { $r.Error = [string]$planLive.Reason; return $r }
+                $wdW = ''
+                if ($exeLive) { try { $wdW = [System.IO.Path]::GetDirectoryName($exeLive) } catch {} } else { $wdW = [string]$gamePath }
+                $r.Exe = [string]$planLive.Exe; $r.Args = [string]$planLive.Args; $r.WorkDir = $wdW
+            } else {
+                if (-not $exeLive) { $r.Error = (T 'st_pick_exe'); return $r }
+                if (-not (Test-Path -LiteralPath $exeLive)) { $r.Error = (T 'st_exe_bat_gone'); return $r }
+                $wdE = [System.IO.Path]::GetDirectoryName($exeLive)
+                if ([string]::IsNullOrWhiteSpace($wdE) -or -not (Test-Path -LiteralPath $wdE -PathType Container)) { $r.Error = (T 'st_no_workdir'); return $r }
+                $r.Exe = $exeLive; $r.Args = $argsLive; $r.WorkDir = $wdE
+            }
+            if ([string]::IsNullOrWhiteSpace($r.Exe) -or -not (Test-Path -LiteralPath $r.Exe)) { $r.Error = (T 'st_exe_bat_gone'); return $r }
+            $r.Mode = 'exe'; $r.Ok = $true
+        } catch { $r.Ok = $false; $r.Error = (T 'lib_ctx_launch_fail') }
+        return $r
+    }
     $btnCardPlay.Add_Click({
         try {
             $status.Text = ''
-            $entPlay = & $getCardSaveEntry
-            $exePlay = ''
-            try { if ($cmbExe.SelectedIndex -ge 0) { $exePlay = [string]$exeCandidates[$cmbExe.SelectedIndex].FullName } } catch {}
-            $liPlay = Get-SaveDetectorLaunchInfo $entPlay $exePlay
-            if ([string]$liPlay.Mode -eq 'none' -or -not (Start-SaveDetectorGame $liPlay)) { $status.Text = (T 'lib_ctx_launch_fail') }
+            $lv = & $getCardLiveLaunch
+            if (-not $lv.Ok) { $status.Text = [string]$lv.Error; return }
+            $liPlay = @{ Mode = [string]$lv.Mode; AppId = [string]$lv.AppId; Exe = [string]$lv.Exe; Args = [string]$lv.Args; WorkDir = [string]$lv.WorkDir; ProcNames = @() }
+            if (Start-SaveDetectorGame $liPlay) {
+                # Что именно запущено — видно в строке состояния (удобно проверять параметры и эмулятор).
+                $shown = if ([string]$lv.Mode -eq 'steam') { ('steam: ' + [string]$lv.AppId) } else { [string]$lv.Exe }
+                if (-not [string]::IsNullOrWhiteSpace([string]$lv.Args)) { $shown += (' ' + [string]$lv.Args) }
+                $status.Text = ([string][char]0x25B6 + ' ' + $shown)
+            } else { $status.Text = (T 'lib_ctx_launch_fail') }
         } catch { $status.Text = (T 'lib_ctx_launch_fail') }
     })
 
@@ -50462,6 +50941,8 @@ $form.Add_Shown({
     } catch {}
     # Прогрев данных библиотеки: записи Steam и лаунчеры читаются кусками по таймеру, пока человек смотрит на главное окно.
     try { $script:libPreheatEnabled = $true; Request-LibPreheat 1800 } catch {}
+    # Фоновый замер скорости зеркал CDN Steam (если давно не делался); процессы curl, окно не блокируется.
+    try { Start-SteamCdnMirrorProbeIfDue } catch {}
 })
 [System.Windows.Forms.Application]::DoEvents()
 try { Initialize-FormForSmallScreen -Form $form } catch {}
