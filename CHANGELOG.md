@@ -6,6 +6,36 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [2.1.5] - 2026-10-24
+
+### Added
+* **Animated covers.** GIF, APNG and animated WebP covers are now supported everywhere. In the game card the vertical, horizontal, hero and logo slots play the animation; in *Library / Import* tiles with an animated cover play it too; in the SteamGridDB chooser animated options play in their tiles. Frames are decoded in the background in small portions, a few files at a time (2 to 8 in parallel, depending on the number of processors), so windows and cards open at once and the animation starts a moment later; only tiles that are actually visible are decoded, and the playback speed equals the speed in the file. The cover file itself is never changed and goes to Steam as it is. The logo in the background-composition mode stays static.
+* **WebP support.** GDI+ cannot read WebP, so the program downloads the libwebp tools (Google, BSD) once into `%AppData%\Steam Commander\libwebp`, the same way it already does for 7-Zip. Until they are available, WebP options stay hidden as before. Static WebP files are now accepted as covers and custom images (*Choose your own* also accepts `.webp` and `.apng`).
+* **Sorting and filters in the SteamGridDB chooser.** Sort: *Highest score*, *Newest first*, *Oldest first* and, for ROMs, *ROM platform first*. Filters, as on steamgriddb.com: *Dimensions*, *Styles*, *Languages*, *File type* and *Types and tags* (static, animated, humor, adult content, epilepsy), with *Reset filters* and a message when nothing matches. The menus stay open while you tick several items, and a button with an active filter is highlighted. Global sorting and filters first load all remaining pages.
+* **Endless scrolling in the chooser.** Before, only the first 40 options were shown. Now all loaded options are shown in portions while you scroll down, and when they run out the next SteamGridDB page is loaded (48 options per page, like on the site).
+
+### Improved
+* **The "most popular first" order now matches steamgriddb.com.** The program takes the lists from the site's own search endpoint, so the order is the same as *Highest Score* on the site. If the site does not answer, the previous API v2 list is used, so it is never worse than before. A single failure (for example a Cloudflare 403) now disables the site order for 3 minutes only, not until the program is restarted, and a list taken from API v2 is not cached for long. Backgrounds and logos get a second page, because the first 48 of a popular game are often almost all animated.
+* **ROM covers look through all pages of the site,** not only the first two: the covers of the ROM's platform come first, and inside the group the most popular one is first.
+* **One chooser for every source.** The SteamGridDB and Steam sources of the card use the same code for the list of options, format filters, animated covers and loading on scroll. For the Steam source the SteamGridDB Game ID is found by the Steam App ID automatically.
+* **Thumbnails in the chooser load faster and more reliably.** No more than 8 downloads run at once, strictly in order (#1, #2, ...); a failed thumbnail (a drop, 429 or 5xx from the CDN) is retried up to 3 times with a growing pause. WebM thumbnails of animated covers get a placeholder, and the full animated file is downloaded when the option is chosen.
+* **Faster start and smoother lists.** Compiled C# blocks are cached as DLLs in `%LOCALAPPDATA%\SteamCommander\typecache` (rebuilt automatically when the code changes, any cache error falls back to the usual way); `shortcuts.vdf` is read faster; the installed Steam games (`appmanifest_*.acf`) are read without a pipeline for every file; row icons of the panels are warmed up in small portions only while you are not scrolling.
+* **One look for scroll bars.** Every window now uses the thin rounded scroll bar of the cover chooser (without a track and arrows). Lists are as high as a whole number of rows, so no empty dark strip is left under the last row.
+* **The chooser window.** *Choose your own* is the first tile, then the automatically taken EXE icons, then the SteamGridDB options. The *Cancel* button is removed: the window closes with the cross or Esc. Tiles are laid out once per frame, so the mouse wheel and dragging do not jerk.
+* **Animated covers in `config\grid`.** The real format of a cover file is detected by its signature. Steam looks only at `.png` and `.jpg` names, so animated GIF, WebP and APNG are saved under the `.png` name (as the SteamGridDB plugin for Decky does), and files of the same slot with other extensions are removed so that an old cover is not shown.
+
+### Fixed
+* **Slots stayed empty ("4 of 5").** A background, logo or icon that came first in a format the program could not show was downloaded but not put into the slot; the unsupported formats are now filtered out for all kinds of covers, and the most popular horizontal covers (branded ones) are no longer lost.
+* **A failed cover download left the slot empty.** The download is now repeated once another way (curl with retries, then `Invoke-WebRequest`), and the thumbnail stays in the slot meanwhile.
+* **Closing the chooser during a page request** could hang the window for up to ~20 s; the request is now interrupted.
+* **The chooser window layout.** After the window was stretched, the tile panel, the scroll bar and the button went beyond the right and bottom edges.
+* **Focus jumped to the first DLSS list** after the cover region buttons of the card were locked and unlocked.
+
+### Changed
+* Application version is now 2.1.5.
+
+---
+
 ## [2.1.4] - 2026-10-22
 
 ### Added
