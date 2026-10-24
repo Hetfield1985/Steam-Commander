@@ -53639,24 +53639,7 @@ $cardSaveOk.Location = New-Object System.Drawing.Point(($cardSaveBtnsX - 24), 55
             $script:editorSavedChanges = $true
             Set-SteamRestartNeeded
             if(-not $batchMode){Start-SteamIfAuto $steamPathProperty}
-            # «Лёгкий» поиск сохранений новой игры при обычном (не пакетном) добавлении: база Ludusavi и пути эмуляторов, без запуска игры.
-            # Одно найденное место записывается сразу; несколько — то же окно с галочками, что и в карточке. В пакете это делает Invoke-SmartBatchAdd.
-            $saveNoteCard = ''
-            if(-not $batchMode -and -not $IsRomEntry){
-                try {
-                    $gSave = $(if ($null -ne $LauncherEntry) { $LauncherEntry } else { [PSCustomObject]@{ Name = [string]$name; Path = [string]$gamePath } })
-                    $pendSave = New-Object System.Collections.Generic.List[object]
-                    $recSave = [int](Invoke-SaveLightAfterAdd $gSave $pendSave)
-                    if ($pendSave.Count -gt 0) {
-                        $pkSave = Show-SaveDetectorPicker -Owner $dlg -Candidates @(New-SaveDetectorCandidatesFromRoots $pendSave[0].Roots) -HintKey 'sdet_pick_hint_db' -AllowTrack $false
-                        if ([string]$pkSave.Action -eq 'use' -and @($pkSave.Paths).Count -gt 0) {
-                            if (Set-SaveDefined $pendSave[0].GP.Name $pendSave[0].GP.SteamAppId ([string[]]@($pkSave.Paths))) { $recSave = 1 }
-                        }
-                    }
-                    if ($recSave -gt 0) { $saveNoteCard = ' ' + (T 'hd_saves_found' @($recSave)) }
-                } catch {}
-            }
-            $status.Text=$(if($hasCovers){(T 'st_done_added_covers')}else{(T 'st_done_added_nocovers')}) + $saveNoteCard
+            $status.Text=$(if($hasCovers){(T 'st_done_added_covers')}else{(T 'st_done_added_nocovers')})
             [System.Media.SystemSounds]::Asterisk.Play()
             [System.Windows.Forms.Application]::DoEvents()
             Start-Sleep -Milliseconds 500
@@ -55122,57 +55105,6 @@ function Stop-SteamProcessResponsive {
     }
 }
 
-# «Лёгкий» поиск сохранений для только что добавленной игры (пакетное добавление): только база Ludusavi и пути эмуляторов —
-# без Steam Cloud и эвристики и без запуска игры. Одно найденное место записывается сразу (как в массовом поиске в библиотеке);
-# несколько мест откладываются в $Pending — выбор одним общим окном после всего пакета. Игры с ключами реестра не записываются.
-# Ключ записи строится по финальному названию ярлыка (AppName), как у массового поиска.
-# Возвращает 1, если сохранения записаны, иначе 0.
-function Invoke-SaveLightAfterAdd ($Game, $Pending) {
-    try {
-        if ($script:romsModeEnabled -and -not (Test-IsLauncherEntry $Game)) { return 0 }
-        if (-not (Initialize-SaveEngine)) { return 0 }
-        $nm = ''
-        try { $rec = Find-SteamShortcutRecord ([string]$Game.Name) ([string]$Game.Path); if ($null -ne $rec) { $nm = [string]$rec.AppName } } catch {}
-        if ([string]::IsNullOrWhiteSpace($nm)) { $nm = [string]$Game.Name }
-        $ent = [PSCustomObject]@{ Name = $nm; AppId = ''; Kind = 'folder'; Launcher = ''; GameId = ''
-            Path = [string]$Game.Path; Exe = ''; StartDir = [string]$Game.Path; LaunchOptions = ''; ShortcutRecord = $null }
-        $gp = Get-SaveGameParams $ent
-        if ($null -ne (Get-SaveDefined $gp.Name $gp.SteamAppId)) { return 0 }
-        $ctx = New-SaveContext $gp.BaseDir ''
-        $loc = Find-GameSaveLocations -Name $gp.Name -SteamAppId $gp.SteamAppId -GogId $gp.GogId -BaseDir $gp.BaseDir -ExtraDirNames ([string[]]@()) -IgnoreDefined -SkipHeuristic
-        $roots = @(Merge-SaveRootsByFolder (Get-SaveRoots $loc.Items $ctx) ([string]$gp.BaseDir) ([string]$gp.Name))
-        $regs = @($loc.Items | Where-Object { [string]$_.Kind -eq 'reg' })
-        if ($roots.Count -eq 0 -or $regs.Count -gt 0) { return 0 }
-        if ($roots.Count -eq 1) {
-            if (Set-SaveDefined $gp.Name $gp.SteamAppId ([string[]]@([string]$roots[0].Path))) { return 1 }
-            return 0
-        }
-        [void]$Pending.Add([PSCustomObject]@{ Name = $nm; GP = $gp; Roots = @($roots) })
-    } catch {}
-    return 0
-}
-
-# Общее окно выбора для игр с несколькими найденными местами (после пакетного добавления). Возвращает число записанных игр.
-function Resolve-SaveLightPending ($Pending, $Owner) {
-    $rec = 0
-    try {
-        $groups = New-Object System.Collections.ArrayList
-        foreach ($pp in $Pending) {
-            [void]$groups.Add([PSCustomObject]@{ Name = [string]$pp.Name; Cands = @(New-SaveDetectorCandidatesFromRoots $pp.Roots) })
-        }
-        $pick = Show-SaveDetectorMultiPicker -Owner $Owner -Groups @($groups)
-        if ($null -eq $pick -or [string]$pick.Action -ne 'use') { return 0 }
-        for ($gi = 0; $gi -lt $Pending.Count; $gi++) {
-            if (-not $pick.Chosen.ContainsKey($gi)) { continue }
-            $paths = @($pick.Chosen[$gi])
-            if ($paths.Count -eq 0) { continue }
-            $pp = $Pending[$gi]
-            if (Set-SaveDefined $pp.GP.Name $pp.GP.SteamAppId ([string[]]$paths)) { $rec++ }
-        }
-    } catch {}
-    return $rec
-}
-
 function Invoke-SmartBatchAdd ($selectedGames, [bool]$AutoFill = $true, $OwnerWin = $null, [scriptblock]$StatusHook = $null, [scriptblock]$ProgressHook = $null) {
     $script:batchStatusHook = $StatusHook
     $script:batchProgressHook = $ProgressHook
@@ -55197,8 +55129,6 @@ function Invoke-SmartBatchAdd ($selectedGames, [bool]$AutoFill = $true, $OwnerWi
         $autoList = New-Object System.Collections.Generic.List[object]
         $cardList = New-Object System.Collections.Generic.List[object]
         $done = 0
-        $saveRec = 0                                                   # игры, у которых «лёгкий» поиск записал сохранения
-        $savePending = New-Object System.Collections.Generic.List[object]   # игры с несколькими найденными местами
 
         Set-BatchProgressValue ([int](0))
         Set-BatchStatusText ([string]((T 'hd_classify')))
@@ -55285,7 +55215,6 @@ function Invoke-SmartBatchAdd ($selectedGames, [bool]$AutoFill = $true, $OwnerWi
                 if ($quiet.Handled -and $quiet.Success) {
                     $script:batchResults.Ok++
                     $script:batchResults.AutoAdded++
-                    try { $saveRec += [int](Invoke-SaveLightAfterAdd $game $savePending) } catch {}
                 } elseif ($quiet.Handled) {
                     $script:batchResults.Failed++
                     Set-BatchStatusText ([string]((T 'hd_game_error' @($game.Name, $quiet.Reason))))
@@ -55322,23 +55251,17 @@ function Invoke-SmartBatchAdd ($selectedGames, [bool]$AutoFill = $true, $OwnerWi
             elseif ($script:batchCardSkipRequested) { $script:batchResults.Skipped++ }
             else {
                 $script:batchResults.Ok++
-                try { $saveRec += [int](Invoke-SaveLightAfterAdd $game $savePending) } catch {}
             }
             $done++
             Set-BatchProgressValue ([int]([Math]::Min(100, [int](($done / $totalGames) * 100))))
             [System.Windows.Forms.Application]::DoEvents()
         }
 
-        # Игры с несколькими найденными местами сохранений — одним общим окном (при отмене пакета не спрашиваем).
-        if ($savePending.Count -gt 0 -and -not $script:batchCardCancelRequested) {
-            try { $saveRec += [int](Resolve-SaveLightPending $savePending $OwnerWin) } catch {}
-        }
-        $saveNote = $(if ($saveRec -gt 0) { ' ' + (T 'hd_saves_found' @($saveRec)) } else { '' })
         if ($script:batchCardCancelRequested) {
-            Set-BatchStatusText ([string]((T 'hd_stopped' @($script:batchResults.Ok, $script:batchResults.AutoAdded, $script:batchResults.Skipped)) + $saveNote))
+            Set-BatchStatusText ([string]((T 'hd_stopped' @($script:batchResults.Ok, $script:batchResults.AutoAdded, $script:batchResults.Skipped))))
         } else {
             Set-BatchProgressValue ([int](100))
-            Set-BatchStatusText ([string]((T 'hd_finished' @($script:batchResults.Ok, $totalGames, $script:batchResults.AutoAdded, $script:batchResults.Skipped)) + $saveNote))
+            Set-BatchStatusText ([string]((T 'hd_finished' @($script:batchResults.Ok, $totalGames, $script:batchResults.AutoAdded, $script:batchResults.Skipped))))
         }
         [System.Windows.Forms.Application]::DoEvents()
         [System.Media.SystemSounds]::Asterisk.Play()
