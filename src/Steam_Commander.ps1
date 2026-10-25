@@ -70,7 +70,95 @@ try {
     [Net.ServicePointManager]::MaxServicePointIdleTime = 15000
     [Net.ServicePointManager]::DnsRefreshTimeout = 30000
 } catch {}
+# curl.exe у части ПК не может подключиться к SteamGridDB (в т.ч. к cdn2.steamgriddb.com): его собственное
+# разрешение имён подсовывает ему недоступный адрес Cloudflare, хотя другие адреса того же хоста работают
+# (curl --resolve на любой из них отвечает мгновенно). Поэтому программа сама находит живые IPv4-адреса
+# (DNS средствами .NET + проверка TCP 443) и записывает их в конфиг curl (_curlrc, строки resolve=).
+# Переменная CURL_HOME действует только на процессы программы, поэтому все curl.exe программы - запросы API,
+# сайта и миниатюры - сразу идут на рабочий адрес. Выполняется в фоне; обновляется при сбоях и раз в 10 минут.
+$script:SgdbCurlResolveBlock = {
+    try {
+        $hosts = @('www.steamgriddb.com', 'cdn2.steamgriddb.com', 'cdn.steamgriddb.com')
+        $dns = @{}
+        foreach ($h in $hosts) { try { $dns[$h] = [Net.Dns]::BeginGetHostAddresses($h, $null, $null) } catch {} }
+        $probes = New-Object System.Collections.ArrayList
+        foreach ($h in $hosts) {
+            if (-not $dns.ContainsKey($h)) { continue }
+            $ips = @()
+            try { if ($dns[$h].AsyncWaitHandle.WaitOne(4000)) { $ips = @([Net.Dns]::EndGetHostAddresses($dns[$h])) } } catch {}
+            foreach ($ip in $ips) {
+                if ($ip.AddressFamily -ne [Net.Sockets.AddressFamily]::InterNetwork) { continue }
+                $c = New-Object Net.Sockets.TcpClient([Net.Sockets.AddressFamily]::InterNetwork)
+                try {
+                    [void]$probes.Add([PSCustomObject]@{ H = $h; Ip = $ip.ToString(); C = $c; Sw = [Diagnostics.Stopwatch]::StartNew(); Iar = $c.BeginConnect($ip, 443, $null, $null); Ok = $false; Ms = 0; Done = $false })
+                } catch { try { $c.Close() } catch {} }
+            }
+        }
+        $end = (Get-Date).AddMilliseconds(2500)
+        while ((Get-Date) -lt $end) {
+            $left = 0
+            foreach ($pr in $probes) {
+                if ($pr.Done) { continue }
+                if ($pr.Iar.IsCompleted) {
+                    $pr.Done = $true; $pr.Ms = $pr.Sw.ElapsedMilliseconds
+                    try { $pr.C.EndConnect($pr.Iar); $pr.Ok = $true } catch {}
+                } else { $left++ }
+            }
+            if ($left -eq 0) { break }
+            Start-Sleep -Milliseconds 30
+        }
+        $sum = New-Object System.Collections.ArrayList
+        foreach ($pr in $probes) { [void]$sum.Add($pr.H + ' ' + $pr.Ip + $(if ($pr.Ok) { ' ok ' + $pr.Ms + 'ms' } else { ' FAIL' })) }
+        if ($probes.Count -eq 0) { [void]$sum.Add('DNS: адресов нет') }
+        $lines = New-Object System.Collections.ArrayList
+        foreach ($h in $hosts) {
+            $good = @($probes | Where-Object { $_.H -eq $h -and $_.Ok } | Sort-Object Ms | ForEach-Object { $_.Ip })
+            if ($good.Count -gt 0) { [void]$lines.Add('resolve = "' + $h + ':443:' + ($good -join ',') + '"') }
+        }
+        foreach ($pr in $probes) { try { $pr.C.Close() } catch {} }
+        $dir = Join-Path ([IO.Path]::GetTempPath()) 'SteamCommander_curl'
+        [void][IO.Directory]::CreateDirectory($dir)
+        $enc = New-Object Text.UTF8Encoding($false)
+        $txt = (($lines.ToArray() -join "`r`n") + "`r`n")
+        foreach ($fn in @('_curlrc', '.curlrc')) { [IO.File]::WriteAllText((Join-Path $dir $fn), $txt, $enc) }
+        [Environment]::SetEnvironmentVariable('CURL_HOME', $dir, 'Process')
+        [Environment]::SetEnvironmentVariable('SC_SGDB_RESOLVE_AT', [string][DateTime]::UtcNow.Ticks, 'Process')
+        return ($sum.ToArray() -join ' | ')
+    } catch { return ('ошибка: ' + $_.Exception.Message) }
+}
+$script:SgdbResolvePs = $null
+$script:SgdbResolveAsync = $null
+function Update-SgdbCurlResolve([int]$MaxAgeSec = 0, [switch]$Wait) {
+    # Результат фонового определения адресов пишется в единый журнал диагностики (Write-SgdbTimingLog).
+    $harvest = {
+        try {
+            if ($null -ne $script:SgdbResolveAsync -and $script:SgdbResolveAsync.IsCompleted -and $null -ne $script:SgdbResolvePs) {
+                $res = @($script:SgdbResolvePs.EndInvoke($script:SgdbResolveAsync))
+                Write-SgdbTimingLog ('curl resolve: ' + ($res -join ' ; '))
+                try { $script:SgdbResolvePs.Dispose() } catch {}
+                $script:SgdbResolvePs = $null; $script:SgdbResolveAsync = $null
+            }
+        } catch {}
+    }
+    try {
+        & $harvest
+        if ($MaxAgeSec -gt 0) {
+            $at = 0L; [void][long]::TryParse([string]$env:SC_SGDB_RESOLVE_AT, [ref]$at)
+            if ($at -gt 0 -and ([DateTime]::UtcNow.Ticks - $at) -lt ([long]$MaxAgeSec * 10000000L)) { return }
+        }
+        if ($null -ne $script:SgdbResolveAsync) {
+            if ($Wait) { [void]$script:SgdbResolveAsync.AsyncWaitHandle.WaitOne(7000); & $harvest }
+            return
+        }
+        $rps = [System.Management.Automation.PowerShell]::Create()
+        [void]$rps.AddScript($script:SgdbCurlResolveBlock)
+        $script:SgdbResolvePs = $rps
+        $script:SgdbResolveAsync = $rps.BeginInvoke()
+        if ($Wait) { [void]$script:SgdbResolveAsync.AsyncWaitHandle.WaitOne(7000); & $harvest }
+    } catch {}
+}
 function Reset-SgdbConnectionPool {
+    try { Update-SgdbCurlResolve 60 } catch {}
     # Закрывает соединения к SteamGridDB (в т.ч. занятые брошенными запросами), чтобы следующие
     # запросы не стояли в очереди за ними.
     foreach ($h in @('https://www.steamgriddb.com','https://cdn2.steamgriddb.com','https://cdn.steamgriddb.com')) {
@@ -81,6 +169,7 @@ function Reset-SgdbConnectionPool {
         } catch {}
     }
 }
+try { Update-SgdbCurlResolve } catch {}
 try { $script:SplashRu = ([System.Globalization.CultureInfo]::CurrentUICulture.TwoLetterISOLanguageName -eq 'ru') } catch {}
 
 function Set-SplashText ([string]$Text) {
@@ -2368,7 +2457,7 @@ Set-SplashProgress 0.52
 # Единая версия приложения — используется в заголовке главного окна, в
 # подписи внизу окна настроек и в User-Agent HTTP-запросов. Меняйте только
 # здесь при выпуске новой версии.
-$global:appVersion = "2.1.5"
+$global:appVersion = "2.1.6"
 $global:appTitle = "Steam Commander"
 # Ссылки на исходный код и поддержку автора (окно «Поддержать» в настройках). Меняйте только здесь.
 $global:appRepoUrl = "https://github.com/Hetfield1985/Steam-Commander"
@@ -2767,6 +2856,16 @@ $script:I18n = @{
         sgdb_flt_humor = 'Юмор'
         sgdb_flt_adult = 'Для взрослых'
         sgdb_flt_epilepsy = 'Эпилепсия'
+        sgdb_flt_own = 'Свои обложки'
+        sgdb_style_alternate = 'Альтернативный'
+        sgdb_style_blurred = 'Размытый'
+        sgdb_style_white_logo = 'Белый логотип'
+        sgdb_style_material = 'Материал'
+        sgdb_style_no_logo = 'Без логотипа'
+        sgdb_style_official = 'Официальный'
+        sgdb_style_white = 'Белый'
+        sgdb_style_black = 'Чёрный'
+        sgdb_style_custom = 'Пользовательский'
         sgdb_flt_untagged = 'Без тегов'
         sgdb_flt_all = 'Все'
         sgdb_flt_reset = 'Сбросить фильтры'
@@ -3441,6 +3540,16 @@ $script:I18n = @{
         sgdb_flt_humor = 'Humor'
         sgdb_flt_adult = 'Adult content'
         sgdb_flt_epilepsy = 'Epilepsy'
+        sgdb_flt_own = 'My own covers'
+        sgdb_style_alternate = 'Alternate'
+        sgdb_style_blurred = 'Blurred'
+        sgdb_style_white_logo = 'White Logo'
+        sgdb_style_material = 'Material'
+        sgdb_style_no_logo = 'No Logo'
+        sgdb_style_official = 'Official'
+        sgdb_style_white = 'White'
+        sgdb_style_black = 'Black'
+        sgdb_style_custom = 'Custom'
         sgdb_flt_untagged = 'Untagged'
         sgdb_flt_all = 'All'
         sgdb_flt_reset = 'Reset filters'
@@ -4101,6 +4210,16 @@ $script:I18n = @{
         sgdb_flt_humor = '幽默'
         sgdb_flt_adult = '成人内容'
         sgdb_flt_epilepsy = '癫痫'
+        sgdb_flt_own = '我的封面'
+        sgdb_style_alternate = '备选'
+        sgdb_style_blurred = '模糊'
+        sgdb_style_white_logo = '白色标志'
+        sgdb_style_material = '材质'
+        sgdb_style_no_logo = '无标志'
+        sgdb_style_official = '官方'
+        sgdb_style_white = '白色'
+        sgdb_style_black = '黑色'
+        sgdb_style_custom = '自定义'
         sgdb_flt_untagged = '无标签'
         sgdb_flt_all = '全部'
         sgdb_flt_reset = '重置筛选'
@@ -4765,6 +4884,16 @@ $script:I18n = @{
         sgdb_flt_humor = 'Humor'
         sgdb_flt_adult = 'Contenido adulto'
         sgdb_flt_epilepsy = 'Epilepsia'
+        sgdb_flt_own = 'Mis portadas'
+        sgdb_style_alternate = 'Alternativo'
+        sgdb_style_blurred = 'Desenfocado'
+        sgdb_style_white_logo = 'Logo blanco'
+        sgdb_style_material = 'Material'
+        sgdb_style_no_logo = 'Sin logo'
+        sgdb_style_official = 'Oficial'
+        sgdb_style_white = 'Blanco'
+        sgdb_style_black = 'Negro'
+        sgdb_style_custom = 'Personalizado'
         sgdb_flt_untagged = 'Sin etiquetas'
         sgdb_flt_all = 'Todos'
         sgdb_flt_reset = 'Restablecer filtros'
@@ -5429,6 +5558,16 @@ $script:I18n = @{
         sgdb_flt_humor = 'Humor'
         sgdb_flt_adult = 'Conteúdo adulto'
         sgdb_flt_epilepsy = 'Epilepsia'
+        sgdb_flt_own = 'Minhas capas'
+        sgdb_style_alternate = 'Alternativo'
+        sgdb_style_blurred = 'Desfocado'
+        sgdb_style_white_logo = 'Logo branco'
+        sgdb_style_material = 'Material'
+        sgdb_style_no_logo = 'Sem logo'
+        sgdb_style_official = 'Oficial'
+        sgdb_style_white = 'Branco'
+        sgdb_style_black = 'Preto'
+        sgdb_style_custom = 'Personalizado'
         sgdb_flt_untagged = 'Sem tags'
         sgdb_flt_all = 'Todos'
         sgdb_flt_reset = 'Redefinir filtros'
@@ -6093,6 +6232,16 @@ $script:I18n = @{
         sgdb_flt_humor = 'Humor'
         sgdb_flt_adult = 'Inhalte für Erwachsene'
         sgdb_flt_epilepsy = 'Epilepsie'
+        sgdb_flt_own = 'Eigene Cover'
+        sgdb_style_alternate = 'Alternativ'
+        sgdb_style_blurred = 'Unscharf'
+        sgdb_style_white_logo = 'Weißes Logo'
+        sgdb_style_material = 'Material'
+        sgdb_style_no_logo = 'Ohne Logo'
+        sgdb_style_official = 'Offiziell'
+        sgdb_style_white = 'Weiß'
+        sgdb_style_black = 'Schwarz'
+        sgdb_style_custom = 'Benutzerdefiniert'
         sgdb_flt_untagged = 'Ohne Tags'
         sgdb_flt_all = 'Alle'
         sgdb_flt_reset = 'Filter zurücksetzen'
@@ -8474,7 +8623,11 @@ $script:SgdbKeyRawCheck = {
     $r = @{ Ok = $false; StatusCode = 0; WebStatus = ''; RawMsg = '' }
     for ($attempt = 1; $attempt -le [Math]::Max(1, $maxAttempts); $attempt++) {
         $r = @{ Ok = $false; StatusCode = 0; WebStatus = ''; RawMsg = '' }
-        $netFirst = ([string]$env:SC_SGDB_VIA_NET -eq '1')
+        $netFirst = $false
+        if ([string]$env:SC_SGDB_VIA_NET -eq '1') {
+            $viaAt = 0L; [void][long]::TryParse([string]$env:SC_SGDB_VIA_NET_AT, [ref]$viaAt)
+            if (([DateTime]::UtcNow.Ticks - $viaAt) -lt 1200000000L) { $netFirst = $true } else { $env:SC_SGDB_VIA_NET = '' }
+        }
         try {
             $headers = @{ Authorization = "Bearer $(([string]$apiKey).Trim())" }
             $url = 'https://www.steamgriddb.com/api/v2/search/autocomplete/__steam_commander_key_check__'
@@ -8490,7 +8643,7 @@ $script:SgdbKeyRawCheck = {
             if ($cg.NoCurl -or $curlNoConnect) {
                 $netTimeout = if ($curlNoConnect) { 8 } else { 15 }
                 $resp = Invoke-RestMethod -Uri $url -Headers $headers -UserAgent 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) SteamCommander' -TimeoutSec $netTimeout -ErrorAction Stop
-                if ($curlNoConnect) { $env:SC_SGDB_VIA_NET = '1' }
+                if ($curlNoConnect) { $env:SC_SGDB_VIA_NET = '1'; $env:SC_SGDB_VIA_NET_AT = [string][DateTime]::UtcNow.Ticks }
             } elseif ($cg.Exit -eq 0 -and $cg.Code -ge 200 -and $cg.Code -lt 400) {
                 $resp = $cg.Body | ConvertFrom-Json
             } else {
@@ -18599,7 +18752,13 @@ $script:SgdbJsonRequestBlock = {
             # Но у других curl.exe не доходит до www.steamgriddb.com (таймаут подключения), а .NET доходит: тогда после
             # первой неудачи curl.exe запросы идут через .NET (переменная окружения общая для всех потоков),
             # а если и .NET перестал доходить - возвращаемся к curl.exe.
-            $netFirst = ([string]$env:SC_SGDB_VIA_NET -eq '1')
+            $netFirst = $false
+            if ([string]$env:SC_SGDB_VIA_NET -eq '1') {
+                # Флаг живёт 2 минуты: иначе один случайный сбой curl.exe навсегда переводил запросы на .NET,
+                # а .NET упирается в мёртвый IP Cloudflare и ждёт ~20 с на каждом запросе.
+                $viaAt = 0L; [void][long]::TryParse([string]$env:SC_SGDB_VIA_NET_AT, [ref]$viaAt)
+                if (([DateTime]::UtcNow.Ticks - $viaAt) -lt 1200000000L) { $netFirst = $true } else { $env:SC_SGDB_VIA_NET = '' }
+            }
             $cg = $null
             if (-not $netFirst) {
                 $cg = & $sgCurlGet $requestUrl $requestHeaders $requestTimeout
@@ -18621,7 +18780,7 @@ $script:SgdbJsonRequestBlock = {
                 try { $netGotHttp = ($null -ne $_.Exception.Response) } catch {}
             }
             if ($null -eq $netErr) {
-                if (-not $netFirst -and $null -ne $cg -and -not $cg.NoCurl) { $env:SC_SGDB_VIA_NET = '1' }
+                if (-not $netFirst -and $null -ne $cg -and -not $cg.NoCurl) { $env:SC_SGDB_VIA_NET = '1'; $env:SC_SGDB_VIA_NET_AT = [string][DateTime]::UtcNow.Ticks }
                 return $netResp
             }
             if ($netFirst -and -not $netGotHttp) {
@@ -18642,6 +18801,7 @@ $script:SgdbJsonRequestBlock = {
 }
 
 function Invoke-SgdbApiRequest ($url, [hashtable]$headers, [int]$timeoutSec = 20, [switch]$NoKeyRetry) {
+    try { Update-SgdbCurlResolve 600 } catch {}
     $wasUnauthorized = $false
     $errMsg = $null
     $resp = $null
@@ -20907,6 +21067,50 @@ $script:SgdbSiteBlockedUntil = [datetime]::MinValue   # отказ времен�
 # Тело одиночного POST-запроса к сайту (выполняется в своём runspace, как $script:SgdbJsonRequestBlock).
 $script:SgdbSitePostBlock = {
     param($postUrl, $postJson, $postTimeout)
+    $postSw = [Diagnostics.Stopwatch]::StartNew()
+    # Сначала системный curl.exe: он сам перебирает IP-адреса из DNS (делит connect-timeout между ними), поэтому
+    # один мёртвый адрес Cloudflare не ломает запрос. HttpWebRequest (.NET) на мёртвом адресе ждёт ~21 с, то есть
+    # дольше своего таймаута, и до живого адреса не доходит - обложки сайта «отваливались» и шёл медленный API v2.
+    try {
+        $curlExe = Join-Path $env:SystemRoot 'System32\curl.exe'
+        if ((Test-Path -LiteralPath $curlExe)) {
+            $tm = [Math]::Max(5, [int]$postTimeout)
+            $ca = @('-s', '-S', '--connect-timeout', '4', '--max-time', [string]$tm, '--compressed', '-X', 'POST',
+                '-H', '"Content-Type: application/json"', '-H', '"Accept: application/json"',
+                '-H', '"Referer: https://www.steamgriddb.com/"', '-H', '"Origin: https://www.steamgriddb.com"',
+                '-A', '"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36"',
+                '--data-binary', '@-', '-w', '"\n%{http_code}"', ('"' + [string]$postUrl + '"'))
+            $psi = New-Object System.Diagnostics.ProcessStartInfo
+            $psi.FileName = $curlExe
+            $psi.Arguments = ($ca -join ' ')
+            $psi.UseShellExecute = $false
+            $psi.CreateNoWindow = $true
+            $psi.RedirectStandardInput = $true
+            $psi.RedirectStandardOutput = $true
+            $psi.RedirectStandardError = $true
+            $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
+            $cp = [System.Diagnostics.Process]::Start($psi)
+            $errT = $cp.StandardError.ReadToEndAsync()
+            $outT = $cp.StandardOutput.ReadToEndAsync()
+            $inBytes = [Text.Encoding]::UTF8.GetBytes([string]$postJson)
+            try { $cp.StandardInput.BaseStream.Write($inBytes, 0, $inBytes.Length); $cp.StandardInput.BaseStream.Flush() } catch {}
+            try { $cp.StandardInput.Close() } catch {}
+            if (-not $cp.WaitForExit(($tm + 4) * 1000)) {
+                try { $cp.Kill() } catch {}
+            } else {
+                $cp.WaitForExit()
+                $out = [string]$outT.Result
+                $nl = $out.LastIndexOf("`n")
+                $code = 0
+                if ($nl -ge 0) { [void][int]::TryParse($out.Substring($nl + 1).Trim(), [ref]$code) }
+                if ($code -ge 200 -and $code -lt 300) { return ($out.Substring(0, $nl) | ConvertFrom-Json) }
+                if ($code -ge 100) { return [PSCustomObject]@{ __RequestError = ('HTTP ' + $code); __Response = $null; __Status = $code } }
+                # кода HTTP нет: curl.exe не дошёл до сервера - ниже пробуем .NET (на ПК, где curl.exe не доходит, а .NET доходит)
+            }
+            try { $cp.Dispose() } catch {}
+            $postTimeout = [Math]::Max(3, [int]([Math]::Ceiling([double]$postTimeout - $postSw.Elapsed.TotalSeconds)))
+        }
+    } catch {}
     try {
         try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch {}
         $req = [Net.HttpWebRequest]::Create([string]$postUrl)
@@ -21839,6 +22043,7 @@ function Get-SgdbMorePage ($State) {
             $ep = 'icons'
             switch ($kind) { 'vertical' { $ep = 'grids' } 'horizontal' { $ep = 'grids' } 'hero' { $ep = 'heroes' } 'logo' { $ep = 'logos' } 'icon' { $ep = 'icons' } }
             $q = '?types=static,animated&page=' + [int]$State.V2Page
+            if ($script:SgdbSiteIncludeNsfw) { $q += '&nsfw=any' }
             if ($kind -eq 'vertical') { $q += '&dimensions=' + ($vDims -join ',') }
             elseif ($kind -eq 'horizontal') { $q += '&dimensions=' + ($hDims -join ',') }
             $req = Invoke-SgdbApiRequest ("https://www.steamgriddb.com/api/v2/$ep/game/$gid" + $q) $headers 20
@@ -21877,6 +22082,7 @@ function Set-EditorSlotSgdbRef ($Slot, [int]$GameId, [string]$SteamAppId) {
 }
 
 function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$thumbHeight, $owner, $customStore = $null, $moreProvider = $null, $platformKeys = @()) {
+    try { Update-SgdbCurlResolve 600 -Wait } catch {}
     $items=@($items)
     if($items.Count -eq 0 -and $null -eq $customStore -and $null -eq $moreProvider){return $null}
     # Уже скачанная миниатюра выбранного варианта передаётся вызывающему коду
@@ -22002,7 +22208,7 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
     # Фильтры сайта. Множества (Dim/Style/Lang/Mime): пусто = «любые»; флаги: отмечено = показывать.
     # Применяются к полученным вариантам (поля style, language, mime, width/height, types, humor, nsfw, epilepsy).
     $dialogState.AdultDefault=[bool]$script:SgdbSiteIncludeNsfw
-    $dialogState.Filter=@{ Dim=@{}; Style=@{}; Lang=@{}; Mime=@{}; Static=$true; Animated=$true; Humor=$true; Epilepsy=$true; Untagged=$true; Adult=[bool]$script:SgdbSiteIncludeNsfw }
+    $dialogState.Filter=@{ Dim=@{}; Style=@{}; Lang=@{}; Mime=@{}; Static=$true; Animated=$true; Humor=$true; Epilepsy=$true; Untagged=$true; Own=$true; Adult=[bool]$script:SgdbSiteIncludeNsfw }
     $dialogState.FilterDirty=$false
     $dialogState.FilterPending=$false
     $dialogState.CloseMenuNow=$false
@@ -22226,10 +22432,19 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
         $colsN=[Math]::Max(1,[int]$dialogState.Cols)
         $offX=[int]$dialogState.OffX
         $hidAny=$false
+        $hideOwn=(-not [bool]$dialogState.Filter.Own)
+        $vpos=0
         for($k=0;$k -lt $allCards.Count;$k++){
             $cc=$allCards[$k]
-            $col2=$k % $colsN
-            $row2=[int][Math]::Floor($k/$colsN)
+            if($hideOwn -and $null -ne $cc.PSObject.Properties['OwnTile']){
+                # Фильтр «Свои обложки» выключен: плитка скрыта и не занимает место в сетке.
+                if($cc.Visible){ $cc.Visible=$false; $hidAny=$true }
+                if($cc.Left -ne -10000 -or $cc.Top -ne -10000){ $cc.SetBounds(-10000,-10000,0,0,[System.Windows.Forms.BoundsSpecified]::Location); $hidAny=$true }
+                continue
+            }
+            $col2=$vpos % $colsN
+            $row2=[int][Math]::Floor($vpos/$colsN)
+            $vpos++
             $ny=[int](10+($row2*$rowH)-$sy)
             if(($ny+$cardHeight) -gt (-$margin) -and $ny -lt ($vh+$margin)){
                 $nx=[int]($offX+($col2*$cellWidth))
@@ -22285,7 +22500,9 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
             $lbl.SetBounds([int](12+$dialogState.OffX),6,[int]$newGridW,34)
             $bar.SetBounds([int](12+$dialogState.OffX),44,[int]$newGridW,30)
         } catch {}
-        $rows2=[int][Math]::Ceiling($allCards.Count/[double]$newCols)
+        $visN=[int]$allCards.Count
+        if(-not [bool]$dialogState.Filter.Own){ foreach($oc0 in $allCards){ if($null -ne $oc0.PSObject.Properties['OwnTile']){ $visN-- } } }
+        $rows2=[int][Math]::Ceiling($visN/[double]$newCols)
         $h2=10+($rows2*$cardHeight)+([Math]::Max(0,$rows2-1)*13)+10
         $dialogState.ContentH=[int]$h2
         $mxs=[Math]::Max(0,[int]$h2-[int]$flow.ClientSize.Height)
@@ -22438,7 +22655,7 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
                 if($cn -gt 0){ $st[0].ForeColor=$acc; $st[0].FlatAppearance.BorderColor=$acc } else { $st[0].ForeColor=$nor; $st[0].FlatAppearance.BorderColor=$brd }
             }
             $dev=0
-            foreach($fk in @('Static','Animated','Humor','Epilepsy','Untagged')){ if(-not [bool]$f[$fk]){ $dev++ } }
+            foreach($fk in @('Static','Animated','Humor','Epilepsy','Untagged','Own')){ if(-not [bool]$f[$fk]){ $dev++ } }
             if([bool]$f.Adult -ne [bool]$dialogState.AdultDefault){ $dev++ }
             $tgx=(T 'sgdb_flt_tags')
             if($dev -gt 0){ $tgx=$tgx+' ('+$dev+')' }
@@ -22450,6 +22667,9 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
     # Все оставшиеся страницы SteamGridDB (нужны для глобальной сортировки и фильтров). Вызывать при $dialogState.LoadingMore=$true.
     $loadAllPages={
         if($null -eq $moreProvider){return}
+        $prevNsfwFlag=[bool]$script:SgdbSiteIncludeNsfw
+        if([bool]$dialogState.AdultFetched){ $script:SgdbSiteIncludeNsfw=$true }
+        try {
         while(-not $dialogState.MoreDone -and -not $dialogState.Closed){
             try { $lbl.Text=(T 'sgdb_sort_loading' @([int]$dialogState.AllItems.Count)); $lbl.Refresh() } catch {}
             $allPage=$null
@@ -22460,6 +22680,7 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
             if([bool]$allPage.Done){ $dialogState.MoreDone=$true }
             [System.Windows.Forms.Application]::DoEvents()
         }
+        } finally { $script:SgdbSiteIncludeNsfw=$prevNsfwFlag }
     }
 
     # Плитки SteamGridDB строятся заново из всех полученных вариантов: порядок $mode + текущие фильтры.
@@ -22478,10 +22699,9 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
         $dialogState.Clients.Clear()
 
         # 2) Убираем плитки SteamGridDB (свои плитки и «+» остаются).
-        $nOld=[int]$dialogState.SgdbCount
-        if($nOld -gt $allCards.Count){$nOld=$allCards.Count}
-        for($oi=0;$oi -lt $nOld;$oi++){
-            $oc=$allCards[$oi]
+        $keepCards=New-Object System.Collections.ArrayList
+        foreach($oc in @($allCards)){
+            if($null -ne $oc.PSObject.Properties['OwnTile'] -or $null -ne $oc.PSObject.Properties['PickTile']){ [void]$keepCards.Add($oc); continue }
             try { $flow.Controls.Remove($oc) } catch {}
             foreach($octl in @($oc.Controls)){
                 try { if($octl -is [System.Windows.Forms.PictureBox]){ Stop-CoverAnimation $octl $false $true } } catch {}
@@ -22489,8 +22709,10 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
             }
             try { $oc.Dispose() } catch {}
         }
-        if($nOld -gt 0){ $allCards.RemoveRange(0,$nOld) }
-        $dialogState.SgdbCount=0
+        $allCards.Clear()
+        foreach($kc in $keepCards){ [void]$allCards.Add($kc) }
+        # Новые плитки SteamGridDB вставляются после «Добавить свою» и своих плиток.
+        $dialogState.SgdbCount=[int]$allCards.Count
         $dialogState.CardNo=0
         try { $dialogState.AnimPending.Clear() } catch {}
         $dialogState.Pending.Clear()
@@ -22607,8 +22829,9 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
         param([string]$kind,[string]$v)
         switch($kind){
             'Style' {
-                $map=@{ 'alternate'='Alternate'; 'blurred'='Blurred'; 'white_logo'='White Logo'; 'material'='Material'; 'no_logo'='No Logo' }
-                if($map.ContainsKey($v)){ return [string]$map[$v] }
+                $skey=('sgdb_style_'+$v)
+                $stx=(T $skey)
+                if($stx -ne $skey){ return [string]$stx }
                 return ((Get-Culture).TextInfo.ToTitleCase($v.Replace('_',' ')))
             }
             'Mime' {
@@ -22637,8 +22860,9 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
             $fl=$dialogState.Filter
             if($kk -eq 'Reset'){
                 foreach($sk in @('Dim','Style','Lang','Mime')){ $fl[$sk].Clear() }
-                foreach($fk in @('Static','Animated','Humor','Epilepsy','Untagged')){ $fl[$fk]=$true }
+                foreach($fk in @('Static','Animated','Humor','Epilepsy','Untagged','Own')){ $fl[$fk]=$true }
                 $fl['Adult']=[bool]$dialogState.AdultDefault
+                try { & $relayout } catch {}
                 $dialogState.CloseMenuNow=$true
                 # Отметки в уже открытом меню обновляем сразу (меню может оставаться на экране, пока применяется фильтр).
                 foreach($mit in @($sender.Owner.Items)){
@@ -22672,7 +22896,14 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
                     }
                 }
             }
+            if($kk -eq 'Flag' -and $vv -eq 'Adult' -and [bool]$fl['Adult'] -and -not [bool]$dialogState.AdultFetched -and $null -ne $moreProvider){
+                # Варианты «для взрослых» при обычной загрузке не запрашивались: перезапрашиваем страницы с начала (полученные раньше пропускаются по id).
+                $dialogState.AdultFetched=$true
+                try { $moreProvider.Page=0; $moreProvider.V2Page=0; $moreProvider.UseV2=$false; $moreProvider.Done=$false; $moreProvider.Fails=0 } catch {}
+                $dialogState.MoreDone=$false
+            }
             & $updateBar
+            if($kk -eq 'Flag' -and $vv -eq 'Own'){ $dialogState.ScrollY=0; $dialogState.Dirty=$true; & $relayout; return }
             # Применяем фильтр сразу при щелчке по пункту, а не после закрытия меню (меню остаётся открытым).
             # Если идёт догрузка страницы, $applyFilters сам отложит применение (FilterPending).
             $dialogState.FilterDirty=$false
@@ -22709,8 +22940,9 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
         $f=$dialogState.Filter
         if($kind -eq 'Tags'){
             $flagDefs=@( @('Static','sgdb_flt_static'), @('Animated','sgdb_flt_animated'), @('-','-'), @('Humor','sgdb_flt_humor') )
-            if([bool]$dialogState.AdultDefault){ $flagDefs+=,@('Adult','sgdb_flt_adult') }
+            $flagDefs+=,@('Adult','sgdb_flt_adult')
             $flagDefs+=,@('Epilepsy','sgdb_flt_epilepsy')
+            if($null -ne $customStore){ $flagDefs+=,@('-','-'); $flagDefs+=,@('Own','sgdb_flt_own') }
             # «Без тегов» убрано из меню: варианты без тегов показываются всегда (отдельный переключатель только путал: при выключенных тегах список пустел).
             foreach($fd in $flagDefs){
                 if([string]$fd[0] -eq '-'){ [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)); continue }
@@ -22855,6 +23087,7 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
             $card.Size=New-Object System.Drawing.Size($cardWidth,$cardHeight)
             $card.BorderStyle=[System.Windows.Forms.BorderStyle]::FixedSingle
             $card.BackColor=[System.Drawing.Color]::FromArgb(13,20,28)
+            $card | Add-Member -NotePropertyName OwnTile -NotePropertyValue $true -Force
 
             $pb=New-Object System.Windows.Forms.PictureBox
             $pb.Location=New-Object System.Drawing.Point(5,5)
@@ -22939,11 +23172,12 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
 
             $card.Visible=$false; $card.Location=New-Object System.Drawing.Point(-10000,-10000)
             $flow.Controls.Add($card)
-            # Своя плитка встаёт после плитки «Выбрать свою» и прежних своих — перед вариантами SteamGridDB.
-            $at=[int]$dialogState.SgdbCount
+            # Добавленная вручную плитка встаёт в НАЧАЛО списка - сразу после плитки «Выбрать свою» (новые выше старых);
+            # иконки EXE (не removable) остаются после своих картинок, перед вариантами SteamGridDB.
+            if($removable){ $at=1 } else { $at=[int]$dialogState.SgdbCount }
             if($at -gt $allCards.Count){$at=$allCards.Count}
             $allCards.Insert($at,$card)
-            $dialogState.SgdbCount=$at+1
+            $dialogState.SgdbCount=[int]$dialogState.SgdbCount+1
             return $card
         }
 
@@ -22952,6 +23186,7 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
         $pickCard.Size=New-Object System.Drawing.Size($cardWidth,$cardHeight)
         $pickCard.BorderStyle=[System.Windows.Forms.BorderStyle]::FixedSingle
         $pickCard.BackColor=[System.Drawing.Color]::FromArgb(13,20,28)
+        $pickCard | Add-Member -NotePropertyName PickTile -NotePropertyValue $true -Force
         $pickBox=New-Object System.Windows.Forms.PictureBox
         $pickBox.Location=New-Object System.Drawing.Point(5,5)
         $pickBox.Size=New-Object System.Drawing.Size($thumbWidth,$thumbHeight)
@@ -22993,7 +23228,8 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
                     if($ofd.ShowDialog($dlg) -eq [System.Windows.Forms.DialogResult]::OK){
                         try { $script:customImageLastDir=[System.IO.Path]::GetDirectoryName($ofd.FileName) } catch {}
                         $lastCard=$null
-                        foreach($fn2 in @($ofd.FileNames)){
+                        $ownFiles=@($ofd.FileNames); [array]::Reverse($ownFiles)
+                        foreach($fn2 in $ownFiles){
                             $stored=Add-CustomCoverFile ([string]$customStore.Dir) ([string]$customStore.Slot) ([string]$fn2) ([string]$title)
                             if($null -ne $stored){
                                 $lastCard=& $addCustomCard ([string]$stored)
@@ -23003,6 +23239,7 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
                                 } catch {}
                             }
                         }
+                        if($null -ne $lastCard -and -not [bool]$dialogState.Filter.Own){ $dialogState.Filter.Own=$true; try { & $updateBar } catch {} }
                         & $relayout
                         if($null -ne $lastCard){ try{ $vhh=[int]$flow.ClientSize.Height; $sy0=[int]$dialogState.ScrollY; $absY=10+([int][Math]::Floor($allCards.IndexOf($lastCard)/[Math]::Max(1,[int]$dialogState.Cols))*($cardHeight+13)); if($absY -lt $sy0 -or ($absY+$cardHeight) -gt ($sy0+$vhh)){ & $setScroll ($absY-10) } }catch{} }
                     }
