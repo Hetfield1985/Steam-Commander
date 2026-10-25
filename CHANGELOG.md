@@ -6,6 +6,43 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [2.1.7] - 2026-10-26
+
+### Added
+* **Mark of the default logo scale on the slider.** While the shared "default for all games" value is on (the lock is pressed), a small triangle above the *Logo size* slider shows its scale, as on the sliders in Steam settings. The mark stays on every card even when the lock in that card is released by a new scale or position, and disappears only when the lock is released on purpose and the shared value is turned off.
+* **The default logo position is blue while dragging.** Of the five Steam position marks shown when you drag the logo, the one that is the shared default (lock pressed) is drawn blue instead of green, so it differs from the green mark the logo will snap to; it turns brighter blue when the logo is about to snap to it.
+
+### Improved
+* **Switching the cover source in the card now sets the logo position of that source** (when the lock is not pressed). SteamGridDB: the standard position, bottom left, 50/50. Steam: the position and size set by the game's developer, and the standard one if there are none. With the lock pressed the shared default stays. Before, the logo kept whatever position it had before the switch. Note: an unsaved manual change of the logo is reset by the switch, and for a game that has its own saved position, switching back to Steam shows the developer's position, which is written if you save the card.
+* **A new game with Steam covers gets the developer's logo position** when its card is opened and the lock is not pressed (if the shared default is on, it is used as before). Licensed games, ready shortcuts and ROMs are not affected.
+* **Adding games in a batch with Steam covers writes the developer's logo position** for each game when the shared default is off. If the developer has set none, nothing is written and Steam uses its own. With the shared default on, it is written to every game as before.
+
+### Changed
+* Application version is now 2.1.7.
+
+---
+
+## [2.1.6] - 2026-10-25
+
+### Added
+* **"My own covers" filter in the SteamGridDB chooser** (*Types and tags* menu). It shows or hides the tiles you added yourself with *Choose your own*; hidden tiles do not take a place in the grid. When you add a new image while the filter is off, it is switched on again so the new tile is not lost.
+* **The "Adult content" filter is always in the menu.** Before, it appeared only when adult covers were allowed in advance. Adult options are not requested during normal loading; when you tick the filter, the pages are requested again from the beginning (options already received are skipped by id), so the filter works without restarting the chooser.
+* **Names of cover styles in all interface languages.** *Alternate*, *Blurred*, *White logo*, *Material*, *No logo*, *Official*, *White*, *Black* and *Custom* are now translated (Русский, English, 简体中文, Español, Português (Brasil), Deutsch); the list used to contain only five styles in English.
+
+### Improved
+* **SteamGridDB works on PCs where `curl.exe` cannot connect.** On some PCs the name resolution of `curl.exe` gives it an unreachable Cloudflare address, although other addresses of the same host work. The program now finds working IPv4 addresses itself (DNS through .NET and a TCP 443 check) and passes them to curl (`resolve=` lines in a config in `%TEMP%\SteamCommander_curl`, valid only for the program's own processes). The check runs in the background at start, again after failures and every 10 minutes; its result is written to the diagnostics log when it is on.
+* **The site list of covers is requested through `curl.exe` first.** `curl.exe` tries all addresses from DNS, so one dead Cloudflare address no longer breaks the request. The .NET request waited about 21 s on such an address and did not reach a working one, so the site covers dropped off and the slower API v2 list was used.
+* **Own tiles in the chooser are placed in a better order.** A tile added by hand now goes right after *Choose your own* (newer above older); when several files are chosen at once they keep their order. The automatically taken EXE icons stay after your own images, before the SteamGridDB options.
+
+### Fixed
+* **One failed `curl.exe` request switched all SteamGridDB requests to .NET until the program was restarted,** and each request then waited about 20 s. The "through .NET" mode now expires after 2 minutes.
+* **Own tiles and the *Choose your own* tile are kept when the SteamGridDB options are reloaded** (for example after changing filters or loading adult options), instead of being cut out of the list together with the old options.
+
+### Changed
+* Application version is now 2.1.6.
+
+---
+
 ## [2.1.5] - 2026-10-24
 
 ### Added
