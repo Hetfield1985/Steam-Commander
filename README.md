@@ -67,7 +67,9 @@ From the card you can launch the game right away with the **Launch** button. It 
 - **Logo like in Steam.** The logo position and size set by the game's developer are used, and when you drag the logo by hand it snaps to Steam's five positions (with marks shown while dragging). A framing button shows the background the way the Steam client draws it.
 - **Fast downloads.** The fastest of the Steam CDN mirrors (akamai, fastly, cloudflare) is chosen automatically, and the four covers of a game download in parallel.
 
-<!-- Screenshots for this section: assets/screenshots/covers_animated.gif and assets/screenshots/sgdb_chooser.png -->
+<p align="center">
+  <img src="assets/screenshots/sgdb_chooser.png" width="700" alt="SteamGridDB cover chooser: sorting and filters">
+</p>
 
 ### Importing from launchers
 
@@ -79,11 +81,7 @@ Epic Games, GOG Galaxy, Ubisoft Connect, EA App, Battle.net, Xbox. Import the ti
 
 ### Automatic import
 
-For those who want to save time: with auto-import on, games are added in large batches, very quickly and without your involvement. You only need to clarify the data the program could not determine with confidence.
-
-<p align="center">
-  <img src="assets/screenshots/auto_import.gif" width="700" alt="Automatic import">
-</p>
+For those who want to save time: with auto-import on, games are added in large batches, very quickly and without your involvement. You only need to clarify the data the program could not determine with confidence. An example with ordinary games is shown in the GIF in the "Adding games to Steam" section.
 
 ### Game saves: backup and restore
 
@@ -91,7 +89,9 @@ For those who want to save time: with auto-import on, games are added in large b
 - **Backup and restore** for a single game (buttons in the card and items in the tile menu) or for all ticked games at once (the **Saves** group in the Library window). Backups are zip archives; if the saves did not change, no new archive is created. Before a restore, the current saves are put into a `pre-restore` safety archive, and if there are several backups you can pick the one you need.
 - The common backup folder is chosen in Settings. ROMs are not part of this feature.
 
-<!-- Screenshot for this section: assets/screenshots/saves_backup.gif -->
+<p align="center">
+  <img src="assets/screenshots/saves_backup.gif" width="700" alt="Game saves backup and restore">
+</p>
 
 ### Adding ROMs with an emulator of your choice
 
@@ -114,16 +114,12 @@ Download and select versions of DLSS / FSR / XeSS / XeLL. Replace the libraries 
 Two independent panels (any folders and drives). Search, sorting, folder sizes and an "already in Steam" marker with the game's icon. Move game and ROM folders between the panels with progress and automatic updating of Steam shortcuts. Smart two-way moves between folders and drives: tick games on both panels and press Space to see whether such a move is possible and how much space is missing.
 
 <p align="center">
-  <img src="assets/screenshots/two_panels.gif" width="700" alt="Two-panel browser">
+  <img src="assets/screenshots/two_panels.png" width="700" alt="Two-panel browser">
 </p>
 
 ### Library editing
 
 Edit non-Steam games, ROMs and licensed Steam games (covers, launch options). Automatic and manual backup and restore of `shortcuts.vdf` (the file that holds your non-Steam library). The Steam restart mode in Settings: **automatic** (the program closes and starts Steam itself) or **manual** (you decide when to restart Steam, and the program writes `shortcuts.vdf` correctly after Steam closes).
-
-<p align="center">
-  <img src="assets/screenshots/edit_library.gif" width="700" alt="Library editing">
-</p>
 
 ### Also
 
