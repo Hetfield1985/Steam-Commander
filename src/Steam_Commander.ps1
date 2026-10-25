@@ -1961,6 +1961,7 @@ public class SteamSlider : Control
     private int _min = 0, _max = 100, _val = 0, _small = 1, _large = 10;
     private double _disp = 0;   // положение бегунка для рисования (дробное, пока идёт перетаскивание)
     private bool _drag = false;
+    private int _mark = -1;   // метка значения «по умолчанию» над шкалой (-1 - нет)
     private const int ThumbD = 16;
     private const int TrackH = 4;
 
@@ -1979,6 +1980,8 @@ public class SteamSlider : Control
 
     public int Minimum { get { return _min; } set { _min = value; if (_max < _min) _max = _min; Value = _val; Invalidate(); } }
     public int Maximum { get { return _max; } set { _max = value; if (_min > _max) _min = _max; Value = _val; Invalidate(); } }
+    // Метка над шкалой (маленький треугольник остриём вниз, как у ползунка в настройках Steam). -1 - метки нет.
+    public int MarkValue { get { return _mark; } set { if (value != _mark) { _mark = value; Invalidate(); } } }
     public int SmallChange { get { return _small; } set { _small = Math.Max(1, value); } }
     public int LargeChange { get { return _large; } set { _large = Math.Max(1, value); } }
 
@@ -2077,6 +2080,15 @@ public class SteamSlider : Control
         using (SolidBrush bt = new SolidBrush(cThumb))
         {
             g.FillEllipse(bt, tx - ThumbD / 2f, cy - ThumbD / 2f, ThumbD, ThumbD);
+        }
+        if (_mark >= _min && _mark <= _max && _max > _min)
+        {
+            float mx = XFor(_mark);
+            float apexY = cy - ThumbD / 2f - 0.5f;
+            using (SolidBrush bm = new SolidBrush(on ? Color.FromArgb(170, 178, 190) : Color.FromArgb(96, 106, 118)))
+            {
+                g.FillPolygon(bm, new PointF[] { new PointF(mx - 4.5f, apexY - 5f), new PointF(mx + 4.5f, apexY - 5f), new PointF(mx, apexY) });
+            }
         }
     }
 
@@ -2457,7 +2469,7 @@ Set-SplashProgress 0.52
 # Единая версия приложения — используется в заголовке главного окна, в
 # подписи внизу окна настроек и в User-Agent HTTP-запросов. Меняйте только
 # здесь при выпуске новой версии.
-$global:appVersion = "2.1.6"
+$global:appVersion = "2.1.7"
 $global:appTitle = "Steam Commander"
 # Ссылки на исходный код и поддержку автора (окно «Поддержать» в настройках). Меняйте только здесь.
 $global:appRepoUrl = "https://github.com/Hetfield1985/Steam-Commander"
@@ -19721,7 +19733,11 @@ function Add-GameToSteamQuietly ($game) {
         try { if (-not [bool]$script:romsModeEnabled) { Invoke-UpscalerAutoUpdateForNewGame ([string]$game.Path) } } catch {}
 
         if (Test-CoversValid) {
-            Copy-TempCoversDirectlyToGrid $newId | Out-Null
+            # Общее «по умолчанию» выключено - берём положение логотипа разработчика (PICS) по App ID найденной игры;
+            # нет данных - ничего не пишем (Steam использует своё). Общее значение включено - его подставит сама функция.
+            $batchLogoPos = $null
+            try { if ($null -eq (Get-LogoDefaultPosition) -and [string]$appId -match '^\d+$') { $batchLogoPos = Get-SteamPicsLogoPosition ([string]$appId) } } catch {}
+            Copy-TempCoversDirectlyToGrid $newId $batchLogoPos | Out-Null
             # Регион обложек (из «Настроек» / фактический fallback english) — чтобы
             # при позже открытой карточке кнопка региона совпадала с сохранённым.
             try {
@@ -23921,6 +23937,24 @@ function Set-EditorLogoStateFromCache($hs, $pos) {
     try { $hs.Picture.Invalidate() } catch {}
 }
 
+function Set-EditorLogoSourceDefaults($hs, [string]$source, [string]$appId = '') {
+    # Смена источника обложек в карточке при НЕ нажатом замке: загружаются обложки этого источника с положением логотипа по умолчанию.
+    # Steam - положение разработчика (PICS logo_position), а если его нет - стандартное нижнее левое 50/50.
+    # SteamGridDB - сразу стандартное нижнее левое 50/50. Нажатый замок: общее значение по умолчанию остаётся как есть.
+    try {
+        if ($null -eq $hs -or $null -eq $hs.ChkDefault -or $null -eq $hs.EditorState) { return }
+        if (-not $script:LogoComposeEnabled -or $null -eq $hs.PSObject.Properties['ComposeLogo']) { return }
+        if ([bool]$hs.ChkDefault.Checked) { return }
+        $pos = $null
+        if ($source -eq 'Steam' -and $appId -match '^\d+$') { $pos = Get-SteamPicsLogoPosition $appId }
+        if ($null -eq $pos) { $pos = [PSCustomObject]@{ Position = 'BottomLeft'; WidthPct = 50.0; HeightPct = 50.0 } }
+        Set-EditorLogoStateFromCache $hs $pos
+        # Это не значение, сохранённое пользователем; замок не нажат, поэтому общее значение по умолчанию не трогаем.
+        try { $hs.EditorState.LogoFromCache = $false } catch {}
+        try { $hs.EditorState | Add-Member -NotePropertyName LogoDefaultDeviated -NotePropertyValue $true -Force } catch {}
+    } catch {}
+}
+
 # ===================== ПРЯМОЕ ПРИМЕНЕНИЕ СВЕЖЕСКАЧАННЫХ ОБЛОЖЕК =====================
 # Используется автоматическим потоком "Добавить выбранные игры в Steam":
 # копирует обложки НАПРЯМУЮ из temp-папки в config\grid.
@@ -25114,16 +25148,18 @@ function Set-EditorComposeTip($hs, [string]$kind) {
     } catch {}
 }
 
-function Get-EditorLogoDisplayScale($hs) {
+function Get-EditorLogoDisplayScale($hs, $WidthPct = $null, $HeightPct = $null) {
     # Масштаб для ползунка и подписи. Если ширина и высота рамки логотипа одинаковы (так их ставит сам ползунок) -
     # это просто ширина. Если нет (Steam/разработчик задал, например, ширину 38% и высоту 100%), логотип вписывается
     # в рамку по меньшей стороне, и ползунок по одной ширине показывал бы неверный размер. Тогда берём
     # эквивалентный квадратный масштаб - тот, при котором логотип выглядит так же. Само сохранённое положение не меняется.
     $fallback = 50
     try { $fallback = [int][math]::Round([double]$hs.EditorState.LogoWidthPct) } catch {}
+    if ($null -ne $WidthPct) { try { $fallback = [int][math]::Round([double]$WidthPct) } catch {} }
     try {
         $st = $hs.EditorState
         $wp = [double]$st.LogoWidthPct; $hp = [double]$st.LogoHeightPct
+        if ($null -ne $WidthPct -and $null -ne $HeightPct) { $wp = [double]$WidthPct; $hp = [double]$HeightPct }
         if ([math]::Abs($wp - $hp) -lt 0.5) { return $fallback }
         $hidden = $false
         try { $hidden = [bool]$st.LogoHidden } catch {}
@@ -25147,6 +25183,21 @@ function Get-EditorLogoDisplayScale($hs) {
         $eff = [int][math]::Round(100.0 * $sc / $base)
         return [math]::Max($script:EditorLogoScaleMin, [math]::Min($script:EditorLogoScaleMax, $eff))
     } catch { return $fallback }
+}
+
+function Update-EditorLogoDefaultMark($hs) {
+    # Метка масштаба «по умолчанию» над шкалой. Показывается, пока общее значение по умолчанию включено (замок нажат),
+    # и остаётся, даже если в этой карточке замок снялся из-за нового масштаба или положения (общее значение при этом не меняется).
+    # Пропадает, только когда замок сняли сознательно и общее значение выключилось.
+    try {
+        if ($null -eq $hs -or $null -eq $hs.Slider) { return }
+        $mv = -1
+        if ([bool]$global:logoDefaultEnabled) {
+            $mv = Get-EditorLogoDisplayScale $hs ([double]$global:logoDefaultWidthPct) ([double]$global:logoDefaultHeightPct)
+            $mv = [int][math]::Max($script:EditorLogoScaleMin, [math]::Min($script:EditorLogoScaleMax, $mv))
+        }
+        $hs.Slider.MarkValue = $mv
+    } catch {}
 }
 
 function Update-EditorComposeScaleLabel($hs) {
@@ -25249,6 +25300,7 @@ function Update-EditorComposeView($slot) {
                 $v = [math]::Max($script:EditorLogoScaleMin, [math]::Min($script:EditorLogoScaleMax, $v))
                 if ($sl.Value -ne $v) { $sl.Value = $v }
                 $sl.Enabled = ($hasLogo -and -not $hidden -and -not $busy)
+                Update-EditorLogoDefaultMark $hero
             }
         } catch {}
         Update-EditorComposeScaleLabel $hero
@@ -25483,10 +25535,14 @@ function Initialize-EditorCompose($heroSlot, $logoSlot) {
                         $mkCy = ($mkTop + $mkBot) / 2.0
                         $mkS = [math]::Max(12.0, $mkW * 0.03)    # размер метки (в Steam ~1.5% ширины, здесь чуть крупнее для наглядности)
                         $mkM = 2.5                                # отступ от края
+                        # Позиция «по умолчанию» (замок): её метка синяя, чтобы отличаться от зелёной метки «куда прилипнет».
+                        $mkDefPos = ''
+                        try { if ([bool]$global:logoDefaultEnabled) { $mkDefPos = [string]$global:logoDefaultPosition } } catch {}
                         foreach ($cp in $script:EditorLogoPositions) {
                             $mkAct = ([string]$cp -eq [string]$snapPos)
                             $mkT = $(if ($mkAct) { 4.0 } else { 3.0 })
                             $mkCol = $(if ($mkAct) { [System.Drawing.Color]::FromArgb(255, 150, 255, 150) } else { [System.Drawing.Color]::FromArgb(185, 76, 217, 100) })
+                            if ($mkDefPos -ne '' -and [string]$cp -eq $mkDefPos) { $mkCol = $(if ($mkAct) { [System.Drawing.Color]::FromArgb(255, 120, 200, 255) } else { [System.Drawing.Color]::FromArgb(220, 26, 159, 255) }) }
                             $mkPen = New-Object System.Drawing.Pen($mkCol, [single]$mkT)
                             $mkPen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Miter
                             try {
@@ -25855,6 +25911,7 @@ function Initialize-EditorCompose($heroSlot, $logoSlot) {
             # Автоснятие замка из-за отклонения положения (LogoDefaultDeviated) и открытие карточки с теми же значениями
             # общее значение не меняют - это проверяет сама Sync-LogoDefaultFromState.
             Sync-LogoDefaultFromState $hs.EditorState
+            Update-EditorLogoDefaultMark $hs
         } catch {}
     }.GetNewClosure())
     $heroSlot.Panel.Controls.Add($chkDef)
@@ -26328,6 +26385,12 @@ function Load-EditorSteamPreviews($appId, $slots, $statusLabel, [bool]$preferLoc
         foreach($s in $slots.Values){ Set-EditorPreviewFile $s $null | Out-Null }
         Stop-EditorLoading $slots $form
         $statusLabel.Text = (T 'sl_no_appid')
+        try {
+            if ($null -ne $slots.Hero -and $null -ne $slots.Hero.EditorState -and [bool]$slots.Hero.EditorState.LogoSourcePending) {
+                $slots.Hero.EditorState.LogoSourcePending = $false
+                Set-EditorLogoSourceDefaults $slots.Hero 'Steam' ''
+            }
+        } catch {}
         return
     }
     # Нет интернета — сразу заглушки, без единого сетевого вызова (см.
@@ -26372,6 +26435,14 @@ function Load-EditorSteamPreviews($appId, $slots, $statusLabel, [bool]$preferLoc
             $iconPrev = Get-TempIconPath
             if ($null -ne $iconPrev -and (Set-EditorPreviewFile $slots.Icon $iconPrev)) { Set-EditorSourceBadge $slots.Icon 'Steam'; $ok++ }
         }
+        # Источник сменили на Steam при снятом замке: положение разработчика этой игры, иначе стандартное.
+        try {
+            $hsSrc = $slots.Hero
+            if ($null -ne $hsSrc -and $null -ne $hsSrc.EditorState -and [bool]$hsSrc.EditorState.LogoSourcePending) {
+                $hsSrc.EditorState.LogoSourcePending = $false
+                Set-EditorLogoSourceDefaults $hsSrc 'Steam' ([string]$appId)
+            }
+        } catch {}
         $slotTotal = if ($null -ne $slots.Icon) { 5 } else { 4 }
         $statusLabel.Text = (T 'sl_steam_found' @($ok, $slotTotal))
         # Пометка текущего зеркала CDN в строке статуса (без финальной точки, чтобы не было "5 из 5. · CDN").
@@ -51424,6 +51495,15 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
         $editorState.SwitchSerial = [int]$editorState.SwitchSerial + 1
         $serial = [int]$editorState.SwitchSerial
         $editorState.SearchSource = $newSource
+        # Положение логотипа нового источника: SteamGridDB - стандартное сразу, Steam - после загрузки (нужен App ID).
+        try {
+            if ($newSource -eq 'SteamGridDB') {
+                $editorState | Add-Member -NotePropertyName LogoSourcePending -NotePropertyValue $false -Force
+                Set-EditorLogoSourceDefaults $slots.Hero 'SteamGridDB' ''
+            } else {
+                $editorState | Add-Member -NotePropertyName LogoSourcePending -NotePropertyValue $true -Force
+            }
+        } catch {}
         $editorState.OpDepth = [int]$editorState.OpDepth + 1
         $spinHandedOff = $true   # $false только пока спиннер запущен самим переключателем
 
@@ -53257,6 +53337,10 @@ $cardSaveOk.Location = New-Object System.Drawing.Point(($cardSaveBtnsX - 24), 55
             foreach($sl in $offlineMissingSlots){ try { Set-EditorPreviewFile $sl $null | Out-Null } catch {} }
         } elseif($txtId.Text -match '^\d+$'){
             if($editorState.SearchSource -eq 'Steam') {
+                # Новая игра (не лицензионная, не готовый ярлык, не ром) со Steam-обложками: при не нажатом замке положение
+                # логотипа - разработчика (PICS), иначе стандартное. Применит загрузчик, когда обложки загрузятся; если общее
+                # значение по умолчанию включено, ниже его подставит блок открытия карточки (замок нажат - загрузчик не трогает).
+                try { if (-not $licensedMode -and -not $IsRomEntry -and -not ($editMode -and $null -ne $existingShortcut)) { $editorState | Add-Member -NotePropertyName LogoSourcePending -NotePropertyValue $true -Force } } catch {}
                 Load-EditorSteamPreviews $txtId.Text.Trim() $slots $status $licensedMode
             } else {
                 [void](Load-EditorSgdbPreviews -gameName $txtTitle.Text.Trim() -steamAppId '' -slots $slots -statusLabel $status -sgdbGameId ([int]$txtId.Text.Trim()))
