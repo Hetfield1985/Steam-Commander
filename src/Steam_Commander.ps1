@@ -1703,8 +1703,290 @@ Set-SplashProgress 0.06
 Add-Type -ReferencedAssemblies @('System.Drawing','System.Windows.Forms') -TypeDefinition @'
 using System;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
+
+// ===== Собственный выпадающий список для SmartExeComboBox =====
+// Системный список ComboBox (окно ComboLBox) рисует свою полосу прокрутки сам и напрямую, поэтому перекрасить её
+// без белых вспышек нельзя. Здесь список — обычная форма без активации с собственной тонкой полосой прокрутки.
+internal sealed class SCDropForm : Form
+{
+    public SCDropList List;
+
+    [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr h, int attr, ref int val, int size);
+
+    public SCDropForm(SmartExeComboBox cb, Color border)
+    {
+        FormBorderStyle = FormBorderStyle.None;
+        ShowInTaskbar = false;
+        StartPosition = FormStartPosition.Manual;
+        BackColor = border;
+        Padding = new Padding(1);
+        List = new SCDropList(cb);
+        List.Dock = DockStyle.Fill;
+        Controls.Add(List);
+    }
+
+    protected override bool ShowWithoutActivation { get { return true; } }
+
+    protected override CreateParams CreateParams
+    {
+        get
+        {
+            CreateParams cp = base.CreateParams;
+            cp.ExStyle |= 0x00000080 | 0x08000000;   // TOOLWINDOW | NOACTIVATE
+            return cp;
+        }
+    }
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        try
+        {
+            int dontRound = 1;   // DWMWCP_DONOTROUND
+            DwmSetWindowAttribute(Handle, 33, ref dontRound, 4);
+        }
+        catch { }
+    }
+
+    protected override void WndProc(ref Message m)
+    {
+        if (m.Msg == 0x0021) { m.Result = (IntPtr)3; return; }   // WM_MOUSEACTIVATE -> MA_NOACTIVATE: фокус остаётся у комбобокса
+        base.WndProc(ref m);
+    }
+}
+
+internal sealed class SCDropList : Control
+{
+    SmartExeComboBox cb;
+    int ih;
+    int top;               // прокрутка в пикселях
+    public int Hot = -1;   // подсвеченная строка (мышь или клавиатура)
+    bool dragThumb;
+    int dragOff;
+    bool thumbHot;
+    const int Gutter = 12;
+
+    public SCDropList(SmartExeComboBox c)
+    {
+        cb = c;
+        ih = Math.Max(1, c.ItemHeight);
+        SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, true);
+        TabStop = false;
+        BackColor = c.BackColor;
+        Cursor = Cursors.Default;
+    }
+
+    int Total { get { return cb.Items.Count * ih; } }
+    int MaxTop { get { return Math.Max(0, Total - ClientSize.Height); } }
+    bool Scrollable { get { return Total > ClientSize.Height; } }
+    int ItemW { get { return ClientSize.Width - (Scrollable ? Gutter : 0); } }
+
+    public void Prepare(int selected)
+    {
+        Hot = selected;
+        if (selected >= 0) EnsureVisible(selected);
+    }
+
+    public void EnsureVisible(int i)
+    {
+        int t = i * ih;
+        int view = ClientSize.Height;
+        if (t < top) top = t;
+        else if (t + ih > top + view) top = t + ih - view;
+        if (top > MaxTop) top = MaxTop;
+        if (top < 0) top = 0;
+        Invalidate();
+    }
+
+    bool ThumbRect(out int tp, out int tl)
+    {
+        tp = 0; tl = 0;
+        int view = ClientSize.Height, total = Total;
+        if (total <= view || view <= 0) return false;
+        tl = Math.Max(30, (int)((long)view * view / total));
+        if (tl > view) tl = view;
+        int mt = MaxTop;
+        tp = mt > 0 ? (int)Math.Round((view - tl) * (double)top / mt) : 0;
+        return true;
+    }
+
+    int IndexAt(int y)
+    {
+        int i = (y + top) / ih;
+        return (y + top >= 0 && i >= 0 && i < cb.Items.Count) ? i : -1;
+    }
+
+    void ScrollBy(int d)
+    {
+        int nt = top + d;
+        if (nt > MaxTop) nt = MaxTop;
+        if (nt < 0) nt = 0;
+        top = nt;
+        // Строка под неподвижным курсором меняется при прокрутке колесом.
+        try
+        {
+            Point p = PointToClient(Cursor.Position);
+            if (ClientRectangle.Contains(p) && p.X < ItemW) { int i = IndexAt(p.Y); if (i >= 0) Hot = i; }
+        }
+        catch { }
+        Invalidate();
+    }
+
+    public void KeyNav(Keys k)
+    {
+        int n = cb.Items.Count;
+        if (n == 0) return;
+        int page = Math.Max(1, ClientSize.Height / ih - 1);
+        int h = Hot;
+        switch (k)
+        {
+            case Keys.Down: h = h < 0 ? 0 : Math.Min(n - 1, h + 1); break;
+            case Keys.Up: h = h < 0 ? 0 : Math.Max(0, h - 1); break;
+            case Keys.PageDown: h = h < 0 ? 0 : Math.Min(n - 1, h + page); break;
+            case Keys.PageUp: h = h < 0 ? 0 : Math.Max(0, h - page); break;
+            case Keys.Home: h = 0; break;
+            case Keys.End: h = n - 1; break;
+            case Keys.Return: if (h >= 0) cb.PopupCommit(h); return;
+            case Keys.Escape: cb.ClosePopup(); return;
+            default: return;
+        }
+        Hot = h;
+        EnsureVisible(h);
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        Graphics g = e.Graphics;
+        g.Clear(cb.BackColor);
+        int view = ClientSize.Height, w = ItemW, n = cb.Items.Count;
+        if (n == 0 || view <= 0) return;
+        int first = Math.Max(0, top / ih);
+        int last = Math.Min(n - 1, (top + view - 1) / ih);
+        for (int i = first; i <= last; i++)
+        {
+            Rectangle r = new Rectangle(0, i * ih - top, w, ih);
+            GraphicsState st = g.Save();
+            try
+            {
+                g.SetClip(r, CombineMode.Intersect);
+                DrawItemState s = (i == Hot) ? DrawItemState.Selected : DrawItemState.None;
+                cb.RaiseDrawItem(new DrawItemEventArgs(g, cb.Font, r, i, s, cb.ForeColor, cb.BackColor));
+            }
+            catch { }
+            finally { g.Restore(st); }
+        }
+        int tp, tl;
+        if (ThumbRect(out tp, out tl))
+        {
+            Color clr = dragThumb ? SmartExeComboBox.PopupThumbDrag : (thumbHot ? SmartExeComboBox.PopupThumbHot : SmartExeComboBox.PopupThumb);
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            Rectangle tr = new Rectangle(ClientSize.Width - Gutter + (Gutter - 8) / 2, tp, 8, tl);
+            int d = 6;
+            using (GraphicsPath p = new GraphicsPath())
+            {
+                p.AddArc(tr.X, tr.Y, d, d, 180, 90);
+                p.AddArc(tr.Right - d, tr.Y, d, d, 270, 90);
+                p.AddArc(tr.Right - d, tr.Bottom - d, d, d, 0, 90);
+                p.AddArc(tr.X, tr.Bottom - d, d, d, 90, 90);
+                p.CloseFigure();
+                using (SolidBrush b = new SolidBrush(clr)) g.FillPath(b, p);
+            }
+        }
+    }
+
+    void SetThumbHot(bool v)
+    {
+        if (thumbHot == v) return;
+        thumbHot = v;
+        Invalidate();
+    }
+
+    protected override void OnMouseMove(MouseEventArgs e)
+    {
+        base.OnMouseMove(e);
+        if (dragThumb)
+        {
+            int tp, tl;
+            if (ThumbRect(out tp, out tl))
+            {
+                int free = ClientSize.Height - tl;
+                if (free > 0)
+                {
+                    int np = e.Y - dragOff;
+                    if (np < 0) np = 0;
+                    if (np > free) np = free;
+                    top = (int)Math.Round(MaxTop * (double)np / free);
+                    Invalidate();
+                }
+            }
+            return;
+        }
+        if (Scrollable && e.X >= ItemW) { SetThumbHot(true); return; }
+        SetThumbHot(false);
+        int i = IndexAt(e.Y);
+        if (i >= 0 && i != Hot) { Hot = i; Invalidate(); }
+    }
+
+    protected override void OnMouseLeave(EventArgs e)
+    {
+        base.OnMouseLeave(e);
+        if (!dragThumb) SetThumbHot(false);
+    }
+
+    protected override void OnMouseDown(MouseEventArgs e)
+    {
+        base.OnMouseDown(e);
+        if (e.Button != MouseButtons.Left) return;
+        if (Scrollable && e.X >= ItemW)
+        {
+            int tp, tl;
+            if (!ThumbRect(out tp, out tl)) return;
+            if (e.Y >= tp && e.Y < tp + tl) { dragThumb = true; dragOff = e.Y - tp; Capture = true; Invalidate(); }
+            else ScrollBy(e.Y < tp ? -ClientSize.Height : ClientSize.Height);
+            return;
+        }
+        int i = IndexAt(e.Y);
+        if (i >= 0) cb.PopupCommit(i);
+    }
+
+    protected override void OnMouseUp(MouseEventArgs e)
+    {
+        base.OnMouseUp(e);
+        if (dragThumb) { dragThumb = false; Capture = false; Invalidate(); }
+    }
+
+    protected override void OnMouseWheel(MouseEventArgs e)
+    {
+        base.OnMouseWheel(e);
+        int lines = SystemInformation.MouseWheelScrollLines;
+        if (lines <= 0) lines = 3;
+        ScrollBy((int)Math.Round(-e.Delta / 120.0 * lines * ih));
+    }
+}
+
+// Закрывает список при щелчке мышью мимо него (но не по самому комбобоксу — его клик переключает список сам).
+internal sealed class SCDropFilter : IMessageFilter
+{
+    SmartExeComboBox cb;
+    public SCDropFilter(SmartExeComboBox c) { cb = c; }
+    public bool PreFilterMessage(ref Message m)
+    {
+        switch (m.Msg)
+        {
+            case 0x0201:   // WM_LBUTTONDOWN
+            case 0x0204:   // WM_RBUTTONDOWN
+            case 0x0207:   // WM_MBUTTONDOWN
+            case 0x00A1:   // WM_NCLBUTTONDOWN
+            case 0x00A4:   // WM_NCRBUTTONDOWN
+                if (!cb.IsPopupOrSelf(m.HWnd)) cb.ClosePopup();
+                break;
+        }
+        return false;
+    }
+}
 
 public class SmartExeComboBox : ComboBox
 {
@@ -1873,6 +2155,148 @@ public class SmartExeComboBox : ComboBox
         }
     }
 
+    // ===== Собственный выпадающий список (включается свойством CustomDropDown) =====
+    // Работает только для DropDownList. Системный список при этом не раскрывается вообще.
+    public bool CustomDropDown = false;
+    public Color PopupBorderColor = Color.FromArgb(58, 73, 90);
+    public static Color PopupThumb = Color.FromArgb(96, 103, 116);
+    public static Color PopupThumbHot = Color.FromArgb(123, 131, 146);
+    public static Color PopupThumbDrag = Color.FromArgb(150, 158, 172);
+
+    private SCDropForm popupForm;
+    private SCDropFilter popupFilter;
+    private Form hostForm;
+    private EventHandler hostHandler;
+
+    private bool CustomActive
+    {
+        get { return CustomDropDown && DropDownStyle == ComboBoxStyle.DropDownList && !ArrowHidden && IsHandleCreated; }
+    }
+
+    // Скрывает свойство ComboBox.DroppedDown: код программы (например, Esc в карточке) спрашивает именно его.
+    public new bool DroppedDown
+    {
+        get
+        {
+            if (popupForm != null && !popupForm.IsDisposed && popupForm.Visible) return true;
+            return base.DroppedDown;
+        }
+        set
+        {
+            if (CustomActive) { if (value) OpenPopup(); else ClosePopup(); }
+            else base.DroppedDown = value;
+        }
+    }
+
+    internal void RaiseDrawItem(DrawItemEventArgs e) { OnDrawItem(e); }
+
+    internal bool IsPopupOrSelf(IntPtr h)
+    {
+        if (h == Handle) return true;
+        SCDropForm f = popupForm;
+        if (f == null || f.IsDisposed) return false;
+        return h == f.Handle || h == f.List.Handle;
+    }
+
+    private void OpenPopup()
+    {
+        if (!CustomActive || Items.Count == 0) return;
+        if (popupForm != null && !popupForm.IsDisposed) return;
+        OnDropDown(EventArgs.Empty);
+        int ih = Math.Max(1, ItemHeight);
+        int viewH = Math.Min(Items.Count * ih, Math.Max(ih, DropDownHeight));
+        // Без «обрезанной» строки сверху/снизу: высота окна списка кратна высоте строки.
+        if (viewH < Items.Count * ih) viewH = Math.Max(ih, (viewH / ih) * ih);
+        Size sz = new Size(Width, viewH + 2);
+        Point p = PointToScreen(new Point(0, Height));
+        Rectangle wa = Screen.FromControl(this).WorkingArea;
+        if (p.Y + sz.Height > wa.Bottom)
+        {
+            Point up = PointToScreen(new Point(0, 0));
+            if (up.Y - sz.Height >= wa.Top) p.Y = up.Y - sz.Height;
+        }
+        SCDropForm f = new SCDropForm(this, PopupBorderColor);
+        f.Bounds = new Rectangle(p, sz);
+        f.List.Prepare(SelectedIndex);
+        popupForm = f;
+
+        hostForm = FindForm();
+        if (hostForm != null)
+        {
+            hostHandler = delegate(object s, EventArgs ev) { ClosePopup(); };
+            hostForm.Deactivate += hostHandler;
+            hostForm.LocationChanged += hostHandler;
+            hostForm.SizeChanged += hostHandler;
+        }
+        popupFilter = new SCDropFilter(this);
+        Application.AddMessageFilter(popupFilter);
+        if (hostForm != null) f.Show(hostForm); else f.Show();
+        Invalidate();
+    }
+
+    internal void ClosePopup()
+    {
+        SCDropForm f = popupForm;
+        if (f == null) return;
+        popupForm = null;
+        try { if (popupFilter != null) Application.RemoveMessageFilter(popupFilter); } catch { }
+        popupFilter = null;
+        try
+        {
+            if (hostForm != null && hostHandler != null)
+            {
+                hostForm.Deactivate -= hostHandler;
+                hostForm.LocationChanged -= hostHandler;
+                hostForm.SizeChanged -= hostHandler;
+            }
+        }
+        catch { }
+        hostHandler = null; hostForm = null;
+        try { f.Hide(); } catch { }
+        // Уничтожаем форму не внутри её же обработчика мыши.
+        try { BeginInvoke((MethodInvoker)delegate { try { f.Dispose(); } catch { } }); }
+        catch { try { f.Dispose(); } catch { } }
+        if (IsHandleCreated) Invalidate();
+        OnDropDownClosed(EventArgs.Empty);
+    }
+
+    internal void PopupCommit(int index)
+    {
+        ClosePopup();
+        if (index < 0 || index >= Items.Count) return;
+        SelectedIndex = index;
+        OnSelectionChangeCommitted(EventArgs.Empty);
+    }
+
+    protected override bool IsInputKey(Keys keyData)
+    {
+        if (DroppedDown)
+        {
+            Keys k = keyData & Keys.KeyCode;
+            if (k == Keys.Return || k == Keys.Escape || k == Keys.Up || k == Keys.Down || k == Keys.PageUp
+                || k == Keys.PageDown || k == Keys.Home || k == Keys.End || k == Keys.Tab) return true;
+        }
+        return base.IsInputKey(keyData);
+    }
+
+    protected override void OnLostFocus(EventArgs e)
+    {
+        ClosePopup();
+        base.OnLostFocus(e);
+    }
+
+    protected override void OnVisibleChanged(EventArgs e)
+    {
+        if (!Visible) ClosePopup();
+        base.OnVisibleChanged(e);
+    }
+
+    protected override void OnHandleDestroyed(EventArgs e)
+    {
+        ClosePopup();
+        base.OnHandleDestroyed(e);
+    }
+
     // После выбора в списке (а также если список закрыли Esc/кликом мимо)
     // фокус уходит с поля: иначе оно остаётся подсвеченным. Делается в общем
     // классе, поэтому действует на ВСЕ выпадающие списки программы без правок
@@ -1928,11 +2352,49 @@ public class SmartExeComboBox : ComboBox
             }
         }
 
+        if (CustomActive || popupForm != null)
+        {
+            if (m.Msg == WM_LBUTTONDOWN || m.Msg == WM_LBUTTONDBLCLK)
+            {
+                if (!Focused) Focus();
+                if (popupForm != null) ClosePopup(); else OpenPopup();
+                return;
+            }
+            if (m.Msg == CB_SHOWDROPDOWN)
+            {
+                if (m.WParam != IntPtr.Zero) OpenPopup(); else ClosePopup();
+                return;
+            }
+            if (m.Msg == WM_MOUSEWHEEL && popupForm != null) return;
+            if (m.Msg == WM_KEYDOWN || m.Msg == WM_SYSKEYDOWN)
+            {
+                int vk2 = (int)(long)m.WParam;
+                bool alt = (m.Msg == WM_SYSKEYDOWN);
+                if (popupForm != null)
+                {
+                    if (vk2 == (int)Keys.Tab) ClosePopup();
+                    else if (alt && vk2 != VK_DOWN) { /* Alt+другое — как обычно */ }
+                    else
+                    {
+                        if (vk2 == VK_F4 || (alt && vk2 == VK_DOWN)) ClosePopup();
+                        else if (popupForm != null && !popupForm.IsDisposed) popupForm.List.KeyNav((Keys)vk2);
+                        return;
+                    }
+                }
+                else if (CustomActive && ((!alt && vk2 == VK_F4) || (alt && vk2 == VK_DOWN)))
+                {
+                    OpenPopup();
+                    return;
+                }
+            }
+        }
+
         base.WndProc(ref m);
 
         if (m.Msg == CB_ADDSTRING || m.Msg == CB_INSERTSTRING ||
             m.Msg == CB_DELETESTRING || m.Msg == CB_RESETCONTENT)
         {
+            if (popupForm != null) ClosePopup();
             UpdateTheme();
             Invalidate();
         }
@@ -2469,7 +2931,7 @@ Set-SplashProgress 0.52
 # Единая версия приложения — используется в заголовке главного окна, в
 # подписи внизу окна настроек и в User-Agent HTTP-запросов. Меняйте только
 # здесь при выпуске новой версии.
-$global:appVersion = "2.1.7"
+$global:appVersion = "2.1.8"
 $global:appTitle = "Steam Commander"
 # Ссылки на исходный код и поддержку автора (окно «Поддержать» в настройках). Меняйте только здесь.
 $global:appRepoUrl = "https://github.com/Hetfield1985/Steam-Commander"
@@ -13926,6 +14388,8 @@ function Refresh-Panels {
     $liveShortcutIds = @{}
     $shortcutsScanOk = $false
     $romDirectByTop = @{}
+    # Папки верхнего уровня, в которых лежат exe ярлыков: решаем ниже, это игра или общая папка с играми.
+    $topCollect = @{}
     if (-not $skipSteamScan) {
     $global:installedSteamGames.Clear()
     $global:installedGameIcons.Clear()
@@ -14033,9 +14497,30 @@ function Refresh-Panels {
                                                         $romDirectInTop = ($romParentKey -eq $romTopKey -and $romCand -ne (Join-Path $rootPath $romTop))
                                                     } catch { $romDirectInTop = $false }
                                                 }
-                                                if (-not [string]::IsNullOrEmpty($romTop) -and -not $romDirectInTop) {
-                                                    $global:installedSteamGames[(Get-NormalizedGamePathKey (Join-Path $rootPath $romTop))] = $true
-                                                    Register-InstalledGameIconInfo (Join-Path $rootPath $romTop) $romIconVal '' '' $true
+                                                # Папка верхнего уровня: игра или общая папка с играми — решается ниже, когда собраны все ярлыки.
+                                                $romTc = $null
+                                                if (-not [string]::IsNullOrEmpty($romTop)) {
+                                                    try {
+                                                        $romTopPath0 = Join-Path $rootPath $romTop
+                                                        $rtk = Get-NormalizedGamePathKey $romTopPath0
+                                                        if (-not $topCollect.ContainsKey($rtk)) {
+                                                            $topCollect[$rtk] = [PSCustomObject]@{ Path = $romTopPath0; Subs = @{}; Direct = $false; Deeper = $false; Items = (New-Object System.Collections.ArrayList) }
+                                                        }
+                                                        $romTc = $topCollect[$rtk]
+                                                        $rrel = ''
+                                                        $rfv = $romCand.TrimEnd('\')
+                                                        if ($rfv.Length -gt $rtk.Length) { $rrel = $rfv.Substring($rtk.Length).TrimStart('\', '/') }
+                                                        $rparts = @($rrel -split '[\\/]' | Where-Object { $_ })
+                                                        if ($rparts.Count -ge 2) { $romTc.Subs[([string]$rparts[0]).ToUpperInvariant()] = $true }
+                                                        elseif ($rparts.Count -eq 1) {
+                                                            if ([System.IO.Directory]::Exists($romCand)) { $romTc.Subs[([string]$rparts[0]).ToUpperInvariant()] = $true }
+                                                            else { $romTc.Direct = $true }
+                                                        }
+                                                        else { $romTc.Direct = $true }
+                                                    } catch {}
+                                                }
+                                                if (-not [string]::IsNullOrEmpty($romTop) -and -not $romDirectInTop -and $null -ne $romTc) {
+                                                    [void]$romTc.Items.Add([PSCustomObject]@{ Icon = $romIconVal; Exe = ''; Lo = ''; IconOnly = $true })
                                                 }
                                                 elseif (-not [string]::IsNullOrEmpty($romTop) -and $romDirectInTop) {
                                                     # Несколько отдельно добавленных ROM в одной папке по-прежнему не делают папку «добавленной»,
@@ -14054,13 +14539,40 @@ function Refresh-Panels {
                                 $loValForMap = if ($loField -ne $null) { [string]$loField.Value } else { '' }
                                 foreach ($pathField in @($exeField, $startDirField)) {
                                     if ($pathField -eq $null -or [string]::IsNullOrEmpty($pathField.Value)) { continue }
+                                    $isExeField = [object]::ReferenceEquals($pathField, $exeField)
                                     $cleanFieldValue = ([string]$pathField.Value).Trim('"')
                                     foreach ($rootPath in @($global:dirC, $global:dirD)) {
                                         $topFolder = Get-TopLevelFolderUnderRoot $cleanFieldValue $rootPath
                                         if (-not [string]::IsNullOrEmpty($topFolder)) {
                                             $topFolderPath = Join-Path $rootPath $topFolder
-                                            $global:installedSteamGames[(Get-NormalizedGamePathKey $topFolderPath)] = $true
-                                            Register-InstalledGameIconInfo $topFolderPath $iconValForMap $exeValForMap $loValForMap
+                                            $tk = Get-NormalizedGamePathKey $topFolderPath
+                                            if (-not $topCollect.ContainsKey($tk)) {
+                                                $topCollect[$tk] = [PSCustomObject]@{ Path = $topFolderPath; Subs = @{}; Direct = $false; Deeper = $false; Items = (New-Object System.Collections.ArrayList) }
+                                            }
+                                            $tc = $topCollect[$tk]
+                                            [void]$tc.Items.Add([PSCustomObject]@{ Icon = $iconValForMap; Exe = $exeValForMap; Lo = $loValForMap; IconOnly = $false })
+                                            # Где внутри папки верхнего уровня лежит путь ярлыка: прямо в ней (это папка игры)
+                                            # или в её подпапке (тогда это может быть общая папка с несколькими играми).
+                                            try {
+                                                $rel = ''
+                                                $fv = $cleanFieldValue.TrimEnd('\')
+                                                if ($fv.Length -gt $tk.Length) { $rel = $fv.Substring($tk.Length).TrimStart('\', '/') }
+                                                $relParts = @($rel -split '[\\/]' | Where-Object { $_ })
+                                                $nSub = if ($isExeField) { $relParts.Count - 1 } else { $relParts.Count }
+                                                if ($nSub -le 0) { $tc.Direct = $true } else { $tc.Subs[([string]$relParts[0]).ToUpperInvariant()] = $true }
+                                            } catch {}
+                                            # Папка игры, запомненная при добавлении (game_folders.json): глубже папки верхнего уровня -> та лишь контейнер.
+                                            if ($isExeField) {
+                                                try {
+                                                    $gfMap = Get-GameFolderMap
+                                                    $gfKey = Get-GameFolderKey $exeValForMap $loValForMap
+                                                    if ($gfMap.ContainsKey($gfKey)) {
+                                                        $sv = Get-NormalizedGamePathKey ([string]$gfMap[$gfKey])
+                                                        if ($sv -eq $tk) { $tc.Direct = $true }
+                                                        elseif ($sv.StartsWith($tk + '\')) { $tc.Deeper = $true }
+                                                    }
+                                                } catch {}
+                                            }
                                         }
                                     }
                                 }
@@ -14072,9 +14584,25 @@ function Refresh-Panels {
         }
     }
 
+    # Общая папка с играми (например D:\Games, где лежат D:\Games\Игра1, D:\Games\Игра2) — не игра:
+    # галочку и значок игры получают только настоящие папки игр. Признаки контейнера: ярлыки лежат
+    # минимум в двух разных подпапках, либо запомненная папка игры находится глубже; если же exe лежит
+    # прямо в папке или запомнена именно она — это игра.
+    foreach ($tk2 in @($topCollect.Keys)) {
+        try {
+            $tc2 = $topCollect[$tk2]
+            $isContainer = ((-not $tc2.Direct) -and ($tc2.Deeper -or $tc2.Subs.Count -ge 2))
+            if ($isContainer) { continue }
+            $global:installedSteamGames[$tk2] = $true
+            foreach ($it2 in $tc2.Items) { Register-InstalledGameIconInfo $tc2.Path ([string]$it2.Icon) ([string]$it2.Exe) ([string]$it2.Lo) ([bool]$it2.IconOnly) }
+        } catch {}
+    }
+
     foreach ($romTopPathKey in @($romDirectByTop.Keys)) {
         try {
             $romTopInfo = $romDirectByTop[$romTopPathKey]
+            $romTopColl = $topCollect[(Get-NormalizedGamePathKey $romTopPathKey)]
+            if ($null -ne $romTopColl -and (-not $romTopColl.Direct) -and ($romTopColl.Deeper -or $romTopColl.Subs.Count -ge 2)) { continue }
             if ($romTopInfo.Roms.Count -eq 1) {
                 $global:installedSteamGames[(Get-NormalizedGamePathKey $romTopPathKey)] = $true
                 Register-InstalledGameIconInfo $romTopPathKey ([string]$romTopInfo.Icon) '' '' $true
@@ -49321,7 +49849,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
                 $seg.BackColor = $steamUi.Accent2; $seg.ForeColor = [System.Drawing.Color]::White
                 $seg.FlatAppearance.BorderColor = $steamUi.Accent2
                 $seg.FlatAppearance.MouseOverBackColor = $steamUi.Accent2
-                $seg.Cursor = [System.Windows.Forms.Cursors]::Default
+                $seg.Cursor = $(if (-not $IsRomEntry) { [System.Windows.Forms.Cursors]::Hand } else { [System.Windows.Forms.Cursors]::Default })
                 if ($pair -ne $null) { $seg.Image = $pair.Bright }
                 $seg.BringToFront()
             } elseif ($usable) {
@@ -49409,6 +49937,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     $cmbExe.ItemHeight = 20
     $cmbExe.DropDownHeight = 128
     $cmbExe.IntegralHeight = $false
+    $cmbExe.CustomDropDown = $true
     $cmbExe.BackColor = $steamUi.Input
     $cmbExe.ForeColor = $steamUi.Text
     $cmbExe.Font = New-Object System.Drawing.Font("Segoe UI", 9)
@@ -49448,7 +49977,9 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     $cmbExe.Add_DrawItem({
         param($sender,$e)
         if($e.Index -lt 0){ return }
-        $isSelected = (($e.State -band [System.Windows.Forms.DrawItemState]::Selected) -ne 0)
+        # Закрытое поле (ComboBoxEdit) никогда не подсвечиваем синим: подсветка только у строки открытого списка.
+        $isEdit = (($e.State -band [System.Windows.Forms.DrawItemState]::ComboBoxEdit) -ne 0)
+        $isSelected = ((($e.State -band [System.Windows.Forms.DrawItemState]::Selected) -ne 0) -and -not $isEdit)
         $isDisabled = $sender.Locked
         if ($isDisabled) {
             $bg = $steamUi.Panel
@@ -49458,29 +49989,25 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
             $fg = if($isSelected){ [System.Drawing.Color]::White } else { $steamUi.Text }
         }
         $bgBrush = New-Object System.Drawing.SolidBrush($bg)
-        $textBrush = New-Object System.Drawing.SolidBrush($fg)
         try {
             $e.Graphics.FillRectangle($bgBrush,$e.Bounds)
             $entry=$null
             try { $entry=$sender.Tag[$e.Index] } catch {}
             $text = if($entry -ne $null){ [string]$entry.Text } else { [string]$sender.Items[$e.Index] }
-            $textX=$e.Bounds.X+8
+            $textX=$e.Bounds.X+12
             if($entry -ne $null -and $entry.Image -ne $null){
                 $img=$entry.Image
-                $iconSize=18
+                $iconSize=16
                 $iy=$e.Bounds.Y+[Math]::Max(0,[int](($e.Bounds.Height-$iconSize)/2))
-                $e.Graphics.DrawImage($img, $e.Bounds.X+4, $iy, $iconSize, $iconSize)
+                $e.Graphics.DrawImage($img, $e.Bounds.X+8, $iy, $iconSize, $iconSize)
                 $textX=$e.Bounds.X+30
             }
-            # Иконку уже центрировали по Bounds.Height, а текст рядом рисовался с
-            # жёстко зашитым отступом +2 от верха — то есть не по центру, а почти
-            # у верхнего края строки. Меряем реальную высоту текста и центрируем
-            # его так же, как иконку.
-            $textSize = $e.Graphics.MeasureString($text, $sender.Font)
-            $textY = $e.Bounds.Y + [Math]::Max(0, [int](($e.Bounds.Height - $textSize.Height) / 2))
-            $e.Graphics.DrawString($text,$sender.Font,$textBrush,[float]$textX,[float]$textY)
+            # Текст как в остальных списках программы (настройки): TextRenderer, отступ слева 12 px, вертикальный центр.
+            $ctFlags = [System.Windows.Forms.TextFormatFlags]::Left -bor [System.Windows.Forms.TextFormatFlags]::VerticalCenter -bor [System.Windows.Forms.TextFormatFlags]::EndEllipsis -bor [System.Windows.Forms.TextFormatFlags]::NoPadding -bor [System.Windows.Forms.TextFormatFlags]::SingleLine
+            $ctRect = New-Object System.Drawing.Rectangle($textX, $e.Bounds.Y, [Math]::Max(10, $e.Bounds.Right - $textX - 4), $e.Bounds.Height)
+            [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, $text, $sender.Font, $ctRect, $fg, $ctFlags)
         } finally {
-            $bgBrush.Dispose(); $textBrush.Dispose()
+            $bgBrush.Dispose()
         }
     })
 
@@ -49515,6 +50042,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     $cmbEmulator.ItemHeight = 20
     $cmbEmulator.DropDownHeight = 128
     $cmbEmulator.IntegralHeight = $false
+    $cmbEmulator.CustomDropDown = $true
     $cmbEmulator.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $cmbEmulator.BackColor = $steamUi.Input
     $cmbEmulator.ForeColor = $steamUi.Text
@@ -49524,7 +50052,8 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     $cmbEmulator.Add_DrawItem({
         param($sender,$e)
         if($e.Index -lt 0){ return }
-        $isSelected = (($e.State -band [System.Windows.Forms.DrawItemState]::Selected) -ne 0)
+        $isEdit = (($e.State -band [System.Windows.Forms.DrawItemState]::ComboBoxEdit) -ne 0)
+        $isSelected = ((($e.State -band [System.Windows.Forms.DrawItemState]::Selected) -ne 0) -and -not $isEdit)
         $bg = if($isSelected){ $steamUi.Accent2 } else { $steamUi.Input }
         $fg = if($isSelected){ [System.Drawing.Color]::White } else { $steamUi.Text }
         $bgBrush = New-Object System.Drawing.SolidBrush($bg)
@@ -49532,9 +50061,9 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
         try {
             $e.Graphics.FillRectangle($bgBrush,$e.Bounds)
             $text = [string]$sender.Items[$e.Index]
-            $textSize = $e.Graphics.MeasureString($text, $sender.Font)
-            $textY = $e.Bounds.Y + [Math]::Max(0, [int](($e.Bounds.Height - $textSize.Height) / 2))
-            $e.Graphics.DrawString($text,$sender.Font,$textBrush,[float]($e.Bounds.X+8),[float]$textY)
+            $ctFlags = [System.Windows.Forms.TextFormatFlags]::Left -bor [System.Windows.Forms.TextFormatFlags]::VerticalCenter -bor [System.Windows.Forms.TextFormatFlags]::EndEllipsis -bor [System.Windows.Forms.TextFormatFlags]::NoPadding -bor [System.Windows.Forms.TextFormatFlags]::SingleLine
+            $ctRect = New-Object System.Drawing.Rectangle(($e.Bounds.X + 12), $e.Bounds.Y, [Math]::Max(10, $e.Bounds.Width - 12 - 4), $e.Bounds.Height)
+            [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, $text, $sender.Font, $ctRect, $fg, $ctFlags)
         } finally { $bgBrush.Dispose(); $textBrush.Dispose() }
     })
 
@@ -49573,6 +50102,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     $cmbCoreGame.ItemHeight = 20
     $cmbCoreGame.DropDownHeight = 200
     $cmbCoreGame.IntegralHeight = $false
+    $cmbCoreGame.CustomDropDown = $true
     $cmbCoreGame.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $cmbCoreGame.BackColor = $steamUi.Input
     $cmbCoreGame.ForeColor = $steamUi.Text
@@ -49587,7 +50117,8 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     $cmbCoreGame.Add_DrawItem({
         param($sender,$e)
         if($e.Index -lt 0){ return }
-        $isSelected = (($e.State -band [System.Windows.Forms.DrawItemState]::Selected) -ne 0)
+        $isEdit = (($e.State -band [System.Windows.Forms.DrawItemState]::ComboBoxEdit) -ne 0)
+        $isSelected = ((($e.State -band [System.Windows.Forms.DrawItemState]::Selected) -ne 0) -and -not $isEdit)
         $bg = if($isSelected){ $steamUi.Accent2 } else { $steamUi.Input }
         $fg = if($isSelected){ [System.Drawing.Color]::White } else { $steamUi.Text }
         $bgBrush = New-Object System.Drawing.SolidBrush($bg)
@@ -49595,9 +50126,9 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
         try {
             $e.Graphics.FillRectangle($bgBrush,$e.Bounds)
             $text = [string]$sender.Items[$e.Index]
-            $textSize = $e.Graphics.MeasureString($text, $sender.Font)
-            $textY = $e.Bounds.Y + [Math]::Max(0, [int](($e.Bounds.Height - $textSize.Height) / 2))
-            $e.Graphics.DrawString($text,$sender.Font,$textBrush,[float]($e.Bounds.X+8),[float]$textY)
+            $ctFlags = [System.Windows.Forms.TextFormatFlags]::Left -bor [System.Windows.Forms.TextFormatFlags]::VerticalCenter -bor [System.Windows.Forms.TextFormatFlags]::EndEllipsis -bor [System.Windows.Forms.TextFormatFlags]::NoPadding -bor [System.Windows.Forms.TextFormatFlags]::SingleLine
+            $ctRect = New-Object System.Drawing.Rectangle(($e.Bounds.X + 12), $e.Bounds.Y, [Math]::Max(10, $e.Bounds.Width - 12 - 4), $e.Bounds.Height)
+            [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, $text, $sender.Font, $ctRect, $fg, $ctFlags)
         } finally { $bgBrush.Dispose(); $textBrush.Dispose() }
     })
 
@@ -49763,6 +50294,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     $cmbRom.ItemHeight = 20
     $cmbRom.DropDownHeight = 128
     $cmbRom.IntegralHeight = $false
+    $cmbRom.CustomDropDown = $true
     $cmbRom.BackColor = $steamUi.Input
     $cmbRom.ForeColor = $steamUi.Text
     $cmbRom.Font = New-Object System.Drawing.Font("Segoe UI", 9)
@@ -49824,6 +50356,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     $cmbRomEntry.ItemHeight = 20
     $cmbRomEntry.DropDownHeight = 200
     $cmbRomEntry.IntegralHeight = $false
+    $cmbRomEntry.CustomDropDown = $true
     $cmbRomEntry.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $cmbRomEntry.BackColor = $steamUi.Input
     $cmbRomEntry.ForeColor = $steamUi.Text
@@ -51458,7 +51991,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     # состоянии «ищу…», а следующий источник уже не получал результат.
     # Каждый клик запускает полностью самостоятельный поиск и загрузку.
     $switchSearchSource = {
-        param([string]$newSource, [bool]$fromPending = $false)
+        param([string]$newSource, [bool]$fromPending = $false, [bool]$force = $false)
 
         if ($IsRomEntry) {
             $newSource = 'SteamGridDB'
@@ -51467,7 +52000,9 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
         # Клик по уже активному источнику ничего не меняет. Отложенное
         # переключение ($fromPending) выполняется всегда: источник в
         # $editorState к этому моменту уже выставлен самим кликом.
-        if(-not $fromPending -and $editorState.SearchSource -eq $newSource){ return }
+        # $force: повторный клик по уже активному источнику (Steam) — принудительное обновление
+        # данных, как будто переключились на SGDB и обратно.
+        if(-not $fromPending -and -not $force -and $editorState.SearchSource -eq $newSource){ return }
 
         # Переключатели источника НЕ блокируются на время поиска/загрузки.
         # Если сейчас идёт загрузка обложек (Steam или SGDB) или поиск названия,
@@ -51494,6 +52029,8 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
 
         $editorState.SwitchSerial = [int]$editorState.SwitchSerial + 1
         $serial = [int]$editorState.SwitchSerial
+        # Принудительное обновление уже активного SGDB (повторный клик по кнопке SGDB).
+        $wasSgdb = ($force -and -not $fromPending -and $newSource -eq 'SteamGridDB' -and [string]$editorState.SearchSource -eq 'SteamGridDB')
         $editorState.SearchSource = $newSource
         # Положение логотипа нового источника: SteamGridDB - стандартное сразу, Steam - после загрузки (нужен App ID).
         try {
@@ -51527,16 +52064,41 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
         try {
             if ($newSource -eq 'SteamGridDB') {
                 $tid = ([string]$txtId.Text).Trim()
-                if (-not $fromPending -and $tid -match '^\d+$') {
+                if (-not $fromPending -and -not $wasSgdb -and $tid -match '^\d+$') {
                     $prevSteamAppId = $tid
                     $editorState | Add-Member -NotePropertyName LastSteamAppId -NotePropertyValue $tid -Force
                     $editorState | Add-Member -NotePropertyName LastSteamTitle -NotePropertyValue ([string]$txtTitle.Text).Trim() -Force
                     $editorState | Add-Member -NotePropertyName LastSteamLang -NotePropertyValue ([string]$btnCoverLang.Tag.Lang) -Force
-                } elseif ($fromPending) {
+                } elseif ($fromPending -or $wasSgdb) {
                     $lsa = ''
                     try { $lsa = [string]$editorState.LastSteamAppId } catch {}
                     if ($lsa -match '^\d+$') { $prevSteamAppId = $lsa }
                 }
+            }
+        } catch {}
+        # Обновление активного SGDB: текущий SGDB ID берём без поиска по названию, если название
+        # не правили руками (иначе — обычный поиск по названию).
+        $refreshSgdbId = 0
+        $refreshSgdbTitle = ''
+        try {
+            if ($wasSgdb) {
+                $rsId = ([string]$txtId.Text).Trim()
+                $rsTitle = ([string]$txtTitle.Text).Trim()
+                if ($rsId -match '^\d+$' -and [int]$rsId -gt 0) {
+                    $rsSame = $false
+                    foreach ($cmp in @([string]$editorState.AutoTitle, [string]$editorState.OriginalTitle, [string]$editorState.LastSteamTitle)) {
+                        if (-not [string]::IsNullOrWhiteSpace($cmp) -and $rsTitle -ieq $cmp.Trim()) { $rsSame = $true; break }
+                    }
+                    if (-not $rsSame) {
+                        try {
+                            $rsMap = $txtTitle.Tag.Map
+                            if ($null -ne $rsMap -and $rsMap.ContainsKey($rsTitle) -and [string]$rsMap[$rsTitle].Id -eq $rsId) { $rsSame = $true }
+                        } catch {}
+                    }
+                    if ($rsSame) { $refreshSgdbId = [int]$rsId; $refreshSgdbTitle = $rsTitle }
+                }
+                # Название изменено вручную — старый Steam App ID к нему уже не относится.
+                if ($refreshSgdbId -le 0) { $prevSteamAppId = '' }
             }
         } catch {}
         $txtId.Text = ''
@@ -51631,7 +52193,9 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
                 # Сначала по Steam App ID: название могло быть локализованным (регион Steam), а SGDB
                 # знает игру под оригинальным. Если так нашли, название в карточке не меняем.
                 $byApp = $null
-                if(-not [string]::IsNullOrWhiteSpace($prevSteamAppId)){
+                if($refreshSgdbId -gt 0){
+                    $byApp = [PSCustomObject]@{ Id = $refreshSgdbId; Name = $refreshSgdbTitle; Verified = $null; Types = @(); MatchScore = 2.0 }
+                } elseif(-not [string]::IsNullOrWhiteSpace($prevSteamAppId)){
                     try { $byApp = Get-SgdbCandidateBySteamAppId $prevSteamAppId } catch { $byApp = $null }
                 }
                 if([int]$editorState.SwitchSerial -ne $serial){ return }
@@ -51810,7 +52374,50 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
         $seg.Add_Click({
             $clickedSource = [string]$this.Tag
             if ($clickedSource -eq 'SteamGridDB' -and -not [bool]$srcUsable['SteamGridDB']) { return }
-            if ([string]$editorState.SearchSource -eq $clickedSource) { return }
+            if ([string]$editorState.SearchSource -eq $clickedSource) {
+                # Повторный клик по активному источнику (Steam или SGDB): заново запрашиваем данные Steam для текущей игры
+                # (обложки, фон, логотип, регион) — то же, что переключение на SGDB и обратно.
+                if ($IsRomEntry) { return }
+                # Запоминаем текущий App ID так же, как при уходе на SGDB: возврат-ветка Steam
+                # возьмёт его без поиска по названию. Если название правили руками (App ID уже
+                # не соответствует ему), запомненный ID сбрасывается и идёт обычный поиск по названию.
+                if ($clickedSource -eq 'Steam') { try {
+                    $rfId = ([string]$txtId.Text).Trim()
+                    $rfTitle = ([string]$txtTitle.Text).Trim()
+                    $editorState | Add-Member -NotePropertyName LastSteamAppId -NotePropertyValue '' -Force
+                    if ($rfId -match '^\d+$') {
+                        $rfSame = $false
+                        foreach ($cmp in @([string]$editorState.AutoTitle, [string]$editorState.OriginalTitle, [string]$editorState.LastSteamTitle)) {
+                            if (-not [string]::IsNullOrWhiteSpace($cmp) -and $rfTitle -ieq $cmp.Trim()) { $rfSame = $true; break }
+                        }
+                        if (-not $rfSame) {
+                            try {
+                                $rfMap = $txtTitle.Tag.Map
+                                if ($null -ne $rfMap -and $rfMap.ContainsKey($rfTitle) -and [string]$rfMap[$rfTitle].Id -eq $rfId) { $rfSame = $true }
+                            } catch {}
+                        }
+                        if (-not $rfSame) {
+                            # Название могло быть локализовано регионом обложек (как при открытии карточки).
+                            try {
+                                $rfLang = ''
+                                try { $rfLang = [string]$btnCoverLang.Tag.Lang } catch {}
+                                $rfLoc = [string](Get-SteamLocalizedAppName $rfId $rfLang)
+                                if (-not [string]::IsNullOrWhiteSpace($rfLoc) -and $rfTitle -ieq $rfLoc.Trim()) { $rfSame = $true }
+                            } catch {}
+                        }
+                        if ($rfSame) {
+                            $editorState | Add-Member -NotePropertyName LastSteamAppId -NotePropertyValue $rfId -Force
+                            $editorState | Add-Member -NotePropertyName LastSteamTitle -NotePropertyValue $rfTitle -Force
+                            $lg = ''
+                            try { $lg = [string]$btnCoverLang.Tag.Lang } catch {}
+                            $editorState | Add-Member -NotePropertyName LastSteamLang -NotePropertyValue $lg -Force
+                        }
+                    }
+                } catch {} }
+                # SGDB: подготовка внутри $switchSearchSource (берётся текущий SGDB ID).
+                & $switchSearchSource $clickedSource $false $true
+                return
+            }
             & $switchSearchSource $clickedSource
         })
     }
@@ -52392,6 +52999,7 @@ $cardSaveOk.Location = New-Object System.Drawing.Point(($cardSaveBtnsX - 24), 55
     $cmbExe.Tag = $exeDisplay.ToArray()
     $cmbExe.DropDownHeight = 128
     $cmbExe.IntegralHeight = $false
+    $cmbExe.CustomDropDown = $true
 
     $selectEditorExe = {
         param($index)
