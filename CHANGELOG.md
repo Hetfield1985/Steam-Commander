@@ -6,6 +6,25 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [2.1.8] - 2026-10-27
+
+### Added
+* **Own dropdown list for the EXE, emulator, core and ROM fields in the game card.** The system list draws its scrollbar itself, so it could not be recoloured without white flashes. The list is now a separate window of the program with a thin scrollbar in the style of the interface (thumb highlight on hover and while dragging). It supports the mouse wheel and the keyboard (arrows, PageUp/PageDown, Home/End, Enter, Esc, F4 and Alt+Down), opens upwards when there is no room below, and closes on a click outside, when the card is moved, resized or loses focus. A field with one item or less has no arrow and does not open, as before.
+* **A repeated click on the active cover source button refreshes the data.** Clicking *Steam* or *SteamGridDB* when it is already selected requests the data of the current game again (covers, background, logo, region), the same as switching to the other source and back. The Steam App ID or SteamGridDB ID is kept if the title was not changed by hand; if it was, the usual search by title is made. Not available for ROMs.
+
+### Improved
+* **The EXE, emulator and core lists look like the other lists of the program** (for example in the settings). The closed field is no longer filled with blue: the blue highlight is only on the row under the cursor in the opened list. The text is drawn the same way as in the settings (left indent 12 px, centred vertically, long paths are cut with an ellipsis), the icons in the EXE list are 16 px, and the border of the list uses the colour of the interface border.
+* **The opened list has no half-cut row.** Its height is now a multiple of the row height, so the first and the last rows are always shown whole.
+* **The mouse cursor over the active cover source button is a hand** (not for ROMs), as the button can now be clicked again to refresh the data.
+
+### Fixed
+* **A common folder with games was shown as an added game.** If a panel showed a folder such as `D:\Games`, which only contains the folders of games (`D:\Games\Game 1`, `D:\Games\Game 2`), it got the green check mark and a game icon only because the executable of an added game lay somewhere inside it. Such folders now stay ordinary folders; the check mark and the icon are given to the real game folders. A top-level folder is treated as a common one when the shortcuts (including paths from the launch options of emulators and launchers) lead into two or more different subfolders, or when the game folder saved by the program is deeper than this folder. A folder with an executable or a ROM directly inside is still a game folder. When only one game was added from a common folder and its folder was not saved, the folder can still be marked.
+
+### Changed
+* Application version is now 2.1.8.
+
+---
+
 ## [2.1.7] - 2026-10-26
 
 ### Added
