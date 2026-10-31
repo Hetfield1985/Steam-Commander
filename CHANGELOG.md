@@ -6,6 +6,43 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [2.2.0] - 2026-10-31
+
+### Added
+* **Launch wrappers (Virtual Desktop and similar).** A wrapper is a program that starts an ordinary game: the shortcut gets `Exe` = wrapper and arguments from a template (`{game}` is the game path, `{args}` your launch options). Managed in *Settings → Wrappers* (known presets included).
+  * **Card:** *Wrapper* tick with a dropdown right of *Launch options*; the choice is saved in the shortcut and restored on reopening.
+  * **Main window:** a *Wrappers* switch under *ROMs* (only one of the two can be on); batch-added games go through the active wrapper, and already added ticked games can be switched to it.
+  * **Library:** a *Wrappers* filter with a tick per wrapper, and right-click *Change wrapper* / *Remove wrapper* for one or all ticked games. ROMs and `SCLauncher.exe` games are not touched.
+* **Steam collections in Library / Import.** A collection dropdown right of *Filter* (*All collections*, *Favorites*, *Hidden*, your collections, *Uncategorized*) and a right-click *Collections* window with check boxes (a square means only some games are in it). The program closes Steam, writes `localconfig.vdf` and `cloud-storage-namespace-1.json` (the last 10 backups are kept) and starts Steam again. Collections that exist only as shortcut tags are recognised and the tag is removed on unticking.
+* **Multi-disc games (m3u).** New *Multi-disc (m3u)* tick in the emulator profile (on by default for RetroArch, DuckStation, Mednafen, Flycast, BizHawk). Discs named `(Disc 1)`, `[CD2]` are found and offered as one m3u entry; in the ROM card a *Multi-disc* tick and a *Discs...* window (add, remove, reorder) allow building the list by hand. m3u files are stored in `%AppData%\Steam Commander\m3u` and their paths are rewritten when the discs are moved.
+* **"Open on startup" setting:** *File panels* or *Library window*.
+* **Column widths of the game lists are remembered** in `config.ini`.
+* **Badges under SteamGridDB chooser tiles:** animated cover, author comment (text in the tooltip) and likes count; the `#N` numbers are removed.
+* **New emulator presets with launch arguments** (DuckStation, PPSSPP, mGBA, Mesen, MAME and others) and the DOS platform with DOSBox, DOSBox-X and DOSBox Staging.
+
+### Improved
+* **Batch adding while Steam is running no longer closes Steam at the start;** it is restarted once at the end.
+* **RetroArch core extensions are used when a ROM is picked:** files the core cannot open go last and are not chosen automatically, also inside archives.
+* **A card of an added game opens as the game was added** (ROM or ordinary), regardless of the *ROMs* / *Wrappers* switches.
+* **Main window layout:** wider panels, icon-only *Move* and *Refresh* buttons, new default column widths.
+* **EXE icons** are taken from Explorer when the file has none, instead of the blue Windows placeholder.
+* **Smoother Library scrolling** (no shifted or overlapping rows; toolbar recount during search at most every 3 s). WebM thumbnails in the chooser no longer get a player placeholder.
+
+### Fixed
+* **Console windows flashing** when `curl.exe` / `taskkill.exe` ran with no visible console.
+* **The developer's logo position of a new game was not written on the first add.**
+* **"Invalid parameter" error** when a tile with an animated cover was shown.
+* **Selection stayed on games hidden by a filter,** causing wrong collection changes.
+* **The card lost activity** after switching windows, and the logo preview was not redrawn.
+* **Library window start mode:** the library could stay behind other windows.
+* **The diagnostics log was written to the `powershell.exe` folder** when started as `.ps1`.
+
+### Changed
+* `anim_debug.log` is no longer written.
+* Application version is now 2.2.0.
+
+---
+
 ## [2.1.8] - 2026-10-27
 
 ### Added
