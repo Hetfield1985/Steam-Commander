@@ -23,7 +23,7 @@
 </p>
 
 <p align="center">
-  <a href="README_ru.md">Русский</a> · <b>English</b>
+  <a href="README.ru.md">Русский</a> · <b>English</b>
 </p>
 
 ---
