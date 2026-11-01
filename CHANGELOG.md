@@ -6,6 +6,31 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [2.2.1] - 2026-11-01
+
+### Added
+* **Right-click menu for games in the file panels.** *Launch* (or *Add to library* for games that are not added yet), *Open folder*, *Collections*, *Find saves* / *Saves folder* / *Back up saves* / *Restore saves*, *Update upscalers* / *Restore original upscalers* and *Change wrapper* / *Remove wrapper* — the same as the tile menu of the Library window. If the game is ticked together with others, the action applies to all ticked games. ROM games get their own menu: *Launch*, *Open folder*, *Collections* and *Change emulator* (for the game or all ticked ROMs, plus *All games on <emulator>*), also when the *ROMs* switch is off.
+* **Collections button in the main window** (above *Move game*). Pick collections for new games: the choice is put into every card, also on auto import and silent ROM adding. For games that are already added, ticks are applied with the bottom *Change collections (N)* button (Steam is closed and started again). A collection that only some of the ticked games have shows a faded tick.
+* **Upscaler libraries and saves buttons in the main window.** *Libraries* (update / restore the originals) and *Saves* (find / back up / restore) work on ticked games. The bottom button shows the action and the number of games, and turns into *Cancel* while it runs. Games the chosen action cannot be applied to cannot be ticked, and *Select all* skips them.
+* **Collections button in the game card** (right edge of the *Launch options* row). A drop-down with several ticks; the choice is written together with the other card changes under a single Steam restart. In batch adding the write is postponed until Steam is closed.
+* **Library: *Group by collections*** (right under *All collections*). The same games laid out in blocks with a collection header; a game is shown in each of its collections, the rest go to *Uncategorized*.
+* **Library: Ctrl+A** ticks all games visible now, and the tile menu has *Open folder* under *Launch*.
+
+### Improved
+* **The batch button is now *Add new games to library (N)*.**
+* **Collections drop-down:** a partly ticked collection shows a count and a click removes it from all games; a new *Uncategorized* item clears the collections of the ticked games. In the card, a collection set earlier is drawn with a light square instead of a solid tick.
+* **Bottom buttons of the main window do not flicker** (double buffering, redraw only on a real change); icons are drawn at whole pixels, so they are sharp. The *Libraries* / *Saves* buttons show the icon of their parent button.
+* **Library: *Update upscalers*** shows the *Libraries* icon and *Cancel* while it runs; the confirmation windows for updating and restoring upscalers are removed.
+* **The tooltip of *Move game* shows how many games are ticked.**
+* **Mass collection lookup is faster:** `shortcuts.vdf` is parsed once, not for every game.
+* **Menus of the *Saves* buttons in the card** use the dark style of the program and open inside the card.
+* ***Change emulator* only works for ROM games that have an emulator, and the wrapper button is hidden when ROMs are ticked.**
+
+### Changed
+* Application version is now 2.2.1.
+
+---
+
 ## [2.2.0] - 2026-10-31
 
 ### Added
