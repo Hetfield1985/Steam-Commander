@@ -16,9 +16,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install ps2exe
+            - name: Install ps2exe
         shell: pwsh
-        run: Install-Module ps2exe -Scope CurrentUser -Force
+        run: |
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+          Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -ErrorAction SilentlyContinue
+          if (-not (Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue)) {
+            Register-PSRepository -Default
+          }
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module -Name ps2exe -Repository PSGallery -Scope CurrentUser -Force -AllowClobber -SkipPublisherCheck
 
       - name: Build executable
         shell: pwsh
