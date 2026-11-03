@@ -6,6 +6,40 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [2.2.2] - 2026-11-03
+
+### Added
+* **Favorite folders in the file panels.** A star button after the path field adds the current folder to favorites (the star is filled when the folder is already there; a click removes it). The arrow at the end of the path field opens the list of favorites with full paths; right-click an item to *Remove from favorites*, *Rename...*, *Move up* or *Move down* (Delete removes the selected item). Unavailable folders are marked. The list is common for both panels and is stored in `config.ini`; the path can still be typed by hand.
+* **Mode columns in the file panels.** The *Size* and *Date* columns are replaced by one column that depends on the active mode: *Wrapper* (the *Wrappers* switch), *Emulator* (the *ROMs* switch), *DLSS* (*Libraries*: the version of `nvngx_dlss.dll`, or the version of the saved original for *Restore*) and *Presence* / *Backup* (*Saves*: *Found* / *Not found*, or the date of the last backup). ROM files show *Unavailable* where the action does not apply. Every mode column can be sorted by a click on its header.
+* **The *Libraries* and *Saves* buttons can be pressed without ticked games.** The chosen action defines which games can be ticked: *Update* - games with upscaler libraries, *Restore* - games with saved originals, *Find saves* - any added game, *Back up* - games with found saves, *Restore saves* - games with a backup. The other check boxes are inactive, and *Select all* skips them. The bottom button shows the action and stays disabled until a suitable game is ticked. A second click on the group button cancels the chosen action. *Libraries*, *Saves*, *ROMs* and *Wrappers* exclude each other.
+* **Library: *Change wrapper* button** in the top bar, right of the emulator button (with the *Wrappers* caption when there is room). It opens the same menu as the tile for all ticked ordinary games.
+* **Icons in the game context menus.** The tile menu of the Library and the new right-click menu of the file panels show icons for *Open folder*, *Collections*, *Find saves*, *Back up saves*, *Restore saves*, *Update upscalers*, *Restore original upscalers*, *Change wrapper* and *Change emulator*. The emulator icon is white without a background, like on the buttons.
+* **Sorting of the shortcut backup list** by a click on a column header (same style as the other tables).
+
+### Improved
+* **The *ROMs* and *Wrappers* switches are now icon buttons** with the same flat icons as in the Library; the active mode has an accent frame. The emulator icon is drawn pixel by pixel for each button size and is sharp.
+* **Column widths are calculated automatically** from the header and the values; the *Name* column takes all the remaining space. The borders can no longer be dragged (also in the emulator, wrapper and backup tables).
+* **Table headers:** thin dividers between columns; the active column is shown in the accent colour with a ▲ / ▼ arrow, and there is no active column until the first click.
+* **The *Libraries* and *Saves* groups open on a dark backdrop** with an accent frame and a soft shadow, so they stand out from the game lists.
+* **One selection colour in all lists;** the dotted system focus frame in the panels is replaced by a thin accent frame.
+* **Menus use the colours of the input fields and drop-down lists.** *Launch* is a green item with a white *play* icon, and the *Launch* button of the card is green too.
+* **The Library and Settings windows minimize together with the main window** (and come back with a click on its taskbar button).
+* **Library toolbar buttons are 30 px wide,** so more of them fit.
+* **A card of a Steam game keeps an icon added from a file** as *Local* instead of switching it back to *Steam*.
+
+### Fixed
+* **Two backup folders for one game.** The same game came under slightly different names (`Taxi Life - A City...` / `Taxi Life: A City...`, signs ®™©, commas), so its saves were split. Names are now compared by a normalised key and the existing folder is reused.
+* **The *Emulator* column always showed *No emulator*** in the ROMs mode, because the shortcut `Exe` and launch options were not read.
+* **A click went through a closed drop-down list** to the field under it (for example the *Launch options* field under the EXE list).
+* **Black squares and "ghost" buttons** after the *Libraries* / *Saves* buttons were hidden, and a flashing extra button in the Library toolbar.
+* **Actions stuck on the buttons after a panel refresh,** and check boxes that stayed grey (or active) until the first click on a panel.
+
+### Changed
+* Application version is now 2.2.2.
+* Column widths of the game lists are no longer saved (the `colWidthsC` / `colWidthsD` lines of `config.ini` are ignored); `favoriteDir` lines are saved instead.
+
+---
+
 ## [2.2.1] - 2026-11-01
 
 ### Added
