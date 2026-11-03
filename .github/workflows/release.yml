@@ -16,16 +16,29 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-            - name: Install ps2exe
+      - name: Install ps2exe
         shell: pwsh
         run: |
           [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-          Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -ErrorAction SilentlyContinue
+          Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -ErrorAction SilentlyContinue | Out-Null
           if (-not (Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue)) {
             Register-PSRepository -Default
           }
           Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
-          Install-Module -Name ps2exe -Repository PSGallery -Scope CurrentUser -Force -AllowClobber -SkipPublisherCheck
+          Get-PSRepository
+
+          $ok = $false
+          foreach ($i in 1..3) {
+            try {
+              Install-Module -Name ps2exe -Repository PSGallery -Scope CurrentUser -Force -AllowClobber -SkipPublisherCheck -ErrorAction Stop
+              $ok = $true
+              break
+            } catch {
+              Write-Host "Попытка $i не удалась: $_"
+              Start-Sleep -Seconds (5 * $i)
+            }
+          }
+          if (-not $ok) { throw "Не удалось установить ps2exe" }
 
       - name: Build executable
         shell: pwsh
@@ -35,7 +48,7 @@ jobs:
         shell: pwsh
         run: |
           Get-ChildItem -Path dist -Filter *.exe
-          
+
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
