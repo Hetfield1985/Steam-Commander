@@ -14020,10 +14020,10 @@ $btnMainColl.Add_Paint({
         $br = New-Object System.Drawing.SolidBrush($col)
         $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::None
         $cx = [int]($w / 2); $cy = [int]($h / 2)
-        $g.FillRectangle($br, ($cx - 8), ($cy - 8), 7, 7)
-        $g.FillRectangle($br, ($cx + 1), ($cy - 8), 7, 7)
-        $g.FillRectangle($br, ($cx - 8), ($cy + 1), 7, 7)
-        $g.FillRectangle($br, ($cx + 1), ($cy + 1), 7, 7)
+        $g.FillRectangle($br, ($cx - 10), ($cy - 10), 9, 9)
+        $g.FillRectangle($br, ($cx + 1), ($cy - 10), 9, 9)
+        $g.FillRectangle($br, ($cx - 10), ($cy + 1), 9, 9)
+        $g.FillRectangle($br, ($cx + 1), ($cy + 1), 9, 9)
     } catch {} finally { if ($null -ne $br) { $br.Dispose() } }
 })
 $form.Controls.Add($btnMainColl)
@@ -52953,7 +52953,17 @@ function Show-SteamLibraryBrowser {
         if ($tileOuter -lt 1) { $tileOuter = 1 }
         $cols = [Math]::Max(1, [int][Math]::Floor($avail / [double]$tileOuter))
         $contentW = $cols * $tileOuter
-        $padLeft = [Math]::Max(0, [int](($avail - $contentW) / 2))
+        $leftover = [Math]::Max(0, $avail - $contentW)
+        # Отступы плиток до левого и правого края окна должны быть равны. Центрируем сетку по ВСЕЙ ширине окна
+        # (включая вертикальную полосу прокрутки справа), а не по клиентской области панели: так результат не зависит
+        # от того, вычли ли уже полосу из $avail, и левый/правый отступы совпадают при любом числе колонок.
+        # Не больше $leftover, чтобы сетка не выходила за пределы доступной ширины.
+        $padLeft = 0
+        try {
+            $winW = ([int]$scroll.Left * 2) + [int]$scroll.Width
+            $padCenter = [int][Math]::Floor(($winW - $contentW) / 2) - [int]$scroll.Left
+            $padLeft = [Math]::Min($leftover, [Math]::Max(0, $padCenter))
+        } catch { $padLeft = [Math]::Floor($leftover / 2) }
         $tileH = [int]$script:libTileInnerH + (2 * [int]$script:libTileMargin)
         # Группировка по коллекциям: на каждую группу свои строки плиток (последняя строка группы может быть неполной) и строка заголовка.
         # План считается по записям, а не по созданным плиткам, поэтому высота верна и пока плитки достраиваются.
