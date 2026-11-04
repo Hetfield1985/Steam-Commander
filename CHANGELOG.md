@@ -6,6 +6,29 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [2.2.3] - 2026-11-05
+
+### Added
+* **Cancel for the folder size calculation.** While sizes are being counted (*Space*, *Alt+Shift+Enter* or sorting by *Size*), the bottom *Library* button turns into *Cancel calculation* and the other bottom buttons are hidden. A click stops the count at once, even inside one huge folder. A cancelled sort by size is not applied: the list goes back to sorting by name. If the bottom button is busy with a move, batch adding or import, it is left as it is.
+* **Game cards while games are being moved.** Cards of games that are not part of the move can be opened and saved during the move (also *Add to library* from the right-click menu). Writing to Steam is postponed: Steam is not closed, and everything is applied with one restart after the move; collections picked in such a card are written after the move too. A game that is being moved shows *This game is being moved right now...* instead of a card, and the other items of the right-click menu are unavailable until the move ends.
+
+### Improved
+* **The window stays responsive during a move.** The program no longer "freezes" while files are copied and counted. The progress is taken from the bytes that robocopy has really written instead of scanning the copy folder again and again, and the waiting loop answers window messages at once.
+* **The *Size* column shows the size of a moving game right away:** before the copying starts, and for the new folder as soon as the game's turn comes.
+* **The panels are no longer re-read in the middle of a move,** only once when it is finished.
+* **The *Library* button is disabled during a move** (the Library window cannot be opened then), and its caption is drawn in the muted colour when a bottom button is unavailable.
+* **The *Collections* icon in the context menus is larger** and matches the other icons: a 2x2 grid of 24 px (5 px squares in the 16 px column) drawn on whole pixels, so it is sharp. The same icon is used in the file panels and in the tile menu of the Library.
+* **Columns of the game lists follow the real width of the list:** without a scroll bar they reach the right edge, with a scroll bar - its left edge. The *Library* column is narrower and the *Name* column a little wider.
+
+### Fixed
+* **The main window did not minimize or restore from the taskbar during a move, and Windows beeped on the click.** The window stayed blocked while the program was busy with copying, and a false *Restore* right after *Minimize* brought it back. Now the window answers the taskbar at once, a blocked window is unlocked when no dialog is open, and the false restore is ignored.
+* **After minimizing and restoring Settings or the Library,** clicks could go to the main window under the dialog; the dialog now blocks its owner again after the restore.
+
+### Changed
+* Application version is now 2.2.3.
+
+---
+
 ## [2.2.2] - 2026-11-03
 
 ### Added
