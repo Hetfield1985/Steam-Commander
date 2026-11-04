@@ -696,9 +696,6 @@ function New-SCForm {
 # (WM_SYSCOMMAND / SC_MINIMIZE) перехватывается ДО смены состояния окна и превращается в сворачивание владельца:
 # Windows прячет вместе с ним все его окна, а клик по кнопке на панели задач возвращает владельца и окно обратно.
 # Само окно при этом не меняет WindowState и не активируется заново (иначе Windows разворачивает владельца обратно).
-function Write-SCMinLog ([string]$Message) {
-    try { [System.IO.File]::AppendAllText((Join-Path ([System.IO.Path]::GetTempPath()) 'sc_minimize.log'), ((Get-Date).ToString('HH:mm:ss') + ' ' + $Message + [Environment]::NewLine)) } catch {}
-}
 if (-not ('ScOwnerMinimizeHook' -as [type])) {
     try {
         Add-Type -ReferencedAssemblies @('System.Drawing','System.Windows.Forms') -TypeDefinition @'
@@ -727,11 +724,6 @@ public class ScOwnerThumbWindow : NativeWindow
     private Bitmap _shot;
     public MethodInvoker OnMinimize;
     public MethodInvoker OnActivated;
-
-    private static void Log(string s)
-    {
-        try { System.IO.File.AppendAllText(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "sc_minimize.log"), DateTime.Now.ToString("HH:mm:ss") + " " + s + Environment.NewLine); } catch { }
-    }
 
     public void Attach(IntPtr ownerHandle)
     {
@@ -813,7 +805,6 @@ public class ScOwnerThumbWindow : NativeWindow
         if (m.Msg == 0x0112)
         {
             long cmd = ((long)m.WParam) & 0xFFF0;
-            Log("owner WM_SYSCOMMAND 0x" + cmd.ToString("X"));
             if (cmd == 0xF020 && OnMinimize != null)
             {
                 try { OnMinimize(); } catch { }
@@ -952,6 +943,8 @@ public class ScOwnerMinimizeHook : NativeWindow
         if (_dlg.IsDisposed || !_dlg.IsHandleCreated || _owner.IsDisposed) return;
         SetOwner(_dlg.Handle, _owner.Handle);
         SetWindowPos(_dlg.Handle, IntPtr.Zero, _savedX, _savedY, 0, 0, 0x0001 | 0x0004 | 0x0010);
+        // Модальный цикл ShowDialog снова блокирует владельца; без этого клики уходят в главное окно под диалогом.
+        try { if (!_dlg.IsDisposed && _dlg.Modal) EnableWindow(_owner.Handle, false); } catch { }
         try { _dlg.Activate(); } catch { }
     }
 
@@ -967,19 +960,17 @@ public class ScOwnerMinimizeHook : NativeWindow
     }
 }
 '@ -ErrorAction Stop
-        Write-SCMinLog 'type ScOwnerMinimizeHook compiled/loaded'
-    } catch { Write-SCMinLog ('Add-Type FAILED: ' + $_.Exception.Message) }
+    } catch {}
 }
 function Enable-SCOwnerMinimize {
     param([System.Windows.Forms.Form]$Dialog, [System.Windows.Forms.Form]$Owner)
     try {
-        if ($null -eq $Dialog -or $null -eq $Owner) { Write-SCMinLog 'Enable: dialog or owner is null'; return }
-        if (-not ('ScOwnerMinimizeHook' -as [type])) { Write-SCMinLog 'Enable: hook type is not available'; return }
+        if ($null -eq $Dialog -or $null -eq $Owner) { return }
+        if (-not ('ScOwnerMinimizeHook' -as [type])) { return }
         if ($null -eq $script:scOwnerMinimizeHooks) { $script:scOwnerMinimizeHooks = New-Object System.Collections.ArrayList }
         [void]$script:scOwnerMinimizeHooks.Add((New-Object ScOwnerMinimizeHook($Dialog, $Owner)))
         $Dialog.MinimizeBox = $true
-        Write-SCMinLog ('Enable: hook set for "' + $Dialog.Text + '"')
-    } catch { Write-SCMinLog ('Enable FAILED: ' + $_.Exception.Message) }
+    } catch {}
 }
 
 if (-not ('Win32ScrollBarHelper' -as [type])) {
@@ -3400,7 +3391,7 @@ Set-SplashProgress 0.52
 # Единая версия приложения — используется в заголовке главного окна, в
 # подписи внизу окна настроек и в User-Agent HTTP-запросов. Меняйте только
 # здесь при выпуске новой версии.
-$global:appVersion = "2.2.2"
+$global:appVersion = "2.2.3"
 $global:appTitle = "Steam Commander"
 # Ссылки на исходный код и поддержку автора (окно «Поддержать» в настройках). Меняйте только здесь.
 $global:appRepoUrl = "https://github.com/Hetfield1985/Steam-Commander"
@@ -3690,6 +3681,8 @@ $script:I18n = @{
         pick_extra_folder = 'Выберите папку'
         pick_main_folder = 'Выберите папку'
         st_sizes_sort = 'Считаю размер папок для сортировки: {0} ({1} из {2})'
+        btn_cancel_sizes = '✕  Отменить подсчёт'
+        st_sizes_cancelled = 'Подсчёт размера отменён.'
         st_move_first = 'Сначала отметьте галочкой игру для переноса.'
         move_title = 'ПЕРЕНОС'
         st_copy_progress = '{0}: {1} [Скорость: {2} МБ/с] [{3}%]'
@@ -4245,6 +4238,7 @@ $script:I18n = @{
         mv2_stalled = 'не перенесено: на целевом диске не хватило места'
         mv2_stopped = 'не перенесено: операция остановлена из-за ошибки'
         mv2_busy = 'Идёт перенос игр. Дождитесь завершения.'
+        mv2_busy_card = 'Эта игра сейчас переносится. Карточка будет доступна после завершения переноса.'
         plat_arcade = 'Аркада (MAME / FBNeo)'
         dll_err_no_src = 'нет файла-источника: {0}'
         dll_err_no_dst = 'в игре нет файла: {0}'
@@ -4503,6 +4497,8 @@ $script:I18n = @{
         pick_extra_folder = 'Choose folder'
         pick_main_folder = 'Choose folder'
         st_sizes_sort = 'Calculating folder sizes for sorting: {0} ({1} of {2})'
+        btn_cancel_sizes = '✕  Cancel calculation'
+        st_sizes_cancelled = 'Size calculation cancelled.'
         st_move_first = 'First tick a game to move.'
         move_title = 'MOVING'
         st_copy_progress = '{0}: {1} [Speed: {2} MB/s] [{3}%]'
@@ -5058,6 +5054,7 @@ $script:I18n = @{
         mv2_stalled = 'not moved: not enough space on the target drive'
         mv2_stopped = 'not moved: the operation was stopped because of an error'
         mv2_busy = 'A move is in progress. Please wait until it finishes.'
+        mv2_busy_card = 'This game is being moved right now. Its card will be available once the move finishes.'
         plat_arcade = 'Arcade (MAME / FBNeo)'
         dll_err_no_src = 'source file not found: {0}'
         dll_err_no_dst = 'the game has no such file: {0}'
@@ -5283,6 +5280,8 @@ $script:I18n = @{
         pick_extra_folder = '选择附加文件夹'
         pick_main_folder = '选择主文件夹'
         st_sizes_sort = '正在计算文件夹大小以便排序：{0}（{1}/{2}）'
+        btn_cancel_sizes = '✕  取消计算'
+        st_sizes_cancelled = '已取消大小计算。'
         st_move_first = '请先勾选要移动的游戏。'
         move_title = '移动中'
         st_copy_progress = '{0}：{1} [速度：{2} MB/s] [{3}%]'
@@ -5722,6 +5721,7 @@ $script:I18n = @{
         mv2_stalled = '未移动：目标磁盘空间不足'
         mv2_stopped = '未移动：操作因错误而停止'
         mv2_busy = '正在移动游戏，请等待完成。'
+        mv2_busy_card = '该游戏正在移动中，移动完成后即可打开其卡片。'
         plat_arcade = '街机 (MAME / FBNeo)'
         card_dll_apply_fail = '无法替换库文件：{0}'
         card_dll_btn_restore = '还原'
@@ -5995,6 +5995,8 @@ $script:I18n = @{
         pick_extra_folder = 'Elige la carpeta adicional'
         pick_main_folder = 'Elige la carpeta principal'
         st_sizes_sort = 'Calculando el tamaño de las carpetas para ordenar: {0} ({1} de {2})'
+        btn_cancel_sizes = '✕  Cancelar cálculo'
+        st_sizes_cancelled = 'Cálculo de tamaño cancelado.'
         st_move_first = 'Primero marca un juego para moverlo.'
         move_title = 'MOVIENDO'
         st_copy_progress = '{0}: {1} [Velocidad: {2} MB/s] [{3}%]'
@@ -6434,6 +6436,7 @@ $script:I18n = @{
         mv2_stalled = 'no movido: no hay espacio suficiente en la unidad de destino'
         mv2_stopped = 'no movido: la operación se detuvo por un error'
         mv2_busy = 'Hay un movimiento en curso. Espera a que termine.'
+        mv2_busy_card = 'Este juego se está moviendo ahora. Su ficha estará disponible cuando termine el movimiento.'
         plat_arcade = 'Arcade (MAME / FBNeo)'
         card_dll_apply_fail = 'No se pudieron reemplazar las bibliotecas: {0}'
         card_dll_btn_restore = 'Restaurar'
@@ -6707,6 +6710,8 @@ $script:I18n = @{
         pick_extra_folder = 'Escolha a pasta adicional'
         pick_main_folder = 'Escolha a pasta principal'
         st_sizes_sort = 'Calculando o tamanho das pastas para ordenar: {0} ({1} de {2})'
+        btn_cancel_sizes = '✕  Cancelar cálculo'
+        st_sizes_cancelled = 'Cálculo de tamanho cancelado.'
         st_move_first = 'Primeiro marque um jogo para mover.'
         move_title = 'MOVENDO'
         st_copy_progress = '{0}: {1} [Velocidade: {2} MB/s] [{3}%]'
@@ -7146,6 +7151,7 @@ $script:I18n = @{
         mv2_stalled = 'não movido: espaço insuficiente na unidade de destino'
         mv2_stopped = 'não movido: a operação foi interrompida por um erro'
         mv2_busy = 'Há uma movimentação em andamento. Aguarde a conclusão.'
+        mv2_busy_card = 'Este jogo está sendo movido agora. O cartão ficará disponível quando a movimentação terminar.'
         plat_arcade = 'Arcade (MAME / FBNeo)'
         card_dll_apply_fail = 'Não foi possível substituir as bibliotecas: {0}'
         card_dll_btn_restore = 'Restaurar'
@@ -7419,6 +7425,8 @@ $script:I18n = @{
         pick_extra_folder = 'Zusätzlichen Ordner auswählen'
         pick_main_folder = 'Hauptordner auswählen'
         st_sizes_sort = 'Ordnergrößen werden zum Sortieren berechnet: {0} ({1} von {2})'
+        btn_cancel_sizes = '✕  Berechnung abbrechen'
+        st_sizes_cancelled = 'Größenberechnung abgebrochen.'
         st_move_first = 'Hake zuerst ein Spiel zum Verschieben an.'
         move_title = 'VERSCHIEBEN'
         st_copy_progress = '{0}: {1} [Geschwindigkeit: {2} MB/s] [{3}%]'
@@ -7858,6 +7866,7 @@ $script:I18n = @{
         mv2_stalled = 'nicht verschoben: nicht genug Platz auf dem Ziellaufwerk'
         mv2_stopped = 'nicht verschoben: Vorgang wegen eines Fehlers abgebrochen'
         mv2_busy = 'Es läuft ein Verschieben. Bitte warte, bis es abgeschlossen ist.'
+        mv2_busy_card = 'Dieses Spiel wird gerade verschoben. Die Karte ist nach Abschluss des Verschiebens verfügbar.'
         plat_arcade = 'Arcade (MAME / FBNeo)'
         card_dll_apply_fail = 'Die Bibliotheken konnten nicht ersetzt werden: {0}'
         card_dll_btn_restore = 'Wiederherstellen'
@@ -8718,6 +8727,83 @@ function Get-FolderSize ($path) {
     return $size
 }
 
+# ---- Подсчёт размера папок с возможностью отмены ----
+# На время подсчёта (Пробел, Alt+Shift+Enter, сортировка «по размеру») кнопка «Библиотека» внизу превращается в «Отменить подсчёт»:
+# клик по ней ставит $script:sizeCalcCancel, а подсчёт между порциями файлов обрабатывает сообщения окна и сам это замечает.
+$script:sizeCalcActive = $false
+$script:sizeCalcCancel = $false
+$script:sizeCalcBtnSwapped = $false
+
+# Размер папки/файла в байтах; -1, если подсчёт отменён. Обход каталогов по одному (ошибка доступа в одной папке не обрывает остальные),
+# окно оживает не реже раза в ~40 мс, поэтому отмена срабатывает сразу даже внутри одной огромной папки.
+function Get-FolderSizeCancelable ([string]$path) {
+    try {
+        if (Test-Path -LiteralPath $path -PathType Leaf) { return [int64](Get-Item -LiteralPath $path -ErrorAction Stop).Length }
+    } catch {}
+    $sum = [int64]0
+    $n = 0
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    $stack = New-Object 'System.Collections.Generic.Stack[string]'
+    $stack.Push($path)
+    while ($stack.Count -gt 0) {
+        $dir = $stack.Pop()
+        $di = $null
+        try { $di = New-Object System.IO.DirectoryInfo $dir } catch { continue }
+        try {
+            foreach ($fi in $di.EnumerateFiles()) {
+                $sum += [int64]$fi.Length
+                $n++
+                if (($n -band 31) -eq 0 -and $sw.ElapsedMilliseconds -ge 40) {
+                    [System.Windows.Forms.Application]::DoEvents()
+                    $sw.Restart()
+                    if ($script:sizeCalcCancel) { return -1 }
+                }
+            }
+        } catch {}
+        try { foreach ($sd in $di.EnumerateDirectories()) { $stack.Push($sd.FullName) } } catch {}
+        if ($sw.ElapsedMilliseconds -ge 40) {
+            [System.Windows.Forms.Application]::DoEvents()
+            $sw.Restart()
+        }
+        if ($script:sizeCalcCancel) { return -1 }
+    }
+    return $sum
+}
+
+# Начало подсчёта: $false, если подсчёт уже идёт (повторный запуск игнорируется). Кнопка «Библиотека» становится кнопкой отмены
+# (остальные нижние кнопки на её месте прячутся); если нижняя кнопка занята переносом / пакетным добавлением / импортом — не трогаем.
+function Start-SizeCalc {
+    if ($script:sizeCalcActive) { return $false }
+    $script:sizeCalcActive = $true
+    $script:sizeCalcCancel = $false
+    $script:sizeCalcBtnSwapped = $false
+    try {
+        if (-not ($script:moveInProgress -or $script:batchInProgress -or $script:smartBatchActive -or $script:libImportRunning)) {
+            $script:sizeCalcBtnSwapped = $true
+            foreach ($bb in @($btnAddToSteam, $btnRestartSteam, $btnSwapEmuMain, $btnApplyColl, $btnApplyLibs, $btnApplySaves)) {
+                try { if ($null -ne $bb) { $bb.Visible = $false } } catch {}
+            }
+            $btnSteamLibrary.Tag = (T 'btn_cancel_sizes')
+            $btnSteamLibrary.Enabled = $true
+            $btnSteamLibrary.Visible = $true
+            $btnSteamLibrary.Invalidate()
+        }
+    } catch {}
+    return $true
+}
+
+# Конец подсчёта (в finally): кнопки возвращаются в состояние, которое диктуют отметки в панелях.
+function Stop-SizeCalc {
+    $script:sizeCalcActive = $false
+    $script:sizeCalcCancel = $false
+    if ($script:sizeCalcBtnSwapped) {
+        $script:sizeCalcBtnSwapped = $false
+        try { $btnSteamLibrary.Tag = (T 'btn_steam_library') } catch {}
+        try { $null = Update-MainLibraryButtonState } catch {}
+        try { $btnSteamLibrary.Invalidate() } catch {}
+    }
+}
+
 function Clean-GameName ($itemText) {
     return ($itemText -replace "\s*\(\d+(?:[.,]\d+)?\s*(?:ГБ|МБ|КБ|GB|MB|KB)\)", "").Trim()
 }
@@ -9168,6 +9254,7 @@ function Register-ListBoxDrawEvent ($listBox) {
         $itemText = $sender.Items[$e.Index].ToString()
         $cleanName = Clean-GameName $itemText
         $src = [string]$sender.Tag
+        try { if ([int]$sender.ClientSize.Width -ne [int]$script:colTotalApplied[$src]) { Set-AutoColDirty $src } } catch {}
         # Признак "в библиотеке" определяется по реальному пути папки (см.
         # Get-NormalizedGamePathKey), а не просто по совпадению названия —
         # иначе папка с тем же именем, что и уже добавленная игра, но лежащая
@@ -9223,7 +9310,7 @@ function Register-ListBoxDrawEvent ($listBox) {
         # строго в своей колонке и под своим заголовком. Текст в колонке обрезается
         # многоточием и никогда не залезает в соседнюю.
         $w = $script:colWidths[$src]
-        if ($w -eq $null) { $w = @(309, 64, 62, 36) }
+        if ($w -eq $null) { $w = @(317, 64, 62, 28) }
         $colX0 = $e.Bounds.X
         $colX1 = $colX0 + [int]$w[0]
         $colX2 = $colX1 + [int]$w[1]
@@ -9432,7 +9519,7 @@ function Register-ListBoxDrawEvent ($listBox) {
             $badgeFont = $script:rowBadgeFont
             $badgeColor = if ($isSelected) { [System.Drawing.Color]::FromArgb(128,214,150) } else { $steamUi.Green }
             $badgeBrush = New-Object System.Drawing.SolidBrush($badgeColor)
-            $badgeRect = New-Object System.Drawing.RectangleF(($colX3 + 8), ($e.Bounds.Y + 5), [Math]::Max(1, [int]$w[3] - 10), 20)
+            $badgeRect = New-Object System.Drawing.RectangleF(($colX3 + 5), ($e.Bounds.Y + 5), [Math]::Max(1, [int]$w[3] - 6), 20)
             $e.Graphics.DrawString("✓", $badgeFont, $badgeBrush, $badgeRect, $sf)
             $badgeBrush.Dispose()
         }
@@ -13115,10 +13202,10 @@ $form.Add_Shown({ try { & $fitMainListHeights } catch {} })
 # стрелку (▲ по возрастанию / ▼ по убыванию).
 # AscCode/DescCode — те же коды режимов, что понимает switch в Apply-PanelView.
 $script:sortColumns = @(
-    [PSCustomObject]@{ Key='Name';    TextKey='col_name';   Width=309; MinWidth=100; TextPad=30; AscCode='NameAsc';    DescCode='NameDesc' },
+    [PSCustomObject]@{ Key='Name';    TextKey='col_name';   Width=317; MinWidth=100; TextPad=30; AscCode='NameAsc';    DescCode='NameDesc' },
     [PSCustomObject]@{ Key='Size';    TextKey='col_size';   Width=64;  MinWidth=56;  TextPad=4;  AscCode='SizeAsc';    DescCode='SizeDesc' },
     [PSCustomObject]@{ Key='Date';    TextKey='col_date';   Width=62;  MinWidth=58;  TextPad=4;  AscCode='DateAsc';    DescCode='DateDesc' },
-    [PSCustomObject]@{ Key='Library'; TextKey='col_lib';   Width=36;  MinWidth=36;  TextPad=8;  AscCode='LibraryAsc'; DescCode='LibraryDesc' }
+    [PSCustomObject]@{ Key='Library'; TextKey='col_lib';   Width=28;  MinWidth=28;  TextPad=5;  AscCode='LibraryAsc'; DescCode='LibraryDesc' }
 )
 # Ширины колонок считаются автоматически (Update-AutoColWidths): «Размер», «Дата» и «✓» (или объединённая
 # колонка Враппер / Эмулятор / DLSS / Наличие / Бэкап) занимают минимум, нужный для полного показа заголовка и
@@ -13131,6 +13218,7 @@ $script:colWidths = @{
     D = [int[]]@($script:sortColumns | ForEach-Object { $_.Width })
 }
 $script:colMinWidths = [int[]]@($script:sortColumns | ForEach-Object { $_.MinWidth })
+$script:colTotalApplied = @{ C = [int]$script:colTotal; D = [int]$script:colTotal }
 # Все элементы заголовка каждой панели: Labels (колонки), Grips (раньше — границы; теперь пусто), Cb (галочка "выбрать всё").
 $script:headerParts = @{ C = $null; D = $null }
 
@@ -13192,7 +13280,7 @@ function Update-AutoColWidths ([string]$source) {
         $colLib  = $script:sortColumns | Where-Object { $_.Key -eq 'Library' } | Select-Object -First 1
 
         # «✓»: значок в строке рисуется со смещением 8 px и полем 10 px справа.
-        $libW = [Math]::Max((& $mHdr $colLib), ((& $mCell "✓" $badge) + 10 + 1))
+        $libW = [Math]::Max(((& $mHdr $colLib) - 3), ((& $mCell "✓" $badge) + 5 + 2))
         $sizeW = 0; $dateW = 0
 
         if (-not $merged) {
@@ -13263,7 +13351,10 @@ function Update-AutoColWidths ([string]$source) {
         }
 
         # Всё остальное место — колонке «Имя» (но не уже минимума имени).
+        # Ширина берётся у самого списка: без полосы прокрутки колонки доходят до правого края, с полосой — до её левой границы.
         $total = [int]$script:colTotal
+        try { $cw = [int]$lb.ClientSize.Width; if ($cw -ge 300) { $total = $cw } } catch {}
+        $script:colTotalApplied[$source] = $total
         $nameW = $total - $sizeW - $dateW - $libW
         $nameMin = [int]$script:sortColumns[0].MinWidth
         if ($nameW -lt $nameMin) { $nameW = $nameMin }
@@ -18396,23 +18487,33 @@ function Get-FolderSizeCached ([string]$path) {
 # что и везде в этом файле), чтобы сортировка "по размеру" не выглядела так,
 # будто программа зависла на большой библиотеке.
 function Ensure-FolderSizesCached ($items) {
+    # Возвращает $false, если подсчёт отменили (кнопкой «Отменить подсчёт»): тогда сортировка по размеру не применяется.
     $missing = @($items | Where-Object { $global:folderSizeCache.ContainsKey($_.Path.ToLowerInvariant()) -eq $false })
-    if ($missing.Count -eq 0) { return }
+    if ($missing.Count -eq 0) { return $true }
+    if (-not (Start-SizeCalc)) { return $true }   # подсчёт уже идёт (повторный вход из обработчика окна)
     $prevText = $labelHeader.Text
     $prevValue = $progressBarFolder.Value
     $i = 0
+    $ok = $true
     try {
         foreach ($item in $missing) {
             $i++
             $labelHeader.Text = (T 'st_sizes_sort' @($item.Name, $i, $missing.Count))
             $progressBarFolder.Value = [Math]::Min(100, [int](($i / $missing.Count) * 100))
             [System.Windows.Forms.Application]::DoEvents()
-            try { $global:folderSizeCache[$item.Path.ToLowerInvariant()] = Get-FolderSize $item.Path } catch {}
+            if ($script:sizeCalcCancel) { $ok = $false; break }
+            $sz = [int64]-1
+            try { $sz = [int64](Get-FolderSizeCancelable $item.Path) } catch { $sz = [int64]0 }
+            if ($sz -lt 0) { $ok = $false; break }
+            $global:folderSizeCache[$item.Path.ToLowerInvariant()] = $sz
         }
     } finally {
         $progressBarFolder.Value = $prevValue
         $labelHeader.Text = $prevText
+        Stop-SizeCalc
     }
+    if (-not $ok) { $labelHeader.Text = (T 'st_sizes_cancelled') }
+    return $ok
 }
 
 # Применяет текущие поиск+сортировку панели ($script:panelSearchX /
@@ -18437,12 +18538,13 @@ function Apply-PanelView ([string]$source, [string[]]$forceSelectedNames = $null
         $view = @($view | Where-Object { $_.Name.IndexOf($needle, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 })
     }
 
+    $sortCancelled = $false
     switch ($sortMode) {
         'NameDesc'    { $view = @($view | Sort-Object -Property Name -Descending) }
         'DateDesc'    { $view = @($view | Sort-Object -Property LastWriteTime -Descending) }
         'DateAsc'     { $view = @($view | Sort-Object -Property LastWriteTime) }
-        'SizeDesc'    { Ensure-FolderSizesCached $view; $view = @($view | Sort-Object -Property @{Expression={ Get-FolderSizeCached $_.Path }} -Descending) }
-        'SizeAsc'     { Ensure-FolderSizesCached $view; $view = @($view | Sort-Object -Property @{Expression={ Get-FolderSizeCached $_.Path }}) }
+        'SizeDesc'    { if (Ensure-FolderSizesCached $view) { $view = @($view | Sort-Object -Property @{Expression={ Get-FolderSizeCached $_.Path }} -Descending) } else { $view = @($view | Sort-Object -Property Name); $sortCancelled = $true } }
+        'SizeAsc'     { if (Ensure-FolderSizesCached $view) { $view = @($view | Sort-Object -Property @{Expression={ Get-FolderSizeCached $_.Path }}) } else { $view = @($view | Sort-Object -Property Name); $sortCancelled = $true } }
         'WrapDesc'    { $view = @($view | Sort-Object -Property @{Expression={ Get-RowWrapperSortKey $_.Path }; Descending=$true}, @{Expression='Name'}) }
         'WrapAsc'     { $view = @($view | Sort-Object -Property @{Expression={ Get-RowWrapperSortKey $_.Path }}, @{Expression='Name'}) }
         'EmuDesc'     { $view = @($view | Sort-Object -Property @{Expression={ Get-RowEmulatorSortKey $_.Path }; Descending=$true}, @{Expression='Name'}) }
@@ -18457,6 +18559,9 @@ function Apply-PanelView ([string]$source, [string[]]$forceSelectedNames = $null
         'LibraryAsc'  { $view = @($view | Sort-Object -Property @{Expression={ Test-PanelItemInLibrary $_.Name $_.Path }}, @{Expression='Name'}) }
         default       { $view = @($view | Sort-Object -Property Name) }
     }
+
+    # Подсчёт размеров отменён: сортировка «по размеру» не применена, возвращаем сортировку по имени (и подсветку заголовка).
+    if ($sortCancelled) { if ($source -eq 'C') { $script:panelSortC = 'NameAsc' } else { $script:panelSortD = 'NameAsc' } }
 
     $hasDirFlag = $false
     foreach ($it in $view) {
@@ -30503,6 +30608,7 @@ $drawSteamButtonContent = {
         $icon = if ($btn -eq $btnAddToSteam) { $script:steamAddButtonIcon } elseif ($btn -eq $btnSwapEmuMain) { $script:steamSwapButtonIcon } elseif ($btn -eq $btnApplyColl) { $script:collButtonIcon } elseif ($btn -eq $btnApplyLibs) { $script:libsApplyIcon } elseif ($btn -eq $btnApplySaves) { $script:savesApplyIcon } else { $script:steamLibraryButtonIcon }
         $text = [string]$btn.Tag
         if ([string]::IsNullOrWhiteSpace($text)) { return }
+        if ($btn -eq $btnSteamLibrary -and $script:sizeCalcBtnSwapped) { $icon = $null }   # «Отменить подсчёт» — без значка Steam
 
         $font = $btn.Font
         # Плюс как у кнопки "Добавить игру" в Steam: скруглённый квадрат, плюс в нём вырезан.
@@ -30526,7 +30632,7 @@ $drawSteamButtonContent = {
         $x = [Math]::Round(($btn.ClientSize.Width - $totalW) / 2.0)
         $yIcon = [Math]::Round(($btn.ClientSize.Height - 20) / 2.0)
         $yText = ($btn.ClientSize.Height - $textSize.Height) / 2.0
-        $brush = New-Object System.Drawing.SolidBrush($btn.ForeColor)
+        $brush = New-Object System.Drawing.SolidBrush($(if ($btn.Enabled) { $btn.ForeColor } else { $steamUi.Muted }))
         try {
             $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::Half
             if ($parentIcon) {
@@ -50205,6 +50311,11 @@ function Save-CardCollections ($snap, [string]$appId, [string]$oldAppId, [string
 function Invoke-CardCollectionsSave ($state, [string]$appId, [string]$oldAppId, [string]$kind, $shortcutRecord) {
     try {
         if ($null -eq $state -or $null -eq $state.Snap) { return '' }
+        # Идёт перенос игр: Steam не закрываем и окно «закройте Steam» не показываем - коллекции запишутся после переноса.
+        if ($script:moveInProgress -and (Test-SteamRunning)) {
+            Add-PendingCardCollections $state $appId $oldAppId $kind $shortcutRecord
+            return ''
+        }
         if ((Test-SteamRunning) -and (Get-SteamRestartMode) -eq 'manual') {
             if (-not (Wait-SteamClosedByUser)) { return [string](T 'steam_close_cancelled') }
         }
@@ -54366,8 +54477,8 @@ function Show-SteamLibraryBrowser {
     $getLibMenuIcon = {
         param([string]$kind)
         if ($script:libMenuIconCache.ContainsKey($kind)) { return $script:libMenuIconCache[$kind] }
-        if ($kind -eq 'emu') {
-            try { $eb = Get-PanelCtxMenuIcon 'emu'; if ($null -ne $eb) { $script:libMenuIconCache[$kind] = $eb; return $eb } } catch {}
+        if ($kind -eq 'emu' -or $kind -eq 'coll') {
+            try { $eb = Get-PanelCtxMenuIcon $kind; if ($null -ne $eb) { $script:libMenuIconCache[$kind] = $eb; return $eb } } catch {}
         }
         $bmp = $null; $g = $null; $pe = $null; $fp = $null
         try {
@@ -65224,6 +65335,7 @@ $menuD.ShowImageMargin = $false
         # он закроет собой ещё работающее окно пакета.
         try {
             if($ownerWin -ne $null){
+                Ensure-WindowEnabled $ownerWin
                 if($ownerWin -eq $form -and $form.WindowState -eq [System.Windows.Forms.FormWindowState]::Minimized){ $form.WindowState=[System.Windows.Forms.FormWindowState]::Normal }
                 $ownerWin.Show()
                 $ownerWin.Activate()
@@ -65238,6 +65350,8 @@ $menuD.ShowImageMargin = $false
     if ($batchMode -and $null -eq $ownerWin) {
         # Пакет из главного окна: панели один раз перечитает вызывающий обработчик кнопки в конце
         # (раньше перечитывание шло после каждой карточки, ~1 с на игру).
+    } elseif ($script:moveInProgress) {
+        # Идёт перенос: панели перечитает сам перенос в конце (иначе список обновился бы посреди копирования).
     } elseif ($batchMode -or $script:editorSavedChanges) { Refresh-Panels }
 }
 
@@ -65656,6 +65770,286 @@ $script:MoveReserveBytes = [int64](1GB)
 $script:MoveStageSuffix  = '.__sc_moving__'
 $script:moveInProgress   = $false
 $script:MoveCtx          = @{}
+# Карточки во время переноса: игры из плана переноса блокируются, остальные открываются. Запись в Steam из таких карточек
+# откладывается (Steam не закрывается) и применяется одним перезапуском в конце переноса.
+$script:moveTaskPaths       = $null   # $null = план переноса ещё считается (карточки закрыты); иначе хэш «путь в нижнем регистре» -> $true
+$script:moveTaskNames       = @{}
+$script:moveSteamDeferActive = $false
+$script:moveCardSaved       = $false
+
+# Кнопка закрытия (X) главного окна: на время переноса делаем её серой (SC_CLOSE в системном меню окна).
+# Alt+F4 при этом тоже не работает; страховка в $form.Add_FormClosing (moveInProgress) остаётся.
+if (-not ('ScCloseButtonGuard' -as [type])) {
+    Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class ScCloseButtonGuard {
+    [DllImport("user32.dll")] static extern IntPtr GetSystemMenu(IntPtr hWnd, bool bRevert);
+    [DllImport("user32.dll")] static extern bool EnableMenuItem(IntPtr hMenu, uint uIDEnableItem, uint uEnable);
+    [DllImport("user32.dll")] static extern bool DrawMenuBar(IntPtr hWnd);
+    const uint SC_CLOSE = 0xF060, MF_BYCOMMAND = 0x0, MF_ENABLED = 0x0, MF_GRAYED = 0x1;
+    [DllImport("user32.dll")] public static extern bool EnableWindow(IntPtr hWnd, bool bEnable);
+    [DllImport("user32.dll")] public static extern bool IsWindowEnabled(IntPtr hWnd);
+    [DllImport("user32.dll")] static extern IntPtr GetWindow(IntPtr hWnd, uint uCmd);
+    const uint GW_ENABLEDPOPUP = 6;
+    // Модальный диалог (ShowDialog) оставляет GW_ENABLEDPOPUP у владельца — тогда EnableWindow снимать нельзя.
+    public static bool HasModalPopup(IntPtr hWnd) {
+        if (hWnd == IntPtr.Zero) return false;
+        try { return GetWindow(hWnd, GW_ENABLEDPOPUP) != IntPtr.Zero; } catch { return false; }
+    }
+    public static bool IsEnabled(IntPtr hWnd) {
+        if (hWnd == IntPtr.Zero) return true;
+        try { return IsWindowEnabled(hWnd); } catch { return true; }
+    }
+    // Снимает залипшую блокировку EnableWindow(false), но только если модального потомка нет.
+    public static bool EnsureEnabled(IntPtr hWnd) {
+        if (hWnd == IntPtr.Zero) return false;
+        try {
+            if (IsWindowEnabled(hWnd)) return false;
+            if (HasModalPopup(hWnd)) return false;
+            EnableWindow(hWnd, true);
+            return true;
+        } catch { return false; }
+    }
+    public static void SetEnabled(IntPtr hWnd, bool enabled) {
+        IntPtr m = GetSystemMenu(hWnd, false);
+        if (m == IntPtr.Zero) return;
+        EnableMenuItem(m, SC_CLOSE, MF_BYCOMMAND | (enabled ? MF_ENABLED : MF_GRAYED));
+        DrawMenuBar(hWnd);
+    }
+}
+'@
+}
+if (-not ('ScMainWindowGuard' -as [type])) {
+    try {
+        Add-Type -ReferencedAssemblies @('System.Windows.Forms') -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+using System.Windows.Forms;
+// Ловит попытки развернуть/активировать главное окно, пока оно «залипло» в EnableWindow(false)
+// (типичный симптом: бип при клике по кнопке на панели задач). Если модального диалога нет —
+// блокировку снимаем и даём Windows восстановить окно.
+public class ScMainWindowGuard : NativeWindow
+{
+    [DllImport("user32.dll")] static extern bool IsWindowEnabled(IntPtr h);
+    [DllImport("user32.dll")] static extern bool EnableWindow(IntPtr h, bool b);
+    [DllImport("user32.dll")] static extern IntPtr GetWindow(IntPtr h, uint u);
+    [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+    const uint GW_ENABLEDPOPUP = 6;
+    const int WM_SYSCOMMAND = 0x0112;
+    const int WM_ACTIVATE = 0x0006;
+    const int WM_NCACTIVATE = 0x0086;
+    const int SC_RESTORE = 0xF120;
+    const int SC_MAXIMIZE = 0xF030;
+    const int SC_MINIMIZE = 0xF020;
+    const int SW_MINIMIZE = 6;
+    const int SW_RESTORE = 9;
+    // После SC_MINIMIZE Windows/таскбар иногда сразу шлёт SC_RESTORE — из-за этого
+    // окно «не сворачивается», а клик сопровождается бипом. Глушим такой restore.
+    const int MinimizeGraceMs = 600;
+    Form _form;
+    int _minimizeGraceUntil;
+    // true только во время длинной операции на UI-потоке (перенос): если окно свёрнуто
+    // и пришёл «настоящий» запрос на разворот (после grace), восстанавливаем его.
+    bool _on;
+    public bool ActivateRestoresMinimized
+    {
+        get { return _on; }
+        set { _on = value; }
+    }
+    public ScMainWindowGuard(Form form)
+    {
+        _form = form;
+        if (form.IsHandleCreated) AssignHandle(form.Handle);
+        form.HandleCreated += delegate { try { if (Handle != IntPtr.Zero) ReleaseHandle(); AssignHandle(_form.Handle); } catch { } };
+        form.HandleDestroyed += delegate { try { if (Handle != IntPtr.Zero) ReleaseHandle(); } catch { } };
+    }
+    bool HasModal()
+    {
+        try { return Handle != IntPtr.Zero && GetWindow(Handle, GW_ENABLEDPOPUP) != IntPtr.Zero; } catch { return false; }
+    }
+    bool InMinimizeGrace()
+    {
+        int until = _minimizeGraceUntil;
+        if (until == 0) return false;
+        return (Environment.TickCount - until) < 0;
+    }
+    void BeginMinimizeGrace()
+    {
+        _minimizeGraceUntil = Environment.TickCount + MinimizeGraceMs;
+    }
+    void EndMinimizeGrace()
+    {
+        _minimizeGraceUntil = 0;
+    }
+    bool TryUnlock()
+    {
+        try
+        {
+            if (Handle == IntPtr.Zero) return false;
+            if (IsWindowEnabled(Handle)) return false;
+            if (HasModal()) return false;
+            EnableWindow(Handle, true);
+            return true;
+        }
+        catch { return false; }
+    }
+    void ForceRestore()
+    {
+        try
+        {
+            if (_form == null || _form.IsDisposed) return;
+            if (HasModal()) return;
+            if (InMinimizeGrace()) return;
+            TryUnlock();
+            EndMinimizeGrace();
+            if (_form.WindowState == FormWindowState.Minimized)
+            {
+                // ShowWindow(SW_RESTORE) надёжнее смены WindowState при «залипшем» UI-потоке.
+                try { ShowWindow(_form.Handle, SW_RESTORE); } catch { }
+                _form.WindowState = FormWindowState.Normal;
+            }
+        }
+        catch { }
+    }
+    protected override void WndProc(ref Message m)
+    {
+        if (m.Msg == WM_SYSCOMMAND)
+        {
+            long cmd = ((long)m.WParam) & 0xFFF0;
+            if (cmd == SC_MINIMIZE)
+            {
+                BeginMinimizeGrace();
+                // Явно сворачиваем до DefWindowProc — меньше шансов на «отскок» restore.
+                try { if (_form != null && !_form.IsDisposed) ShowWindow(_form.Handle, SW_MINIMIZE); } catch { }
+                base.WndProc(ref m);
+                try
+                {
+                    if (_form != null && !_form.IsDisposed && _form.WindowState != FormWindowState.Minimized)
+                        _form.WindowState = FormWindowState.Minimized;
+                }
+                catch { }
+                m.Result = IntPtr.Zero;
+                return;
+            }
+            if (cmd == SC_RESTORE || cmd == SC_MAXIMIZE)
+            {
+                // Ложный restore сразу после minimize (таскбар/ShowDialog) — не разворачиваем.
+                if (cmd == SC_RESTORE && InMinimizeGrace())
+                {
+                    m.Result = IntPtr.Zero;
+                    return;
+                }
+                TryUnlock();
+                EndMinimizeGrace();
+                base.WndProc(ref m);
+                if (cmd == SC_RESTORE && !HasModal())
+                {
+                    try
+                    {
+                        if (_form != null && !_form.IsDisposed && _form.WindowState == FormWindowState.Minimized)
+                            ForceRestore();
+                    }
+                    catch { }
+                }
+                return;
+            }
+        }
+        else if (m.Msg == WM_ACTIVATE)
+        {
+            int wa = (int)(((long)m.WParam) & 0xFFFF);
+            if (wa != 0)
+            {
+                TryUnlock();
+                // Только во время переноса и только после grace: иначе тогл панели задач ломается.
+                if (_on
+                    && !InMinimizeGrace()
+                    && !HasModal()
+                    && _form != null && !_form.IsDisposed
+                    && _form.WindowState == FormWindowState.Minimized)
+                {
+                    try { _form.BeginInvoke(new MethodInvoker(delegate { ForceRestore(); })); }
+                    catch { ForceRestore(); }
+                }
+            }
+        }
+        else if (m.Msg == WM_NCACTIVATE && m.WParam != IntPtr.Zero)
+        {
+            TryUnlock();
+        }
+        base.WndProc(ref m);
+    }
+}
+'@
+    } catch {}
+}
+function Ensure-WindowEnabled ($win) {
+    # Модальный показ отключает владельца (EnableWindow false); у отключённого окна кнопка на панели задач не разворачивает его.
+    # Не снимаем блокировку, пока у окна есть модальный потомок (ShowDialog).
+    try {
+        if ($null -eq $win -or $win.IsDisposed -or -not $win.IsHandleCreated) { return }
+        $h = $win.Handle
+        $en = [ScCloseButtonGuard]::IsEnabled($h)
+        $modal = [ScCloseButtonGuard]::HasModalPopup($h)
+        if (-not $en) {
+            if (-not $modal) {
+                [void][ScCloseButtonGuard]::EnsureEnabled($h)
+            }
+        }
+    } catch {}
+}
+function Install-ScMainWindowGuard ($win) {
+    try {
+        if ($null -eq $win -or -not ('ScMainWindowGuard' -as [type])) { return }
+        if ($null -ne $script:scMainWindowGuard) { return }
+        $script:scMainWindowGuard = New-Object ScMainWindowGuard($win)
+    } catch {}
+}
+try { Install-ScMainWindowGuard $form } catch {}
+# Серый крестик на время переноса отключён: окно с изменённым системным меню не реагирует на клик по кнопке на панели задач
+# (проводник подаёт сигнал вместо сворачивания). От закрытия во время переноса защищает $form.Add_FormClosing (moveInProgress).
+# Вернуть серый крестик: $script:ScGrayCloseDuringMove = $true
+$script:ScGrayCloseDuringMove = $false
+function Set-MainCloseButtonEnabled ([bool]$enabled) {
+    if (-not $script:ScGrayCloseDuringMove) { return }
+    try { if ($null -ne $form -and $form.IsHandleCreated) { [ScCloseButtonGuard]::SetEnabled($form.Handle, $enabled) } } catch {}
+}
+
+function Test-MoveBlocksGameCard ([string]$gamePath) {
+    # $true - карточку сейчас открывать нельзя.
+    if (-not $script:moveInProgress) { return $false }
+    if ($null -eq $script:moveTaskPaths) { return $true }
+    try {
+        $p = ([string]$gamePath).TrimEnd('\').ToLowerInvariant()
+        foreach ($k in @($script:moveTaskPaths.Keys)) {
+            if ($p -eq [string]$k -or $p.StartsWith(([string]$k) + '\')) { return $true }
+        }
+        $leaf = [System.IO.Path]::GetFileName(([string]$gamePath).TrimEnd('\'))
+        $nm = ([string](Clean-GameName $leaf)).ToLowerInvariant()
+        if ($script:moveTaskNames.ContainsKey($nm)) { return $true }
+    } catch { return $true }
+    return $false
+}
+
+function Enter-MoveSteamDefer {
+    # Автоматический режим: на время переноса читаем режим как «ручной», чтобы карточка не закрывала и не запускала Steam.
+    if ($script:moveSteamDeferActive) { return }
+    try { if (([string]$global:steamRestartMode).ToLowerInvariant() -eq 'manual') { return } } catch {}
+    if ($script:batchDeferSteam) { return }
+    $script:batchDeferSteam = $true
+    $script:moveSteamDeferActive = $true
+}
+
+# Открывает карточку игры во время переноса (или обычно, если переноса нет). Возвращает $false, если открыть нельзя.
+function Open-GameCardDuringMove ($name, $source, $path) {
+    if ($script:moveInProgress) {
+        if (Test-MoveBlocksGameCard ([string]$path)) { try { $labelHeader.Text = (T 'mv2_busy_card') } catch {}; return $false }
+        Enter-MoveSteamDefer
+    }
+    Show-GameEditorDialog ([string]$name) ([string]$source) ([string]$path) -IsRomEntry:$script:romsModeEnabled
+    if ($script:moveInProgress -and $script:editorSavedChanges) { $script:moveCardSaved = $true }
+    return $true
+}
 
 function Get-VolumeKey ([string]$path) {
     try { return ([System.IO.Path]::GetPathRoot([System.IO.Path]::GetFullPath($path))).ToUpperInvariant() } catch { return $null }
@@ -65747,6 +66141,43 @@ public static class SteamCmdProcIo {
 }
 $script:ExtProc = $null
 
+# Ожидание, во время которого поток интерфейса сразу отвечает на сообщения окна. Раньше цикл переноса спал в Start-Sleep
+# (в это время поток не принимает отправленные окну сообщения) и просыпался только на DoEvents — проводник не получал
+# ответа на клик по значку программы на панели задач и подавал сигнал вместо сворачивания/разворота.
+# MsgWaitForMultipleObjectsEx просыпается сразу при любом сообщении и обрабатывает его, а по истечении времени возвращается.
+if (-not ('ScUiWait' -as [type])) {
+    try {
+        Add-Type -ReferencedAssemblies @('System.Windows.Forms') -TypeDefinition @'
+using System;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Windows.Forms;
+public static class ScUiWait
+{
+    [DllImport("user32.dll")]
+    static extern uint MsgWaitForMultipleObjectsEx(uint nCount, IntPtr pHandles, uint ms, uint wakeMask, uint flags);
+    // QS_ALLINPUT = 0x04FF, MWMO_INPUTAVAILABLE = 0x0004
+    public static void Wait(int ms)
+    {
+        Stopwatch sw = Stopwatch.StartNew();
+        while (true)
+        {
+            long left = ms - sw.ElapsedMilliseconds;
+            if (left <= 0) break;
+            MsgWaitForMultipleObjectsEx(0, IntPtr.Zero, (uint)left, 0x04FF, 0x0004);
+            Application.DoEvents();
+        }
+    }
+}
+'@ -ErrorAction Stop
+    } catch {}
+}
+function Wait-UiPump ([int]$ms) {
+    try { if ('ScUiWait' -as [type]) { [ScUiWait]::Wait($ms); return } } catch {}
+    Start-Sleep -Milliseconds $ms
+    [System.Windows.Forms.Application]::DoEvents()
+}
+
 function Invoke-ExternalPumped ([string]$file, [string]$arguments, $onTick) {
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = $file; $psi.Arguments = $arguments
@@ -65756,9 +66187,14 @@ function Invoke-ExternalPumped ([string]$file, [string]$arguments, $onTick) {
     [void]$proc.Start()
     $script:ExtProc = $proc
     $lastTick = [DateTime]::MinValue
+    $lastUiGuard = [DateTime]::MinValue
     while (-not $proc.HasExited) {
-        Start-Sleep -Milliseconds 100
-        [System.Windows.Forms.Application]::DoEvents()
+        Wait-UiPump 30
+        # Пока идёт robocopy/rd, окно должно оставаться разворачиваемым с панели задач.
+        if (([DateTime]::Now - $lastUiGuard).TotalMilliseconds -ge 2000) {
+            $lastUiGuard = [DateTime]::Now
+            try { Ensure-WindowEnabled $form } catch {}
+        }
         if ($null -ne $onTick -and ([DateTime]::Now - $lastTick).TotalMilliseconds -ge 1500) {
             $lastTick = [DateTime]::Now
             & $onTick
@@ -65769,6 +66205,20 @@ function Invoke-ExternalPumped ([string]$file, [string]$arguments, $onTick) {
     $code = [int]$proc.ExitCode
     $proc.Dispose()
     return $code
+}
+
+# Как Get-DirBytesFast, но между порциями файлов обрабатывает сообщения окна (для длинного сканирования во время переноса).
+function Get-DirBytesPumped ([string]$path) {
+    $sum = [int64]0; $n = 0
+    try {
+        $di = New-Object System.IO.DirectoryInfo $path
+        foreach ($fi in $di.EnumerateFiles('*', [System.IO.SearchOption]::AllDirectories)) {
+            $sum += [int64]$fi.Length
+            $n++
+            if (($n % 100) -eq 0) { [System.Windows.Forms.Application]::DoEvents() }
+        }
+    } catch {}
+    return $sum
 }
 
 function Get-DirBytesFast ([string]$path) {
@@ -65795,7 +66245,7 @@ function Test-FolderHasReparsePoints ([string]$path) {
                 if ((([int]$e.Attributes) -band 0x400) -ne 0) { return $true }
                 if ($e -is [System.IO.DirectoryInfo]) { $stack.Push($e) }
                 $n++
-                if (($n % 3000) -eq 0) { [System.Windows.Forms.Application]::DoEvents() }
+                if (($n % 300) -eq 0) { [System.Windows.Forms.Application]::DoEvents() }
             }
         }
     } catch { return $true }   # не смогли прочитать — считаем небезопасным
@@ -65815,7 +66265,7 @@ function Test-FolderCopyMatches ([string]$src, [string]$dst) {
         foreach ($fi in $sd.EnumerateFiles('*', [System.IO.SearchOption]::AllDirectories)) {
             $map[$fi.FullName.Substring($sp.Length)] = [int64]$fi.Length
             $n++
-            if (($n % 2000) -eq 0) { [System.Windows.Forms.Application]::DoEvents() }
+            if (($n % 200) -eq 0) { [System.Windows.Forms.Application]::DoEvents() }
         }
         $cnt = 0
         foreach ($fi in $dd.EnumerateFiles('*', [System.IO.SearchOption]::AllDirectories)) {
@@ -65823,11 +66273,11 @@ function Test-FolderCopyMatches ([string]$src, [string]$dst) {
             if (-not $map.ContainsKey($rel)) { return $false }
             if ([int64]$map[$rel] -ne [int64]$fi.Length) { return $false }
             $cnt++
-            if (($cnt % 2000) -eq 0) { [System.Windows.Forms.Application]::DoEvents() }
+            if (($cnt % 200) -eq 0) { [System.Windows.Forms.Application]::DoEvents() }
         }
         if ($cnt -ne $map.Count) { return $false }
-        $sdirs = 0; foreach ($x in $sd.EnumerateDirectories('*', [System.IO.SearchOption]::AllDirectories)) { $sdirs++ }
-        $ddirs = 0; foreach ($x in $dd.EnumerateDirectories('*', [System.IO.SearchOption]::AllDirectories)) { $ddirs++ }
+        $sdirs = 0; foreach ($x in $sd.EnumerateDirectories('*', [System.IO.SearchOption]::AllDirectories)) { $sdirs++; if (($sdirs % 200) -eq 0) { [System.Windows.Forms.Application]::DoEvents() } }
+        $ddirs = 0; foreach ($x in $dd.EnumerateDirectories('*', [System.IO.SearchOption]::AllDirectories)) { $ddirs++; if (($ddirs % 200) -eq 0) { [System.Windows.Forms.Application]::DoEvents() } }
         return ($sdirs -eq $ddirs)
     } catch { return $false }
 }
@@ -65860,7 +66310,7 @@ function Move-PathWithRetry ([string]$from, [string]$to, [bool]$isFile) {
             return
         } catch {
             $lastErr = $_
-            for ($w = 0; $w -lt 10; $w++) { Start-Sleep -Milliseconds 100; [System.Windows.Forms.Application]::DoEvents() }
+            for ($w = 0; $w -lt 10; $w++) { Wait-UiPump 100 }
         }
     }
     throw $lastErr
@@ -65877,15 +66327,17 @@ function Copy-GameFolderStaged ($item, [string]$stage, [int64]$base, [int64]$tot
     $rcArgs = '"{0}" "{1}" /MIR /COPY:DAT /DCOPY:DAT /XJ /R:2 /W:2 /MT:6 /BYTES /NJH /NJS /NC /NFL /NDL /NP' -f $item.SourcePath, $stage
     $tick = {
         $c = $script:MoveCtx
-        $cur = Get-DirBytesFast $c.Stage
-        # robocopy заранее выделяет место под файл, и его Length сразу равен полному размеру,
-        # поэтому бар «залпом» заполнялся. Берём реально записанные процессом байты.
+        # Полный обход папки копии (Get-DirBytesFast) блокирует окно на секунды (десятки тысяч файлов) — окно
+        # тогда не разворачивается из панели задач. Берём реально записанные robocopy байты; обход — только запасной путь.
+        $cur = [int64]-1
         try {
             if ($null -ne $script:ExtProc -and -not $script:ExtProc.HasExited) {
                 $wb = [SteamCmdProcIo]::GetWriteBytes($script:ExtProc.Handle)
-                if ($wb -ge 0) { $cur = [Math]::Min([int64]$cur, [int64]$wb) }
+                if ($wb -ge 0) { $cur = [int64]$wb }
             }
         } catch {}
+        # Get-DirBytesFast блокирует UI-поток на больших деревьях — окно тогда не разворачивается с панели задач (бип).
+        if ($cur -lt 0) { $cur = Get-DirBytesPumped $c.Stage }
         $now = [DateTime]::Now
         $dt = ($now - $c.LastTime).TotalSeconds
         $speed = 0
@@ -65921,8 +66373,8 @@ function Copy-GameFileStaged ($item, [string]$stage, [int64]$base, [int64]$total
                 $speed = [int][Math]::Round((($copied - $lastBytes) / 1MB) / $dt)
                 $lastTick = $now; $lastBytes = $copied
                 Set-MoveProgress $item.Name ($base + $copied) $total $speed
-                [System.Windows.Forms.Application]::DoEvents()
             }
+            [System.Windows.Forms.Application]::DoEvents()
         }
         $outS.Flush()
     } finally {
@@ -65989,12 +66441,22 @@ function Move-SelectedGames($source) {
     $btnMoveGame.Enabled = $false
     $btnRefreshLibrary.Enabled = $false
     $btnAddToSteam.Enabled = $false
+    # Пока идёт перенос, окно библиотеки открывать нельзя (иначе ошибка в таймере и гонка за файлы).
+    try { $btnSteamLibrary.Enabled = $false; $btnSteamLibrary.Invalidate() } catch {}
 
     $steamWasRunning = $false; $steamClosed = $false
     try { $steamWasRunning = @(Get-Process -Name steam -ErrorAction SilentlyContinue).Count -gt 0 } catch {}
     $steamPathProperty = Get-ConfiguredSteamExePath
     $executed = $false
+    $done = $null
+    $script:moveTaskPaths = $null
+    $script:moveTaskNames = @{}
+    $script:moveSteamDeferActive = $false
+    $script:moveCardSaved = $false
     $script:moveInProgress = $true
+    Set-MainCloseButtonEnabled $false
+    try { if ($null -ne $script:scMainWindowGuard) { $script:scMainWindowGuard.ActivateRestoresMinimized = $true } } catch {}
+    try { Ensure-WindowEnabled $form } catch {}
 
     try {
         foreach ($r in @($global:dirC, $global:dirD)) {
@@ -66031,10 +66493,22 @@ function Move-SelectedGames($source) {
                 if (-not $isFile -and (Test-FolderHasReparsePoints $sp)) {
                     [void]$skipped.Add([PSCustomObject]@{ Name = $name; Reason = (T 'mv2_reparse') }); continue
                 }
-                $size = if ($isFile) { [int64](Get-Item -LiteralPath $sp).Length } else { [int64](Get-DirBytesFast $sp) }
+                $size = if ($isFile) { [int64](Get-Item -LiteralPath $sp).Length } else { [int64](Get-DirBytesPumped $sp) }
+                # Размер сразу попадает в общий кэш — колонка «Размер» в панели показывает его до начала копирования.
+                try { $global:folderSizeCache[$sp.ToLowerInvariant()] = [int64]$size } catch {}
+                try { $listBoxC.Invalidate(); $listBoxD.Invalidate(); [System.Windows.Forms.Application]::DoEvents() } catch {}
                 [void]$tasks.Add([PSCustomObject]@{ Name = $name; From = $side; To = $toSide; SourcePath = $sp; TargetPath = $tp; Size = [int64]$size; IsFile = $isFile })
             }
         }
+
+        # План готов: карточки игр из него закрываем, остальные можно открывать (запись в Steam откладывается).
+        $mvPaths = @{}; $mvNames = @{}
+        foreach ($t in $tasks) {
+            try { $mvPaths[([string]$t.SourcePath).TrimEnd('\').ToLowerInvariant()] = $true; $mvPaths[([string]$t.TargetPath).TrimEnd('\').ToLowerInvariant()] = $true } catch {}
+            try { $mvNames[([string]$t.Name).ToLowerInvariant()] = $true } catch {}
+        }
+        $script:moveTaskNames = $mvNames
+        $script:moveTaskPaths = $mvPaths
 
         # ---- 2. План: кто первым освобождает место --------------------------------------
         if ($sameVolume) {
@@ -66103,6 +66577,7 @@ function Move-SelectedGames($source) {
             try {
                 Invoke-SafeGameMove $next $sameVolume $doneBytes $aggregateTotal $warnings
                 [void]$done.Add($next)
+                try { $global:folderSizeCache[([string]$next.TargetPath).ToLowerInvariant()] = [int64]$next.Size } catch {}
                 $doneBytes += [int64]$next.Size
             } catch {
                 # При любой ошибке останавливаем пакет: не продолжаем писать на возможно неисправный диск.
@@ -66150,7 +66625,7 @@ function Move-SelectedGames($source) {
         $labelHeader.Text = (T 'mv_done' @($done.Count, $totalSelected))
         [System.Windows.Forms.Application]::DoEvents()
         if ($problems.Count -eq 0) {
-            Start-Sleep -Milliseconds 400
+            Wait-UiPump 400
             $progressBarFolder.Value = 0
             $labelHeader.Text = $global:mainHintText
             [System.Media.SystemSounds]::Asterisk.Play()
@@ -66162,12 +66637,38 @@ function Move-SelectedGames($source) {
     } catch {
         $labelHeader.Text = (T 'mv_error' @([string]$_.Exception.Message))
     } finally {
+        # Если во время переноса открывали карточки, запись в Steam была отложена: применяем её одним перезапуском.
+        $mvDeferUsed = [bool]$script:moveSteamDeferActive
+        try {
+            if ($mvDeferUsed) {
+                $script:batchDeferSteam = $false
+                $script:moveSteamDeferActive = $false
+                $steamClosed = $false   # Steam при отложенной записи не закрывался, запуск ниже не нужен
+                $movedAny = ($null -ne $done -and @($done).Count -gt 0)
+                if (($script:moveCardSaved -or $movedAny) -and (Get-SteamRestartMode) -eq 'auto') {
+                    if (Test-SteamRunning) { Restart-SteamNow }
+                    else {
+                        [void](Apply-PendingSteamShortcutWrites)
+                        $script:steamRestartNeeded = $false
+                        if ($script:moveCardSaved -or $steamWasRunning) { Start-SteamIfAuto $steamPathProperty }
+                    }
+                }
+            }
+        } catch {}
+        $script:moveTaskPaths = $null
+        $script:moveTaskNames = @{}
         $script:moveInProgress = $false
+        Set-MainCloseButtonEnabled $true
+        Ensure-WindowEnabled $form
+        try { if ($null -ne $script:scMainWindowGuard) { $script:scMainWindowGuard.ActivateRestoresMinimized = $false } } catch {}
         if ($steamClosed) { Start-SteamIfAuto $steamPathProperty }
         $btnMoveGame.Enabled = $true
         $btnRefreshLibrary.Enabled = $true
         $btnAddToSteam.Enabled = $true
-        if ($executed) { Refresh-Panels } else { try { Update-MainLibraryButtonState } catch {} }
+        try { $btnSteamLibrary.Enabled = $true; $btnSteamLibrary.Invalidate() } catch {}
+        if ($executed -or $script:moveCardSaved) { Refresh-Panels } else { try { Update-MainLibraryButtonState } catch {} }
+        if ($mvDeferUsed -or $script:moveCardSaved) { try { Update-SteamRestartButtons; Update-MainLibraryButtonState } catch {} }
+        $script:moveCardSaved = $false
     }
 }
 
@@ -66327,7 +66828,7 @@ function Update-MainLibraryButtonState {
     try { Update-SelectAllCheckbox 'C'; Update-SelectAllCheckbox 'D' } catch {}
     try { Update-CheckedStatusHint } catch {}
     try {
-        if ($script:batchInProgress) { return }
+        if ($script:batchInProgress -or $script:moveInProgress -or $script:sizeCalcBtnSwapped) { return }
 
         # Снимок состояния нижних кнопок до пересчёта: перерисовываем их, только если что-то реально изменилось (иначе кнопка моргает).
         $btnSigOf = {
@@ -66489,9 +66990,11 @@ function Get-ListGameContext($listBox, $source) {
 }
 
 function Show-SelectedGameCard($listBox, $source) {
+    # Во время переноса карточки игр из плана переноса закрыты (их копируют/удаляют), остальные открываются,
+    # а запись в Steam откладывается до конца переноса (см. Open-GameCardDuringMove).
     $ctx=Get-ListGameContext $listBox $source
     if($ctx -eq $null){return}
-    Show-GameEditorDialog $ctx.Name $ctx.Source $ctx.Path -IsRomEntry:$script:romsModeEnabled
+    [void](Open-GameCardDuringMove $ctx.Name $ctx.Source $ctx.Path)
 }
 
 function Show-SelectedGameSize($listBox, $source) {
@@ -66506,7 +67009,14 @@ function Show-SelectedGameSize($listBox, $source) {
     if (-not $hasChecked) {
         $ctx = Get-ListGameContext $listBox $source
         if ($ctx -eq $null) { return }
-        $size = Get-FolderSize $ctx.Path
+        if (-not (Start-SizeCalc)) { return }
+        $size = [int64]-1
+        try {
+            $labelHeader.Text = (T 'st_sizes_checked' @($ctx.Name, 1, 1))
+            [System.Windows.Forms.Application]::DoEvents()
+            $size = [int64](Get-FolderSizeCancelable $ctx.Path)
+        } finally { Stop-SizeCalc }
+        if ($size -lt 0) { Set-SizeStatus (T 'st_sizes_cancelled') $null; return }
         $global:folderSizeCache[$ctx.Path.ToLowerInvariant()] = $size
         $listBox.Invalidate()
         Set-SizeStatus (T 'st_size_one' @($ctx.Name, ([string][Math]::Round($size / 1GB, 2)), (T 'unit_gb'))) $null
@@ -66520,6 +67030,9 @@ function Show-SelectedGameSize($listBox, $source) {
     foreach ($n in $namesD) { [void]$allNames.Add([PSCustomObject]@{ Name = $n; Side = 'D' }) }
     $totalCount = $allNames.Count
     $i = 0
+    $sizeCancelled = $false
+    if (-not (Start-SizeCalc)) { return }
+    try {
     foreach ($entry in $allNames) {
         $i++
         $name = [string]$entry.Name
@@ -66534,7 +67047,8 @@ function Show-SelectedGameSize($listBox, $source) {
         if ($isFile) {
             try { $size = [int64](Get-Item -LiteralPath $path).Length } catch { $size = 0 }
         } else {
-            $size = [int64](Get-FolderSize $path)
+            $size = [int64](Get-FolderSizeCancelable $path)
+            if ($size -lt 0) { $sizeCancelled = $true; break }
             $global:folderSizeCache[$path.ToLowerInvariant()] = $size
         }
         $totalBytes += $size
@@ -66543,7 +67057,9 @@ function Show-SelectedGameSize($listBox, $source) {
             Name = $name; From = $side; To = $toSide; Size = $size
         })
     }
+    } finally { Stop-SizeCalc }
     try { $listBoxC.Invalidate(); $listBoxD.Invalidate() } catch { $listBox.Invalidate() }
+    if ($sizeCancelled) { Set-SizeStatus (T 'st_sizes_cancelled') $null; return }
 
     # Размер отмеченного — раздельно по панелям: «Слева (C:) 20.1 ГБ (2) · Справа (D:) 4012.5 ГБ (141)»
     # (последние скобки — число отмеченных игр; панель без отметок не показываем). Главное — «слева/справа»:
@@ -66633,7 +67149,8 @@ function Show-PanelFolderSizes ([string]$source) {
     $data = if ($source -eq 'C') { $script:panelDataC } else { $script:panelDataD }
     $listBox = if ($source -eq 'C') { $listBoxC } else { $listBoxD }
     if (@($data).Count -eq 0) { return }
-    Ensure-FolderSizesCached $data
+    if ($script:sizeCalcActive) { return }
+    if (-not (Ensure-FolderSizesCached $data)) { $listBox.Invalidate(); return }
     $total = [int64]0
     foreach ($it in $data) {
         $s = Get-FolderSizeCached $it.Path
@@ -66883,9 +67400,12 @@ function Get-PanelCtxMenuIcon ([string]$Kind) {
                 $g.DrawPolygon($pen, [System.Drawing.PointF[]]@((& $q 6 22), (& $q 6 8.5), (& $q 12 8.5), (& $q 14.2 11), (& $q 24 11), (& $q 24 22)))
             }
             'coll' {
+                # Сетка 2x2 рисуется без общего масштаба, целыми пикселями битмапа 32x32: клетка 10, зазор 4 (всего 24 px, как у остальных
+                # значков меню). В колонке 16x16 клетки получаются ровно 5 px, зазор 2 px - чётко и вровень с соседними значками.
+                $g.ResetTransform()
                 $br = New-Object System.Drawing.SolidBrush($col)
                 $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::None
-                $x0 = 8; $y0 = 8; $cell = 6; $gap = 2
+                $x0 = 4; $y0 = 4; $cell = 10; $gap = 4
                 $g.FillRectangle($br, $x0, $y0, $cell, $cell)
                 $g.FillRectangle($br, ($x0 + $cell + $gap), $y0, $cell, $cell)
                 $g.FillRectangle($br, $x0, ($y0 + $cell + $gap), $cell, $cell)
@@ -67019,12 +67539,14 @@ function Add-PanelCtxItem ($Menu, [string]$Text, [bool]$Enabled, [string]$Action
 }
 
 function Invoke-PanelCtxAction ($Tag) {
+    # Пока идёт перенос, из контекстного меню доступна только карточка («Добавить в библиотеку») игры вне плана переноса.
+    if ($script:moveInProgress -and [string]$Tag.Action -ne 'addlib') { try { $labelHeader.Text = (T 'mv2_busy') } catch {}; return }
     $d = $Tag.Data
     switch ([string]$Tag.Action) {
         'launch'     { Invoke-PanelCtxLaunch $d }
         'addlib' {
             $script:panelCtxEntries = $null
-            Show-GameEditorDialog ([string]$d.Name) ([string]$d.Source) ([string]$d.Path) -IsRomEntry:$script:romsModeEnabled
+            [void](Open-GameCardDuringMove $d.Name $d.Source $d.Path)
             $script:panelCtxEntries = $null
         }
         'open'       { Open-PanelCtxFolder ([string]$d) }
@@ -68776,6 +69298,10 @@ $script:swapRevertMenu.Add_Opening({
 $btnSwapEmuMain.ContextMenuStrip = $script:swapRevertMenu
 
 $btnSteamLibrary.Add_Click({
+    # Идёт подсчёт размера папок: кнопка работает как «Отменить подсчёт» (см. Start-SizeCalc).
+    if ($script:sizeCalcBtnSwapped) { $script:sizeCalcCancel = $true; try { $labelHeader.Text = (T 'st_sizes_cancelled') } catch {}; return }
+    # Во время переноса игр / пакетного добавления / импорта библиотеку открывать нельзя.
+    if ($script:moveInProgress -or $script:batchInProgress -or $script:smartBatchActive -or $script:libImportRunning) { return }
     # Библиотека открывается как экран той же программы: модальное окно ровно поверх главного, которое
     # на время показа становится невидимым (Opacity = 0), но остаётся «живым» владельцем и единственной
     # кнопкой на панели задач. Кнопка "Назад" в самой библиотеке лишь закрывает её ($dlg.Close());
