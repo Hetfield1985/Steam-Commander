@@ -6,6 +6,28 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [2.2.4] - 2026-11-06
+
+### Added
+* **Remove from library.** A new *Remove from library* button with a trash icon appears between the panels, in place of the emulator / wrapper indicator, when no mode between the panels is active (ROMs, Wrappers, Libraries, Saves, Collections) and only games that are already added are ticked. After a confirmation Steam is closed if it is running, a backup of `shortcuts.vdf` is made, the shortcuts of the ticked games are deleted from all Steam profiles, and Steam is started again. The leftovers of the removed games are cleaned too: covers, hero, logo, wide cover and icon in `config\grid`, the hidden logo, the cover source metadata and the remembered game folder. If another shortcut still uses the same id, its data is left untouched. Game files on disk are never touched.
+* **Remove from library in the context menus.** The right-click menu of a game in the file panels and the tile menu of the Library (ordinary and ROM games) have a new last item, *Remove from library*, with a red trash icon of the same size and alignment as the other icons. In the panels it is shown for games that are already in the library: it removes the game under the cursor (even if it is not ticked) or, when several games are ticked, all of them (*Remove from library, checked games (N)*); the ticks of the other games are kept. In the Library it removes the shortcut of the tile or of all ticked tiles, and the main window re-reads the panels when the Library is closed. The item is translated into all six interface languages.
+* **Quick letter search in drop-down lists.** Typing letters in an open list jumps to the first item that starts with them (a pause of more than a second starts a new search); repeating one letter steps through the items on that letter. Only the highlight and the scrolling move; the field changes on *Enter* or a click.
+
+### Improved
+* **The *Collections* button has an accent frame** in the active state, like the *ROMs* / *Wrappers* switches and the other buttons.
+* **Buttons stay in the "active" look while they are unavailable because of a move or a panel refresh** (blue frame and icon) instead of turning grey, so the bottom bar does not flicker.
+* **The tooltips of the *ROMs* and *Wrappers* switches are shorter** in all languages.
+* **Game card: an icon taken from the EXE is handled consistently.**
+  * The icon saved for an already added game is shown as it is and is no longer replaced by the EXE icon when the card is opened; the EXE button replaces it on request.
+  * The icon is replaced after a change of the EXE only while the slot really holds an EXE icon; a source chosen by hand (Steam, SteamGridDB, your own file) is kept.
+  * The folder badge now means only "added by hand from a file": for an EXE icon the badge is hidden and the pressed (highlighted) EXE button shows the source.
+  * The "icon from EXE" mark is saved with the cover sources, so the state survives a restart of the card.
+
+### Changed
+* Application version is now 2.2.4.
+
+---
+
 ## [2.2.3] - 2026-11-05
 
 ### Added
