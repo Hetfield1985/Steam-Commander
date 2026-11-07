@@ -6,6 +6,30 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [2.2.5] - 2026-11-07
+
+### Added
+* **Shift + *Remove from library* also deletes the game from the disk.** While *Shift* is held the trash button turns red, and a click removes the shortcuts and then the game folder. The confirmation lists the folders that will be deleted (with a red warning icon), and games installed with an installer are uninstalled with their own uninstaller first: it opens in its usual window and the program waits until the removal is finished. If the uninstaller is cancelled or fails to start, the game stays in the library and its files are not touched; if it closes but the installation record remains, you are asked whether to treat the game as removed. A folder is deleted only when it is safe: it must exist, must not be a drive root, a link / junction, a Windows, Program Files or user folder, the Steam folder or a panel root, and must not contain the exe of another game that remains in the library. A folder is also kept when not all shortcuts of the game were removed. Folders that could not or must not be deleted are reported in a separate window. Without *Shift* nothing changes: game files are never touched.
+* **Installed Steam games are marked in the panels.** Games in a Steam library folder (`steamapps\common`, recognised by `appmanifest_*.acf`) now get the "in library" tick and the icon that Steam itself uses for the game (or the folder icon if there is none). Previously they were not marked, because they have no shortcut.
+* **Tooltips for the *Offer launchers* and *Use EXE icons* check boxes** in Settings (on the box and on its label).
+
+### Improved
+* **Long tooltips are wrapped.** All tooltips of the program now have a maximum width and break long text into a neat box (explicit line breaks are kept), instead of stretching across the whole screen. Many tooltips were shortened in all six languages (upscaler libraries, saves, batch auto-add, ROM archive and multi-disc options, the *Remove from library* button, the saves database update).
+* **The folder button is drawn by the program and is exactly centered.** The folder emoji glyph had uneven side margins and sat to the right of the centre. The folder icon is now drawn in code on the pixel grid, and the *Download* and *Delete* icons on the upscaler library tiles are drawn the same way. All folder buttons in Settings and in the game card are 28 px wide with an 8 px gap, so the fields and buttons line up.
+* **Icons are aligned to the pixel.** At scales such as 125% / 150% the button size becomes odd and icons were shifted by half a pixel; the drawing is now fitted to the parity of the button and the half-pixel offset of anti-aliased drawing is compensated. The optical centre of the *Restore*, *Refresh* and *Back up* icons in the Library, of the icons in the game card and of the main window is corrected.
+* **The Library top bar adapts to the window width.** The layout of the groups *Emulator*, *Wrapper*, *Saves* and *Upscalers* is recalculated when the window is resized (before, it was recalculated only when the selection changed, so captions and buttons overlapped or disappeared after stretching or narrowing the window). The captions are shown for all groups at once or for none; without them the button blocks stay separate with a visible gap. The captions are transparent and no longer cover neighbouring buttons. The captions are now singular (*Emulator*, *Wrapper*) and the counter is shorter (`5/255`).
+* **Changing the language updates more of the interface at once:** the tooltips of the *Libraries* and *Saves* sub-buttons, the headers of the file panels (volume name and free space) and the empty-panel messages.
+* **SteamGridDB badges (*Animated cover*, *Likes*) are translated.**
+
+### Fixed
+* **Xbox games:** a shortcut that points to `<Game>\Content` is now counted as the same game folder, not as a nested folder of a shared games folder, so the game gets its tick.
+
+### Changed
+* **No removal buttons for installed Steam games.** A Steam game from `steamapps\common` has no shortcut and is removed only in Steam itself, so *Remove from library* is no longer offered for it: the trash button between the panels is hidden when only such games are ticked (with a mixed selection its tooltip counts only the games that can be removed), the item is missing from the right-click menu of such a game, and it is skipped by the *Remove from library* action, including the *Shift* variant, so its folder is never deleted.
+* Application version is now 2.2.5.
+
+---
+
 ## [2.2.4] - 2026-11-06
 
 ### Added
