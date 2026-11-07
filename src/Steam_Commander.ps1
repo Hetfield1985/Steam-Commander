@@ -3200,6 +3200,105 @@ public class GlobalClickDefocusFilter : IMessageFilter
 '@
 [void][GlobalClickDefocusFilter]::Register()
 
+# Единая подсказка для всей программы: ToolTip сам длинную строку не переносит и растягивает её на весь экран
+# (так выглядела, например, подсказка кнопки «Удалить из библиотеки»). SCToolTip задаёт нативному окну подсказки
+# максимальную ширину и рисует его сам (OwnerDraw): длинный текст переносится по словам в аккуратное окошко, а явные
+# переводы строк («`n», заголовок + пояснение) сохраняются. Все подсказки создаются через New-SCToolTip.
+try {
+    Add-Type -ReferencedAssemblies @('System.Windows.Forms', 'System.Drawing') -TypeDefinition @'
+using System;
+using System.Drawing;
+using System.Reflection;
+using System.Runtime.InteropServices;
+using System.Windows.Forms;
+
+public class SCToolTip : ToolTip
+{
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RECT { public int Left, Top, Right, Bottom; }
+    [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr hWnd, out RECT rc);
+    [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
+    private const uint SWP_NOSIZE = 0x0001, SWP_NOZORDER = 0x0004, SWP_NOACTIVATE = 0x0010;
+    private static readonly PropertyInfo HandleProp =
+        typeof(ToolTip).GetProperty("Handle", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+    private bool _needMove;
+
+    // Максимальная ширина текста подсказки (px при 100% масштаба); длинный текст переносится по словам.
+    public static int MaxTipWidth = 400;
+    private const int PadX = 7;
+    private const int PadY = 5;
+    private const TextFormatFlags Flags = TextFormatFlags.Left | TextFormatFlags.Top | TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix;
+
+    public SCToolTip() : base()
+    {
+        OwnerDraw = true;
+        Popup += OnTipPopup;
+        Draw += OnTipDraw;
+    }
+
+    private static int ScaledMaxWidth()
+    {
+        try { using (Graphics g = Graphics.FromHwnd(IntPtr.Zero)) { return (int)Math.Round(MaxTipWidth * g.DpiX / 96.0); } }
+        catch { return MaxTipWidth; }
+    }
+
+    private void OnTipPopup(object sender, PopupEventArgs e)
+    {
+        try
+        {
+            string text = (e.AssociatedControl != null) ? GetToolTip(e.AssociatedControl) : null;
+            if (string.IsNullOrEmpty(text)) return;
+            Font f = SystemFonts.StatusFont;
+            Size sz = TextRenderer.MeasureText(text, f, new Size(ScaledMaxWidth(), 0), Flags);
+            e.ToolTipSize = new Size(sz.Width + 2 * PadX, sz.Height + 2 * PadY);
+            _needMove = true;
+        }
+        catch { }
+    }
+
+    private void OnTipDraw(object sender, DrawToolTipEventArgs e)
+    {
+        try
+        {
+            Rectangle b = e.Bounds;
+            e.Graphics.FillRectangle(SystemBrushes.Info, b);
+            e.Graphics.DrawRectangle(SystemPens.WindowFrame, 0, 0, b.Width - 1, b.Height - 1);
+            Rectangle r = new Rectangle(PadX, PadY, Math.Max(1, b.Width - 2 * PadX), Math.Max(1, b.Height - 2 * PadY));
+            TextRenderer.DrawText(e.Graphics, e.ToolTipText, SystemFonts.StatusFont, r, SystemColors.InfoText, Flags);
+            if (_needMove) { _needMove = false; FixLeft(); }
+        }
+        catch { }
+    }
+
+    // Windows ставит окно подсказки по прежней (очень широкой) ширине текста и прижимает его к левому краю экрана;
+    // после уменьшения размера возвращаем окошко под курсор (горизонтально), не выходя за край рабочей области.
+    private void FixLeft()
+    {
+        try
+        {
+            if (HandleProp == null) return;
+            IntPtr h = (IntPtr)HandleProp.GetValue(this, null);
+            if (h == IntPtr.Zero) return;
+            RECT rc;
+            if (!GetWindowRect(h, out rc)) return;
+            int w = rc.Right - rc.Left;
+            Point cur = Cursor.Position;
+            Rectangle wa = Screen.FromPoint(cur).WorkingArea;
+            int x = Math.Min(cur.X, wa.Right - w);
+            if (x < wa.Left) x = wa.Left;
+            if (x != rc.Left) SetWindowPos(h, IntPtr.Zero, x, rc.Top, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+        }
+        catch { }
+    }
+}
+'@ -ErrorAction Stop
+} catch {}
+function New-SCToolTip {
+    # SCToolTip с переносом длинного текста; если тип не скомпилировался — обычная подсказка (поведение как раньше).
+    try { if ($null -ne ('SCToolTip' -as [type])) { return (New-Object SCToolTip) } } catch {}
+    return (New-Object System.Windows.Forms.ToolTip)
+}
+
 
 # SteamGridDB/Steam network calls run inside WinForms. PowerShell 5.1 can show its own
 # host progress window for Invoke-WebRequest; that window blocks/competes with our dialogs
@@ -3428,7 +3527,7 @@ Set-SplashProgress 0.52
 # Единая версия приложения — используется в заголовке главного окна, в
 # подписи внизу окна настроек и в User-Agent HTTP-запросов. Меняйте только
 # здесь при выпуске новой версии.
-$global:appVersion = "2.2.4"
+$global:appVersion = "2.2.5"
 $global:appTitle = "Steam Commander"
 # Ссылки на исходный код и поддержку автора (окно «Поддержать» в настройках). Меняйте только здесь.
 $global:appRepoUrl = "https://github.com/Hetfield1985/Steam-Commander"
@@ -3510,7 +3609,7 @@ $script:I18n = @{
         btn_move = 'Перенести игру'
         btn_refresh = 'Обновить'
         batch_auto = 'Автоимпорт'
-        batch_auto_tip = 'Если включено: при пакетном добавлении игры с уверенно определёнными названием и exe добавляются в библиотеку автоматически, без показа карточки. Карточка откроется только для игр, которые программа не смогла определить однозначно. В режиме ROMs (эмуляторы) карточка тоже не показывается, если название, эмулятор и ROM определены уверенно.'
+        batch_auto_tip = 'При пакетном добавлении игры с уверенно определёнными названием и exe добавляются сразу, без карточки. Карточка откроется только для неоднозначных игр.'
         btn_add_batch = 'Добавить выбранные игры в библиотеку'
         btn_add_batch_n = 'Добавить новые игры в библиотеку ({0})'
         btn_steam_library = 'Библиотека / Импорт / Сохранения / DLSS Swap'
@@ -3523,21 +3622,21 @@ $script:I18n = @{
         rom_revert_not_exe = 'запускается не exe, возвращать нечего'
         rom_revert_none = 'нет ярлыка, запускаемого через эмулятор'
         lib_browser_title = 'Библиотека/Импорт'
-        lib_loading = 'Загрузка библиотеки…'
-        lib_empty = 'В библиотеке Steam пока нет игр.'
+        lib_loading = '…'
+        lib_empty = '0'
         lib_search_cue = 'Поиск по названию…'
         lib_back = 'Назад'
         lib_cap_saves = 'Сохранения'
         lib_cap_upscalers = 'Апскейлеры'
-        lib_cap_emus = 'Эмуляторы'
-        lib_cap_wraps = 'Врапперы'
-        lib_count = 'Игр: {0}'
+        lib_cap_emus = 'Эмулятор'
+        lib_cap_wraps = 'Враппер'
+        lib_count = '{0}'
         lib_selected = 'Выбрано: {0}'
-        lib_selected_of = '{0} / {1}'
+        lib_selected_of = '{0}/{1}'
         lib_select_all = 'Выбрать все'
         lib_deselect_all = 'Снять все'
         lib_upd_btn = 'Обновить апскейлеры'
-        lib_upd_tip = 'Заменить DLSS / FSR / XeSS / XeLL в выбранных играх на последние скачанные версии. Библиотеки, у которых версия в игре такая же или новее, не трогаются; оригинал сохраняется рядом (.sc_orig).'
+        lib_upd_tip = 'Заменить DLSS / FSR / XeSS / XeLL в выбранных играх на последние скачанные версии. Такие же или более новые не трогаются; оригинал сохраняется (.sc_orig).'
         lib_upd_none_dl = 'Нет скачанных версий апскейлеров. Скачайте их в настройках («Библиотеки апскейлеров»).'
         lib_upd_confirm = 'Заменить библиотеки апскейлеров на последние скачанные в выбранных играх: {0}.'
         lib_upd_confirm2 = 'Оригинальные файлы сохраняются рядом с суффиксом .sc_orig. Закройте игры перед обновлением.'
@@ -3563,15 +3662,15 @@ $script:I18n = @{
         lib_filter_coll_none = 'Без категории'
         lib_filter_coll_fav = 'Избранное'
         lib_filter_coll_hidden = 'Скрытые'
-        lib_restore_tip = 'Вернуть в выбранных играх оригинальные DLL апскейлеров из сохранённых копий (.sc_orig). Копии остаются рядом, поэтому позже игры можно снова обновить.'
+        lib_restore_tip = 'Вернуть в выбранных играх оригинальные DLL апскейлеров из копий (.sc_orig).'
         lib_restore_confirm = 'Вернуть оригинальные библиотеки апскейлеров в выбранных играх: {0}.'
         lib_restore_confirm2 = 'Файлы будут заменены копиями .sc_orig, созданными перед обновлением. Закройте игры перед возвратом.'
         lib_all_note = 'Игры не выделены: действие применится ко всем играм текущего списка (с учётом поиска и фильтра).'
         lib_all_confirm = 'Игры не выделены. Выполнить поиск сохранений для всех игр текущего списка: {0}?'
         save_btn_backup = 'Бэкап'
         save_btn_restore = 'Вернуть'
-        save_tip_backup = 'Бэкап сохранений в отмеченных играх (официальная база Ludusavi и пути эмуляторов). Если сохранения не менялись, новый архив не создаётся.'
-        save_tip_restore = 'Восстановить сохранения в отмеченных играх из последнего бэкапа. Текущие сохранения сначала уходят в страховочный архив pre-restore.'
+        save_tip_backup = 'Бэкап сохранений в отмеченных играх. Если сохранения не менялись, новый архив не создаётся.'
+        save_tip_restore = 'Восстановить сохранения в отмеченных играх из последнего бэкапа. Текущие сначала сохраняются в архив pre-restore.'
         save_confirm_backup = 'Создать бэкап сохранений в выбранных играх: {0}.'
         save_confirm_backup2 = 'Папка бэкапов: {0}'
         save_confirm_restore = 'Восстановить сохранения из последних бэкапов в выбранных играх: {0}.'
@@ -3631,7 +3730,7 @@ $script:I18n = @{
         coll_fail = 'Не удалось изменить коллекции: {0}'
         coll_missing = 'Коллекция не найдена в файлах Steam: {0}'
         save_heur_label = 'Эвристика'
-        sdet_tip = 'Определить сохранения игры без запуска: сначала база и пути эмуляторов, затем Steam Cloud и эвристика. Если ничего не найдено — предложит запустить игру. Правая кнопка — запуск игры и другие действия.'
+        sdet_tip = 'Найти сохранения игры без запуска. Если ничего не найдено — предложит запустить игру. Правая кнопка — другие действия.'
         sdet_tip_defined = 'Сохранения определены (мест: {0}). Нажмите, чтобы определить заново. Правая кнопка — дополнительные действия.'
         sdet_menu_auto = 'Определить сохранения'
         sdet_menu_track = 'Отследить запуск игры…'
@@ -3662,7 +3761,7 @@ $script:I18n = @{
         sdet_unit_b = 'Б'
         lib_tmp_saves_scan = 'Поиск сохранений: {0} из {1}'
         lib_tmp_saves_done = 'Игр с найденными сохранениями: {0} из {1}'
-        save_scan_tip = 'Поиск сохранений в отмеченных играх без запуска игр. Шаг 1: база Ludusavi и пути эмуляторов — найденное запоминается как определённые сохранения. Если там ничего нет — Steam Cloud и эвристика, запоминается то, что нашлось. Уже определённые игры пропускаются. Если у игр найдено несколько мест сохранений, после поиска одним окном предложит отметить нужные.'
+        save_scan_tip = 'Найти сохранения в отмеченных играх без запуска: сначала база Ludusavi и пути эмуляторов, затем Steam Cloud и эвристика. Уже определённые игры пропускаются.'
         save_st_defined = 'Определено'
         save_scan_recorded = 'Сохранения определены и запомнены: {0}'
         save_scan_already = 'Уже определены раньше'
@@ -3780,6 +3879,8 @@ $script:I18n = @{
         steam_close_cancelled = 'Отменено: Steam не был закрыт'
         set_offer_launchers = 'Предлагать лаунчеры'
         set_use_exe_icons = 'Использовать иконки из EXE'
+        set_offer_launchers_tip = 'Учитывать лаунчеры (например, Launcher.exe) при автоматическом поиске EXE игры. По умолчанию выключено: выбирается сам exe игры.'
+        set_use_exe_icons_tip = 'Использовать иконку из EXE игры вместо иконки Steam. На ROM-игры не действует.'
         icon_exe_back_tip = 'Вернуть иконку, которая была до EXE'
         key_valid = 'API-ключ действителен.'
         key_invalid_default = 'API-ключ недействителен или не прошёл проверку.'
@@ -3895,6 +3996,8 @@ $script:I18n = @{
         sgdb_flt_tags = 'Типы и теги'
         sgdb_flt_static = 'Статичные'
         sgdb_flt_animated = 'Анимированные'
+        sgdb_badge_animated = 'Анимированная обложка'
+        sgdb_badge_likes = 'Лайки: {0}'
         sgdb_flt_humor = 'Юмор'
         sgdb_flt_adult = 'Для взрослых'
         sgdb_flt_epilepsy = 'Эпилепсия'
@@ -4149,9 +4252,9 @@ $script:I18n = @{
         emu_lbl_ext = 'Расширения:'
         emu_ext_hint = 'Через запятую, без точек. Пример: sfc,smc,fig'
         emu_chk_extract = 'Распаковывать архивы'
-        emu_chk_extract_tip = 'Архив с ромом будет распакован во временную папку перед запуском эмулятора (в RetroArch — только если ядро не читает архив само). После закрытия эмулятора временные файлы удаляются.'
+        emu_chk_extract_tip = 'Распаковывать архив с ромом во временную папку перед запуском эмулятора; после закрытия файлы удаляются.'
         emu_chk_multidisc = 'Мультидиск (m3u)'
-        emu_chk_multidisc_tip = 'Программа ищет мультидисковые игры (диски «(Disc 1)», «(Disc 2)» и т. д.) и запускает их одним списком m3u; в карточке ROM появляется галочка «Мультидисковый». Для эмуляторов, которые читают m3u (RetroArch, DuckStation, Mednafen, Flycast, BizHawk), включается сама, для остальных выключена.'
+        emu_chk_multidisc_tip = 'Мультидисковые игры («(Disc 1)», «(Disc 2)»…) запускаются одним списком m3u, в карточке ROM появляется галочка «Мультидисковый». Для эмуляторов, читающих m3u, включается сама.'
         dlg_pick_folder_name = 'Выбор папки'
         dlg_pick_folder_btn = 'Выбрать папку'
         emu_lbl_args = 'Аргументы:'
@@ -4201,7 +4304,7 @@ $script:I18n = @{
         upl_latest_done = 'Выбраны последние версии: {0}'
         upl_latest_same = 'Уже выбраны последние из скачанных версий.'
         upl_auto_update = 'Обновлять при добавлении'
-        upl_tip_auto_update = 'При добавлении игры в Steam (вручную или автоимпортом) заменять DLSS / FSR / XeSS / XeLL в папке игры на версии, выбранные выше. Если в игре версия такая же или новее, файл не трогается; оригинал сохраняется рядом (.sc_orig).'
+        upl_tip_auto_update = 'При добавлении игры в Steam заменять DLSS / FSR / XeSS / XeLL в её папке на версии, выбранные выше. Такие же или более новые не трогаются; оригинал сохраняется (.sc_orig).'
         upl_tip_all = 'Скачать последние версии всех библиотек, которых ещё нет на диске'
         upl_tip_latest = 'Выбрать по умолчанию самую новую из скачанных версий в каждой библиотеке'
         upl_checking = 'Проверка списка версий…'
@@ -4225,7 +4328,7 @@ $script:I18n = @{
         sav_upd_done = 'База обновлена: {0:N0} игр'
         sav_upd_same = 'База актуальна: {0:N0} игр'
         sav_upd_fail = 'Не удалось обновить базу: {0}'
-        sav_tip_update = 'Скачать свежую базу путей сохранений из официального источника (Ludusavi). Если база не менялась, повторная загрузка не выполняется.'
+        sav_tip_update = 'Скачать свежую базу путей сохранений (Ludusavi), если она изменилась.'
         sav_folder = 'Папка бэкапов:'
         sav_tip_pick = 'Выбрать общую папку для бэкапов сохранений'
         sav_tip_reset = 'Вернуть папку по умолчанию'
@@ -4238,9 +4341,18 @@ $script:I18n = @{
         rom_core_tip = 'Ядро RetroArch по умолчанию для новых игр (сохраняется в профиле активного эмулятора).'
         rom_emu_pick_tip = 'Клик — выбрать активный эмулятор из списка, добавленного в Настройках.'
         btn_remove_lib = 'Удалить из библиотеки'
-        btn_remove_lib_tip = 'Удалить из библиотеки отмеченные игры ({0}). Файлы игр на диске не затрагиваются.'
+        btn_remove_lib_tip = 'Удалить из библиотеки отмеченные игры ({0}). Файлы на диске не затрагиваются. Shift — удалить и саму игру с диска (сначала запускается деинсталлятор).'
         lib_remove_confirm = 'Удалить из библиотеки Steam игры: {0}?\n\nЯрлыки будут удалены из всех профилей Steam, файлы игр на диске не затрагиваются. Если Steam запущен, он будет закрыт и запущен заново. Перед записью создаётся резервная копия shortcuts.vdf.'
         lib_remove_done = 'Удалено из библиотеки: {0}.'
+        lib_remove_confirm_files = 'Удалить из библиотеки Steam игры ({0}) и ПОЛНОСТЬЮ УДАЛИТЬ их файлы с диска?\n\nБудут удалены папки:\n{1}\n\nЭто действие удалит все файлы игр с диска безвозвратно (в Корзину они не попадают). Ярлыки будут удалены из всех профилей Steam. Если Steam запущен, он будет закрыт и запущен заново.'
+        lib_remove_files_done = 'Папок удалено с диска: {0}.'
+        lib_remove_files_fail = 'Не удалось удалить папок с диска: {0}. {1}'
+        lib_remove_files_skip = 'Папка не удалена (небезопасный путь или в ней есть другие игры библиотеки): {0}'
+        lib_remove_uninstall_note = 'Для игр, установленных через инсталлятор, сначала будет запущен их деинсталлятор. Завершите удаление в его окне - программа дождётся окончания: {0}.'
+        lib_uninstall_wait = 'Ожидание деинсталлятора: {0}. Завершите удаление в его окне.'
+        lib_uninstall_cancelled = 'Деинсталлятор не завершил удаление: {0}. Игра оставлена в библиотеке.'
+        lib_uninstall_unsure = 'Деинсталлятор игры «{0}» завершился, но запись об установке в системе осталась. Считать игру удалённой и продолжить (остатки папки игры будут удалены)?'
+        lib_uninstall_start_fail = 'Не удалось запустить деинсталлятор «{0}»: {1}. Игра оставлена в библиотеке.'
         lib_remove_fail = 'Не удалось удалить ярлыков: {0}. {1}'
         rom_emu_list_empty = 'Список эмуляторов пуст. Добавьте эмулятор в разделе «Эмуляторы (ROMs)» в Настройках.'
         rom_popup_hdr = 'Эмуляторы'
@@ -4333,7 +4445,7 @@ $script:I18n = @{
         btn_move = 'Move game'
         btn_refresh = 'Refresh'
         batch_auto = 'Auto-import'
-        batch_auto_tip = 'If enabled: when adding several games at once, games whose name and exe are detected with confidence are added to the library automatically, without showing the card. The card opens only for games the program could not identify unambiguously. In ROMs (emulator) mode the card is also skipped when the title, emulator and ROM are detected with confidence.'
+        batch_auto_tip = 'When adding several games, those whose name and exe are detected with confidence are added directly, without the card. The card opens only for ambiguous games.'
         btn_add_batch = 'Add selected games to library'
         btn_add_batch_n = 'Add new games to library ({0})'
         btn_steam_library = 'Library / Import / Saves / DLSS Swap'
@@ -4346,21 +4458,21 @@ $script:I18n = @{
         rom_revert_not_exe = 'not an exe launch, nothing to restore'
         rom_revert_none = 'no shortcut launched through an emulator'
         lib_browser_title = 'Library/Import'
-        lib_loading = 'Loading library…'
-        lib_empty = 'No games in the Steam library yet.'
+        lib_loading = '…'
+        lib_empty = '0'
         lib_search_cue = 'Search by name…'
         lib_back = 'Back'
         lib_cap_saves = 'Saves'
         lib_cap_upscalers = 'Upscalers'
-        lib_cap_emus = 'Emulators'
-        lib_cap_wraps = 'Wrappers'
-        lib_count = 'Games: {0}'
+        lib_cap_emus = 'Emulator'
+        lib_cap_wraps = 'Wrapper'
+        lib_count = '{0}'
         lib_selected = 'Selected: {0}'
-        lib_selected_of = '{0} / {1}'
+        lib_selected_of = '{0}/{1}'
         lib_select_all = 'Select all'
         lib_deselect_all = 'Deselect all'
         lib_upd_btn = 'Update upscalers'
-        lib_upd_tip = 'Replace DLSS / FSR / XeSS / XeLL in the selected games with the latest downloaded versions. Libraries that are already the same version or newer are left alone; the original file is kept next to it (.sc_orig).'
+        lib_upd_tip = 'Replace DLSS / FSR / XeSS / XeLL in the selected games with the latest downloaded versions. Same or newer versions are left alone; the original is kept (.sc_orig).'
         lib_upd_none_dl = 'No upscaler versions downloaded yet. Download them in Settings ("Upscaler libraries").'
         lib_upd_confirm = 'Replace upscaler libraries with the latest downloaded versions in the selected games: {0}.'
         lib_upd_confirm2 = 'Original files are kept next to them with the .sc_orig suffix. Close the games first.'
@@ -4386,15 +4498,15 @@ $script:I18n = @{
         lib_filter_coll_none = 'Uncategorized'
         lib_filter_coll_fav = 'Favorites'
         lib_filter_coll_hidden = 'Hidden'
-        lib_restore_tip = 'Restore the original upscaler DLLs in the selected games from the saved copies (.sc_orig). The copies stay in place, so the games can be updated again later.'
+        lib_restore_tip = 'Restore the original upscaler DLLs in the selected games from the copies (.sc_orig).'
         lib_restore_confirm = 'Restore the original upscaler libraries in the selected games: {0}.'
         lib_restore_confirm2 = 'Files will be replaced with the .sc_orig copies made before updating. Close the games before restoring.'
         lib_all_note = 'No games are selected: the action will apply to all games in the current list (respecting search and filter).'
         lib_all_confirm = 'No games are selected. Search for saves in all games of the current list: {0}?'
         save_btn_backup = 'Back up'
         save_btn_restore = 'Restore'
-        save_tip_backup = 'Back up the saves of the selected games (official Ludusavi database and emulator paths). If the saves have not changed, no new archive is created.'
-        save_tip_restore = 'Restore the saves of the selected games from the latest backup. The current saves are first put into a pre-restore safety archive.'
+        save_tip_backup = 'Back up the saves of the selected games. If nothing changed, no new archive is created.'
+        save_tip_restore = 'Restore the saves of the selected games from the latest backup. The current saves are first archived as pre-restore.'
         save_confirm_backup = 'Back up the saves of the selected games: {0}.'
         save_confirm_backup2 = 'Backup folder: {0}'
         save_confirm_restore = 'Restore the saves from the latest backups in the selected games: {0}.'
@@ -4454,7 +4566,7 @@ $script:I18n = @{
         coll_fail = 'Could not change the collections: {0}'
         coll_missing = 'Collection not found in the Steam files: {0}'
         save_heur_label = 'Heuristic'
-        sdet_tip = 'Detect the saves of this game without launching it: first the database and emulator paths, then Steam Cloud and heuristics. If nothing is found, it offers to launch the game. Right-click: launch tracking and more.'
+        sdet_tip = 'Find the saves of this game without launching it. If none are found, it offers to launch the game. Right-click: more actions.'
         sdet_tip_defined = 'Saves are defined ({0} location(s)). Click to detect again. Right-click for more actions.'
         sdet_menu_auto = 'Detect saves'
         sdet_menu_track = 'Track the game launch…'
@@ -4485,7 +4597,7 @@ $script:I18n = @{
         sdet_unit_b = 'B'
         lib_tmp_saves_scan = 'Looking for saves: {0} of {1}'
         lib_tmp_saves_done = 'Games with saves found: {0} of {1}'
-        save_scan_tip = 'Search for saves in the selected games without launching them. Step 1: Ludusavi database and emulator paths - whatever is found is stored as defined saves. If nothing is there - Steam Cloud and heuristics, and what they find is stored. Games with saves already defined are skipped. If several save locations are found for some games, one window will let you tick the right ones after the search.'
+        save_scan_tip = 'Find saves in the selected games without launching them: first Ludusavi and emulator paths, then Steam Cloud and heuristics. Games with saves already defined are skipped.'
         save_st_defined = 'Defined'
         save_scan_recorded = 'Saves defined and stored: {0}'
         save_scan_already = 'Already defined earlier'
@@ -4603,6 +4715,8 @@ $script:I18n = @{
         steam_close_cancelled = 'Cancelled: Steam was not closed'
         set_offer_launchers = 'Suggest launchers'
         set_use_exe_icons = 'Use icons from EXE'
+        set_offer_launchers_tip = 'Include game launchers (such as Launcher.exe) when the EXE is detected automatically. Off by default: the game exe itself is chosen.'
+        set_use_exe_icons_tip = 'Take the game icon from its EXE instead of the Steam icon. Does not apply to ROM games.'
         icon_exe_back_tip = 'Restore the icon that was used before EXE'
         key_valid = 'API key is valid.'
         key_invalid_default = 'API key is invalid or failed the check.'
@@ -4718,6 +4832,8 @@ $script:I18n = @{
         sgdb_flt_tags = 'Types and tags'
         sgdb_flt_static = 'Static'
         sgdb_flt_animated = 'Animated'
+        sgdb_badge_animated = 'Animated cover'
+        sgdb_badge_likes = 'Likes: {0}'
         sgdb_flt_humor = 'Humor'
         sgdb_flt_adult = 'Adult content'
         sgdb_flt_epilepsy = 'Epilepsy'
@@ -4972,9 +5088,9 @@ $script:I18n = @{
         emu_lbl_ext = 'Extensions:'
         emu_ext_hint = 'Comma-separated, without dots. Example: sfc,smc,fig'
         emu_chk_extract = 'Extract archives'
-        emu_chk_extract_tip = 'The ROM archive will be extracted to a temporary folder before the emulator starts (in RetroArch, only if the core cannot read the archive itself). The temporary files are deleted after the emulator closes.'
+        emu_chk_extract_tip = 'Extract the ROM archive to a temporary folder before the emulator starts; the files are deleted when it closes.'
         emu_chk_multidisc = 'Multi-disc (m3u)'
-        emu_chk_multidisc_tip = 'The program looks for multi-disc games (discs named "(Disc 1)", "(Disc 2)" and so on) and launches them through one m3u list, and the ROM card shows the "Multi-disc" checkbox. It is turned on automatically for emulators that read m3u (RetroArch, DuckStation, Mednafen, Flycast, BizHawk) and off for the rest.'
+        emu_chk_multidisc_tip = 'Multi-disc games ("(Disc 1)", "(Disc 2)"...) are launched through one m3u list, and the ROM card shows a "Multi-disc" checkbox. Enabled automatically for emulators that read m3u.'
         dlg_pick_folder_name = 'Select folder'
         dlg_pick_folder_btn = 'Select folder'
         emu_lbl_args = 'Arguments:'
@@ -5024,7 +5140,7 @@ $script:I18n = @{
         upl_latest_done = 'Latest versions selected: {0}'
         upl_latest_same = 'The latest downloaded versions are already selected.'
         upl_auto_update = 'Update on add'
-        upl_tip_auto_update = 'When a game is added to Steam (manually or by auto-import), replace DLSS / FSR / XeSS / XeLL in the game folder with the versions selected above. Files that are already the same version or newer are left alone; the original is kept next to it (.sc_orig).'
+        upl_tip_auto_update = 'When a game is added to Steam, replace DLSS / FSR / XeSS / XeLL in its folder with the versions selected above. Same or newer versions are left alone; the original is kept (.sc_orig).'
         upl_tip_all = 'Download the latest versions of all libraries that are not on disk yet'
         upl_tip_latest = 'Select the newest downloaded version of each library as the default'
         upl_checking = 'Checking the version list…'
@@ -5048,7 +5164,7 @@ $script:I18n = @{
         sav_upd_done = 'Database updated: {0:N0} games'
         sav_upd_same = 'Database is up to date: {0:N0} games'
         sav_upd_fail = 'Could not update the database: {0}'
-        sav_tip_update = 'Download the latest saves path database from the official source (Ludusavi). If it has not changed, it is not downloaded again.'
+        sav_tip_update = 'Download the latest save-path database (Ludusavi) if it has changed.'
         sav_folder = 'Backups folder:'
         sav_tip_pick = 'Choose the shared folder for saves backups'
         sav_tip_reset = 'Restore the default folder'
@@ -5061,9 +5177,18 @@ $script:I18n = @{
         rom_core_tip = 'Default RetroArch core for new games (saved in the active emulator''s profile).'
         rom_emu_pick_tip = 'Click to choose the active emulator from the list added in Settings.'
         btn_remove_lib = 'Remove from library'
-        btn_remove_lib_tip = 'Remove the checked games from the library ({0}). Game files on disk are not touched.'
+        btn_remove_lib_tip = 'Remove the checked games from the library ({0}). Files on disk are not touched. Hold Shift to also delete the installed game from disk (its uninstaller is run first).'
         lib_remove_confirm = 'Remove these games from the Steam library: {0}?\n\nThe shortcuts will be deleted from all Steam profiles; game files on disk are not touched. If Steam is running, it will be closed and started again. A backup of shortcuts.vdf is made before writing.'
         lib_remove_done = 'Removed from the library: {0}.'
+        lib_remove_confirm_files = 'Remove these games from the Steam library ({0}) and PERMANENTLY DELETE their files from disk?\n\nThese folders will be deleted:\n{1}\n\nThis action deletes all game files from the disk and cannot be undone (they do not go to the Recycle Bin). The shortcuts will be deleted from all Steam profiles. If Steam is running, it will be closed and started again.'
+        lib_remove_files_done = 'Folders deleted from disk: {0}.'
+        lib_remove_files_fail = 'Could not delete folders from disk: {0}. {1}'
+        lib_remove_files_skip = 'Folder not deleted (unsafe path or other library games live inside it): {0}'
+        lib_remove_uninstall_note = 'Games installed with an installer will first be uninstalled with their own uninstaller. Finish the removal in its window - the program will wait for it to end: {0}.'
+        lib_uninstall_wait = 'Waiting for the uninstaller: {0}. Finish the removal in its window.'
+        lib_uninstall_cancelled = 'The uninstaller did not finish the removal: {0}. The game was left in the library.'
+        lib_uninstall_unsure = 'The uninstaller of "{0}" has finished, but the installation record is still in the system. Treat the game as removed and continue (the leftovers of the game folder will be deleted)?'
+        lib_uninstall_start_fail = 'Could not start the uninstaller of "{0}": {1}. The game was left in the library.'
         lib_remove_fail = 'Could not remove shortcuts: {0}. {1}'
         rom_emu_list_empty = 'The emulator list is empty. Add an emulator in the "Emulators (ROMs)" section of Settings.'
         rom_popup_hdr = 'Emulators'
@@ -5146,27 +5271,27 @@ $script:I18n = @{
         btn_move = '移动游戏'
         btn_refresh = '刷新'
         batch_auto = '自动导入'
-        batch_auto_tip = '启用后：一次添加多个游戏时，名称和 exe 能被明确识别的游戏会自动加入库中，不再显示卡片。仅对程序无法明确识别的游戏才会打开卡片。'
+        batch_auto_tip = '批量添加时，名称和 exe 能明确识别的游戏会直接加入库中，不显示卡片；仅无法明确识别的游戏才会打开卡片。'
         btn_add_batch = '＋  将所选游戏添加到库'
         btn_add_batch_n = '＋  将新游戏添加到库（{0}）'
         btn_steam_library = '游戏库 / 导入 / 存档 / DLSS Swap'
         btn_swap_emulator = '切换模拟器为 {0}（{1}）'
         rom_swap_not_added = 'Steam 中没有快捷方式'
         lib_browser_title = '游戏库/导入'
-        lib_loading = '正在加载库…'
-        lib_empty = 'Steam 库中暂无游戏。'
+        lib_loading = '…'
+        lib_empty = '0'
         lib_search_cue = '按名称搜索…'
         lib_back = '返回'
         lib_cap_saves = '存档'
         lib_cap_upscalers = '超分库'
         lib_cap_emus = '模拟器'
-        lib_count = '游戏：{0}'
+        lib_count = '{0}'
         lib_selected = '已选择：{0}'
-        lib_selected_of = '{0} / {1}'
+        lib_selected_of = '{0}/{1}'
         lib_select_all = '全选'
         lib_deselect_all = '取消全选'
         lib_upd_btn = '更新超分库'
-        lib_upd_tip = '将所选游戏中的 DLSS / FSR / XeSS / XeLL 替换为已下载的最新版本。版本相同或更新的库不会改动；原文件会以 .sc_orig 后缀保存在旁边。'
+        lib_upd_tip = '将所选游戏中的 DLSS / FSR / XeSS / XeLL 替换为已下载的最新版本。版本相同或更新的不会改动；原文件保留为 .sc_orig。'
         lib_upd_none_dl = '尚未下载任何超分库版本。请在设置（“Upscaler libraries”）中下载。'
         lib_upd_confirm = '将所选游戏（{0} 个）中的超分库替换为已下载的最新版本。'
         lib_upd_confirm2 = '原文件会以 .sc_orig 后缀保留在旁边。请先关闭游戏。'
@@ -5191,13 +5316,13 @@ $script:I18n = @{
         lib_filter_coll_none = '未分类'
         lib_filter_coll_fav = '收藏'
         lib_filter_coll_hidden = '隐藏'
-        lib_restore_tip = '用保存的副本（.sc_orig）还原所选游戏中的原始超分 DLL。副本会保留，之后仍可再次更新。'
+        lib_restore_tip = '用副本（.sc_orig）还原所选游戏中的原始超分 DLL。'
         lib_restore_confirm = '还原所选游戏中的原始超分库：{0}。'
         lib_restore_confirm2 = '文件将被更新前创建的 .sc_orig 副本替换。还原前请关闭游戏。'
         save_btn_backup = '备份'
         save_btn_restore = '还原'
-        save_tip_backup = '备份所选游戏的存档（官方 Ludusavi 数据库及模拟器路径）。存档未变化时不会创建新压缩包。'
-        save_tip_restore = '用最新备份还原所选游戏的存档。当前存档会先保存到 pre-restore 保险压缩包中。'
+        save_tip_backup = '备份所选游戏的存档。存档未变化时不会创建新压缩包。'
+        save_tip_restore = '用最新备份还原所选游戏的存档。当前存档会先保存到 pre-restore 压缩包。'
         save_confirm_backup = '为所选游戏备份存档：{0}。'
         save_confirm_backup2 = '备份文件夹：{0}'
         save_confirm_restore = '用最新备份还原所选游戏的存档：{0}。'
@@ -5286,7 +5411,7 @@ $script:I18n = @{
         sdet_unit_b = 'B'
         lib_tmp_saves_scan = '正在查找存档：{0} / {1}'
         lib_tmp_saves_done = '已找到存档的游戏：{0} / {1}'
-        save_scan_tip = '在不启动游戏的情况下搜索所选游戏的存档。第 1 步：Ludusavi 数据库和模拟器路径，找到的内容会保存为已定义存档；若没有结果，则使用 Steam Cloud 和启发式搜索，并保存其找到的内容。已定义存档的游戏会被跳过。'
+        save_scan_tip = '不启动游戏，搜索所选游戏的存档：先查 Ludusavi 数据库和模拟器路径，再用 Steam Cloud 和启发式搜索。已定义存档的游戏会被跳过。'
         save_st_defined = '已定义'
         save_scan_recorded = '已定义并保存存档：{0}'
         save_scan_already = '此前已定义'
@@ -5380,6 +5505,8 @@ $script:I18n = @{
         steam_close_cancelled = '已取消：Steam 未关闭'
         set_offer_launchers = '提供游戏启动器'
         set_use_exe_icons = '使用 EXE 中的图标'
+        set_offer_launchers_tip = '自动查找 EXE 时也考虑游戏启动器（如 Launcher.exe）。默认关闭：优先选择游戏本体的 exe。'
+        set_use_exe_icons_tip = '使用游戏 EXE 中的图标，而不是 Steam 图标。不适用于 ROM 游戏。'
         icon_exe_back_tip = '恢复使用 EXE 之前的图标'
         sw_section = 'Steam Web API（本地游戏数据库）'
         api_keys_section = 'API 密钥'
@@ -5496,6 +5623,8 @@ $script:I18n = @{
         sgdb_flt_tags = '类型与标签'
         sgdb_flt_static = '静态'
         sgdb_flt_animated = '动画'
+        sgdb_badge_animated = '动画封面'
+        sgdb_badge_likes = '点赞：{0}'
         sgdb_flt_humor = '幽默'
         sgdb_flt_adult = '成人内容'
         sgdb_flt_epilepsy = '癫痫'
@@ -5708,9 +5837,9 @@ $script:I18n = @{
         emu_lbl_ext = '扩展名：'
         emu_ext_hint = '用逗号分隔，不带点。示例：sfc,smc,fig'
         emu_chk_extract = '解压压缩包'
-        emu_chk_extract_tip = '启动模拟器前，ROM 压缩包将被解压到临时文件夹（RetroArch 中仅在内核无法直接读取压缩包时）。模拟器关闭后，临时文件会被删除。'
+        emu_chk_extract_tip = '启动模拟器前将 ROM 压缩包解压到临时文件夹；模拟器关闭后删除临时文件。'
         emu_chk_multidisc = '多碟 (m3u)'
-        emu_chk_multidisc_tip = '程序会查找多碟游戏（碟片名为“(Disc 1)”“(Disc 2)”等），并通过一个 m3u 列表启动；ROM 卡片中会出现“多碟”复选框。对能读取 m3u 的模拟器（RetroArch、DuckStation、Mednafen、Flycast、BizHawk）会自动勾选，其余模拟器默认不勾选。'
+        emu_chk_multidisc_tip = '多碟游戏（“(Disc 1)”“(Disc 2)”等）通过一个 m3u 列表启动，ROM 卡片中会出现“多碟”复选框。对能读取 m3u 的模拟器自动勾选。'
         dlg_pick_folder_name = '选择文件夹'
         dlg_pick_folder_btn = '选择文件夹'
         emu_lbl_args = '参数：'
@@ -5797,7 +5926,7 @@ $script:I18n = @{
         upl_latest_done = '已选择最新版本：{0}'
         upl_latest_same = '已选择已下载的最新版本。'
         upl_auto_update = '添加时更新'
-        upl_tip_auto_update = '将游戏添加到 Steam 时（手动添加或自动导入），把游戏文件夹中的 DLSS / FSR / XeSS / XeLL 替换为上方所选版本。版本相同或更新的文件不会改动；原文件会以 .sc_orig 后缀保存在旁边。'
+        upl_tip_auto_update = '将游戏添加到 Steam 时，把其文件夹中的 DLSS / FSR / XeSS / XeLL 替换为上方所选版本。版本相同或更新的不会改动；原文件保留为 .sc_orig。'
         upl_mb = 'MB'
         upl_none = '未下载'
         upl_section = '超分库'
@@ -5815,7 +5944,7 @@ $script:I18n = @{
         sav_upd_done = '数据库已更新：{0:N0} 款游戏'
         sav_upd_same = '数据库已是最新：{0:N0} 款游戏'
         sav_upd_fail = '无法更新数据库：{0}'
-        sav_tip_update = '从官方来源（Ludusavi）下载最新的存档路径数据库。若数据库未变化，则不会重复下载。'
+        sav_tip_update = '从 Ludusavi 下载最新的存档路径数据库（若已更新）。'
         sav_folder = '备份文件夹：'
         sav_tip_pick = '选择存档备份的公共文件夹'
         sav_tip_reset = '恢复默认文件夹'
@@ -5827,6 +5956,122 @@ $script:I18n = @{
         dll_err_no_src = '未找到源文件：{0}'
         dll_err_no_dst = '游戏中没有该文件：{0}'
         splash_reading = '正在读取库…'
+        fav_tip_add = '将当前文件夹添加到收藏夹'
+        fav_tip_remove = '将当前文件夹从收藏夹移除'
+        fav_tip_list = '收藏的文件夹（右键点击条目可删除、重命名或调整顺序）'
+        fav_empty = '（暂无收藏）'
+        fav_missing = '文件夹不可用'
+        fav_remove = '从收藏夹移除'
+        fav_rename = '重命名…'
+        fav_up = '上移'
+        fav_down = '下移'
+        fav_rename_title = '收藏文件夹名称'
+        rom_swap_multi = '游戏文件夹中有多个快捷方式'
+        rom_revert_menu = '恢复直接启动游戏 exe（{0}）'
+        btn_revert_exe = '改回 exe（{0}）'
+        rom_revert_done = '已恢复直接启动 exe：{0}'
+        rom_revert_not_exe = '不是通过 exe 启动，无需恢复'
+        rom_revert_none = '没有通过模拟器启动的快捷方式'
+        lib_cap_wraps = '包装器'
+        lib_filter_wrappers = '包装器'
+        lib_all_note = '未选择任何游戏：操作将应用于当前列表中的所有游戏（遵循搜索和筛选条件）。'
+        lib_all_confirm = '未选择任何游戏。要在当前列表的所有游戏中搜索存档：{0}？'
+        lib_ctx_save_scan = '查找存档'
+        sdet_pick_hint_heur = '存档是通过 Steam Cloud / 启发式搜索找到的。请勾选应视为游戏存档的位置：'
+        sdet_pick_hint_multi_all = '为这些游戏找到了多个存档位置。请勾选应视为游戏存档的位置（游戏名称旁的复选框可切换其所有位置）：'
+        sdet_btn_check_all = '全选'
+        sdet_btn_uncheck_all = '全部取消'
+        sdet_btn_skip_all = '全部跳过'
+        save_scan_pick_skipped = '未保存：已跳过选择'
+        btn_change_coll = '更改收藏集（{0}）'
+        btn_coll_tip = '更改所选游戏的收藏集'
+        btn_libs_tip = '所选游戏的超分库'
+        btn_libs_upd_tip = '更新超分库（DLSS / FSR / XeSS / XeLL）'
+        btn_libs_rst_tip = '从备份（.sc_orig）还原原始库'
+        btn_libs_upd_n = '更新库（{0}）'
+        btn_libs_rst_n = '还原库（{0}）'
+        btn_libs_cancel = '取消'
+        btn_saves_tip = '所选游戏的存档：查找、备份、还原'
+        btn_saves_scan_n = '查找存档（{0}）'
+        btn_saves_backup_n = '备份存档（{0}）'
+        btn_saves_restore_n = '还原存档（{0}）'
+        btn_coll_tip_new = '添加时放入收藏集'
+        src_tip_nokey = 'SteamGridDB 不可用：请在设置中输入并验证 API 密钥'
+        card_wrapper_chk = '包装器'
+        card_wrapper_empty = '添加包装器'
+        card_wrapper_deleted = '包装器已删除'
+        wrap_section = '包装器'
+        wrap_dlg_new = '新建包装器'
+        wrap_exe_missing = '请指定 exe 的路径'
+        wrap_dlg_edit = '编辑包装器'
+        wrap_lbl_name = '名称：'
+        wrap_lbl_exe = '程序：'
+        wrap_lbl_args = '参数：'
+        wrap_args_hint = '{game} - 游戏路径，{args} - 卡片中您设置的参数。示例："{game}" {args}'
+        wrap_ofd_title = '选择包装器程序（.exe）'
+        wrap_confirm_remove = '要从列表中删除此包装器吗？'
+        wrap_err_add = '添加包装器时出错：'
+        wrap_err_edit = '编辑包装器时出错：'
+        wrap_exe_gone = '找不到包装器程序：{0}'
+        wrap_mode_tip = '包装器模式：游戏通过当前包装器启动（Virtual Desktop 等）'
+        wrap_none = '未选择包装器'
+        wrap_pick_tip = '点击从设置中添加的列表里选择当前包装器。'
+        wrap_list_empty = '包装器列表为空。请在设置的“包装器”部分添加包装器。'
+        wrap_popup_hdr = '包装器'
+        btn_swap_wrapper = '将包装器切换为 {0}（{1}）'
+        btn_revert_wrapper = '移除包装器（{0}）'
+        wrap_revert_menu = '不使用包装器启动游戏（{0}）'
+        pick_remove_wrapper = '移除包装器'
+        lib_wrap_swap_menu = '更换包装器'
+        lib_wrap_swap_menu_sel = '为已勾选的游戏更换包装器（{0}）'
+        lib_wrap_pick_menu = '选择包装器'
+        lib_wrap_pick_menu_sel = '为已勾选的游戏选择包装器（{0}）'
+        lib_wrap_remove_menu = '移除包装器'
+        lib_wrap_remove_menu_sel = '从已勾选的游戏中移除包装器（{0}）'
+        wrap_swap_done = '已将包装器“{1}”分配给 {0} 个游戏。'
+        wrap_revert_done = '已从 {0} 个游戏中移除包装器。'
+        wrap_swap_no_exe = '未找到游戏 exe'
+        wrap_swap_launcher = '游戏通过 SCLauncher 启动'
+        wrap_swap_rom = 'ROM 快捷方式，不适用包装器'
+        wrap_revert_none = '游戏不是通过包装器启动的'
+        card_wrapper_tip = '启动包装器：游戏通过另一个程序启动（例如 Virtual Desktop）'
+        hd_saves_found = '已定义存档：{0}。'
+        rom_chk_multidisc = '多光盘 (m3u)'
+        rom_chk_multidisc_tip = '通过单个 m3u 启动。光盘顺序：{0}'
+        rom_chk_multidisc_maybe = '找到 {0} 张光盘，它们可能属于同一个游戏。启用后将通过一个 m3u 启动：{1}'
+        rom_chk_multidisc_manual_tip = '多光盘游戏：点击“光盘…”并添加该游戏的所有光盘（至少两张）。将用它们生成一个 m3u。'
+        rom_btn_discs = '光盘'
+        rom_btn_discs_pick = '选择光盘'
+        rom_btn_discs_n1 = '{0} 张光盘'
+        rom_btn_discs_n2 = '{0} 张光盘'
+        rom_btn_discs_n5 = '{0} 张光盘'
+        rom_btn_discs_tip = '游戏光盘：添加、删除、调整顺序'
+        rom_discs_title = '游戏光盘'
+        rom_discs_add = '添加…'
+        rom_discs_remove = '删除'
+        rom_discs_up = '上移'
+        rom_discs_down = '下移'
+        rom_discs_ok = '完成'
+        rom_discs_cancel = '取消'
+        rom_discs_folder = '文件夹：{0}'
+        rom_discs_ofd_filter = '光盘映像|*.iso;*.cue;*.chd;*.gdi;*.bin;*.img;*.cso|所有文件 (*.*)|*.*'
+        rom_multi_pick_title = '选择该游戏的所有光盘（至少两张）'
+        rom_multi_need_two = '请至少选择同一游戏的两张光盘。'
+        rom_multi_one_dir = '所有光盘必须位于同一文件夹中。'
+        btn_remove_lib = '从库中移除'
+        btn_remove_lib_tip = '将已勾选的游戏从库中移除（{0}）。磁盘上的文件不受影响。按住 Shift 可同时从磁盘删除已安装的游戏（会先运行其卸载程序）。'
+        lib_remove_confirm = '要将这些游戏从 Steam 库中移除：{0}？\n\n快捷方式将从所有 Steam 配置文件中删除；磁盘上的游戏文件不受影响。如果 Steam 正在运行，将被关闭并重新启动。写入前会备份 shortcuts.vdf。'
+        lib_remove_done = '已从库中移除：{0}。'
+        lib_remove_confirm_files = '要将这些游戏从 Steam 库中移除（{0}），并从磁盘上永久删除其文件吗？\n\n将删除以下文件夹：\n{1}\n\n此操作会删除磁盘上的所有游戏文件且无法撤销（不会进入回收站）。快捷方式将从所有 Steam 配置文件中删除。如果 Steam 正在运行，将被关闭并重新启动。'
+        lib_remove_files_done = '已从磁盘删除文件夹：{0}。'
+        lib_remove_files_fail = '无法从磁盘删除文件夹：{0}。{1}'
+        lib_remove_files_skip = '文件夹未删除（路径不安全，或其中包含其他库游戏）：{0}'
+        lib_remove_uninstall_note = '使用安装程序安装的游戏将先用其自带的卸载程序卸载。请在其窗口中完成卸载，程序会等待其结束：{0}。'
+        lib_uninstall_wait = '正在等待卸载程序：{0}。请在其窗口中完成卸载。'
+        lib_uninstall_cancelled = '卸载程序未完成卸载：{0}。游戏已保留在库中。'
+        lib_uninstall_unsure = '“{0}”的卸载程序已结束，但系统中仍有其安装记录。将该游戏视为已移除并继续吗（游戏文件夹的残留文件将被删除）？'
+        lib_uninstall_start_fail = '无法启动“{0}”的卸载程序：{1}。游戏已保留在库中。'
+        lib_remove_fail = '无法移除快捷方式：{0}。{1}'
     }
     es = @{
         hint_main = 'Doble clic / Intro — ficha del juego. Marca juegos para añadir a la biblioteca o mover'
@@ -5863,27 +6108,27 @@ $script:I18n = @{
         btn_move = 'Mover juego'
         btn_refresh = 'Actualizar'
         batch_auto = 'Autoimportar'
-        batch_auto_tip = 'Si está activado: al añadir varios juegos a la vez, los juegos cuyo nombre y exe se detectan con seguridad se añaden a la biblioteca automáticamente, sin mostrar la ficha. La ficha solo se abre para los juegos que el programa no pudo identificar sin ambigüedad.'
+        batch_auto_tip = 'Al añadir varios juegos, los que tienen nombre y exe detectados con seguridad se añaden directamente, sin mostrar la ficha. La ficha solo se abre en los casos ambiguos.'
         btn_add_batch = '＋  Añadir juegos seleccionados a la biblioteca'
         btn_add_batch_n = '＋  Añadir juegos nuevos a la biblioteca ({0})'
         btn_steam_library = 'Biblioteca / Importación / Partidas / DLSS Swap'
         btn_swap_emulator = 'Cambiar emulador a {0} ({1})'
         rom_swap_not_added = 'sin acceso directo en Steam'
         lib_browser_title = 'Biblioteca/Importación'
-        lib_loading = 'Cargando biblioteca…'
-        lib_empty = 'Aún no hay juegos en la biblioteca de Steam.'
+        lib_loading = '…'
+        lib_empty = '0'
         lib_search_cue = 'Buscar por nombre…'
         lib_back = 'Atrás'
         lib_cap_saves = 'Partidas'
         lib_cap_upscalers = 'Escaladores'
-        lib_cap_emus = 'Emuladores'
-        lib_count = 'Juegos: {0}'
+        lib_cap_emus = 'Emulador'
+        lib_count = '{0}'
         lib_selected = 'Seleccionados: {0}'
-        lib_selected_of = '{0} / {1}'
+        lib_selected_of = '{0}/{1}'
         lib_select_all = 'Seleccionar todo'
         lib_deselect_all = 'Quitar todo'
         lib_upd_btn = 'Actualizar escaladores'
-        lib_upd_tip = 'Sustituye DLSS / FSR / XeSS / XeLL en los juegos seleccionados por las últimas versiones descargadas. Las bibliotecas que ya tienen la misma versión o una más nueva no se tocan; el original se conserva al lado (.sc_orig).'
+        lib_upd_tip = 'Sustituye DLSS / FSR / XeSS / XeLL en los juegos seleccionados por las últimas versiones descargadas. Las versiones iguales o más nuevas no se tocan; el original se conserva (.sc_orig).'
         lib_upd_none_dl = 'Aún no hay versiones de escaladores descargadas. Descárgalas en Ajustes («Upscaler libraries»).'
         lib_upd_confirm = 'Sustituir las bibliotecas de escaladores por las últimas descargadas en los juegos seleccionados: {0}.'
         lib_upd_confirm2 = 'Los archivos originales se conservan al lado con el sufijo .sc_orig. Cierra antes los juegos.'
@@ -5908,13 +6153,13 @@ $script:I18n = @{
         lib_filter_coll_none = 'Sin categoría'
         lib_filter_coll_fav = 'Favoritos'
         lib_filter_coll_hidden = 'Ocultos'
-        lib_restore_tip = 'Restaura las DLL originales de escalado en los juegos seleccionados a partir de las copias guardadas (.sc_orig). Las copias se conservan, así que se puede volver a actualizar después.'
+        lib_restore_tip = 'Restaura las DLL originales de escalado en los juegos seleccionados desde las copias (.sc_orig).'
         lib_restore_confirm = 'Restaurar las bibliotecas de escalado originales en los juegos seleccionados: {0}.'
         lib_restore_confirm2 = 'Los archivos se sustituirán por las copias .sc_orig creadas antes de actualizar. Cierra los juegos antes de restaurar.'
         save_btn_backup = 'Copia'
         save_btn_restore = 'Restaurar'
-        save_tip_backup = 'Copia las partidas guardadas de los juegos seleccionados (base oficial de Ludusavi y rutas de emuladores). Si no han cambiado, no se crea un archivo nuevo.'
-        save_tip_restore = 'Restaura las partidas guardadas de los juegos seleccionados desde la última copia. Las actuales se guardan antes en un archivo de seguridad pre-restore.'
+        save_tip_backup = 'Copia las partidas guardadas de los juegos seleccionados. Si no han cambiado, no se crea un archivo nuevo.'
+        save_tip_restore = 'Restaura las partidas de los juegos seleccionados desde la última copia. Las actuales se guardan antes en un archivo pre-restore.'
         save_confirm_backup = 'Copiar las partidas guardadas de los juegos seleccionados: {0}.'
         save_confirm_backup2 = 'Carpeta de copias: {0}'
         save_confirm_restore = 'Restaurar las partidas guardadas desde las últimas copias en los juegos seleccionados: {0}.'
@@ -5973,7 +6218,7 @@ $script:I18n = @{
         coll_fail = 'No se pudieron cambiar las colecciones: {0}'
         coll_missing = 'No se encontró la colección en los archivos de Steam: {0}'
         save_heur_label = 'Heurística'
-        sdet_tip = 'Detectar las partidas exactas de este juego: primero se busca en la base de datos y, si no hay resultado, se inicia el juego y se vigilan los archivos que crea. Clic derecho para más acciones.'
+        sdet_tip = 'Detecta las partidas del juego: primero en la base de datos; si no hay resultado, inicia el juego y vigila los archivos que crea. Clic derecho: más acciones.'
         sdet_tip_defined = 'Partidas definidas ({0} ubicación(es)). Haz clic para detectarlas de nuevo. Clic derecho para más acciones.'
         sdet_menu_auto = 'Detectar partidas'
         sdet_menu_track = 'Seguir el inicio del juego…'
@@ -6003,7 +6248,7 @@ $script:I18n = @{
         sdet_unit_b = 'B'
         lib_tmp_saves_scan = 'Buscando partidas: {0} de {1}'
         lib_tmp_saves_done = 'Juegos con partidas encontradas: {0} de {1}'
-        save_scan_tip = 'Buscar las partidas de los juegos seleccionados sin iniciarlos. Paso 1: base de datos Ludusavi y rutas de emuladores; lo encontrado se guarda como partidas definidas. Si no hay nada, Steam Cloud y heurística, y se guarda lo que encuentren. Los juegos con partidas ya definidas se omiten.'
+        save_scan_tip = 'Busca las partidas de los juegos seleccionados sin iniciarlos: primero Ludusavi y rutas de emuladores, luego Steam Cloud y heurística. Los juegos con partidas ya definidas se omiten.'
         save_st_defined = 'Definido'
         save_scan_recorded = 'Partidas definidas y guardadas: {0}'
         save_scan_already = 'Ya definidas antes'
@@ -6097,6 +6342,8 @@ $script:I18n = @{
         steam_close_cancelled = 'Cancelado: Steam no se cerró'
         set_offer_launchers = 'Sugerir lanzadores'
         set_use_exe_icons = 'Usar iconos del EXE'
+        set_offer_launchers_tip = 'Incluye lanzadores de juegos (como Launcher.exe) en la búsqueda automática del EXE. Desactivado por defecto: se elige el exe del propio juego.'
+        set_use_exe_icons_tip = 'Usa el icono del EXE del juego en lugar del icono de Steam. No se aplica a los juegos de ROM.'
         icon_exe_back_tip = 'Restaurar el icono que había antes del EXE'
         sw_section = 'Steam Web API (base de datos local de juegos)'
         api_keys_section = 'Claves API'
@@ -6213,6 +6460,8 @@ $script:I18n = @{
         sgdb_flt_tags = 'Tipos y etiquetas'
         sgdb_flt_static = 'Estáticas'
         sgdb_flt_animated = 'Animadas'
+        sgdb_badge_animated = 'Portada animada'
+        sgdb_badge_likes = 'Me gusta: {0}'
         sgdb_flt_humor = 'Humor'
         sgdb_flt_adult = 'Contenido adulto'
         sgdb_flt_epilepsy = 'Epilepsia'
@@ -6425,9 +6674,9 @@ $script:I18n = @{
         emu_lbl_ext = 'Extensiones:'
         emu_ext_hint = 'Separadas por comas, sin puntos. Ejemplo: sfc,smc,fig'
         emu_chk_extract = 'Extraer archivos comprimidos'
-        emu_chk_extract_tip = 'El archivo comprimido de la ROM se extraerá a una carpeta temporal antes de iniciar el emulador (en RetroArch, solo si el núcleo no puede leerlo directamente). Los archivos temporales se eliminan al cerrarlo.'
+        emu_chk_extract_tip = 'Extrae el archivo comprimido de la ROM a una carpeta temporal antes de iniciar el emulador; los archivos se eliminan al cerrarlo.'
         emu_chk_multidisc = 'Multidisco (m3u)'
-        emu_chk_multidisc_tip = 'El programa busca juegos de varios discos (discos con nombre «(Disc 1)», «(Disc 2)», etc.) y los inicia con una sola lista m3u; en la ficha de la ROM aparece la casilla «Multidisco». Se activa sola para los emuladores que leen m3u (RetroArch, DuckStation, Mednafen, Flycast, BizHawk) y queda desactivada para el resto.'
+        emu_chk_multidisc_tip = 'Los juegos de varios discos («(Disc 1)», «(Disc 2)»…) se inician con una sola lista m3u y en la ficha aparece la casilla «Multidisco». Se activa sola en emuladores que leen m3u.'
         dlg_pick_folder_name = 'Seleccionar carpeta'
         dlg_pick_folder_btn = 'Seleccionar carpeta'
         emu_lbl_args = 'Argumentos:'
@@ -6514,7 +6763,7 @@ $script:I18n = @{
         upl_latest_done = 'Últimas versiones seleccionadas: {0}'
         upl_latest_same = 'Ya están seleccionadas las últimas versiones descargadas.'
         upl_auto_update = 'Actualizar al añadir'
-        upl_tip_auto_update = 'Al añadir un juego a Steam (a mano o con la importación automática), sustituye DLSS / FSR / XeSS / XeLL en la carpeta del juego por las versiones seleccionadas arriba. Los archivos con la misma versión o una más nueva no se tocan; el original se conserva al lado (.sc_orig).'
+        upl_tip_auto_update = 'Al añadir un juego a Steam, sustituye DLSS / FSR / XeSS / XeLL en su carpeta por las versiones elegidas arriba. Las versiones iguales o más nuevas no se tocan; el original se conserva (.sc_orig).'
         upl_mb = 'MB'
         upl_none = 'No descargada'
         upl_section = 'Bibliotecas de escaladores'
@@ -6532,7 +6781,7 @@ $script:I18n = @{
         sav_upd_done = 'Base actualizada: {0:N0} juegos'
         sav_upd_same = 'Base al día: {0:N0} juegos'
         sav_upd_fail = 'No se pudo actualizar la base: {0}'
-        sav_tip_update = 'Descarga la base actualizada de rutas de partidas desde la fuente oficial (Ludusavi). Si no ha cambiado, no se vuelve a descargar.'
+        sav_tip_update = 'Descarga la base actualizada de rutas de partidas (Ludusavi) si ha cambiado.'
         sav_folder = 'Carpeta de copias:'
         sav_tip_pick = 'Elegir la carpeta común para las copias de partidas'
         sav_tip_reset = 'Volver a la carpeta predeterminada'
@@ -6544,6 +6793,122 @@ $script:I18n = @{
         dll_err_no_src = 'no se encontró el archivo de origen: {0}'
         dll_err_no_dst = 'el juego no tiene el archivo: {0}'
         splash_reading = 'Leyendo la biblioteca…'
+        fav_tip_add = 'Añadir la carpeta actual a favoritos'
+        fav_tip_remove = 'Quitar la carpeta actual de favoritos'
+        fav_tip_list = 'Carpetas favoritas (clic derecho en un elemento para quitar, renombrar o reordenar)'
+        fav_empty = '(aún no hay favoritos)'
+        fav_missing = 'carpeta no disponible'
+        fav_remove = 'Quitar de favoritos'
+        fav_rename = 'Renombrar…'
+        fav_up = 'Subir'
+        fav_down = 'Bajar'
+        fav_rename_title = 'Nombre de la carpeta favorita'
+        rom_swap_multi = 'varios accesos directos en la carpeta del juego'
+        rom_revert_menu = 'Restaurar el inicio directo del exe del juego ({0})'
+        btn_revert_exe = 'Volver al exe ({0})'
+        rom_revert_done = 'Inicio directo del exe restaurado: {0}'
+        rom_revert_not_exe = 'no es un inicio por exe, nada que restaurar'
+        rom_revert_none = 'ningún acceso directo se inicia mediante un emulador'
+        lib_cap_wraps = 'Wrapper'
+        lib_filter_wrappers = 'Wrappers'
+        lib_all_note = 'No hay juegos seleccionados: la acción se aplicará a todos los juegos de la lista actual (respetando la búsqueda y el filtro).'
+        lib_all_confirm = 'No hay juegos seleccionados. ¿Buscar partidas guardadas en todos los juegos de la lista actual: {0}?'
+        lib_ctx_save_scan = 'Buscar partidas guardadas'
+        sdet_pick_hint_heur = 'Las partidas se encontraron mediante Steam Cloud / heurística. Marca las ubicaciones que deben contar como partidas guardadas del juego:'
+        sdet_pick_hint_multi_all = 'Se encontraron varias ubicaciones de partidas para estos juegos. Marca las que deben contar como partidas guardadas (la casilla junto al nombre del juego marca todas sus ubicaciones):'
+        sdet_btn_check_all = 'Marcar todo'
+        sdet_btn_uncheck_all = 'Desmarcar todo'
+        sdet_btn_skip_all = 'Omitir todo'
+        save_scan_pick_skipped = 'No guardado: selección omitida'
+        btn_change_coll = 'Cambiar colecciones ({0})'
+        btn_coll_tip = 'Cambiar las colecciones de los juegos seleccionados'
+        btn_libs_tip = 'Bibliotecas de escalado de los juegos seleccionados'
+        btn_libs_upd_tip = 'Actualizar las bibliotecas de escalado (DLSS / FSR / XeSS / XeLL)'
+        btn_libs_rst_tip = 'Restaurar las bibliotecas originales desde las copias (.sc_orig)'
+        btn_libs_upd_n = 'Actualizar bibliotecas ({0})'
+        btn_libs_rst_n = 'Restaurar bibliotecas ({0})'
+        btn_libs_cancel = 'Cancelar'
+        btn_saves_tip = 'Partidas guardadas de los juegos seleccionados: buscar, copiar, restaurar'
+        btn_saves_scan_n = 'Buscar partidas ({0})'
+        btn_saves_backup_n = 'Copiar partidas ({0})'
+        btn_saves_restore_n = 'Restaurar partidas ({0})'
+        btn_coll_tip_new = 'Añadir a colecciones al agregar'
+        src_tip_nokey = 'SteamGridDB no disponible: introduce y verifica la clave API en los ajustes'
+        card_wrapper_chk = 'Wrapper'
+        card_wrapper_empty = 'Añadir un wrapper'
+        card_wrapper_deleted = 'Wrapper eliminado'
+        wrap_section = 'Wrappers'
+        wrap_dlg_new = 'Nuevo wrapper'
+        wrap_exe_missing = 'Indica la ruta del exe'
+        wrap_dlg_edit = 'Editar wrapper'
+        wrap_lbl_name = 'Nombre:'
+        wrap_lbl_exe = 'Programa:'
+        wrap_lbl_args = 'Argumentos:'
+        wrap_args_hint = '{game} - ruta del juego, {args} - tus parámetros de la ficha. Ejemplo: "{game}" {args}'
+        wrap_ofd_title = 'Selecciona el programa wrapper (.exe)'
+        wrap_confirm_remove = '¿Quitar este wrapper de la lista?'
+        wrap_err_add = 'Error al añadir el wrapper:'
+        wrap_err_edit = 'Error al editar el wrapper:'
+        wrap_exe_gone = 'No se encuentra el programa wrapper: {0}'
+        wrap_mode_tip = 'Modo Wrappers: los juegos se inician mediante el wrapper activo (Virtual Desktop, etc.)'
+        wrap_none = 'Ningún wrapper seleccionado'
+        wrap_pick_tip = 'Haz clic para elegir el wrapper activo de la lista añadida en los ajustes.'
+        wrap_list_empty = 'La lista de wrappers está vacía. Añade un wrapper en la sección «Wrappers» de los ajustes.'
+        wrap_popup_hdr = 'Wrappers'
+        btn_swap_wrapper = 'Cambiar wrapper a {0} ({1})'
+        btn_revert_wrapper = 'Quitar wrapper ({0})'
+        wrap_revert_menu = 'Iniciar el juego sin wrapper ({0})'
+        pick_remove_wrapper = 'Quitar wrapper'
+        lib_wrap_swap_menu = 'Cambiar wrapper'
+        lib_wrap_swap_menu_sel = 'Cambiar wrapper de los juegos marcados ({0})'
+        lib_wrap_pick_menu = 'Elegir wrapper'
+        lib_wrap_pick_menu_sel = 'Elegir wrapper para los juegos marcados ({0})'
+        lib_wrap_remove_menu = 'Quitar wrapper'
+        lib_wrap_remove_menu_sel = 'Quitar wrapper de los juegos marcados ({0})'
+        wrap_swap_done = 'Wrapper «{1}» asignado a {0} juego(s).'
+        wrap_revert_done = 'Wrapper quitado de {0} juego(s).'
+        wrap_swap_no_exe = 'no se encuentra el exe del juego'
+        wrap_swap_launcher = 'el juego se inicia mediante SCLauncher'
+        wrap_swap_rom = 'acceso directo de ROM, los wrappers no se aplican'
+        wrap_revert_none = 'el juego no se inicia mediante un wrapper'
+        card_wrapper_tip = 'Wrapper de inicio: el juego se inicia mediante otro programa (por ejemplo, Virtual Desktop)'
+        hd_saves_found = 'Partidas definidas: {0}.'
+        rom_chk_multidisc = 'Multidisco (m3u)'
+        rom_chk_multidisc_tip = 'Inicio mediante un solo m3u. Discos en orden: {0}'
+        rom_chk_multidisc_maybe = 'Se encontraron {0} discos. Pueden ser un solo juego. Actívalo para iniciarlos mediante un m3u: {1}'
+        rom_chk_multidisc_manual_tip = 'Juego multidisco: pulsa «Discos...» y añade todos los discos del juego (al menos dos). Se creará un m3u con ellos.'
+        rom_btn_discs = 'Discos'
+        rom_btn_discs_pick = 'Elegir discos'
+        rom_btn_discs_n1 = '{0} disco'
+        rom_btn_discs_n2 = '{0} discos'
+        rom_btn_discs_n5 = '{0} discos'
+        rom_btn_discs_tip = 'Discos del juego: añadir, quitar, cambiar el orden'
+        rom_discs_title = 'Discos del juego'
+        rom_discs_add = 'Añadir...'
+        rom_discs_remove = 'Quitar'
+        rom_discs_up = 'Subir'
+        rom_discs_down = 'Bajar'
+        rom_discs_ok = 'Listo'
+        rom_discs_cancel = 'Cancelar'
+        rom_discs_folder = 'Carpeta: {0}'
+        rom_discs_ofd_filter = 'Imágenes de disco|*.iso;*.cue;*.chd;*.gdi;*.bin;*.img;*.cso|Todos los archivos (*.*)|*.*'
+        rom_multi_pick_title = 'Selecciona todos los discos del juego (al menos dos)'
+        rom_multi_need_two = 'Selecciona al menos dos discos del mismo juego.'
+        rom_multi_one_dir = 'Todos los discos deben estar en la misma carpeta.'
+        btn_remove_lib = 'Quitar de la biblioteca'
+        btn_remove_lib_tip = 'Quitar de la biblioteca los juegos marcados ({0}). Los archivos del disco no se tocan. Mantén Shift para eliminar también el juego instalado del disco (antes se ejecuta su desinstalador).'
+        lib_remove_confirm = '¿Quitar estos juegos de la biblioteca de Steam: {0}?\n\nLos accesos directos se eliminarán de todos los perfiles de Steam; los archivos del juego en el disco no se tocan. Si Steam está en ejecución, se cerrará y se volverá a iniciar. Antes de escribir se hace una copia de shortcuts.vdf.'
+        lib_remove_done = 'Quitados de la biblioteca: {0}.'
+        lib_remove_confirm_files = '¿Quitar estos juegos de la biblioteca de Steam ({0}) y ELIMINAR PERMANENTEMENTE sus archivos del disco?\n\nSe eliminarán estas carpetas:\n{1}\n\nEsta acción elimina todos los archivos del juego del disco y no se puede deshacer (no van a la Papelera de reciclaje). Los accesos directos se eliminarán de todos los perfiles de Steam. Si Steam está en ejecución, se cerrará y se volverá a iniciar.'
+        lib_remove_files_done = 'Carpetas eliminadas del disco: {0}.'
+        lib_remove_files_fail = 'No se pudieron eliminar carpetas del disco: {0}. {1}'
+        lib_remove_files_skip = 'Carpeta no eliminada (ruta no segura o contiene otros juegos de la biblioteca): {0}'
+        lib_remove_uninstall_note = 'Los juegos instalados con un instalador se desinstalarán primero con su propio desinstalador. Termina la eliminación en su ventana; el programa esperará a que acabe: {0}.'
+        lib_uninstall_wait = 'Esperando al desinstalador: {0}. Termina la eliminación en su ventana.'
+        lib_uninstall_cancelled = 'El desinstalador no completó la eliminación: {0}. El juego se dejó en la biblioteca.'
+        lib_uninstall_unsure = 'El desinstalador de «{0}» ha terminado, pero el registro de la instalación sigue en el sistema. ¿Considerar el juego como eliminado y continuar (se borrarán los restos de la carpeta del juego)?'
+        lib_uninstall_start_fail = 'No se pudo iniciar el desinstalador de «{0}»: {1}. El juego se dejó en la biblioteca.'
+        lib_remove_fail = 'No se pudieron quitar los accesos directos: {0}. {1}'
     }
     pt = @{
         hint_main = 'Clique duplo / Enter — ficha do jogo. Marque jogos para adicionar à biblioteca ou mover'
@@ -6580,27 +6945,27 @@ $script:I18n = @{
         btn_move = 'Mover jogo'
         btn_refresh = 'Atualizar'
         batch_auto = 'Autoimportar'
-        batch_auto_tip = 'Se ativado: ao adicionar vários jogos de uma vez, os jogos cujo nome e exe são detectados com segurança são adicionados à biblioteca automaticamente, sem mostrar a ficha. A ficha só é aberta para os jogos que o programa não conseguiu identificar sem ambiguidade.'
+        batch_auto_tip = 'Ao adicionar vários jogos, os que têm nome e exe detectados com segurança são adicionados direto, sem mostrar a ficha. A ficha só abre nos casos ambíguos.'
         btn_add_batch = '＋  Adicionar jogos selecionados à biblioteca'
         btn_add_batch_n = '＋  Adicionar jogos novos à biblioteca ({0})'
         btn_steam_library = 'Biblioteca / Importação / Saves / DLSS Swap'
         btn_swap_emulator = 'Trocar emulador para {0} ({1})'
         rom_swap_not_added = 'sem atalho no Steam'
         lib_browser_title = 'Biblioteca/Importação'
-        lib_loading = 'Carregando biblioteca…'
-        lib_empty = 'Ainda não há jogos na biblioteca Steam.'
+        lib_loading = '…'
+        lib_empty = '0'
         lib_search_cue = 'Pesquisar por nome…'
         lib_back = 'Voltar'
         lib_cap_saves = 'Saves'
         lib_cap_upscalers = 'Upscalers'
-        lib_cap_emus = 'Emuladores'
-        lib_count = 'Jogos: {0}'
+        lib_cap_emus = 'Emulador'
+        lib_count = '{0}'
         lib_selected = 'Selecionados: {0}'
-        lib_selected_of = '{0} / {1}'
+        lib_selected_of = '{0}/{1}'
         lib_select_all = 'Selecionar tudo'
         lib_deselect_all = 'Desmarcar tudo'
         lib_upd_btn = 'Atualizar upscalers'
-        lib_upd_tip = 'Substitui DLSS / FSR / XeSS / XeLL nos jogos selecionados pelas últimas versões baixadas. Bibliotecas que já têm a mesma versão ou mais recente não são alteradas; o original é mantido ao lado (.sc_orig).'
+        lib_upd_tip = 'Substitui DLSS / FSR / XeSS / XeLL nos jogos selecionados pelas últimas versões baixadas. Versões iguais ou mais recentes não são alteradas; o original é mantido (.sc_orig).'
         lib_upd_none_dl = 'Ainda não há versões de upscalers baixadas. Baixe-as nas Configurações («Upscaler libraries»).'
         lib_upd_confirm = 'Substituir as bibliotecas de upscalers pelas últimas baixadas nos jogos selecionados: {0}.'
         lib_upd_confirm2 = 'Os arquivos originais são mantidos ao lado com o sufixo .sc_orig. Feche os jogos antes.'
@@ -6625,13 +6990,13 @@ $script:I18n = @{
         lib_filter_coll_none = 'Sem categoria'
         lib_filter_coll_fav = 'Favoritos'
         lib_filter_coll_hidden = 'Ocultos'
-        lib_restore_tip = 'Restaura as DLLs originais de upscaler nos jogos selecionados a partir das cópias salvas (.sc_orig). As cópias permanecem, então dá para atualizar de novo depois.'
+        lib_restore_tip = 'Restaura as DLLs originais de upscaler nos jogos selecionados a partir das cópias (.sc_orig).'
         lib_restore_confirm = 'Restaurar as bibliotecas de upscaler originais nos jogos selecionados: {0}.'
         lib_restore_confirm2 = 'Os arquivos serão substituídos pelas cópias .sc_orig criadas antes da atualização. Feche os jogos antes de restaurar.'
         save_btn_backup = 'Backup'
         save_btn_restore = 'Restaurar'
-        save_tip_backup = 'Faz backup dos saves dos jogos selecionados (base oficial do Ludusavi e caminhos de emuladores). Se não mudaram, nenhum arquivo novo é criado.'
-        save_tip_restore = 'Restaura os saves dos jogos selecionados a partir do último backup. Os saves atuais vão antes para um arquivo de segurança pre-restore.'
+        save_tip_backup = 'Faz backup dos saves dos jogos selecionados. Se não mudaram, nenhum arquivo novo é criado.'
+        save_tip_restore = 'Restaura os saves dos jogos selecionados a partir do último backup. Os atuais vão antes para um arquivo pre-restore.'
         save_confirm_backup = 'Fazer backup dos saves dos jogos selecionados: {0}.'
         save_confirm_backup2 = 'Pasta de backups: {0}'
         save_confirm_restore = 'Restaurar os saves dos últimos backups nos jogos selecionados: {0}.'
@@ -6690,7 +7055,7 @@ $script:I18n = @{
         coll_fail = 'Não foi possível alterar as coleções: {0}'
         coll_missing = 'Coleção não encontrada nos arquivos do Steam: {0}'
         save_heur_label = 'Heurística'
-        sdet_tip = 'Detectar os saves exatos deste jogo: primeiro a busca na base de dados e, se nada for encontrado, o jogo é iniciado e os arquivos que ele cria são monitorados. Clique direito para mais ações.'
+        sdet_tip = 'Detecta os saves do jogo: primeiro na base de dados; se nada for encontrado, inicia o jogo e monitora os arquivos que ele cria. Clique direito: mais ações.'
         sdet_tip_defined = 'Saves definidos ({0} local(is)). Clique para detectar de novo. Clique direito para mais ações.'
         sdet_menu_auto = 'Detectar saves'
         sdet_menu_track = 'Acompanhar a inicialização do jogo…'
@@ -6720,7 +7085,7 @@ $script:I18n = @{
         sdet_unit_b = 'B'
         lib_tmp_saves_scan = 'Procurando saves: {0} de {1}'
         lib_tmp_saves_done = 'Jogos com saves encontrados: {0} de {1}'
-        save_scan_tip = 'Procurar os saves dos jogos selecionados sem iniciá-los. Passo 1: base Ludusavi e caminhos de emuladores; o que for encontrado é guardado como saves definidos. Se não houver nada, Steam Cloud e heurística, e o que encontrarem é guardado. Jogos com saves já definidos são ignorados.'
+        save_scan_tip = 'Procura os saves dos jogos selecionados sem iniciá-los: primeiro Ludusavi e caminhos de emuladores, depois Steam Cloud e heurística. Jogos com saves já definidos são ignorados.'
         save_st_defined = 'Definido'
         save_scan_recorded = 'Saves definidos e guardados: {0}'
         save_scan_already = 'Já definidos antes'
@@ -6814,6 +7179,8 @@ $script:I18n = @{
         steam_close_cancelled = 'Cancelado: o Steam não foi fechado'
         set_offer_launchers = 'Sugerir launchers'
         set_use_exe_icons = 'Usar ícones do EXE'
+        set_offer_launchers_tip = 'Inclui launchers de jogos (como Launcher.exe) na busca automática do EXE. Desativado por padrão: é escolhido o exe do próprio jogo.'
+        set_use_exe_icons_tip = 'Usa o ícone do EXE do jogo em vez do ícone do Steam. Não se aplica a jogos de ROM.'
         icon_exe_back_tip = 'Restaurar o ícone que havia antes do EXE'
         sw_section = 'Steam Web API (banco de dados local de jogos)'
         api_keys_section = 'Chaves de API'
@@ -6930,6 +7297,8 @@ $script:I18n = @{
         sgdb_flt_tags = 'Tipos e tags'
         sgdb_flt_static = 'Estáticas'
         sgdb_flt_animated = 'Animadas'
+        sgdb_badge_animated = 'Capa animada'
+        sgdb_badge_likes = 'Curtidas: {0}'
         sgdb_flt_humor = 'Humor'
         sgdb_flt_adult = 'Conteúdo adulto'
         sgdb_flt_epilepsy = 'Epilepsia'
@@ -7142,9 +7511,9 @@ $script:I18n = @{
         emu_lbl_ext = 'Extensões:'
         emu_ext_hint = 'Separadas por vírgula, sem pontos. Exemplo: sfc,smc,fig'
         emu_chk_extract = 'Extrair arquivos compactados'
-        emu_chk_extract_tip = 'O arquivo compactado da ROM será extraído para uma pasta temporária antes de iniciar o emulador (no RetroArch, somente se o núcleo não conseguir lê-lo diretamente). Os arquivos temporários são excluídos ao fechá-lo.'
+        emu_chk_extract_tip = 'Extrai o arquivo compactado da ROM para uma pasta temporária antes de iniciar o emulador; os arquivos são excluídos ao fechá-lo.'
         emu_chk_multidisc = 'Multidisco (m3u)'
-        emu_chk_multidisc_tip = 'O programa procura jogos de vários discos (discos com nome «(Disc 1)», «(Disc 2)» etc.) e os inicia por uma única lista m3u; no cartão da ROM aparece a caixa «Multidisco». Ela é ativada sozinha para emuladores que leem m3u (RetroArch, DuckStation, Mednafen, Flycast, BizHawk) e fica desativada para os demais.'
+        emu_chk_multidisc_tip = 'Jogos de vários discos («(Disc 1)», «(Disc 2)»…) são iniciados por uma única lista m3u e a ficha mostra a caixa «Multidisco». Ativa sozinha em emuladores que leem m3u.'
         dlg_pick_folder_name = 'Selecionar pasta'
         dlg_pick_folder_btn = 'Selecionar pasta'
         emu_lbl_args = 'Argumentos:'
@@ -7231,7 +7600,7 @@ $script:I18n = @{
         upl_latest_done = 'Últimas versões selecionadas: {0}'
         upl_latest_same = 'As últimas versões baixadas já estão selecionadas.'
         upl_auto_update = 'Atualizar ao adicionar'
-        upl_tip_auto_update = 'Ao adicionar um jogo ao Steam (manualmente ou por importação automática), substitui DLSS / FSR / XeSS / XeLL na pasta do jogo pelas versões selecionadas acima. Arquivos com a mesma versão ou mais recente não são alterados; o original é mantido ao lado (.sc_orig).'
+        upl_tip_auto_update = 'Ao adicionar um jogo ao Steam, substitui DLSS / FSR / XeSS / XeLL na pasta dele pelas versões escolhidas acima. Versões iguais ou mais recentes não são alteradas; o original é mantido (.sc_orig).'
         upl_mb = 'MB'
         upl_none = 'Não baixada'
         upl_section = 'Bibliotecas de upscalers'
@@ -7249,7 +7618,7 @@ $script:I18n = @{
         sav_upd_done = 'Base atualizada: {0:N0} jogos'
         sav_upd_same = 'Base em dia: {0:N0} jogos'
         sav_upd_fail = 'Não foi possível atualizar a base: {0}'
-        sav_tip_update = 'Baixa a base atualizada de caminhos de saves da fonte oficial (Ludusavi). Se não mudou, não é baixada de novo.'
+        sav_tip_update = 'Baixa a base atualizada de caminhos de saves (Ludusavi), se ela mudou.'
         sav_folder = 'Pasta de backups:'
         sav_tip_pick = 'Escolher a pasta comum para os backups de saves'
         sav_tip_reset = 'Voltar à pasta padrão'
@@ -7261,6 +7630,122 @@ $script:I18n = @{
         dll_err_no_src = 'arquivo de origem não encontrado: {0}'
         dll_err_no_dst = 'o jogo não tem o arquivo: {0}'
         splash_reading = 'Lendo a biblioteca…'
+        fav_tip_add = 'Adicionar a pasta atual aos favoritos'
+        fav_tip_remove = 'Remover a pasta atual dos favoritos'
+        fav_tip_list = 'Pastas favoritas (clique com o botão direito num item para remover, renomear ou reordenar)'
+        fav_empty = '(nenhum favorito ainda)'
+        fav_missing = 'pasta indisponível'
+        fav_remove = 'Remover dos favoritos'
+        fav_rename = 'Renomear…'
+        fav_up = 'Mover para cima'
+        fav_down = 'Mover para baixo'
+        fav_rename_title = 'Nome da pasta favorita'
+        rom_swap_multi = 'vários atalhos na pasta do jogo'
+        rom_revert_menu = 'Restaurar a inicialização direta do exe do jogo ({0})'
+        btn_revert_exe = 'Voltar ao exe ({0})'
+        rom_revert_done = 'Inicialização direta do exe restaurada: {0}'
+        rom_revert_not_exe = 'não é uma inicialização por exe, nada a restaurar'
+        rom_revert_none = 'nenhum atalho é iniciado por um emulador'
+        lib_cap_wraps = 'Wrapper'
+        lib_filter_wrappers = 'Wrappers'
+        lib_all_note = 'Nenhum jogo selecionado: a ação será aplicada a todos os jogos da lista atual (respeitando a busca e o filtro).'
+        lib_all_confirm = 'Nenhum jogo selecionado. Procurar saves em todos os jogos da lista atual: {0}?'
+        lib_ctx_save_scan = 'Procurar saves'
+        sdet_pick_hint_heur = 'Os saves foram encontrados via Steam Cloud / heurística. Marque os locais que devem contar como saves do jogo:'
+        sdet_pick_hint_multi_all = 'Foram encontrados vários locais de saves para estes jogos. Marque os que devem contar como saves do jogo (a caixa ao lado do nome do jogo alterna todos os seus locais):'
+        sdet_btn_check_all = 'Marcar tudo'
+        sdet_btn_uncheck_all = 'Desmarcar tudo'
+        sdet_btn_skip_all = 'Ignorar tudo'
+        save_scan_pick_skipped = 'Não salvo: seleção ignorada'
+        btn_change_coll = 'Alterar coleções ({0})'
+        btn_coll_tip = 'Alterar as coleções dos jogos selecionados'
+        btn_libs_tip = 'Bibliotecas de upscaling dos jogos selecionados'
+        btn_libs_upd_tip = 'Atualizar as bibliotecas de upscaling (DLSS / FSR / XeSS / XeLL)'
+        btn_libs_rst_tip = 'Restaurar as bibliotecas originais a partir dos backups (.sc_orig)'
+        btn_libs_upd_n = 'Atualizar bibliotecas ({0})'
+        btn_libs_rst_n = 'Restaurar bibliotecas ({0})'
+        btn_libs_cancel = 'Cancelar'
+        btn_saves_tip = 'Saves dos jogos selecionados: procurar, fazer backup, restaurar'
+        btn_saves_scan_n = 'Procurar saves ({0})'
+        btn_saves_backup_n = 'Fazer backup dos saves ({0})'
+        btn_saves_restore_n = 'Restaurar saves ({0})'
+        btn_coll_tip_new = 'Colocar em coleções ao adicionar'
+        src_tip_nokey = 'SteamGridDB indisponível: informe e verifique a chave de API nas configurações'
+        card_wrapper_chk = 'Wrapper'
+        card_wrapper_empty = 'Adicionar um wrapper'
+        card_wrapper_deleted = 'Wrapper removido'
+        wrap_section = 'Wrappers'
+        wrap_dlg_new = 'Novo wrapper'
+        wrap_exe_missing = 'Informe o caminho do exe'
+        wrap_dlg_edit = 'Editar wrapper'
+        wrap_lbl_name = 'Nome:'
+        wrap_lbl_exe = 'Programa:'
+        wrap_lbl_args = 'Argumentos:'
+        wrap_args_hint = '{game} - caminho do jogo, {args} - seus parâmetros da ficha. Exemplo: "{game}" {args}'
+        wrap_ofd_title = 'Selecione o programa wrapper (.exe)'
+        wrap_confirm_remove = 'Remover este wrapper da lista?'
+        wrap_err_add = 'Erro ao adicionar o wrapper:'
+        wrap_err_edit = 'Erro ao editar o wrapper:'
+        wrap_exe_gone = 'Programa wrapper não encontrado: {0}'
+        wrap_mode_tip = 'Modo Wrappers: os jogos iniciam pelo wrapper ativo (Virtual Desktop etc.)'
+        wrap_none = 'Nenhum wrapper selecionado'
+        wrap_pick_tip = 'Clique para escolher o wrapper ativo na lista adicionada nas configurações.'
+        wrap_list_empty = 'A lista de wrappers está vazia. Adicione um wrapper na seção "Wrappers" das configurações.'
+        wrap_popup_hdr = 'Wrappers'
+        btn_swap_wrapper = 'Trocar wrapper para {0} ({1})'
+        btn_revert_wrapper = 'Remover wrapper ({0})'
+        wrap_revert_menu = 'Iniciar o jogo sem wrapper ({0})'
+        pick_remove_wrapper = 'Remover wrapper'
+        lib_wrap_swap_menu = 'Trocar wrapper'
+        lib_wrap_swap_menu_sel = 'Trocar wrapper dos jogos marcados ({0})'
+        lib_wrap_pick_menu = 'Escolher wrapper'
+        lib_wrap_pick_menu_sel = 'Escolher wrapper para os jogos marcados ({0})'
+        lib_wrap_remove_menu = 'Remover wrapper'
+        lib_wrap_remove_menu_sel = 'Remover wrapper dos jogos marcados ({0})'
+        wrap_swap_done = 'Wrapper "{1}" atribuído a {0} jogo(s).'
+        wrap_revert_done = 'Wrapper removido de {0} jogo(s).'
+        wrap_swap_no_exe = 'exe do jogo não encontrado'
+        wrap_swap_launcher = 'o jogo inicia pelo SCLauncher'
+        wrap_swap_rom = 'atalho de ROM, wrappers não se aplicam'
+        wrap_revert_none = 'o jogo não é iniciado por um wrapper'
+        card_wrapper_tip = 'Wrapper de inicialização: o jogo inicia por outro programa (por exemplo, Virtual Desktop)'
+        hd_saves_found = 'Saves definidos: {0}.'
+        rom_chk_multidisc = 'Multidisco (m3u)'
+        rom_chk_multidisc_tip = 'Inicia por um único m3u. Discos em ordem: {0}'
+        rom_chk_multidisc_maybe = 'Foram encontrados {0} discos. Podem ser um único jogo. Ative para iniciá-los por um único m3u: {1}'
+        rom_chk_multidisc_manual_tip = 'Jogo multidisco: clique em "Discos..." e adicione todos os discos do jogo (pelo menos dois). Um m3u será criado com eles.'
+        rom_btn_discs = 'Discos'
+        rom_btn_discs_pick = 'Escolher discos'
+        rom_btn_discs_n1 = '{0} disco'
+        rom_btn_discs_n2 = '{0} discos'
+        rom_btn_discs_n5 = '{0} discos'
+        rom_btn_discs_tip = 'Discos do jogo: adicionar, remover, alterar a ordem'
+        rom_discs_title = 'Discos do jogo'
+        rom_discs_add = 'Adicionar...'
+        rom_discs_remove = 'Remover'
+        rom_discs_up = 'Para cima'
+        rom_discs_down = 'Para baixo'
+        rom_discs_ok = 'Concluir'
+        rom_discs_cancel = 'Cancelar'
+        rom_discs_folder = 'Pasta: {0}'
+        rom_discs_ofd_filter = 'Imagens de disco|*.iso;*.cue;*.chd;*.gdi;*.bin;*.img;*.cso|Todos os arquivos (*.*)|*.*'
+        rom_multi_pick_title = 'Selecione todos os discos do jogo (pelo menos dois)'
+        rom_multi_need_two = 'Selecione pelo menos dois discos do mesmo jogo.'
+        rom_multi_one_dir = 'Todos os discos devem estar na mesma pasta.'
+        btn_remove_lib = 'Remover da biblioteca'
+        btn_remove_lib_tip = 'Remover da biblioteca os jogos marcados ({0}). Os arquivos no disco não são tocados. Segure Shift para também excluir o jogo instalado do disco (o desinstalador dele é executado primeiro).'
+        lib_remove_confirm = 'Remover estes jogos da biblioteca da Steam: {0}?\n\nOs atalhos serão excluídos de todos os perfis da Steam; os arquivos do jogo no disco não são tocados. Se a Steam estiver em execução, ela será fechada e iniciada novamente. Um backup do shortcuts.vdf é feito antes da gravação.'
+        lib_remove_done = 'Removidos da biblioteca: {0}.'
+        lib_remove_confirm_files = 'Remover estes jogos da biblioteca da Steam ({0}) e EXCLUIR PERMANENTEMENTE seus arquivos do disco?\n\nEstas pastas serão excluídas:\n{1}\n\nEsta ação exclui todos os arquivos do jogo do disco e não pode ser desfeita (eles não vão para a Lixeira). Os atalhos serão excluídos de todos os perfis da Steam. Se a Steam estiver em execução, ela será fechada e iniciada novamente.'
+        lib_remove_files_done = 'Pastas excluídas do disco: {0}.'
+        lib_remove_files_fail = 'Não foi possível excluir pastas do disco: {0}. {1}'
+        lib_remove_files_skip = 'Pasta não excluída (caminho inseguro ou contém outros jogos da biblioteca): {0}'
+        lib_remove_uninstall_note = 'Jogos instalados com um instalador serão desinstalados primeiro com o próprio desinstalador. Conclua a remoção na janela dele; o programa vai esperar o término: {0}.'
+        lib_uninstall_wait = 'Aguardando o desinstalador: {0}. Conclua a remoção na janela dele.'
+        lib_uninstall_cancelled = 'O desinstalador não concluiu a remoção: {0}. O jogo foi mantido na biblioteca.'
+        lib_uninstall_unsure = 'O desinstalador de "{0}" terminou, mas o registro da instalação ainda está no sistema. Considerar o jogo como removido e continuar (os restos da pasta do jogo serão excluídos)?'
+        lib_uninstall_start_fail = 'Não foi possível iniciar o desinstalador de "{0}": {1}. O jogo foi mantido na biblioteca.'
+        lib_remove_fail = 'Não foi possível remover os atalhos: {0}. {1}'
     }
     de = @{
         hint_main = 'Doppelklick / Eingabe — Spielkarte. Spiele anhaken zum Hinzufügen oder Verschieben'
@@ -7297,27 +7782,27 @@ $script:I18n = @{
         btn_move = 'Spiel verschieben'
         btn_refresh = 'Aktualisieren'
         batch_auto = 'Auto-Import'
-        batch_auto_tip = 'Wenn aktiviert: Beim gleichzeitigen Hinzufügen mehrerer Spiele werden Spiele, deren Name und exe sicher erkannt wurden, automatisch der Bibliothek hinzugefügt, ohne dass die Karte angezeigt wird. Die Karte öffnet sich nur bei Spielen, die das Programm nicht eindeutig identifizieren konnte.'
+        batch_auto_tip = 'Beim Hinzufügen mehrerer Spiele werden Spiele mit sicher erkanntem Namen und exe direkt hinzugefügt, ohne Karte. Die Karte öffnet sich nur bei uneindeutigen Spielen.'
         btn_add_batch = '＋  Ausgewählte Spiele zur Bibliothek hinzufügen'
         btn_add_batch_n = '＋  Neue Spiele zur Bibliothek hinzufügen ({0})'
         btn_steam_library = 'Bibliothek / Import / Spielstände / DLSS Swap'
         btn_swap_emulator = 'Emulator wechseln zu {0} ({1})'
         rom_swap_not_added = 'keine Verknüpfung in Steam'
         lib_browser_title = 'Bibliothek/Import'
-        lib_loading = 'Bibliothek wird geladen…'
-        lib_empty = 'Noch keine Spiele in der Steam-Bibliothek.'
+        lib_loading = '…'
+        lib_empty = '0'
         lib_search_cue = 'Nach Namen suchen…'
         lib_back = 'Zurück'
         lib_cap_saves = 'Spielstände'
         lib_cap_upscalers = 'Upscaler'
-        lib_cap_emus = 'Emulatoren'
-        lib_count = 'Spiele: {0}'
+        lib_cap_emus = 'Emulator'
+        lib_count = '{0}'
         lib_selected = 'Ausgewählt: {0}'
-        lib_selected_of = '{0} / {1}'
+        lib_selected_of = '{0}/{1}'
         lib_select_all = 'Alle auswählen'
         lib_deselect_all = 'Alle abwählen'
         lib_upd_btn = 'Upscaler aktualisieren'
-        lib_upd_tip = 'Ersetzt DLSS / FSR / XeSS / XeLL in den ausgewählten Spielen durch die neuesten heruntergeladenen Versionen. Bibliotheken mit gleicher oder neuerer Version bleiben unberührt; das Original wird daneben aufbewahrt (.sc_orig).'
+        lib_upd_tip = 'Ersetzt DLSS / FSR / XeSS / XeLL in den ausgewählten Spielen durch die neuesten heruntergeladenen Versionen. Gleiche oder neuere bleiben unberührt; das Original wird behalten (.sc_orig).'
         lib_upd_none_dl = 'Noch keine Upscaler-Versionen heruntergeladen. Lade sie in den Einstellungen («Upscaler libraries») herunter.'
         lib_upd_confirm = 'Upscaler-Bibliotheken in den ausgewählten Spielen ({0}) durch die neuesten heruntergeladenen ersetzen.'
         lib_upd_confirm2 = 'Originaldateien bleiben daneben mit der Endung .sc_orig erhalten. Schließe die Spiele vorher.'
@@ -7342,13 +7827,13 @@ $script:I18n = @{
         lib_filter_coll_none = 'Ohne Kategorie'
         lib_filter_coll_fav = 'Favoriten'
         lib_filter_coll_hidden = 'Versteckt'
-        lib_restore_tip = 'Stellt in den ausgewählten Spielen die originalen Upscaler-DLLs aus den gespeicherten Kopien (.sc_orig) wieder her. Die Kopien bleiben erhalten, sodass später erneut aktualisiert werden kann.'
+        lib_restore_tip = 'Stellt in den ausgewählten Spielen die originalen Upscaler-DLLs aus den Kopien (.sc_orig) wieder her.'
         lib_restore_confirm = 'Originale Upscaler-Bibliotheken in den ausgewählten Spielen wiederherstellen: {0}.'
         lib_restore_confirm2 = 'Die Dateien werden durch die vor dem Update erstellten .sc_orig-Kopien ersetzt. Schließe die Spiele vor dem Zurückspielen.'
         save_btn_backup = 'Sichern'
         save_btn_restore = 'Laden'
-        save_tip_backup = 'Sichert die Spielstände der ausgewählten Spiele (offizielle Ludusavi-Datenbank und Emulator-Pfade). Haben sie sich nicht geändert, wird kein neues Archiv angelegt.'
-        save_tip_restore = 'Stellt die Spielstände der ausgewählten Spiele aus dem letzten Backup wieder her. Die aktuellen Stände landen zuvor in einem Sicherheitsarchiv pre-restore.'
+        save_tip_backup = 'Sichert die Spielstände der ausgewählten Spiele. Ohne Änderungen wird kein neues Archiv angelegt.'
+        save_tip_restore = 'Stellt die Spielstände der ausgewählten Spiele aus dem letzten Backup wieder her. Die aktuellen werden vorher in einem pre-restore-Archiv gesichert.'
         save_confirm_backup = 'Spielstände der ausgewählten Spiele sichern: {0}.'
         save_confirm_backup2 = 'Backup-Ordner: {0}'
         save_confirm_restore = 'Spielstände der ausgewählten Spiele aus den letzten Backups wiederherstellen: {0}.'
@@ -7407,7 +7892,7 @@ $script:I18n = @{
         coll_fail = 'Sammlungen konnten nicht geändert werden: {0}'
         coll_missing = 'Sammlung in den Steam-Dateien nicht gefunden: {0}'
         save_heur_label = 'Heuristik'
-        sdet_tip = 'Die genauen Spielstände dieses Spiels ermitteln: zuerst Suche in der Datenbank, und wenn nichts gefunden wird, das Spiel starten und die von ihm erzeugten Dateien überwachen. Rechtsklick für weitere Aktionen.'
+        sdet_tip = 'Ermittelt die Spielstände des Spiels: erst in der Datenbank, sonst wird das Spiel gestartet und seine Dateien überwacht. Rechtsklick: weitere Aktionen.'
         sdet_tip_defined = 'Spielstände festgelegt ({0} Ort(e)). Klicken, um erneut zu ermitteln. Rechtsklick für weitere Aktionen.'
         sdet_menu_auto = 'Spielstände ermitteln'
         sdet_menu_track = 'Spielstart verfolgen…'
@@ -7437,7 +7922,7 @@ $script:I18n = @{
         sdet_unit_b = 'B'
         lib_tmp_saves_scan = 'Suche nach Spielständen: {0} von {1}'
         lib_tmp_saves_done = 'Spiele mit gefundenen Spielständen: {0} von {1}'
-        save_scan_tip = 'Spielstände der markierten Spiele ohne Spielstart suchen. Schritt 1: Ludusavi-Datenbank und Emulator-Pfade; Gefundenes wird als festgelegte Spielstände gespeichert. Gibt es dort nichts, folgen Steam Cloud und Heuristik, und deren Funde werden gespeichert. Spiele mit bereits festgelegten Spielständen werden übersprungen.'
+        save_scan_tip = 'Sucht Spielstände der markierten Spiele ohne Start: zuerst Ludusavi und Emulator-Pfade, dann Steam Cloud und Heuristik. Spiele mit festgelegten Spielständen werden übersprungen.'
         save_st_defined = 'Festgelegt'
         save_scan_recorded = 'Spielstände festgelegt und gespeichert: {0}'
         save_scan_already = 'Bereits zuvor festgelegt'
@@ -7531,6 +8016,8 @@ $script:I18n = @{
         steam_close_cancelled = 'Abgebrochen: Steam wurde nicht geschlossen'
         set_offer_launchers = 'Launcher vorschlagen'
         set_use_exe_icons = 'Symbole aus der EXE verwenden'
+        set_offer_launchers_tip = 'Berücksichtigt Spiele-Launcher (z. B. Launcher.exe) bei der automatischen EXE-Suche. Standardmäßig aus: Es wird die exe des Spiels gewählt.'
+        set_use_exe_icons_tip = 'Verwendet das Symbol aus der EXE des Spiels statt des Steam-Symbols. Gilt nicht für ROM-Spiele.'
         icon_exe_back_tip = 'Symbol von vor der EXE wiederherstellen'
         sw_section = 'Steam Web API (lokale Spieldatenbank)'
         api_keys_section = 'API-Schlüssel'
@@ -7647,6 +8134,8 @@ $script:I18n = @{
         sgdb_flt_tags = 'Typen und Tags'
         sgdb_flt_static = 'Statisch'
         sgdb_flt_animated = 'Animiert'
+        sgdb_badge_animated = 'Animiertes Cover'
+        sgdb_badge_likes = 'Likes: {0}'
         sgdb_flt_humor = 'Humor'
         sgdb_flt_adult = 'Inhalte für Erwachsene'
         sgdb_flt_epilepsy = 'Epilepsie'
@@ -7859,9 +8348,9 @@ $script:I18n = @{
         emu_lbl_ext = 'Erweiterungen:'
         emu_ext_hint = 'Durch Komma getrennt, ohne Punkte. Beispiel: sfc,smc,fig'
         emu_chk_extract = 'Archive entpacken'
-        emu_chk_extract_tip = 'Das ROM-Archiv wird vor dem Start des Emulators in einen temporären Ordner entpackt (bei RetroArch nur, wenn der Core das Archiv nicht selbst lesen kann). Die temporären Dateien werden nach dem Beenden des Emulators gelöscht.'
+        emu_chk_extract_tip = 'Entpackt das ROM-Archiv vor dem Start des Emulators in einen temporären Ordner; die Dateien werden nach dem Beenden gelöscht.'
         emu_chk_multidisc = 'Multi-Disc (m3u)'
-        emu_chk_multidisc_tip = 'Das Programm sucht Spiele mit mehreren Discs (Discs mit „(Disc 1)“, „(Disc 2)“ usw. im Namen) und startet sie über eine einzige m3u-Liste; auf der ROM-Karte erscheint das Kontrollkästchen „Multi-Disc“. Für Emulatoren, die m3u lesen (RetroArch, DuckStation, Mednafen, Flycast, BizHawk), wird es automatisch aktiviert, für die übrigen ist es ausgeschaltet.'
+        emu_chk_multidisc_tip = 'Multi-Disc-Spiele („(Disc 1)“, „(Disc 2)“ …) starten über eine m3u-Liste, die ROM-Karte zeigt „Multi-Disc“. Bei Emulatoren mit m3u-Unterstützung automatisch aktiv.'
         dlg_pick_folder_name = 'Ordner auswählen'
         dlg_pick_folder_btn = 'Ordner auswählen'
         emu_lbl_args = 'Argumente:'
@@ -7948,7 +8437,7 @@ $script:I18n = @{
         upl_latest_done = 'Neueste Versionen ausgewählt: {0}'
         upl_latest_same = 'Die neuesten heruntergeladenen Versionen sind bereits ausgewählt.'
         upl_auto_update = 'Beim Hinzufügen aktualisieren'
-        upl_tip_auto_update = 'Beim Hinzufügen eines Spiels zu Steam (manuell oder per Auto-Import) werden DLSS / FSR / XeSS / XeLL im Spielordner durch die oben ausgewählten Versionen ersetzt. Dateien mit gleicher oder neuerer Version bleiben unberührt; das Original wird daneben aufbewahrt (.sc_orig).'
+        upl_tip_auto_update = 'Beim Hinzufügen eines Spiels zu Steam werden DLSS / FSR / XeSS / XeLL in dessen Ordner durch die oben gewählten Versionen ersetzt. Gleiche oder neuere bleiben unberührt; das Original wird behalten (.sc_orig).'
         upl_mb = 'MB'
         upl_none = 'Nicht heruntergeladen'
         upl_section = 'Upscaler-Bibliotheken'
@@ -7966,7 +8455,7 @@ $script:I18n = @{
         sav_upd_done = 'Datenbank aktualisiert: {0:N0} Spiele'
         sav_upd_same = 'Datenbank aktuell: {0:N0} Spiele'
         sav_upd_fail = 'Datenbank konnte nicht aktualisiert werden: {0}'
-        sav_tip_update = 'Lädt die aktuelle Datenbank der Spielstand-Pfade aus der offiziellen Quelle (Ludusavi). Unverändert wird sie nicht erneut geladen.'
+        sav_tip_update = 'Lädt die aktuelle Datenbank der Spielstand-Pfade (Ludusavi), falls sie sich geändert hat.'
         sav_folder = 'Backup-Ordner:'
         sav_tip_pick = 'Gemeinsamen Ordner für Spielstand-Backups wählen'
         sav_tip_reset = 'Standardordner wiederherstellen'
@@ -7978,6 +8467,122 @@ $script:I18n = @{
         dll_err_no_src = 'Quelldatei nicht gefunden: {0}'
         dll_err_no_dst = 'Im Spiel fehlt die Datei: {0}'
         splash_reading = 'Bibliothek wird gelesen…'
+        fav_tip_add = 'Aktuellen Ordner zu den Favoriten hinzufügen'
+        fav_tip_remove = 'Aktuellen Ordner aus den Favoriten entfernen'
+        fav_tip_list = 'Favoriten-Ordner (Rechtsklick auf einen Eintrag: entfernen, umbenennen, verschieben)'
+        fav_empty = '(noch keine Favoriten)'
+        fav_missing = 'Ordner nicht verfügbar'
+        fav_remove = 'Aus Favoriten entfernen'
+        fav_rename = 'Umbenennen…'
+        fav_up = 'Nach oben'
+        fav_down = 'Nach unten'
+        fav_rename_title = 'Name des Favoriten-Ordners'
+        rom_swap_multi = 'mehrere Verknüpfungen im Spielordner'
+        rom_revert_menu = 'Direkten Start der Spiel-EXE wiederherstellen ({0})'
+        btn_revert_exe = 'Zurück zur EXE ({0})'
+        rom_revert_done = 'Direkter EXE-Start wiederhergestellt: {0}'
+        rom_revert_not_exe = 'kein EXE-Start, nichts wiederherzustellen'
+        rom_revert_none = 'keine Verknüpfung startet über einen Emulator'
+        lib_cap_wraps = 'Wrapper'
+        lib_filter_wrappers = 'Wrapper'
+        lib_all_note = 'Keine Spiele ausgewählt: Die Aktion gilt für alle Spiele der aktuellen Liste (unter Berücksichtigung von Suche und Filter).'
+        lib_all_confirm = 'Keine Spiele ausgewählt. Spielstände in allen Spielen der aktuellen Liste suchen: {0}?'
+        lib_ctx_save_scan = 'Spielstände suchen'
+        sdet_pick_hint_heur = 'Die Spielstände wurden über Steam Cloud / Heuristik gefunden. Hake die Orte an, die als Spielstände gelten sollen:'
+        sdet_pick_hint_multi_all = 'Für diese Spiele wurden mehrere Speicherorte gefunden. Hake die Orte an, die als Spielstände gelten sollen (das Kästchen neben dem Spielnamen schaltet alle seine Orte um):'
+        sdet_btn_check_all = 'Alle anhaken'
+        sdet_btn_uncheck_all = 'Alle abwählen'
+        sdet_btn_skip_all = 'Alle überspringen'
+        save_scan_pick_skipped = 'Nicht gespeichert: Auswahl übersprungen'
+        btn_change_coll = 'Sammlungen ändern ({0})'
+        btn_coll_tip = 'Sammlungen der ausgewählten Spiele ändern'
+        btn_libs_tip = 'Upscaler-Bibliotheken der ausgewählten Spiele'
+        btn_libs_upd_tip = 'Upscaler-Bibliotheken aktualisieren (DLSS / FSR / XeSS / XeLL)'
+        btn_libs_rst_tip = 'Originale Bibliotheken aus den Backups (.sc_orig) wiederherstellen'
+        btn_libs_upd_n = 'Bibliotheken aktualisieren ({0})'
+        btn_libs_rst_n = 'Bibliotheken wiederherstellen ({0})'
+        btn_libs_cancel = 'Abbrechen'
+        btn_saves_tip = 'Spielstände der ausgewählten Spiele: suchen, sichern, wiederherstellen'
+        btn_saves_scan_n = 'Spielstände suchen ({0})'
+        btn_saves_backup_n = 'Spielstände sichern ({0})'
+        btn_saves_restore_n = 'Spielstände wiederherstellen ({0})'
+        btn_coll_tip_new = 'Beim Hinzufügen in Sammlungen einordnen'
+        src_tip_nokey = 'SteamGridDB nicht verfügbar: API-Schlüssel in den Einstellungen eingeben und prüfen'
+        card_wrapper_chk = 'Wrapper'
+        card_wrapper_empty = 'Wrapper hinzufügen'
+        card_wrapper_deleted = 'Wrapper entfernt'
+        wrap_section = 'Wrapper'
+        wrap_dlg_new = 'Neuer Wrapper'
+        wrap_exe_missing = 'Pfad zur EXE angeben'
+        wrap_dlg_edit = 'Wrapper bearbeiten'
+        wrap_lbl_name = 'Name:'
+        wrap_lbl_exe = 'Programm:'
+        wrap_lbl_args = 'Argumente:'
+        wrap_args_hint = '{game} - Spielpfad, {args} - deine Parameter aus der Karte. Beispiel: "{game}" {args}'
+        wrap_ofd_title = 'Wrapper-Programm (.exe) auswählen'
+        wrap_confirm_remove = 'Diesen Wrapper aus der Liste entfernen?'
+        wrap_err_add = 'Fehler beim Hinzufügen des Wrappers:'
+        wrap_err_edit = 'Fehler beim Bearbeiten des Wrappers:'
+        wrap_exe_gone = 'Wrapper-Programm nicht gefunden: {0}'
+        wrap_mode_tip = 'Wrapper-Modus: Spiele starten über den aktiven Wrapper (Virtual Desktop usw.)'
+        wrap_none = 'Kein Wrapper ausgewählt'
+        wrap_pick_tip = 'Klicken, um den aktiven Wrapper aus der in den Einstellungen angelegten Liste zu wählen.'
+        wrap_list_empty = 'Die Wrapper-Liste ist leer. Füge in den Einstellungen im Bereich „Wrapper“ einen Wrapper hinzu.'
+        wrap_popup_hdr = 'Wrapper'
+        btn_swap_wrapper = 'Wrapper auf {0} wechseln ({1})'
+        btn_revert_wrapper = 'Wrapper entfernen ({0})'
+        wrap_revert_menu = 'Spiel ohne Wrapper starten ({0})'
+        pick_remove_wrapper = 'Wrapper entfernen'
+        lib_wrap_swap_menu = 'Wrapper wechseln'
+        lib_wrap_swap_menu_sel = 'Wrapper für markierte Spiele wechseln ({0})'
+        lib_wrap_pick_menu = 'Wrapper wählen'
+        lib_wrap_pick_menu_sel = 'Wrapper für markierte Spiele wählen ({0})'
+        lib_wrap_remove_menu = 'Wrapper entfernen'
+        lib_wrap_remove_menu_sel = 'Wrapper von markierten Spielen entfernen ({0})'
+        wrap_swap_done = 'Wrapper „{1}“ wurde {0} Spiel(en) zugewiesen.'
+        wrap_revert_done = 'Wrapper von {0} Spiel(en) entfernt.'
+        wrap_swap_no_exe = 'Spiel-EXE nicht gefunden'
+        wrap_swap_launcher = 'das Spiel startet über SCLauncher'
+        wrap_swap_rom = 'ROM-Verknüpfung, Wrapper gelten nicht'
+        wrap_revert_none = 'das Spiel startet nicht über einen Wrapper'
+        card_wrapper_tip = 'Start-Wrapper: Das Spiel startet über ein anderes Programm (z. B. Virtual Desktop)'
+        hd_saves_found = 'Spielstände festgelegt: {0}.'
+        rom_chk_multidisc = 'Mehrere Discs (m3u)'
+        rom_chk_multidisc_tip = 'Start über eine m3u. Discs der Reihe nach: {0}'
+        rom_chk_multidisc_maybe = '{0} Discs gefunden. Sie könnten zu einem Spiel gehören. Aktivieren, um sie über eine m3u zu starten: {1}'
+        rom_chk_multidisc_manual_tip = 'Mehrere Discs: Klicke auf „Discs...“ und füge alle Discs des Spiels hinzu (mindestens zwei). Daraus wird eine m3u erstellt.'
+        rom_btn_discs = 'Discs'
+        rom_btn_discs_pick = 'Discs wählen'
+        rom_btn_discs_n1 = '{0} Disc'
+        rom_btn_discs_n2 = '{0} Discs'
+        rom_btn_discs_n5 = '{0} Discs'
+        rom_btn_discs_tip = 'Spiel-Discs: hinzufügen, entfernen, Reihenfolge ändern'
+        rom_discs_title = 'Spiel-Discs'
+        rom_discs_add = 'Hinzufügen...'
+        rom_discs_remove = 'Entfernen'
+        rom_discs_up = 'Nach oben'
+        rom_discs_down = 'Nach unten'
+        rom_discs_ok = 'Fertig'
+        rom_discs_cancel = 'Abbrechen'
+        rom_discs_folder = 'Ordner: {0}'
+        rom_discs_ofd_filter = 'Disc-Abbilder|*.iso;*.cue;*.chd;*.gdi;*.bin;*.img;*.cso|Alle Dateien (*.*)|*.*'
+        rom_multi_pick_title = 'Alle Discs des Spiels auswählen (mindestens zwei)'
+        rom_multi_need_two = 'Wähle mindestens zwei Discs desselben Spiels aus.'
+        rom_multi_one_dir = 'Alle Discs müssen im selben Ordner liegen.'
+        btn_remove_lib = 'Aus Bibliothek entfernen'
+        btn_remove_lib_tip = 'Markierte Spiele aus der Bibliothek entfernen ({0}). Dateien auf der Festplatte bleiben unberührt. Mit gedrückter Umschalttaste wird das installierte Spiel auch von der Festplatte gelöscht (zuvor läuft sein Deinstallationsprogramm).'
+        lib_remove_confirm = 'Diese Spiele aus der Steam-Bibliothek entfernen: {0}?\n\nDie Verknüpfungen werden aus allen Steam-Profilen gelöscht; Spieldateien auf der Festplatte bleiben unberührt. Läuft Steam, wird es beendet und neu gestartet. Vor dem Schreiben wird eine Sicherung der shortcuts.vdf angelegt.'
+        lib_remove_done = 'Aus der Bibliothek entfernt: {0}.'
+        lib_remove_confirm_files = 'Diese Spiele aus der Steam-Bibliothek entfernen ({0}) und ihre Dateien DAUERHAFT von der Festplatte LÖSCHEN?\n\nDiese Ordner werden gelöscht:\n{1}\n\nDiese Aktion löscht alle Spieldateien von der Festplatte und kann nicht rückgängig gemacht werden (sie landen nicht im Papierkorb). Die Verknüpfungen werden aus allen Steam-Profilen gelöscht. Läuft Steam, wird es beendet und neu gestartet.'
+        lib_remove_files_done = 'Ordner von der Festplatte gelöscht: {0}.'
+        lib_remove_files_fail = 'Ordner konnten nicht von der Festplatte gelöscht werden: {0}. {1}'
+        lib_remove_files_skip = 'Ordner nicht gelöscht (unsicherer Pfad oder darin liegen andere Bibliotheksspiele): {0}'
+        lib_remove_uninstall_note = 'Mit einem Installer installierte Spiele werden zuerst mit ihrem eigenen Deinstallationsprogramm entfernt. Schließe die Entfernung in dessen Fenster ab – das Programm wartet darauf: {0}.'
+        lib_uninstall_wait = 'Warte auf das Deinstallationsprogramm: {0}. Schließe die Entfernung in dessen Fenster ab.'
+        lib_uninstall_cancelled = 'Das Deinstallationsprogramm hat die Entfernung nicht abgeschlossen: {0}. Das Spiel bleibt in der Bibliothek.'
+        lib_uninstall_unsure = 'Das Deinstallationsprogramm von „{0}“ ist beendet, aber der Installationseintrag ist noch im System vorhanden. Das Spiel als entfernt behandeln und fortfahren (Reste des Spielordners werden gelöscht)?'
+        lib_uninstall_start_fail = 'Das Deinstallationsprogramm von „{0}“ konnte nicht gestartet werden: {1}. Das Spiel bleibt in der Bibliothek.'
+        lib_remove_fail = 'Verknüpfungen konnten nicht entfernt werden: {0}. {1}'
     }
 }
 
@@ -8333,9 +8938,11 @@ function Show-AppMessageBox {
     }
     try { if ($null -ne $steamUi) { foreach ($k in @('Bg', 'Panel', 'Panel2', 'Border', 'Text', 'Accent', 'Accent2')) { if ($null -ne $steamUi[$k]) { $pal[$k] = $steamUi[$k] } } } } catch {}
 
-    # Значок: 16 = ошибка, 32 = вопрос, 48 = предупреждение, 64 = информация.
+    # Значок: 16 = ошибка, 32 = вопрос, 48 = предупреждение, 64 = информация,
+    # 17 = «опасность» (красный треугольник с белым «!», для необратимых действий, например удаления файлов с диска).
     $glyph = $null; $glyphColor = $pal.Accent
     switch ($iconInt) {
+        17 { $glyph = '!';                  $glyphColor = [System.Drawing.Color]::FromArgb(235, 52, 52) }
         16 { $glyph = [string][char]0x2715; $glyphColor = [System.Drawing.Color]::FromArgb(224, 90, 90) }
         32 { $glyph = '?';                  $glyphColor = $pal.Accent }
         48 { $glyph = '!';                  $glyphColor = [System.Drawing.Color]::FromArgb(240, 178, 60) }
@@ -8344,6 +8951,7 @@ function Show-AppMessageBox {
     try {
         switch ($iconInt) {
             16 { [System.Media.SystemSounds]::Hand.Play() }
+            17 { [System.Media.SystemSounds]::Hand.Play() }
             32 { [System.Media.SystemSounds]::Question.Play() }
             48 { [System.Media.SystemSounds]::Exclamation.Play() }
             64 { [System.Media.SystemSounds]::Asterisk.Play() }
@@ -8397,9 +9005,29 @@ function Show-AppMessageBox {
                 $sf = New-Object System.Drawing.StringFormat
                 $sf.Alignment = [System.Drawing.StringAlignment]::Center
                 $sf.LineAlignment = [System.Drawing.StringAlignment]::Center
-                $g.FillEllipse($fill, 2, 2, ($iconSize - 5), ($iconSize - 5))
-                $g.DrawEllipse($pen, 2, 2, ($iconSize - 5), ($iconSize - 5))
-                $g.DrawString($glyph, $gf, $gb, (New-Object System.Drawing.RectangleF(0, 0, $iconSize, ($iconSize + 1))), $sf)
+                if ($iconInt -eq 17) {
+                    # Тревожный значок: сплошной красный треугольник с закруглёнными углами и белый восклицательный знак (рисуется фигурами, а не текстом).
+                    $triPen = New-Object System.Drawing.Pen($glyphColor, 6.0)
+                    $triPen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
+                    $tri = [System.Drawing.PointF[]]@(
+                        (New-Object System.Drawing.PointF(20, 5)),
+                        (New-Object System.Drawing.PointF(35, 33)),
+                        (New-Object System.Drawing.PointF(5, 33))
+                    )
+                    $g.FillPolygon($gb, $tri)
+                    $g.DrawPolygon($triPen, $tri)
+                    $triPen.Dispose()
+                    $exBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White)
+                    $g.FillRectangle($exBrush, 17.75, 15.0, 4.5, 9.0)
+                    $g.FillEllipse($exBrush, 17.75, 12.75, 4.5, 4.5)
+                    $g.FillEllipse($exBrush, 17.75, 21.75, 4.5, 4.5)
+                    $g.FillEllipse($exBrush, 17.5, 27.0, 5.0, 5.0)
+                    $exBrush.Dispose()
+                } else {
+                    $g.FillEllipse($fill, 2, 2, ($iconSize - 5), ($iconSize - 5))
+                    $g.DrawEllipse($pen, 2, 2, ($iconSize - 5), ($iconSize - 5))
+                    $g.DrawString($glyph, $gf, $gb, (New-Object System.Drawing.RectangleF(0, 0, $iconSize, ($iconSize + 1))), $sf)
+                }
                 $fill.Dispose(); $pen.Dispose(); $gf.Dispose(); $gb.Dispose(); $sf.Dispose()
             } finally { $g.Dispose() }
             $pic = New-Object System.Windows.Forms.PictureBox
@@ -9277,7 +9905,7 @@ function Draw-RomTypeIcon ($g, [int]$x, [int]$y, [string]$name, [bool]$isDir, $b
 # Обработчики без GetNewClosure: внутри closure $script:colWidths указывал бы на другой scope.
 function Register-ListBoxNameTip ($listBox) {
     if ($null -eq $global:listNameTip) {
-        $global:listNameTip = New-Object System.Windows.Forms.ToolTip
+        $global:listNameTip = New-SCToolTip
         $global:listNameTipIdx = @{}
     }
     $listBox.Add_MouseMove({
@@ -13011,6 +13639,7 @@ function New-PathDropButton ($PathPanel, [string]$Panel) {
         try {
             $g = $e.Graphics
             $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+            $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
             $cx = $sender.ClientSize.Width / 2.0
             $cy = $sender.ClientSize.Height / 2.0
             $pts = New-Object 'System.Drawing.PointF[]' 3
@@ -13065,13 +13694,80 @@ function Get-BrowseTipText {
     return ($t -replace '[\.\u2026\s]+$', '')
 }
 function Set-BrowseIconTip ($Button) {
-    if ($null -eq $script:browseIconTip) { $script:browseIconTip = New-Object System.Windows.Forms.ToolTip }
+    if ($null -eq $script:browseIconTip) { $script:browseIconTip = New-SCToolTip }
     $script:browseIconTip.SetToolTip($Button, (Get-BrowseTipText))
 }
-function Set-BrowseIconButton ($Button, [int]$Width = 28, [bool]$WithTip = $true) {
-    $Button.Text = ([string][char]0xD83D + [string][char]0xDCC1)
-    $Button.Font = New-Object System.Drawing.Font('Segoe UI Emoji', 9)
+# Значок папки рисуется кодом строго по центру кнопки (глиф эмодзи 📁 из шрифта имеет несимметричные
+# боковые поля и стоял правее центра). Чётность размера значка совпадает с чётностью кнопки, поэтому отступы слева и справа равны.
+$script:browseFolderHooked = @{}
+function Paint-BrowseFolderIcon ($btn, $e) {
+    $pen = $null; $gp = $null
+    try {
+        $g = $e.Graphics
+        $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+        $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+        $w = [int]$btn.ClientSize.Width; $h = [int]$btn.ClientSize.Height
+        $col = if ($btn.Enabled) { $btn.ForeColor } else { [System.Drawing.Color]::FromArgb(110, $btn.ForeColor) }
+        # Контур папки одной замкнутой линией (корпус + скошенный язычок) и линия «крышки».
+        # Координаты лежат на центрах пикселей: у чётной кнопки полуширина X.5, у нечётной целая, поэтому слева и справа отступы равны.
+        $cx = [single]($w / 2.0); $cy = [single]($h / 2.0)
+        $hw = if (($w % 2) -eq 0) { 7.5 } else { 7.0 }
+        $hh = if (($h % 2) -eq 0) { 5.5 } else { 5.0 }
+        $pf = { param($x, $y) New-Object System.Drawing.PointF([single]($cx + $x), [single]($cy + $y)) }
+        $pen = New-Object System.Drawing.Pen($col, 1.4)
+        $pen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
+        $pen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+        $pen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+        $gp = New-Object System.Drawing.Drawing2D.GraphicsPath
+        $gp.AddLines([System.Drawing.PointF[]]@(
+            (& $pf (-$hw) $hh), (& $pf (-$hw) (-$hh)), (& $pf (-$hw + 4.5) (-$hh)),
+            (& $pf (-$hw + 6.5) (-$hh + 2.0)), (& $pf $hw (-$hh + 2.0)), (& $pf $hw $hh)))
+        $gp.CloseFigure()
+        $g.DrawPath($pen, $gp)
+        $g.DrawLine($pen, (& $pf (-$hw) (-$hh + 4.5)), (& $pf $hw (-$hh + 4.5)))
+    } catch {} finally {
+        if ($null -ne $pen) { $pen.Dispose() }
+        if ($null -ne $gp) { $gp.Dispose() }
+    }
+}
+# Значки «скачать» (стрелка вниз) и «удалить» (крест) на плитках библиотек апскейлеров в настройках: рисуются кодом вокруг центра кнопки
+# (раньше это были текстовые глифы шрифта, которые стояли на 0.5 px в стороне из-за метрик шрифта).
+function Paint-TileGlyphIcon ($btn, $e, [string]$kind) {
+    $pen = $null
+    try {
+        $g = $e.Graphics
+        $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+        $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+        $col = if ($btn.Enabled) { $btn.ForeColor } else { [System.Drawing.Color]::FromArgb(120, $btn.ForeColor) }
+        $cx = [single]($btn.ClientSize.Width / 2.0); $cy = [single]($btn.ClientSize.Height / 2.0)
+        $pen = New-Object System.Drawing.Pen($col, 1.6)
+        $pen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+        $pen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+        $pen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
+        if ($kind -eq 'down') {
+            $g.DrawLine($pen, $cx, [single]($cy - 5), $cx, [single]($cy + 5))
+            $g.DrawLines($pen, [System.Drawing.PointF[]]@(
+                (New-Object System.Drawing.PointF([single]($cx - 4), [single]($cy + 1))),
+                (New-Object System.Drawing.PointF($cx, [single]($cy + 5))),
+                (New-Object System.Drawing.PointF([single]($cx + 4), [single]($cy + 1)))))
+        } else {
+            $g.DrawLine($pen, [single]($cx - 4), [single]($cy - 4), [single]($cx + 4), [single]($cy + 4))
+            $g.DrawLine($pen, [single]($cx + 4), [single]($cy - 4), [single]($cx - 4), [single]($cy + 4))
+        }
+    } catch {} finally { if ($null -ne $pen) { $pen.Dispose() } }
+}
+function Set-FolderGlyphButton ($Button) {
+    $Button.Text = ''
     $Button.Padding = New-Object System.Windows.Forms.Padding(0)
+    $hk = [string]$Button.GetHashCode()
+    if (-not $script:browseFolderHooked.ContainsKey($hk)) {
+        $script:browseFolderHooked[$hk] = $true
+        $Button.Add_Paint({ param($sender, $e) Paint-BrowseFolderIcon $sender $e })
+        $Button.Add_EnabledChanged({ try { $this.Invalidate() } catch {} })
+    }
+}
+function Set-BrowseIconButton ($Button, [int]$Width = 28, [bool]$WithTip = $true) {
+    Set-FolderGlyphButton $Button
     $Button.Width = $Width
     if ($WithTip) { Set-BrowseIconTip $Button }
 }
@@ -14066,6 +14762,7 @@ $btnMoveGame.Add_Paint({
     try {
         $g = $e.Graphics
         $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+        $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
         $busyM = [bool]$script:moveBtnBusy
         if ($busyM) {
             # Идёт перенос: кнопка отключена, но рисуется «активной» (синяя рамка и стрелки), как остальные кнопки.
@@ -14232,6 +14929,7 @@ function Draw-LibsGlyph ($g, [single]$cx, [single]$cy, $col, [single]$size) {
     try {
         $gState = $g.Save()
         $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+        $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
         $s = [single]($size / 512.0)
         $g.TranslateTransform([single]($cx - $size / 2.0), [single]($cy - $size / 2.0))
         $g.ScaleTransform($s, $s)
@@ -14279,6 +14977,7 @@ function Draw-LibsRefreshGlyph ($g, [single]$cx, [single]$cy, $col, [bool]$Undo,
     try {
         $gState = $g.Save()
         $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+        $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
         $g.TranslateTransform($cx, $cy)
         $g.ScaleTransform($Scale, $Scale)
         $pen = New-Object System.Drawing.Pen($col, 1.8)
@@ -14326,7 +15025,7 @@ function Draw-LibsUndoGlyph ($g, [single]$cx, [single]$cy, $col, [single]$Scale 
         $pen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
         $pen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
         $sc = [single](1.22 * $Scale)
-        $g.TranslateTransform($cx, $cy); $g.ScaleTransform($sc, $sc)
+        $g.TranslateTransform([single]($cx - 0.8), [single]($cy - 0.5)); $g.ScaleTransform($sc, $sc)   # -0.8/-0.5 px: оптический центр значка (стрелка тянет форму вправо-вниз)
         $q = { param($x, $y) New-Object System.Drawing.PointF([single]$x, [single]$y) }
         $r = 6.6
         $g.DrawArc($pen, [single](-$r), [single](-$r), [single](2 * $r), [single](2 * $r), [single]300, [single](-265))
@@ -15373,6 +16072,11 @@ function Get-MainSavesSteamInfo ([string]$Path) {
     } catch { return $null }
 }
 
+# Лицензионная игра Steam (папка в steamapps\common с appmanifest): убирается только удалением в самом Steam, поэтому кнопок удаления из библиотеки у неё нет.
+function Test-PanelPathIsSteamApp ([string]$Path) {
+    try { return ($null -ne (Get-MainSavesSteamInfo $Path)) } catch { return $false }
+}
+
 # Запись игры для поиска сохранений строится так же, как в карточке игры из панелей C/D (папка; для Steam-игр - App ID и название из манифеста),
 # поэтому ключ сохранений (имя + App ID) совпадает с карточкой и окном библиотеки.
 function Get-MainSavesGames {
@@ -16202,7 +16906,7 @@ $pnlBatchActions.Controls.Add($pnlBatchToggle)
 # ПАКЕТНОЕ автозаполнение сразу нескольких карточек, а не что-то другое.
 # Вешаем на оба элемента (сам тумблер и его подпись), чтобы наведение
 # работало на всей кликабельной зоне, а не только на маленьком квадратике.
-$mainToolTip = New-Object System.Windows.Forms.ToolTip
+$mainToolTip = New-SCToolTip
 $mainToolTip.AutoPopDelay = 8000
 $mainToolTip.InitialDelay = 400
 $mainToolTip.ReshowDelay = 200
@@ -16358,9 +17062,12 @@ function Paint-MainModeIcon {
                 }
             } finally { $br.Dispose(); $br = $null }
         } elseif ($kind -eq 'del') {
-            # Корзина (кнопка «Удалить из библиотеки»): при наведении красноватая, чтобы было видно, что действие необратимое.
+            # Корзина (кнопка «Удалить из библиотеки»): при наведении синяя, как у остальных кнопок.
+            # Красной она становится сразу при удержании Shift (независимо от наведения курсора): удаление с диска и папки игры.
             $dcol = $col
-            if ($btn.Enabled -and $hot) { $dcol = [System.Drawing.Color]::FromArgb(232, 96, 96) }
+            $delShift = $false
+            try { $delShift = (([System.Windows.Forms.Control]::ModifierKeys -band [System.Windows.Forms.Keys]::Shift) -eq [System.Windows.Forms.Keys]::Shift) } catch {}
+            if ($btn.Enabled -and $delShift) { $dcol = [System.Drawing.Color]::FromArgb(232, 96, 96) }
             $pen = New-Object System.Drawing.Pen($dcol, 1.8)
             $pen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
             $pen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
@@ -16423,6 +17130,18 @@ $btnMainRemoveLib = New-MainModeButton 519 482 'del' (T 'btn_remove_lib')
 $btnMainRemoveLib.AccessibleName = 'RemoveFromLibrary'
 $btnMainRemoveLib.Visible = $false
 $script:removeLibTipText = ''
+# Цвет корзины зависит от Shift: пока курсор над кнопкой, следим за клавишей и перерисовываем кнопку при её нажатии/отпускании.
+$script:delShiftLast = $false
+$script:delShiftTimer = New-Object System.Windows.Forms.Timer
+$script:delShiftTimer.Interval = 60
+$script:delShiftTimer.Add_Tick({
+    try {
+        if ($null -eq $btnMainRemoveLib -or -not [bool]$btnMainRemoveLib.Visible) { return }
+        $shNow = (([System.Windows.Forms.Control]::ModifierKeys -band [System.Windows.Forms.Keys]::Shift) -eq [System.Windows.Forms.Keys]::Shift)
+        if ($shNow -ne [bool]$script:delShiftLast) { $script:delShiftLast = $shNow; $btnMainRemoveLib.Invalidate() }
+    } catch {}
+})
+$script:delShiftTimer.Start()
 
 # Совместимость со старыми ссылками (Clear-MainRomWrapperModes, смена языка и т.п.).
 $pnlRomsToggle = $btnMainRomsMode
@@ -19119,7 +19838,8 @@ function Refresh-Panels {
                                                     $gfKey = Get-GameFolderKey $exeValForMap $loValForMap
                                                     if ($gfMap.ContainsKey($gfKey)) {
                                                         $sv = Get-NormalizedGamePathKey ([string]$gfMap[$gfKey])
-                                                        if ($sv -eq $tk) { $tc.Direct = $true }
+                                                        # Xbox: в ярлыке запомнена <Игра>\Content - это та же игра, а не вложенная папка из общей папки с играми.
+                                                        if ($sv -eq $tk -or $sv -eq ($tk + '\CONTENT')) { $tc.Direct = $true }
                                                         elseif ($sv.StartsWith($tk + '\')) { $tc.Deeper = $true }
                                                     }
                                                 } catch {}
@@ -19146,6 +19866,29 @@ function Refresh-Panels {
             if ($isContainer) { continue }
             $global:installedSteamGames[$tk2] = $true
             foreach ($it2 in $tc2.Items) { Register-InstalledGameIconInfo $tc2.Path ([string]$it2.Icon) ([string]$it2.Exe) ([string]$it2.Lo) ([bool]$it2.IconOnly) }
+        } catch {}
+    }
+
+    # Папка библиотеки Steam (...\steamapps\common): установленные игры Steam уже в библиотеке, галочку получают
+    # папки с appmanifest_*.acf (по installdir). Ярлыки здесь не нужны, поэтому раньше такие игры не отмечались.
+    foreach ($steamCommonRoot in @($global:dirC, $global:dirD)) {
+        try {
+            if ([string]::IsNullOrWhiteSpace([string]$steamCommonRoot)) { continue }
+            $scr = ([string]$steamCommonRoot).Trim().Trim('"').TrimEnd('\')
+            if (-not ([System.IO.Path]::GetFileName($scr)).Equals('common', [System.StringComparison]::OrdinalIgnoreCase)) { continue }
+            if (-not [System.IO.Directory]::Exists($scr)) { continue }
+            foreach ($scd in [System.IO.Directory]::GetDirectories($scr)) {
+                try {
+                    $scInfo = Get-MainSavesSteamInfo $scd
+                    if ($null -ne $scInfo) {
+                        $global:installedSteamGames[(Get-NormalizedGamePathKey $scd)] = $true
+                        # Значок игры, как его рисует сам Steam (appcache\librarycache); нет - остаётся папка.
+                        $scIco = ''
+                        try { $scIco = [string](Get-LocalSteamLibraryIconPath ([string]$scInfo.AppId)) } catch {}
+                        if (-not [string]::IsNullOrWhiteSpace($scIco)) { Register-InstalledGameIconInfo $scd $scIco '' '' $true }
+                    }
+                } catch {}
+            }
         } catch {}
     }
 
@@ -20350,7 +21093,152 @@ function Clear-RemovedShortcutLeftovers ($removedEntries, $allEntries) {
 }
 
 # $Games: список игр (Name / Source / Path, необязательно Entry - запись библиотеки) из контекстного меню; без него - все отмеченные игры (кнопка между панелями).
-function Invoke-MainRemoveFromLibrary ($Games = $null) {
+# Поиск записи об установке игры в реестре (Programs and Features): по InstallLocation, а также по пути деинсталлятора / значка внутри папки игры.
+# Возвращает объект Name / Command / RegPath / Folder или $null (игра не устанавливалась инсталлятором, например портативная).
+function Find-GameUninstallEntry ([string]$Folder) {
+    try {
+        if ([string]::IsNullOrWhiteSpace($Folder)) { return $null }
+        $full = [System.IO.Path]::GetFullPath($Folder.Trim().Trim('"')).TrimEnd('\', '/')
+        $prefix = $full + '\'
+        $roots = @(
+            'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
+            'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall',
+            'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'
+        )
+        $best = $null; $bestScore = 0
+        foreach ($root in $roots) {
+            if (-not (Test-Path -LiteralPath $root)) { continue }
+            foreach ($key in @(Get-ChildItem -LiteralPath $root -ErrorAction SilentlyContinue)) {
+                try {
+                    $pr = Get-ItemProperty -LiteralPath $key.PSPath -ErrorAction Stop
+                    $cmd = [string]$pr.UninstallString
+                    if ([string]::IsNullOrWhiteSpace($cmd)) { continue }
+                    $cmd = $cmd.Trim()
+                    # Команды «удаления» самого Steam (steam://uninstall/...) деинсталлятором игры не считаются.
+                    if ($cmd -match 'steam\.exe' -or $cmd -match 'steam://') { continue }
+                    $exe = ''
+                    if ($cmd.StartsWith('"')) { $q = $cmd.IndexOf('"', 1); if ($q -gt 0) { $exe = $cmd.Substring(1, $q - 1) } }
+                    elseif ($cmd -match '^(.+?\.exe)(\s|$)') { $exe = $Matches[1] }
+                    $exe = [Environment]::ExpandEnvironmentVariables($exe)
+                    $score = 0
+                    $il = ([string]$pr.InstallLocation).Trim().Trim('"').TrimEnd('\', '/')
+                    if ($il.Length -gt 0 -and [string]::Equals($il, $full, [System.StringComparison]::OrdinalIgnoreCase)) { $score = 3 }
+                    elseif ($exe.Length -gt 0 -and $exe.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) { $score = 2 }
+                    else {
+                        $di = ([string]$pr.DisplayIcon).Trim().Trim('"')
+                        $ci = $di.IndexOf(',')
+                        if ($ci -gt 0) { $di = $di.Substring(0, $ci).Trim('"') }
+                        if ($di.Length -gt 0 -and $di.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) { $score = 1 }
+                    }
+                    if ($score -le $bestScore) { continue }
+                    # MSI: «изменить» (/I{GUID}) заменяем на «удалить» (/X{GUID}).
+                    if ($cmd -match 'msiexec') { $cmd = [regex]::Replace($cmd, '/I\s*(\{)', '/X$1', 'IgnoreCase') }
+                    $nm = [string]$pr.DisplayName
+                    if ([string]::IsNullOrWhiteSpace($nm)) { $nm = [System.IO.Path]::GetFileName($full) }
+                    $bestScore = $score
+                    $best = [PSCustomObject]@{ Name = $nm; Command = $cmd; RegPath = [string]$key.PSPath; Folder = $full }
+                } catch {}
+            }
+        }
+        return $best
+    } catch { return $null }
+}
+
+# Работает ли сейчас деинсталлятор: процесс из папки игры либо временная копия деинсталлятора (Inno Setup / NSIS запускают себя из Temp и сразу закрываются).
+function Test-GameUninstallerRunning ([string]$Folder) {
+    try {
+        $pre = $Folder.TrimEnd('\', '/') + '\'
+        foreach ($pr in [System.Diagnostics.Process]::GetProcesses()) {
+            try {
+                $path = ''
+                try { $path = [string]$pr.MainModule.FileName } catch {}
+                if ($path.Length -gt 0 -and $path.StartsWith($pre, [System.StringComparison]::OrdinalIgnoreCase)) { return $true }
+                if ([string]$pr.ProcessName -match '^(_un|_iu|Au_|unins|uninst)') { return $true }
+            } catch {} finally { try { $pr.Dispose() } catch {} }
+        }
+    } catch {}
+    return $false
+}
+
+# Запускает деинсталлятор с его обычным окном и ждёт, пока пользователь завершит удаление (окно программы при этом остаётся живым).
+# Результат: Status = done (запись об установке исчезла или папка удалена) / unsure (процесс закрылся, но запись осталась) / error.
+function Invoke-GameUninstaller ($Entry) {
+    $res = [PSCustomObject]@{ Status = 'error'; Message = '' }
+    try {
+        $c = ([string]$Entry.Command).Trim()
+        $exe = ''; $arg = ''
+        if ($c.StartsWith('"')) {
+            $q = $c.IndexOf('"', 1)
+            if ($q -gt 0) { $exe = $c.Substring(1, $q - 1); $arg = $c.Substring($q + 1).Trim() }
+        } elseif ($c -match '^(.+?\.exe)(?:\s+(.*))?$') {
+            $exe = [string]$Matches[1]; $arg = [string]$Matches[2]
+        }
+        if ([string]::IsNullOrWhiteSpace($exe)) { $exe = 'cmd.exe'; $arg = '/c ' + $c }
+        $exe = [Environment]::ExpandEnvironmentVariables($exe)
+        $arg = [Environment]::ExpandEnvironmentVariables($arg)
+        $psi = New-Object System.Diagnostics.ProcessStartInfo
+        $psi.FileName = $exe
+        $psi.Arguments = $arg
+        $psi.UseShellExecute = $true   # нужно, чтобы деинсталлятор мог запросить права администратора (UAC)
+        try { $wd = [System.IO.Path]::GetDirectoryName($exe); if (-not [string]::IsNullOrWhiteSpace($wd) -and [System.IO.Directory]::Exists($wd)) { $psi.WorkingDirectory = $wd } } catch {}
+        $proc = [System.Diagnostics.Process]::Start($psi)
+        $t0 = [Environment]::TickCount
+        if ($null -ne $proc) {
+            while (-not $proc.HasExited) { [System.Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 150 }
+        }
+        $tEnd = [Environment]::TickCount
+        # Некоторые деинсталляторы запускают свою копию из Temp и сразу закрываются: ждём, пока исчезнет запись об установке
+        # или пока работает похожий процесс; первые 4 секунды ждём в любом случае.
+        while ($true) {
+            if (-not (Test-Path -LiteralPath ([string]$Entry.RegPath))) { $res.Status = 'done'; return $res }
+            if ((([Environment]::TickCount - $tEnd) -gt 4000) -and -not (Test-GameUninstallerRunning ([string]$Entry.Folder))) { break }
+            if (([Environment]::TickCount - $t0) -gt 3600000) { break }
+            [System.Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 250
+        }
+        if (-not [System.IO.Directory]::Exists([string]$Entry.Folder)) { $res.Status = 'done'; return $res }
+        $res.Status = 'unsure'
+        return $res
+    } catch {
+        $res.Status = 'error'; $res.Message = [string]$_.Exception.Message
+        return $res
+    }
+}
+
+# Можно ли безопасно стереть папку игры: существует, не корень диска, не ссылка/junction, не системная и не пользовательская
+# папка, не папка Steam и не корень панели, и внутри нет exe других (оставшихся) ярлыков библиотеки.
+function Test-GameFolderSafeToDelete ([string]$Folder, $RemainingExes) {
+    try {
+        if ([string]::IsNullOrWhiteSpace($Folder)) { return $false }
+        $full = [System.IO.Path]::GetFullPath($Folder.Trim().Trim('"')).TrimEnd('\', '/')
+        if (-not [System.IO.Directory]::Exists($full)) { return $false }
+        $root = [string][System.IO.Path]::GetPathRoot($full)
+        if ($full.Length -le $root.TrimEnd('\', '/').Length) { return $false }
+        if (([System.IO.File]::GetAttributes($full) -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) { return $false }
+        $prefix = $full + '\'
+        $prot = New-Object System.Collections.Generic.List[string]
+        foreach ($sf in 'Windows', 'System', 'ProgramFiles', 'ProgramFilesX86', 'UserProfile', 'DesktopDirectory', 'MyDocuments', 'ApplicationData', 'LocalApplicationData', 'CommonApplicationData') {
+            try { $pp = [Environment]::GetFolderPath([Environment+SpecialFolder]$sf); if (-not [string]::IsNullOrWhiteSpace($pp)) { [void]$prot.Add($pp) } } catch {}
+        }
+        try { [void]$prot.Add([string]$global:dirC) } catch {}
+        try { [void]$prot.Add([string]$global:dirD) } catch {}
+        try { $stExe = [string](Get-ConfiguredSteamExePath); if (-not [string]::IsNullOrWhiteSpace($stExe)) { [void]$prot.Add([System.IO.Path]::GetDirectoryName($stExe)) } } catch {}
+        foreach ($pp in $prot) {
+            if ([string]::IsNullOrWhiteSpace($pp)) { continue }
+            $pf = $pp.Trim().TrimEnd('\', '/')
+            if ($pf.Length -eq 0) { continue }
+            if ([string]::Equals($pf, $full, [System.StringComparison]::OrdinalIgnoreCase)) { return $false }
+            if (($pf + '\').StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) { return $false }
+        }
+        foreach ($rx in @($RemainingExes)) {
+            $re = ([string]$rx).Trim().Trim('"')
+            if ([string]::IsNullOrWhiteSpace($re)) { continue }
+            if ($re.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) { return $false }
+        }
+        return $true
+    } catch { return $false }
+}
+
+function Invoke-MainRemoveFromLibrary ($Games = $null, [bool]$DeleteFiles = $false) {
     try {
         if ($script:batchInProgress -or $script:moveInProgress) { return }
         $explicitGames = ($null -ne $Games)
@@ -20392,14 +21280,108 @@ function Invoke-MainRemoveFromLibrary ($Games = $null) {
             return
         }
 
-        $ask = (T 'lib_remove_confirm' @($gameNames.Count)).Replace('\n', "`n")
-        $ans = Show-AppMessageBox($form, $ask, $global:appTitle, [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Warning)
+        # Shift: вместе с ярлыками удаляется и папка игры. Папки, которые трогать небезопасно, из удаления исключаются.
+        $remainExes = New-Object System.Collections.Generic.List[string]
+        $folderList = New-Object System.Collections.Generic.List[string]
+        $folderSkipped = New-Object System.Collections.Generic.List[string]
+        $uninstProblems = New-Object System.Collections.Generic.List[string]
+        $uninstMap = @{}
+        if ($DeleteFiles) {
+            foreach ($en in $entries) {
+                try {
+                    if ([string]$en.Kind -ne 'shortcut' -or $null -eq $en.ShortcutRecord) { continue }
+                    $epk = ([string]$en.ShortcutRecord.FilePath).ToLowerInvariant() + '|' + [string]$en.AppId + '|' + [string]$en.Name + '|' + ([string]$en.LaunchOptions)
+                    if ($planned.ContainsKey($epk)) { continue }
+                    [void]$remainExes.Add([string]$en.Exe)
+                } catch {}
+            }
+            $seenF = @{}
+            foreach ($pl in $plans) {
+                $gf = ([string]$pl.GameFolder).Trim()
+                if ([string]::IsNullOrWhiteSpace($gf)) { continue }
+                $fk = $gf.TrimEnd('\', '/').ToLowerInvariant()
+                if ($seenF.ContainsKey($fk)) { continue }
+                $seenF[$fk] = $true
+                if (Test-GameFolderSafeToDelete $gf @($remainExes.ToArray())) { [void]$folderList.Add($gf) } else { [void]$folderSkipped.Add($gf) }
+            }
+            if ($folderList.Count -eq 0) { $DeleteFiles = $false }
+            # Игры, установленные инсталлятором (есть запись в реестре): для них сначала запускается деинсталлятор.
+            if ($DeleteFiles) {
+                foreach ($gf in $folderList) {
+                    try {
+                        $ue = Find-GameUninstallEntry $gf
+                        if ($null -ne $ue) { $uninstMap[$gf.TrimEnd('\', '/').ToLowerInvariant()] = $ue }
+                    } catch {}
+                }
+            }
+        }
+        if ($DeleteFiles) {
+            $shownF = (@($folderList | Select-Object -First 10)) -join "`n"
+            if ($folderList.Count -gt 10) { $shownF += "`n…" }
+            $ask = (T 'lib_remove_confirm_files' @($gameNames.Count, $shownF)).Replace('\n', "`n")
+            if ($uninstMap.Count -gt 0) {
+                $unNames = (@($uninstMap.Values | ForEach-Object { [string]$_.Name } | Select-Object -First 6)) -join ', '
+                $ask += "`n`n" + (T 'lib_remove_uninstall_note' @($unNames))
+            }
+        } else {
+            $ask = (T 'lib_remove_confirm' @($gameNames.Count)).Replace('\n', "`n")
+        }
+        # При удалении файлов с диска - тревожный красный значок (17), иначе обычное предупреждение.
+        $askIcon = $(if ($DeleteFiles) { 17 } else { [int][System.Windows.Forms.MessageBoxIcon]::Warning })
+        $ans = Show-AppMessageBox($form, $ask, $global:appTitle, [System.Windows.Forms.MessageBoxButtons]::YesNo, $askIcon)
         if ($ans -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+
+        # Деинсталляторы игр: запускаем по очереди и ждём, пока пользователь завершит удаление. Игры, у которых удаление
+        # не завершено (отмена, ошибка запуска), остаются в библиотеке и их файлы не трогаются.
+        if ($DeleteFiles -and $uninstMap.Count -gt 0) {
+            $failedKeys = @{}
+            $prevEnabled = $true
+            try { $prevEnabled = [bool]$form.Enabled } catch {}
+            try {
+                foreach ($uk in @($uninstMap.Keys)) {
+                    $ue = $uninstMap[$uk]
+                    try { $labelHeader.Text = (T 'lib_uninstall_wait' @([string]$ue.Name)) } catch {}
+                    try { $form.Enabled = $false } catch {}
+                    $ur = Invoke-GameUninstaller $ue
+                    try { $form.Enabled = $prevEnabled; $form.Activate() } catch {}
+                    if ([string]$ur.Status -eq 'done') { continue }
+                    if ([string]$ur.Status -eq 'unsure') {
+                        $ansU = Show-AppMessageBox($form, (T 'lib_uninstall_unsure' @([string]$ue.Name)), $global:appTitle, [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
+                        if ($ansU -eq [System.Windows.Forms.DialogResult]::Yes) { continue }
+                        $failedKeys[$uk] = $true
+                        [void]$uninstProblems.Add((T 'lib_uninstall_cancelled' @([string]$ue.Name)))
+                    } else {
+                        $failedKeys[$uk] = $true
+                        [void]$uninstProblems.Add((T 'lib_uninstall_start_fail' @([string]$ue.Name, [string]$ur.Message)))
+                    }
+                }
+            } finally {
+                try { $form.Enabled = $prevEnabled } catch {}
+            }
+            if ($failedKeys.Count -gt 0) {
+                $keepPlans = New-Object System.Collections.Generic.List[object]
+                foreach ($pl in $plans) {
+                    $pk2 = ([string]$pl.GameFolder).Trim().TrimEnd('\', '/').ToLowerInvariant()
+                    if (-not $failedKeys.ContainsKey($pk2)) { [void]$keepPlans.Add($pl) }
+                }
+                $plans = $keepPlans
+                $keepFolders = New-Object System.Collections.Generic.List[string]
+                foreach ($gf in $folderList) { if (-not $failedKeys.ContainsKey($gf.TrimEnd('\', '/').ToLowerInvariant())) { [void]$keepFolders.Add($gf) } }
+                $folderList = $keepFolders
+                if ($plans.Count -eq 0) {
+                    try { $labelHeader.Text = ($uninstProblems.ToArray() -join '  |  ') } catch {}
+                    try { Show-AppMessageBox($form, ($uninstProblems.ToArray() -join "`n`n"), $global:appTitle, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null } catch {}
+                    return
+                }
+            }
+        }
 
         try { $form.UseWaitCursor = $true; [System.Windows.Forms.Application]::DoEvents() } catch {}
         $rmRes = $null
         $steamWasRunning = $false
         $rmCancelled = $false
+        $filesDeleted = 0
+        $filesFailed = New-Object System.Collections.Generic.List[string]
         try {
             try { $steamWasRunning = Test-SteamRunning } catch {}
             # Пока Steam запущен, он перезаписывает shortcuts.vdf своей копией из памяти.
@@ -20408,6 +21390,35 @@ function Invoke-MainRemoveFromLibrary ($Games = $null) {
                 $rmRes = Remove-ShortcutsBatch @($plans.ToArray())
                 # Обложки, метаданные и запомненная папка удалённых игр (Steam к этому моменту закрыт, если был запущен).
                 if ($null -ne $rmRes -and [int]$rmRes.Done -gt 0) { try { Clear-RemovedShortcutLeftovers @($rmRes.Removed.ToArray()) $entries } catch {} }
+                # Shift: стираем папки игр, ярлыки которых удалены (папку, у которой удалены не все ярлыки, не трогаем).
+                if ($DeleteFiles -and $null -ne $rmRes -and [int]$rmRes.Done -gt 0) {
+                    $okFolders = @{}
+                    foreach ($gf in $folderList) { $okFolders[$gf.TrimEnd('\', '/').ToLowerInvariant()] = $gf }
+                    $folderAllRemoved = @{}
+                    foreach ($pl in $plans) {
+                        $fk = ([string]$pl.GameFolder).Trim().TrimEnd('\', '/').ToLowerInvariant()
+                        if (-not $okFolders.ContainsKey($fk)) { continue }
+                        $isRemoved = $false
+                        foreach ($re in $rmRes.Removed) { if ([object]::ReferenceEquals($pl.Entry, $re)) { $isRemoved = $true; break } }
+                        if (-not $folderAllRemoved.ContainsKey($fk)) { $folderAllRemoved[$fk] = $true }
+                        if (-not $isRemoved) { $folderAllRemoved[$fk] = $false }
+                    }
+                    foreach ($fk in @($folderAllRemoved.Keys)) {
+                        $gf = [string]$okFolders[$fk]
+                        if (-not [bool]$folderAllRemoved[$fk]) { [void]$folderSkipped.Add($gf); continue }
+                        # Деинсталлятор уже убрал папку целиком - считаем её удалённой.
+                        if (-not [System.IO.Directory]::Exists($gf)) { $filesDeleted++; continue }
+                        try {
+                            # Повторная проверка прямо перед удалением.
+                            if (-not (Test-GameFolderSafeToDelete $gf @($remainExes.ToArray()))) { [void]$folderSkipped.Add($gf); continue }
+                            Remove-GamePathPumped $gf
+                            $filesDeleted++
+                        } catch {
+                            [void]$filesFailed.Add($gf + ' (' + [string]$_.Exception.Message + ')')
+                            try { Write-LauncherLog ('Remove folder: ' + $gf + ': ' + $_.Exception.Message) } catch {}
+                        }
+                    }
+                }
             }
         } finally {
             if ($steamWasRunning -and (Get-SteamRestartMode) -eq 'auto') {
@@ -20430,10 +21441,19 @@ function Invoke-MainRemoveFromLibrary ($Games = $null) {
         try { Refresh-Panels } catch {}
         $lines = New-Object System.Collections.Generic.List[string]
         if ($null -ne $rmRes -and [int]$rmRes.Done -gt 0) { [void]$lines.Add((T 'lib_remove_done' @($gameNames.Count))) }
+        if ($filesDeleted -gt 0) { [void]$lines.Add((T 'lib_remove_files_done' @($filesDeleted))) }
         if ($null -ne $rmRes -and [int]$rmRes.Failed -gt 0) { [void]$lines.Add((T 'lib_remove_fail' @([int]$rmRes.Failed, [string]$rmRes.Error))) }
         if ($skipped.Count -gt 0) { [void]$lines.Add((T 'rom_swap_skipped' @((@($skipped | Select-Object -First 8)) -join '; '))) }
         if ($rmCancelled) { [void]$lines.Add((T 'steam_close_cancelled')) }
         try { $labelHeader.Text = ($lines.ToArray() -join '  |  ') } catch {}
+        # Папки, которые не удалось или нельзя было стереть, - отдельным окном (операция необратимая, молчать об этом нельзя).
+        if ($filesFailed.Count -gt 0 -or $uninstProblems.Count -gt 0 -or ($DeleteFiles -and $folderSkipped.Count -gt 0)) {
+            $probLines = New-Object System.Collections.Generic.List[string]
+            foreach ($up in $uninstProblems) { [void]$probLines.Add([string]$up) }
+            if ($filesFailed.Count -gt 0) { [void]$probLines.Add((T 'lib_remove_files_fail' @($filesFailed.Count, ($filesFailed.ToArray() -join '; ')))) }
+            foreach ($sk in $folderSkipped) { [void]$probLines.Add((T 'lib_remove_files_skip' @($sk))) }
+            try { Show-AppMessageBox($form, ($probLines.ToArray() -join "`n"), $global:appTitle, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null } catch {}
+        }
     } catch {
         try { $form.UseWaitCursor = $false } catch {}
         try { $labelHeader.Text = [string]$_.Exception.Message } catch {}
@@ -28554,7 +29574,7 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
     # ВАЖНО: никаких Process.Exited/BeginInvoke и никаких фоновых обращений к WinForms.
     # Process.Exited у PowerShell может выполняться вне UI-потока и приводить к тихому
     # падению WinForms. Вместо этого UI Timer периодически проверяет завершившиеся curl.
-    $dialogState=@{Result=$null;Clients=New-Object System.Collections.ArrayList;SpinIndex=0;Closed=$false;Pending=(New-Object System.Collections.Queue);SgdbCount=0;CardNo=0;LoadingMore=$false;MoreDone=$false;ContentH=0;ScrollY=0;Dirty=$false;SbHot=$false;SbDrag=$false;SbDragY=0;SbDragScroll=0;SeenIds=@{};Tip=(New-Object System.Windows.Forms.ToolTip)}
+    $dialogState=@{Result=$null;Clients=New-Object System.Collections.ArrayList;SpinIndex=0;Closed=$false;Pending=(New-Object System.Collections.Queue);SgdbCount=0;CardNo=0;LoadingMore=$false;MoreDone=$false;ContentH=0;ScrollY=0;Dirty=$false;SbHot=$false;SbDrag=$false;SbDragY=0;SbDragScroll=0;SeenIds=@{};Tip=(New-SCToolTip)}
     # Все полученные варианты (в порядке прихода) - из них заново строится список при смене сортировки.
     $dialogState.AllItems=New-Object System.Collections.ArrayList
     $dialogState.Arr=0
@@ -28718,7 +29738,7 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
                 $lx=5
                 if (Test-SgdbItemAnimated $item) {
                     $bmpA=Get-SgdbAnimBadgeBitmap
-                    if ($null -ne $bmpA) { & $addBadge $bmpA $lx 'Анимированная обложка'; $lx+=$bmpA.Width+4 }
+                    if ($null -ne $bmpA) { & $addBadge $bmpA $lx (T 'sgdb_badge_animated'); $lx+=$bmpA.Width+4 }
                 }
                 $noteText=Get-SgdbNoteText $item
                 if (-not [string]::IsNullOrWhiteSpace($noteText)) {
@@ -28734,7 +29754,7 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
                 $rightW=0
                 if ($null -ne $bmpH -and $bmpH.Width -le $avail) { $rightW=$bmpH.Width } else { $bmpH=$null }
                 $rx=$thumbRight
-                if ($null -ne $bmpH) { $rx-=$bmpH.Width; & $addBadge $bmpH $rx ('Лайки: '+[string][int][double]$hp.Value); $rx-=4 }
+                if ($null -ne $bmpH) { $rx-=$bmpH.Width; & $addBadge $bmpH $rx (T 'sgdb_badge_likes' @([string][int][double]$hp.Value)); $rx-=4 }
             } catch {}
         }
 
@@ -31370,7 +32390,7 @@ function Set-EditorSourceBadge($slot, [string]$source) {
         $slot.SourceBadge.BringToFront()
         try {
             if ($null -eq $slot.SourceBadge.Tag -or $slot.SourceBadge.Tag -isnot [System.Windows.Forms.ToolTip]) {
-                $tt = New-Object System.Windows.Forms.ToolTip
+                $tt = New-SCToolTip
                 $slot.SourceBadge.Tag = $tt
             }
             $tipText = if ($source -eq 'Steam') { (T 'src_tip_steam') } elseif ($source -eq 'Local') { (T 'src_tip_local') } else { (T 'src_tip_sgdb') }
@@ -31816,11 +32836,18 @@ function Invoke-EditorDrawIcon($g, [string]$kind, [System.Drawing.Color]$color, 
         $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
         $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::None
         $g.CompositingQuality = [System.Drawing.Drawing2D.CompositingQuality]::HighQuality
-        $box = [math]::Round(20.0 * $sc)
-        $ox = [math]::Floor(([double]$clientSize.Width - $box) / 2.0)
-        $oy = [math]::Floor(([double]$clientSize.Height - $box) / 2.0)
-        $g.TranslateTransform([single]$ox, [single]$oy)
-        $g.ScaleTransform([single]$sc, [single]$sc)
+        # Размер рисунка подгоняем под чётность кнопки по каждой оси: при нечётной разности размеров Floor давал сдвиг на 0,5 px
+        # (кнопки 26x24 при масштабе 125%/150% становятся нечётными). На 100% (20 px в 26x24) ничего не меняется.
+        $bx = [int][math]::Round(20.0 * $sc)
+        $by = $bx
+        if ((([int]$clientSize.Width - $bx) % 2) -ne 0) { $bx += 1 }
+        if ((([int]$clientSize.Height - $by) % 2) -ne 0) { $by += 1 }
+        $ox = ([double]$clientSize.Width - $bx) / 2.0
+        $oy = ([double]$clientSize.Height - $by) / 2.0
+        # PixelOffsetMode.None при антиалиасинге сдвигает рисунок на 0,5 px вправо-вниз (замер на скриншоте: все значки +0,5 / +0,5):
+        # компенсируем сдвигом на -0,5 px.
+        $g.TranslateTransform([single]($ox - 0.5), [single]($oy - 0.5))
+        $g.ScaleTransform([single]($bx / 20.0), [single]($by / 20.0))
         $pen = New-Object System.Drawing.Pen($color, [single]1.5)
         $pen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
         $pen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
@@ -32252,7 +33279,7 @@ function Initialize-EditorCompose($heroSlot, $logoSlot) {
     $chkFrames.Tag = $heroSlot
     $framesOffFore = $steamUi.Text
     $heroSlot | Add-Member -NotePropertyName ChkFrames -NotePropertyValue $chkFrames -Force
-    $heroSlot | Add-Member -NotePropertyName EyeTip -NotePropertyValue (New-Object System.Windows.Forms.ToolTip) -Force
+    $heroSlot | Add-Member -NotePropertyName EyeTip -NotePropertyValue (New-SCToolTip) -Force
     # Начальное состояние берём из config.ini до подключения обработчика, чтобы не писать конфиг при открытии карточки.
     $chkFrames.Checked = [bool]$global:logoSteamFramesPreview
     if ([bool]$chkFrames.Checked) { $chkFrames.ForeColor = [System.Drawing.Color]::White }
@@ -32771,7 +33798,7 @@ function Set-EditorCoverLanguageButtons($panel, [object[]]$codes, [string]$activ
             $b.Font = New-Object System.Drawing.Font('Segoe UI Semibold',8.5)
             $b.Cursor = [System.Windows.Forms.Cursors]::Hand
             $b.TabStop = $false
-            $b.Tag = [PSCustomObject]@{ Lang=[string]$inf.Steam; Tip=(New-Object System.Windows.Forms.ToolTip) }
+            $b.Tag = [PSCustomObject]@{ Lang=[string]$inf.Steam; Tip=(New-SCToolTip) }
             $b.Tag.Tip.SetToolTip($b, (T 'covlang_tip' @([string]$inf.Name)))
             if([string]$inf.Steam -eq [string]$activeLang){
                 $b.BackColor=$steamUi.Accent2; $b.ForeColor=[System.Drawing.Color]::White; $b.FlatAppearance.BorderColor=$steamUi.Accent2
@@ -33681,7 +34708,7 @@ function Set-ApiKeyValidationBadge($pictureBox, [string]$state, [string]$tip) {
         $pictureBox.Visible = ($null -ne $bmp)
         try {
             if ($null -eq $pictureBox.Tag -or $pictureBox.Tag -isnot [System.Windows.Forms.ToolTip]) {
-                $tt = New-Object System.Windows.Forms.ToolTip
+                $tt = New-SCToolTip
                 $pictureBox.Tag = $tt
             }
             $pictureBox.Tag.SetToolTip($pictureBox, $tip)
@@ -34034,9 +35061,9 @@ function Show-EmulatorEditDialog ($owner, $existing = $null) {
     $dlg.Controls.Add($lblExe)
 
     # Кнопка папки (28x28, как в настройках) прижата к правому краю полей диалога (x = 460), поле пути
-    # эмулятора растянуто до неё с зазором 10 px, как у «Папка Steam» в настройках.
+    # эмулятора растянуто до неё с зазором 8 px, как у остальных кнопок в настройках.
     $emuBrowseWidth = 28
-    $emuBrowseGap = 10
+    $emuBrowseGap = 8
     $emuFieldRight = 460
     $emuExeFieldWidth = $emuFieldRight - $emuBrowseWidth - $emuBrowseGap - 120
     $txtExe = New-Object System.Windows.Forms.TextBox
@@ -34191,7 +35218,7 @@ function Show-EmulatorEditDialog ($owner, $existing = $null) {
         [System.Windows.Forms.TextRenderer]::DrawText($g, [string]$s.Text, $s.Font, $textRect, $s.ForeColor, $flags)
     }.GetNewClosure())
     $dlg.Controls.Add($chkMulti)
-    $emuExtractTip = New-Object System.Windows.Forms.ToolTip
+    $emuExtractTip = New-SCToolTip
     $emuExtractTip.AutoPopDelay = 12000
     # ToolTip не переносит длинную строку сам: разбиваем по словам (~60 символов), а текст без пробелов
     # (китайский) - кусками по 26 символов, иначе подсказка растянулась бы на весь экран.
@@ -34741,7 +35768,7 @@ function Show-WrapperEditDialog ($owner, $existing = $null) {
 
     $lblExeCtl = & $addLabel (T 'wrap_lbl_exe') 52
     $lblExeCtl.Width = 78   # левее значка «укажите путь к exe» (x=96)
-    $browseW = 28; $browseGap = 10; $fieldRight = 460
+    $browseW = 28; $browseGap = 8; $fieldRight = 460
     $txtExe = New-Object System.Windows.Forms.TextBox
     if ($existing -ne $null) { $txtExe.Text = [string]$existing.ExePath }
     & $addField $txtExe 120 52 ($fieldRight - $browseW - $browseGap - 120)
@@ -38022,7 +39049,7 @@ function Show-SaveDetectorPicker {
             } catch {}
         }.GetNewClosure())
         # Подсказка с полным путём при наведении и меню «Открыть папку» по правой кнопке.
-        $pathTip = New-Object System.Windows.Forms.ToolTip
+        $pathTip = New-SCToolTip
         $pathTip.InitialDelay = 300; $pathTip.AutoPopDelay = 30000; $pathTip.ReshowDelay = 100
         $tipState = @{ Last = -1 }
         $clb.Add_MouseMove({
@@ -38264,7 +39291,7 @@ function Show-SaveDetectorMultiPicker {
             } catch {}
         }.GetNewClosure())
 
-        $pathTip = New-Object System.Windows.Forms.ToolTip
+        $pathTip = New-SCToolTip
         $pathTip.InitialDelay = 300; $pathTip.AutoPopDelay = 30000; $pathTip.ReshowDelay = 100
         $tipState = @{ Last = -1 }
         $clb.Add_MouseMove({
@@ -38958,7 +39985,7 @@ function Add-UpscalerLibraryControls ($owner, $container) {
     $defs = @(Get-UpscalerDefs)
     $defByKey = @{}
     foreach ($d in $defs) { $defByKey[[string]$d.Key] = $d }
-    $tip = New-Object System.Windows.Forms.ToolTip
+    $tip = New-SCToolTip
 
     # --- Заголовок раздела и кнопка «папка» (как кнопка папки языков) ---
     $secTitle = New-Object System.Windows.Forms.Label
@@ -38977,9 +40004,7 @@ function Add-UpscalerLibraryControls ($owner, $container) {
     $btnFolder.FlatAppearance.BorderSize = 1
     $btnFolder.BackColor = $steamUi.Panel
     $btnFolder.ForeColor = $steamUi.Text
-    $btnFolder.Font = New-Object System.Drawing.Font('Segoe UI Emoji', 9)
-    $btnFolder.Text = ([string][char]0xD83D + [string][char]0xDCC1)
-    $btnFolder.Padding = New-Object System.Windows.Forms.Padding(0)
+    Set-FolderGlyphButton $btnFolder
     $btnFolder.TabStop = $false
     $btnFolder.Cursor = [System.Windows.Forms.Cursors]::Hand
     $tip.SetToolTip($btnFolder, (T 'upl_tip_folder'))
@@ -39356,7 +40381,7 @@ function Add-UpscalerLibraryControls ($owner, $container) {
         $pnlCombo.Controls.Add($cmb)
 
         $btnDl = New-Object System.Windows.Forms.Button
-        $btnDl.Text = $glyphDown
+        $btnDl.Text = ''
         $btnDl.Font = $symFont
         $btnDl.Location = New-Object System.Drawing.Point(($tileW - 52), 25)
         $btnDl.Size = New-Object System.Drawing.Size(24, 24)
@@ -39369,10 +40394,12 @@ function Add-UpscalerLibraryControls ($owner, $container) {
         $btnDl.TabStop = $false
         $btnDl.Cursor = [System.Windows.Forms.Cursors]::Hand
         $tip.SetToolTip($btnDl, (T 'upl_tip_dl'))
+        $btnDl.Add_Paint({ param($sender, $e) Paint-TileGlyphIcon $sender $e 'down' })
+        $btnDl.Add_EnabledChanged({ try { $this.Invalidate() } catch {} })
         $tile.Controls.Add($btnDl)
 
         $btnDel = New-Object System.Windows.Forms.Button
-        $btnDel.Text = $glyphDel
+        $btnDel.Text = ''
         $btnDel.Font = $symFont
         $btnDel.Location = New-Object System.Drawing.Point(($tileW - 24), 25)
         $btnDel.Size = New-Object System.Drawing.Size(24, 24)
@@ -39385,6 +40412,8 @@ function Add-UpscalerLibraryControls ($owner, $container) {
         $btnDel.TabStop = $false
         $btnDel.Cursor = [System.Windows.Forms.Cursors]::Hand
         $tip.SetToolTip($btnDel, (T 'upl_tip_del'))
+        $btnDel.Add_Paint({ param($sender, $e) Paint-TileGlyphIcon $sender $e 'x' })
+        $btnDel.Add_EnabledChanged({ try { $this.Invalidate() } catch {} })
         $tile.Controls.Add($btnDel)
 
         $lblInfo = New-Object System.Windows.Forms.Label
@@ -39502,7 +40531,7 @@ function Add-UpscalerLibraryControls ($owner, $container) {
     $ctx.Status = $status
 
     # --- Галочка «Обновлять при добавлении» — в строке кнопок, на месте прежнего статуса ---
-    $autoLeft = (140 + 6 + 112 + 6 + 34 + 10)
+    $autoLeft = (140 + 8 + 112 + 8 + 28 + 10)
     $chkAuto = New-Object System.Windows.Forms.Panel
     $chkAuto.Location = New-Object System.Drawing.Point($autoLeft, ($rowY + 3))
     $chkAuto.Size = New-Object System.Drawing.Size(22, 22)
@@ -39554,7 +40583,7 @@ function Add-UpscalerLibraryControls ($owner, $container) {
     $btnAll = New-Object System.Windows.Forms.Button
     $btnAll.Text = (T 'upl_update_all')
     $btnAll.Size = New-Object System.Drawing.Size(112, 28)
-    $btnAll.Location = New-Object System.Drawing.Point((140 + 6), $rowY)
+    $btnAll.Location = New-Object System.Drawing.Point((140 + 8), $rowY)
     $btnAll.FlatStyle = 'Flat'
     $btnAll.FlatAppearance.BorderColor = $steamUi.Border
     $btnAll.BackColor = $steamUi.Panel
@@ -39567,8 +40596,8 @@ function Add-UpscalerLibraryControls ($owner, $container) {
     $tip.SetToolTip($btnAll, (T 'upl_tip_all'))
 
     # Кнопка папки — сразу правее «Обновить все», той же высоты, что и остальные кнопки.
-    $btnFolder.Size = New-Object System.Drawing.Size(34, 28)
-    $btnFolder.Location = New-Object System.Drawing.Point((140 + 6 + 112 + 6), $rowY)
+    $btnFolder.Size = New-Object System.Drawing.Size(28, 28)
+    $btnFolder.Location = New-Object System.Drawing.Point((140 + 8 + 112 + 8), $rowY)
 
     $btnLatest = New-Object System.Windows.Forms.Button
     $btnLatest.Text = (T 'upl_select_latest')
@@ -39688,7 +40717,7 @@ $script:saveUpdWorker = {
 
 function Add-SaveSettingsControls ($owner, $container) {
     $W = [int]$container.ClientSize.Width
-    $tip = New-Object System.Windows.Forms.ToolTip
+    $tip = New-SCToolTip
     $redColor = [System.Drawing.Color]::FromArgb(224, 96, 96)
     $folderState = @{ Path = [string]$global:saveBackupFolderPath }
     $script:saveFolderState = $folderState
@@ -39727,7 +40756,7 @@ function Add-SaveSettingsControls ($owner, $container) {
     $btnUpd.Text = ''
     $btnUpd.Padding = New-Object System.Windows.Forms.Padding(0)
     $btnUpd.Size = New-Object System.Drawing.Size(28, 28)
-    $btnUpd.Location = New-Object System.Drawing.Point(($W - 34 - 4 - 28), 30)
+    $btnUpd.Location = New-Object System.Drawing.Point(($W - 28 - 8 - 28), 30)
     $btnUpd.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $btnUpd.FlatAppearance.BorderColor = $steamUi.Border
     $btnUpd.BackColor = $steamUi.Panel
@@ -39793,16 +40822,14 @@ function Add-SaveSettingsControls ($owner, $container) {
     $container.Controls.Add($lblFolder)
 
     $btnPick = New-Object System.Windows.Forms.Button
-    $btnPick.Location = New-Object System.Drawing.Point(($W - 34), 30)
-    $btnPick.Size = New-Object System.Drawing.Size(34, 28)
+    $btnPick.Location = New-Object System.Drawing.Point(($W - 28), 30)
+    $btnPick.Size = New-Object System.Drawing.Size(28, 28)
     $btnPick.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $btnPick.FlatAppearance.BorderColor = $steamUi.Border
     $btnPick.FlatAppearance.BorderSize = 1
     $btnPick.BackColor = $steamUi.Panel
     $btnPick.ForeColor = $steamUi.Text
-    $btnPick.Font = New-Object System.Drawing.Font('Segoe UI Emoji', 9)
-    $btnPick.Text = ([string][char]0xD83D + [string][char]0xDCC1)
-    $btnPick.Padding = New-Object System.Windows.Forms.Padding(0)
+    Set-FolderGlyphButton $btnPick
     $btnPick.TabStop = $false
     $btnPick.Cursor = [System.Windows.Forms.Cursors]::Hand
     $tip.SetToolTip($btnPick, (T 'sav_tip_pick'))
@@ -39810,7 +40837,7 @@ function Add-SaveSettingsControls ($owner, $container) {
 
     $pnlPath = New-Object System.Windows.Forms.Panel
     $pnlPath.Location = New-Object System.Drawing.Point($lblFolderW, 30)
-    $pnlPath.Size = New-Object System.Drawing.Size(($W - 34 - 4 - 28 - 4 - $lblFolderW), 28)
+    $pnlPath.Size = New-Object System.Drawing.Size(($W - 28 - 8 - 28 - 8 - $lblFolderW), 28)
     $pnlPath.BackColor = $steamUi.Input
     $pnlPath.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
     $container.Controls.Add($pnlPath)
@@ -40434,7 +41461,7 @@ function Show-ProgramSettingsDialog {
     # приём, что и в диалоге выбора эмулятора/ROM.
     $pnlLanguage = New-Object System.Windows.Forms.Panel
     $pnlLanguage.Location = New-Object System.Drawing.Point(336, 20)
-    $pnlLanguage.Size = New-Object System.Drawing.Size(150, 28)
+    $pnlLanguage.Size = New-Object System.Drawing.Size(148, 28)
     $pnlLanguage.BackColor = $steamUi.Input
     $pnlLanguage.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
     $dlg.Controls.Add($pnlLanguage)
@@ -40474,7 +41501,7 @@ function Show-ProgramSettingsDialog {
             [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, $text, $sender.Font, $ctRect, $fg, $ctFlags)
         } finally { $bgBrush.Dispose(); $textBrush.Dispose() }
     })
-    $langToolTip = New-Object System.Windows.Forms.ToolTip
+    $langToolTip = New-SCToolTip
     $langToolTip.SetToolTip($cmbLanguage, 'Язык / Language / 语言 / Idioma / Sprache')
 
     # Кнопка «папка языков»: файлы <код>.lang можно править и добавлять свои.
@@ -40486,9 +41513,7 @@ function Show-ProgramSettingsDialog {
     $btnLangFolder.FlatAppearance.BorderSize = 1
     $btnLangFolder.BackColor = $steamUi.Panel
     $btnLangFolder.ForeColor = $steamUi.Text
-    $btnLangFolder.Font = New-Object System.Drawing.Font('Segoe UI Emoji', 9)
-    $btnLangFolder.Text = ([string][char]0xD83D + [string][char]0xDCC1)
-    $btnLangFolder.Padding = New-Object System.Windows.Forms.Padding(0)
+    Set-FolderGlyphButton $btnLangFolder
     $btnLangFolder.TabStop = $false
     $btnLangFolder.Cursor = [System.Windows.Forms.Cursors]::Hand
     $langToolTip.SetToolTip($btnLangFolder, (T 'set_lang_folder_tip'))
@@ -40784,7 +41809,7 @@ function Show-ProgramSettingsDialog {
     & $centerFieldText $txtSteamPath $steamPathPanel
 
     $btnBrowseSteamPath = New-Object System.Windows.Forms.Button
-    $btnBrowseSteamPath.Location = New-Object System.Drawing.Point(430, 92)
+    $btnBrowseSteamPath.Location = New-Object System.Drawing.Point(428, 92)
     $btnBrowseSteamPath.Size = New-Object System.Drawing.Size(90, 28)
     Set-BrowseIconButton $btnBrowseSteamPath
     $btnBrowseSteamPath.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
@@ -41036,6 +42061,10 @@ function Show-ProgramSettingsDialog {
 
     $dlg.Controls.Add($chkUseExeIcons)
     $dlg.Controls.Add($chkUseExeIconsLabel)
+
+    # Подсказки к галочкам блока EXE: на самой галочке и на её подписи.
+    foreach ($tipCtl in @($chkSuggestLaunchers, $chkSuggestLaunchersLabel)) { try { $langToolTip.SetToolTip($tipCtl, (T 'set_offer_launchers_tip')) } catch {} }
+    foreach ($tipCtl in @($chkUseExeIcons, $chkUseExeIconsLabel)) { try { $langToolTip.SetToolTip($tipCtl, (T 'set_use_exe_icons_tip')) } catch {} }
 
     # Режим перезапуска Steam: «Автоматически» (программа сама закрывает Steam перед записью и запускает его
     # после) или «Вручную» (Steam закрывает и запускает пользователь). Строка под блоком EXE, оформление как у региона.
@@ -41372,7 +42401,7 @@ function Show-ProgramSettingsDialog {
     $btnUpdateDb = New-Object System.Windows.Forms.Button
     $btnUpdateDb.Text = ''
     $btnUpdateDb.Padding = New-Object System.Windows.Forms.Padding(0)
-    $btnUpdateDb.Location = New-Object System.Drawing.Point(430, 344)
+    $btnUpdateDb.Location = New-Object System.Drawing.Point(428, 344)
     $btnUpdateDb.Size = New-Object System.Drawing.Size(28, 28)
     $btnUpdateDb.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $btnUpdateDb.FlatAppearance.BorderColor = $steamUi.Border
@@ -41443,7 +42472,7 @@ function Show-ProgramSettingsDialog {
     $dbStatusLabel.AutoEllipsis = $true
     $dbStatusLabel.TextAlign = [System.Drawing.ContentAlignment]::TopLeft
     $dlg.Controls.Add($dbStatusLabel)
-    $dbStatusTip = New-Object System.Windows.Forms.ToolTip
+    $dbStatusTip = New-SCToolTip
     $dbStatusTip.SetToolTip($btnUpdateDb, (T 'sw_db_update_btn'))
 
     # Текущее состояние базы (без ожидания: если индекс ещё грузится, поле пустое).
@@ -41558,7 +42587,7 @@ function Show-ProgramSettingsDialog {
     $btnBrowseBackupFolder.Cursor = [System.Windows.Forms.Cursors]::Hand
     $dlg.Controls.Add($btnBrowseBackupFolder)
 
-    $backupFolderTip = New-Object System.Windows.Forms.ToolTip
+    $backupFolderTip = New-SCToolTip
     $backupFolderTip.SetToolTip($btnBrowseBackupFolder, (T 'set_backup_current' @((Get-BackupFolderPath))))
 
     $btnCreateBackup = New-Object System.Windows.Forms.Button
@@ -42589,6 +43618,8 @@ function Show-ProgramSettingsDialog {
             try { $langToolTip.SetToolTip($btnLangFolder, (T 'set_lang_folder_tip')) } catch {}
             try { $cmbStartupOpen.Items[0] = [string](T 'set_startup_panels'); $cmbStartupOpen.Items[1] = [string](T 'set_startup_library'); & $fitStartupOpenCombo } catch {}
             try { $langToolTip.SetToolTip($swKeyLabel, (T 'sw_section')) } catch {}
+            foreach ($tipCtl in @($chkSuggestLaunchers, $chkSuggestLaunchersLabel)) { try { $langToolTip.SetToolTip($tipCtl, (T 'set_offer_launchers_tip')) } catch {} }
+            foreach ($tipCtl in @($chkUseExeIcons, $chkUseExeIconsLabel)) { try { $langToolTip.SetToolTip($tipCtl, (T 'set_use_exe_icons_tip')) } catch {} }
             try { $dbStatusTip.SetToolTip($btnUpdateDb, (T 'sw_db_update_btn')) } catch {}
             try { $backupFolderTip.SetToolTip($btnBrowseBackupFolder, (T 'set_backup_current' @((Get-BackupFolderPath)))) } catch {}
             try { $lblBackupPath.Text = (T 'set_backup_current' @((Get-BackupFolderPath))) } catch {}
@@ -43234,7 +44265,7 @@ function Set-ConfidenceBadge($pictureBox, [bool]$confident, [string]$confidentTi
         $pictureBox.Visible = ($null -ne $bmp)
         try {
             if ($null -eq $pictureBox.Tag -or $pictureBox.Tag -isnot [System.Windows.Forms.ToolTip]) {
-                $tt = New-Object System.Windows.Forms.ToolTip
+                $tt = New-SCToolTip
                 $pictureBox.Tag = $tt
             }
             $tip = if ($confident) { $confidentTip } else { $unsureTip }
@@ -51233,7 +52264,7 @@ function Show-SteamLibraryBrowser {
     $btnLibBack.Cursor = [System.Windows.Forms.Cursors]::Hand
     $btnLibBack.TabStop = $false
     $btnLibBack.AccessibleName = (T 'lib_back')
-    $libBackTip = New-Object System.Windows.Forms.ToolTip
+    $libBackTip = New-SCToolTip
     $libBackTip.SetToolTip($btnLibBack, (T 'lib_back'))
     $script:libBackHover = $false
     $script:libBackDown = $false
@@ -51356,7 +52387,7 @@ function Show-SteamLibraryBrowser {
 
     $lblCount = New-Object System.Windows.Forms.Label
     $lblCount.Location = New-Object System.Drawing.Point(506, 18)
-    $lblCount.Size = New-Object System.Drawing.Size(132, 22)
+    $lblCount.Size = New-Object System.Drawing.Size(60, 22)   # только числа вида «5/255»
     $lblCount.AutoEllipsis = $true
     $lblCount.ForeColor = $steamUi.Muted
     $lblCount.Text = (T 'lib_loading')
@@ -51457,11 +52488,12 @@ function Show-SteamLibraryBrowser {
         $l.Text = $txt
         $l.Font = New-Object System.Drawing.Font('Segoe UI', 9)
         $l.ForeColor = $steamUi.Muted
-        $l.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
+        $l.TextAlign = [System.Drawing.ContentAlignment]::MiddleRight   # текст прижат к кнопке своей группы
         $l.Top = 12
         $l.Height = 30
-        $l.Width = ([System.Windows.Forms.TextRenderer]::MeasureText($txt, $l.Font).Width + 6)
+        $l.Width = [System.Windows.Forms.TextRenderer]::MeasureText($txt, $l.Font).Width
         $l.Anchor = 'Top,Right'
+        $l.BackColor = [System.Drawing.Color]::Transparent   # непрозрачная подпись перекрывала соседние кнопки при тесной раскладке
         $l.Visible = $false
         return $l
     }
@@ -51550,7 +52582,8 @@ function Show-SteamLibraryBrowser {
                 $sc = if ($kind -eq 'backup') { 1.1 } else { 1.22 }
                 $gs = $g.Save()
                 try {
-                    $g.TranslateTransform($cx, $cy); $g.ScaleTransform($sc, $sc)
+                    $ux = 0.0; $uy = 0.0; if ($kind -ne 'backup') { $ux = 0.5; $uy = 0.5 }   # значок «вернуть»: оптический центр (см. Draw-LibsUndoGlyph)
+                    $g.TranslateTransform([single]($cx - $ux), [single]($cy - $uy)); $g.ScaleTransform($sc, $sc)
                     $q = { param($x, $y) New-Object System.Drawing.PointF([single]$x, [single]$y) }
                     if ($kind -eq 'backup') {
                         $gp = New-Object System.Drawing.Drawing2D.GraphicsPath
@@ -53000,7 +54033,7 @@ function Show-SteamLibraryBrowser {
 
     # Тот же переключатель "автозаполнение карточек", что и на главном окне:
     # состояние общее ($script:batchAutoFillEnabled), меняется в обоих местах.
-    $libToolTip = New-Object System.Windows.Forms.ToolTip
+    $libToolTip = New-SCToolTip
     $libToolTip.SetToolTip($toggleAuto, (T 'batch_auto_tip'))
     $libToolTip.SetToolTip($lblAutoImport, (T 'batch_auto_tip'))
     $libToolTip.SetToolTip($btnUpdUp, (T 'lib_upd_tip'))
@@ -57521,54 +58554,49 @@ function Show-SteamLibraryBrowser {
                 foreach ($hc in @($btnSaveScan, $btnSaveBackup, $btnSaveRestore, $lblCapSaves)) { $hc.Visible = $false }
                 return
             }
-            # Справа налево: [Апскейлеры: 2 кнопки] (только вкладка Steam), левее — [Сохранения: 2 кнопки].
-            if (-not $isL) {
-                $lblCapUpscalers.Left = [int]$btnUpdUp.Left - 6 - [int]$lblCapUpscalers.Width
-                $limit = [int]$lblCapUpscalers.Left - 16
-            } else {
-                $limit = [int]$toggleAuto.Left - 10
-            }
+            # Справа налево: [Апскейлеры], [Сохранения], [Враппер], [Эмулятор]. Подписи показываются у всех групп сразу или не показываются ни у одной:
+            # когда места не хватает, подписи исчезают разом, а блоки кнопок остаются отдельными, с видимыми промежутками.
             $w = 30
             foreach ($b in @($btnSaveScan, $btnSaveBackup, $btnSaveRestore)) { $b.Width = $w; $b.Visible = $true }
-            $btnSaveRestore.Left = $limit - $w
-            $btnSaveBackup.Left = $btnSaveRestore.Left - 8 - $w
-            $btnSaveScan.Left = $btnSaveBackup.Left - 8 - $w
-            $lblCapSaves.Left = [int]$btnSaveScan.Left - 6 - [int]$lblCapSaves.Width
-            $lblCapSaves.Visible = ([int]$lblCapSaves.Left -ge ([int]$lblCount.Left + 96 + 8))
-            # Группа «Эмуляторы» (только вкладка Steam): подпись + кнопка смены эмулятора, левее «Сохранения».
+            $oldEmuRect = $btnSwapEmu.Bounds
+            $oldWrapRect = $btnSwapWrap.Bounds
+            $capMinLeft = ([int]$lblCount.Left + [int]$lblCount.Width + 8)
+            # Вариант с подписями: подпись стоит слева от кнопки своей группы.
+            $upCapLeft = [int]$btnUpdUp.Left - 6 - [int]$lblCapUpscalers.Width
+            $saveRestoreLeft = $upCapLeft - 16 - $w
+            $scanLeftC = $saveRestoreLeft - 2 * (8 + $w)
+            $capSaveLeft = $scanLeftC - 6 - [int]$lblCapSaves.Width
+            $wrapLeftC = $capSaveLeft - 8 - [int]$btnSwapWrap.Width
+            $capWrapLeft = $wrapLeftC - 6 - [int]$lblCapWraps.Width
+            $emuLeftC = $capWrapLeft - 8 - [int]$btnSwapEmu.Width
+            $capEmuLeft = $emuLeftC - 6 - [int]$lblCapEmus.Width
+            $capsFit = ($capEmuLeft -ge $capMinLeft)
+            if ($capsFit) {
+                $saveRestoreLeft_ = $saveRestoreLeft; $scanLeft_ = $scanLeftC; $wrapLeft_ = $wrapLeftC; $emuLeft_ = $emuLeftC
+            } else {
+                # Компактный вид: без подписей, группы разделены промежутком 16 px.
+                $gapG = 16
+                $saveRestoreLeft_ = [int]$btnUpdUp.Left - $gapG - $w
+                $scanLeft_ = $saveRestoreLeft_ - 2 * (8 + $w)
+                $wrapLeft_ = $scanLeft_ - $gapG - [int]$btnSwapWrap.Width
+                $emuLeft_ = $wrapLeft_ - $gapG - [int]$btnSwapEmu.Width
+            }
+            $btnSaveRestore.Left = $saveRestoreLeft_
+            $btnSaveBackup.Left = $saveRestoreLeft_ - 8 - $w
+            $btnSaveScan.Left = $scanLeft_
+            $btnSwapWrap.Top = 12
+            $btnSwapWrap.Left = $wrapLeft_
+            $btnSwapEmu.Top = 12
+            $btnSwapEmu.Left = $emuLeft_
+            $lblCapUpscalers.Left = $upCapLeft
+            $lblCapSaves.Left = $capSaveLeft
+            $lblCapWraps.Left = $capWrapLeft
+            $lblCapEmus.Left = $capEmuLeft
+            foreach ($cl in @($lblCapUpscalers, $lblCapSaves, $lblCapWraps, $lblCapEmus)) { $cl.Visible = $capsFit }
+            # WS_EX_COMPOSITED не всегда стирает прежнее место сдвинутой кнопки - перерисовываем старые области.
             try {
-                if (-not $isL) {
-                    # Справа налево: [Врапперы: кнопка], левее [Эмуляторы: кнопка]. Если места не хватает — обе кнопки уходят левее.
-                    $grpLeft = [int]$btnSaveScan.Left - 6 - [int]$lblCapSaves.Width
-                    # Все позиции считаем заранее и присваиваем один раз: промежуточное положение кнопки
-                    # (вариант «с подписями») раньше оставляло на экране «призрак» лишней кнопки при обновлении.
-                    $oldEmuRect = $btnSwapEmu.Bounds
-                    $oldWrapRect = $btnSwapWrap.Bounds
-                    $wrapLeftN = $grpLeft - 16 - [int]$btnSwapWrap.Width
-                    $capWrapLeftN = $wrapLeftN - 6 - [int]$lblCapWraps.Width
-                    $emuLeftWide = $capWrapLeftN - 16 - [int]$btnSwapEmu.Width
-                    $capEmuLeftN = $emuLeftWide - 6 - [int]$lblCapEmus.Width
-                    $capMinLeft = ([int]$lblCount.Left + 96 + 8)
-                    $capsFit = ($capEmuLeftN -ge $capMinLeft)
-                    # Места на подписи нет: компактный вид - только две кнопки со значками, место под скрытые подписи не резервируем.
-                    $emuLeftN = $(if ($capsFit) { $emuLeftWide } else { $wrapLeftN - 8 - [int]$btnSwapEmu.Width })
-                    $lblCapWraps.Visible = $capsFit
-                    $lblCapEmus.Visible = $capsFit
-                    $btnSwapWrap.Top = 12
-                    $btnSwapWrap.Left = $wrapLeftN
-                    $lblCapWraps.Left = $capWrapLeftN
-                    $btnSwapEmu.Top = 12
-                    $btnSwapEmu.Left = $emuLeftN
-                    $lblCapEmus.Left = $capEmuLeftN
-                    # WS_EX_COMPOSITED не всегда стирает прежнее место сдвинутой кнопки - перерисовываем старые области.
-                    try {
-                        if ($oldEmuRect -ne $btnSwapEmu.Bounds -and $oldEmuRect.Width -gt 0) { $dlg.Invalidate($oldEmuRect) }
-                        if ($oldWrapRect -ne $btnSwapWrap.Bounds -and $oldWrapRect.Width -gt 0) { $dlg.Invalidate($oldWrapRect) }
-                    } catch {}
-                } else {
-                    $lblCapEmus.Visible = $false
-                    $lblCapWraps.Visible = $false
-                }
+                if ($oldEmuRect -ne $btnSwapEmu.Bounds -and $oldEmuRect.Width -gt 0) { $dlg.Invalidate($oldEmuRect) }
+                if ($oldWrapRect -ne $btnSwapWrap.Bounds -and $oldWrapRect.Width -gt 0) { $dlg.Invalidate($oldWrapRect) }
             } catch {}
             if (-not $script:libSaveRunning) {
                 $btnSaveScan.Text = ''
@@ -57576,8 +58604,12 @@ function Show-SteamLibraryBrowser {
                 $btnSaveRestore.Text = ''
             }
             $btnSaveScan.Invalidate(); $btnSaveBackup.Invalidate(); $btnSaveRestore.Invalidate()
+            try { $dlg.Invalidate((New-Object System.Drawing.Rectangle(0, 0, [int]$dlg.ClientSize.Width, 54)), $true) } catch {}
         } catch {}
     }
+    # Раскладка считается по ширине окна, а раньше пересчитывалась только при смене выбора игр: после растягивания/сужения окна
+    # подписи и кнопки «Эмуляторы / Врапперы / Сохранения» оставались в старом положении (налезали друг на друга или пропадали).
+    $dlg.Add_Resize({ try { & $layoutSaveButtons } catch {} })
 
     # Доступность кнопок: «Бэкап» — есть отмеченные игры; «Вернуть» — у отмеченных есть хотя бы один бэкап.
     $updateSaveButtons = {
@@ -57619,7 +58651,7 @@ function Show-SteamLibraryBrowser {
             $btnDeselectAll.Left = $btnSelectAll.Left + $btnSelectAll.Width + 8
             $lblCount.Left = $btnDeselectAll.Left + $btnDeselectAll.Width + 8
             $lblSelected.Visible = $false
-            $lblCount.Width = if ($isL) { 100 } else { 96 }
+            $lblCount.Width = 52
             & $updateSaveButtons
             if (-not $isL) {
                 $selS = @(& $getSelectedSteamEntries)
@@ -57628,8 +58660,7 @@ function Show-SteamLibraryBrowser {
                 # Один текст «Выбрано: N из M» вместо двух отдельных подписей (пока идёт загрузка/пусто — не трогаем).
                 if ([int]$script:libShownCount -gt 0 -and [string]$lblCount.Text -ne (T 'lib_loading')) { $lblCount.Text = (T 'lib_selected_of' @($cntS, [int]$script:libShownCount)) }
                 if ([int]$script:libShownCount -gt 0 -and [string]$lblCount.Text -ne (T 'lib_loading')) {
-                    # Текст вида «20 / 25» короткий: счётчик сужаем.
-                    $lblCount.Width = 76
+                    $lblCount.Width = 52
                 }
                 $btnSelectAll.Text = ''
                 $btnDeselectAll.Text = ''
@@ -59802,7 +60833,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
         $searchSourceBtn.Controls.Add($sb)
         $srcSegs[[string]$segDef.Key] = $sb
     }
-    $searchSourceTip = New-Object System.Windows.Forms.ToolTip
+    $searchSourceTip = New-SCToolTip
 
     # Для ROM-карточек переключатель источника не показываем:
     # ROM всегда работает только через SteamGridDB.
@@ -61176,7 +62207,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     $launchOptionsLbl.Text=(T 'card_params'); $launchOptionsLbl.Location=New-Object System.Drawing.Point(20,(87+$romRowOffset)); $launchOptionsLbl.Size='90,28'
     $launchOptionsLbl.ForeColor=$steamUi.Muted; $launchOptionsLbl.TextAlign=[System.Drawing.ContentAlignment]::MiddleLeft
     $dlg.Controls.Add($launchOptionsLbl)
-    $launchOptionsLblTip = New-Object System.Windows.Forms.ToolTip
+    $launchOptionsLblTip = New-SCToolTip
     $launchOptionsLblTip.SetToolTip($launchOptionsLbl, (T 'card_params_tip'))
     # Значок уверенности для параметров запуска — тот же приём, что и у
     # "Название"/"Запуск": зелёная галочка, когда выбранный вариант параметров
@@ -61214,7 +62245,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     $lblLaunchOptionsHint.Text = ''
     if ($IsRomEntry) { $lblLaunchOptionsHint.Visible = $false }   # в ROM App ID Steam нет - подсказка не используется, место занимает статус
     $dlg.Controls.Add($lblLaunchOptionsHint)
-    $launchOptionsHintTip = New-Object System.Windows.Forms.ToolTip
+    $launchOptionsHintTip = New-SCToolTip
 
     # Выпадающий список вариантов — тот же приём, что и titleResults для
     # автодополнения названия: обычный ListBox, скрытый по умолчанию,
@@ -61471,7 +62502,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     $status.AutoEllipsis=$true
     $status.ForeColor=$steamUi.Accent
     $dlg.Controls.Add($status)
-    $statusTip = New-Object System.Windows.Forms.ToolTip
+    $statusTip = New-SCToolTip
     $status.Add_TextChanged({ try { $statusTip.SetToolTip($status, [string]$status.Text) } catch {} })
 
     $slots = [ordered]@{}
@@ -61625,7 +62656,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
             Invoke-EditorDrawIcon $e.Graphics 'exe' $col $s.ClientSize $false
         } catch {}
     })
-    $btnIconExeTip = New-Object System.Windows.Forms.ToolTip
+    $btnIconExeTip = New-SCToolTip
     $btnIconExeTip.SetToolTip($btnIconExe, (T 'icon_exe_tip'))
     $btnIconExe | Add-Member -NotePropertyName TipRef -NotePropertyValue $btnIconExeTip -Force
     # Подсказка кнопки зависит от того, что сейчас в слоте: иконка EXE → «вернуть прежнюю»,
@@ -61901,7 +62932,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
             $g.FillRectangle($br, ($cx + 1), ($cy + 1), 6, 6)
         } catch {} finally { if ($null -ne $br) { $br.Dispose() } }
     }.GetNewClosure())
-    $cardCollTip = New-Object System.Windows.Forms.ToolTip
+    $cardCollTip = New-SCToolTip
     # Новая игра: подсказка сразу показывает «Без категории». У уже добавленной игры состав читается из файлов Steam при первом клике.
     $cardCollTip.SetToolTip($btnCardColl, $(if ($licensedMode -or $null -ne $existingShortcut) { (T 'lib_filter_collections') } else { (T 'lib_filter_collections') + ': ' + (T 'lib_filter_coll_none') }))
     $dlg.Controls.Add($btnCardColl)
@@ -62100,7 +63131,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
             $flags = [System.Windows.Forms.TextFormatFlags]::Left -bor [System.Windows.Forms.TextFormatFlags]::VerticalCenter -bor [System.Windows.Forms.TextFormatFlags]::NoPrefix -bor [System.Windows.Forms.TextFormatFlags]::EndEllipsis
             [System.Windows.Forms.TextRenderer]::DrawText($g, [string]$s.Text, $s.Font, $textRect, $s.ForeColor, $flags)
         }.GetNewClosure())
-        $wrapperTip = New-Object System.Windows.Forms.ToolTip
+        $wrapperTip = New-SCToolTip
         $wrapperTip.SetToolTip($chkWrapper, (T 'card_wrapper_tip'))
         $dlg.Controls.Add($chkWrapper)
 
@@ -62255,7 +63286,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
             $next.BackColor = $steamUi.Panel
             $next.ForeColor = $steamUi.Muted
             $next.FlatAppearance.BorderColor = $steamUi.Border
-            $nextTip = New-Object System.Windows.Forms.ToolTip
+            $nextTip = New-SCToolTip
             $nextTip.SetToolTip($next, (T 'covlang_next' @(($page + 1), $pageCount)))
             $next.Tag = [PSCustomObject]@{ IsMore = $true; Overflow = @($others); Lang = ''; Tip = $nextTip }
             $next.Add_Click({
@@ -62337,7 +63368,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     $dlssColGap   = 6            # 3 × 99 + 2 × 6 = 309 → правый край 860
     $dlssGridCols = 3
     $dlssRowH     = 48           # поле 16 (подпись) + 24 (список) + 8 зазор; под сеткой остаётся место для двух кнопок
-    $dlssTip = New-Object System.Windows.Forms.ToolTip
+    $dlssTip = New-SCToolTip
     # Разметка элементов выпадающих списков: имя комбо -> массив 'dl' (скачана) / 'nodl' (не скачана) / 'cur' (версия из папки игры).
     $dlssMarks = @{}
     $dlssCommitted = @{} # имя комбо -> индекс выбранной (зафиксированной) версии — для зелёного цвета в списке
@@ -63544,6 +64575,7 @@ $cardSaveOk.Location = New-Object System.Drawing.Point(($cardSaveBtnsX - 24), 55
                     $g.DrawPolygon($pen, $pts)
                 }
                 'restore' {
+                    $cx = [single]($cx - 0.85); $cy = [single]($cy - 0.5)   # оптический центр: стрелка и «стрелки часов» смещают форму вправо-вниз
                     $r = 6.6
                     $rect = New-Object System.Drawing.RectangleF([single]($cx - $r), [single]($cy - $r), [single](2 * $r), [single](2 * $r))
                     $g.DrawArc($pen, $rect, [single]300, [single](-265))
@@ -63566,7 +64598,8 @@ $cardSaveOk.Location = New-Object System.Drawing.Point(($cardSaveBtnsX - 24), 55
             }
         } catch {} finally { if ($null -ne $pen) { $pen.Dispose() } }
     }
-    $btnCardSaveOpen = & $newCardSaveBtn ([string][char]0xD83D + [string][char]0xDCC1) $cardSaveX 'Segoe UI Emoji'
+    $btnCardSaveOpen = & $newCardSaveBtn '' $cardSaveX 'Segoe UI'
+    Set-FolderGlyphButton $btnCardSaveOpen
     # Детектор сохранений (лупа) стоит сразу справа от папки: определяет точные сохранения игры и запоминает их.
     $btnCardSaveDetect = & $newCardSaveBtn '' ($cardSaveX + 32) 'Segoe UI'
     $btnCardSaveBackup = & $newCardSaveBtn '' ($cardSaveX + 64) 'Segoe UI'
@@ -63580,7 +64613,7 @@ $cardSaveOk.Location = New-Object System.Drawing.Point(($cardSaveBtnsX - 24), 55
     $dlg.Controls.Add($btnCardSaveDetect)
     $dlg.Controls.Add($btnCardSaveBackup)
     $dlg.Controls.Add($btnCardSaveRestore)
-    $cardSaveTip = New-Object System.Windows.Forms.ToolTip
+    $cardSaveTip = New-SCToolTip
     $cardSaveTip.SetToolTip($btnCardSaveOpen, (T 'save_card_tip_open'))
     $cardSaveTip.SetToolTip($btnCardSaveDetect, (T 'sdet_tip'))
     $cardSaveTip.SetToolTip($btnCardSaveBackup, (T 'save_card_tip_backup'))
@@ -67348,6 +68381,29 @@ function Apply-Localization {
             $mainToolTip.SetToolTip($script:headerParts[$hs].Cb, (T 'tip_select_all'))
             $mainToolTip.SetToolTip($script:headerParts[$hs].Labels['Library'], (T 'tip_lib_header'))
         }
+        # Подсказки подкнопок «Библиотеки» / «Сохранения» создаются один раз - без этого после смены языка остаются на старом.
+        try { $mainToolTip.SetToolTip($btnMainLibsUpd, (T 'btn_libs_upd_tip')) } catch {}
+        try { $mainToolTip.SetToolTip($btnMainLibsRst, (T 'btn_libs_rst_tip')) } catch {}
+        try { $mainToolTip.SetToolTip($btnMainSavesBackup, (T 'save_tip_backup')) } catch {}
+        try { $mainToolTip.SetToolTip($btnMainSavesRestore, (T 'save_tip_restore')) } catch {}
+        try { $mainToolTip.SetToolTip($btnMainSavesScan, (T 'save_scan_tip')) } catch {}
+        # Заголовки панелей («Папка» / имя тома + [Свободно: ...]) и пустые состояния: раньше менялись только в Refresh-Panels.
+        foreach ($pn in @('C', 'D')) {
+            try {
+                $pDir = $(if ($pn -eq 'C') { [string]$global:dirC } else { [string]$global:dirD })
+                $pLbl = $(if ($pn -eq 'C') { $lblC } else { $lblD })
+                $pFallback = $(if ($pn -eq 'C') { 'panel_extra' } else { 'panel_main' })
+                if ([string]::IsNullOrWhiteSpace($pDir) -or -not (Test-Path -LiteralPath $pDir -PathType Container)) {
+                    $pLbl.Text = (T $pFallback)
+                    if ($pn -eq 'C') { $lblEmptyC.Text = (T 'empty_extra') }
+                    continue
+                }
+                $pRt = [System.IO.Path]::GetPathRoot($pDir).Substring(0, 2)
+                $pDrive = Get-DriveInfoQuick $pRt
+                $pName = $(if ($pDrive -ne $null -and -not [string]::IsNullOrWhiteSpace([string]$pDrive.VolumeName)) { "$($pDrive.VolumeName) ($pRt)" } else { $pRt })
+                $pLbl.Text = $(if ($pDrive -ne $null) { (T 'panel_free' @($pName, ([string][Math]::Round($pDrive.FreeSpace / 1GB, 2)), (T 'unit_gb'))) } else { $pName })
+            } catch {}
+        }
         $btnSettings.AccessibleName = (T 'settings_title')
         $btnSettings.AccessibleDescription = (T 'settings_desc')
         $btnAddToSteam.Tag = (T 'btn_add_batch')
@@ -67469,9 +68525,16 @@ function Update-MainLibraryButtonState {
         # действие между панелями (ROMs, Wrappers, апскейлеры, сохранения, коллекции) и отмечены только уже добавленные игры.
         try {
             $showRemoveLib = ($ready -and $totalChecked -ge 1 -and $addableCount -eq 0 -and -not [bool]$script:romsModeEnabled -and -not [bool]$script:wrappersModeEnabled -and -not (Test-MainCheckRestrictionActive))
+            # Лицензионные игры Steam (steamapps\common с appmanifest) из библиотеки не удаляются: если отмечены только они - кнопки нет,
+            # если вместе с другими - в счётчике подсказки только те, что можно убрать.
+            $removableCount = 0
+            if ($showRemoveLib) {
+                foreach ($rg in @(Get-CheckedGames)) { if (-not (Test-PanelPathIsSteamApp ([string]$rg.Path))) { $removableCount++ } }
+                if ($removableCount -eq 0) { $showRemoveLib = $false }
+            }
             if ($null -ne $btnMainRemoveLib) {
                 if ($showRemoveLib) {
-                    $rlTip = (T 'btn_remove_lib_tip' @($totalChecked))
+                    $rlTip = (T 'btn_remove_lib_tip' @($removableCount))
                     if ($rlTip -ne [string]$script:removeLibTipText) { $script:removeLibTipText = $rlTip; $mainToolTip.SetToolTip($btnMainRemoveLib, $rlTip) }
                 }
                 if ([bool]$btnMainRemoveLib.Visible -ne [bool]$showRemoveLib) { $btnMainRemoveLib.Visible = [bool]$showRemoveLib }
@@ -68164,6 +69227,14 @@ function Add-PanelCtxItem ($Menu, [string]$Text, [bool]$Enabled, [string]$Action
 # Одна игра: удаляется именно она (даже если не отмечена галочкой). Несколько отмеченных игр: удаляются все отмеченные,
 # как по кнопке между панелями. Файлы игр на диске не трогаются; подтверждение и закрытие Steam - в Invoke-MainRemoveFromLibrary.
 function Add-PanelCtxRemoveLibItem ($Menu, [string]$Name, [string]$Source, [string]$Path, [bool]$Multi, [int]$Count, $Entry = $null) {
+    # Игра Steam из steamapps\common (есть appmanifest) убирается только удалением в самом Steam: ярлыка у неё нет, программе удалять нечего.
+    if (-not $Multi) { if (Test-PanelPathIsSteamApp $Path) { return } }
+    # Несколько отмеченных игр: считаем только те, что можно убрать (без лицензионных Steam-игр); если таких нет - пункта нет.
+    if ($Multi) {
+        $rmCnt = 0
+        try { foreach ($cg in @(Get-CheckedGames)) { if (-not (Test-PanelPathIsSteamApp ([string]$cg.Path))) { $rmCnt++ } } } catch { $rmCnt = $Count }
+        if ($rmCnt -le 0) { return }
+    }
     [void]$Menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
     if ($Multi) {
         Add-PanelCtxItem $Menu (T 'lib_ctx_remove_lib_sel' @($Count)) $true 'rmlib' $null
@@ -68198,7 +69269,10 @@ function Invoke-PanelCtxAction ($Tag) {
         'rst'        { Invoke-PanelCtxUpscalers ([string]$d.Path) ([string]$d.Name) 'rst' }
         'rmlib' {
             $script:panelCtxEntries = $null
-            if ($null -eq $d) { Invoke-MainRemoveFromLibrary } else { Invoke-MainRemoveFromLibrary @($d) }
+            if ($null -eq $d) {
+                $rmGames = @(Get-CheckedGames | Where-Object { -not (Test-PanelPathIsSteamApp ([string]$_.Path)) })
+                if ($rmGames.Count -gt 0) { Invoke-MainRemoveFromLibrary $rmGames }
+            } else { Invoke-MainRemoveFromLibrary @($d) }
             $script:panelCtxEntries = $null
             try { Update-MainLibraryButtonState } catch {}
         }
@@ -69934,7 +71008,14 @@ $btnAddToSteam.Add_Click({
 
 # «Удалить из библиотеки» (условия показа - в Update-MainLibraryButtonState): подтверждение -> закрыть Steam -> удалить ярлыки -> запустить Steam.
 $btnMainRemoveLib.Add_Click({
-    try { Invoke-MainRemoveFromLibrary } catch {}
+    # Shift при клике: удалить из библиотеки и саму папку игры с диска.
+    $delWithFiles = $false
+    try { $delWithFiles = (([System.Windows.Forms.Control]::ModifierKeys -band [System.Windows.Forms.Keys]::Shift) -eq [System.Windows.Forms.Keys]::Shift) } catch {}
+    try {
+        # Лицензионные игры Steam в удаление не попадают (в том числе с Shift: их папки программа не трогает).
+        $rmGames = @(Get-CheckedGames | Where-Object { -not (Test-PanelPathIsSteamApp ([string]$_.Path)) })
+        if ($rmGames.Count -gt 0) { Invoke-MainRemoveFromLibrary $rmGames $delWithFiles }
+    } catch {}
     try { Update-MainLibraryButtonState } catch {}
 })
 
