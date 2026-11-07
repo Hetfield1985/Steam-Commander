@@ -16,10 +16,7 @@
 [![Download](https://img.shields.io/badge/Download-Steam%20Commander.exe-blue?style=for-the-badge)](https://github.com/Hetfield1985/Steam-Commander/releases/latest)
 
 <p align="center">
-  <a href="https://donatty.com/vitalibabinok"><img src="https://img.shields.io/badge/Donatty-Support-orange?style=for-the-badge" alt="Donatty"></a>
-  <a href="https://destream.net/live/VitaliBabinok"><img src="https://img.shields.io/badge/DeStream-Support-blueviolet?style=for-the-badge" alt="DeStream"></a>
-  <a href="https://boosty.to/babinok/donate"><img src="https://img.shields.io/badge/Boosty-Support-f15f2c?style=for-the-badge" alt="Boosty"></a>
-  <a href="#support"><img src="https://img.shields.io/badge/USDT-ERC20%20%7C%20TRC20%20%7C%20BEP20-26A17B?style=for-the-badge" alt="USDT"></a>
+  <a href="#support"><img src="https://img.shields.io/badge/Donate-Support%20the%20project-orange?style=for-the-badge" alt="Donate"></a>
 </p>
 
 <p align="center">
@@ -86,7 +83,8 @@ For those who want to save time: with auto-import turned on, games are added in 
 ### Game saves: backup and restore
 
 - **Finding saves without starting the game.** Paths come from the official Ludusavi database (MIT license, built into the program, updated from the settings), from known Steam emulator paths (including non-licensed game copies), from Steam Cloud and from heuristics. For games missing from the database there is a detector: it starts the game, watches the files it creates and suggests the most likely folders.
-- **Backup and restore** for one game (buttons in the card and tile menu items) or for all ticked games at once (the **Saves** group in the Library window). Copies are stored in zip archives; if the saves have not changed, no new archive is created. Before a restore, the current saves are automatically put aside into a safety `pre-restore` archive, and if there are several copies you can choose the one you need.
+- **Backup and restore** for one game (buttons in the card and tile menu items) or for all ticked games at once (the **Saves** buttons in the main window and in the Library window). Copies are stored in zip archives; if the saves have not changed, no new archive is created. Before a restore, the current saves are automatically put aside into a safety `pre-restore` archive, and if there are several copies you can choose the one you need.
+- **Choose the action first.** The *Saves* buttons can be pressed without ticked games: the chosen action (find, back up, restore) defines which games can be ticked, and the file panels show the result in a *Presence* / *Backup* column (*Found* / *Not found*, or the date of the last backup).
 - The common backup folder is chosen in the settings. ROMs do not take part in this feature.
 
 <p align="center">
@@ -115,7 +113,7 @@ Wrappers let you start an ordinary game through a helper program: Virtual Deskto
 
 ### Updating and managing upscaler libraries
 
-Downloading and choosing versions of DLSS / FSR / XeSS / XeLL. Replacing the libraries in the selected games (or in all added ones) with one button, optionally automatically when a game is added to Steam. After the operation a detailed report for each game is shown. Originals are kept as `.sc_orig` and can be restored in one action.
+Downloading and choosing versions of DLSS / FSR / XeSS / XeLL. Replacing the libraries in the selected games (or in all added ones) with one button, optionally automatically when a game is added to Steam. After the operation a detailed report for each game is shown. Originals are kept as `.sc_orig` and can be restored in one action. The *Libraries* buttons exist in the main window and in the Library window and work on ticked games: *Update* is available only for games that have upscaler libraries, *Restore* only for games with saved originals, and the *DLSS* column of the panels shows the version of `nvngx_dlss.dll`.
 
 <p align="center">
   <img src="assets/screenshots/swap_upscaler.gif" width="700" alt="Upscaler libraries">
@@ -125,23 +123,41 @@ Downloading and choosing versions of DLSS / FSR / XeSS / XeLL. Replacing the lib
 
 Two independent panels (any folders and drives). Search, sorting, folder size, an "already in Steam" mark with the game icon. Moving game and ROM folders between the panels with progress and automatic updating of the Steam shortcuts. Smart moving in both directions between folders and drives: tick games on both panels and press Space to find out whether such a move is possible and how much space is missing.
 
+- **Installed Steam games are marked too.** Folders of a Steam library (`steamapps\common`) get the "in library" tick and the icon Steam itself uses for the game.
+- **Right-click menu of a game.** *Launch* (or *Add to library* for a game that is not added yet), *Open folder*, *Collections*, saves, upscaler libraries, wrappers and *Remove from library*, with icons. If the game is ticked together with others, the action applies to all ticked games. ROM games have their own menu: *Launch*, *Open folder*, *Collections* and *Change emulator*.
+- **Favorite folders.** The star after the path field adds the current folder to favorites; the arrow at the end of the field opens the list (rename, move up / down, remove). The list is common for both panels.
+- **Mode columns.** The *Size* and *Date* columns are replaced by one column that depends on the active mode: *Wrapper*, *Emulator*, *DLSS* or *Presence* / *Backup*. Every column can be sorted by a click on its header, and the column widths are calculated automatically.
+- **Folder size can be cancelled.** While sizes are being counted, the bottom *Library* button turns into *Cancel calculation*.
+- **The window stays responsive during a move.** Progress is taken from the bytes really written, and the cards of games that are not being moved can be opened and saved meanwhile (writing to Steam is postponed until the move ends).
+- **Quick letter search in drop-down lists:** type letters to jump to the first item that starts with them.
+
 <p align="center">
   <img src="assets/screenshots/two_panels.png" width="700" alt="Two-panel browser">
 </p>
 
 ### Steam collections
 
-In the Library window, to the right of the *Filter* button, there is a collection dropdown (as in Steam): *All collections*, your collections with the number of games, and *Uncategorized*. The right-click *Collections* item opens a window with check boxes for one or all ticked games (a square means that only some of the games are in the collection). To write the changes the program closes Steam, updates `localconfig.vdf` and `cloud-storage-namespace-1.json`, and starts Steam again; copies of both files are saved first (the last 10 are kept). Dynamic collections are skipped, because Steam builds them itself.
+In the Library window, to the right of the *Filter* button, there is a collection dropdown (as in Steam): *All collections*, *Favorites*, *Hidden*, your collections with the number of games, and *Uncategorized*; *Group by collections* lays the games out in blocks with a collection header. The right-click *Collections* item opens a window with check boxes for one or all ticked games (a square means that only some of the games are in the collection).
+
+The **Collections** button of the main window lets you pick collections for new games in advance (they are put into every card, also on auto import), and the button in the game card sets them for one game. For games that are already added, the bottom *Change collections (N)* button applies the ticks. To write the changes the program closes Steam, updates `localconfig.vdf` and `cloud-storage-namespace-1.json`, and starts Steam again; copies of both files are saved first (the last 10 are kept). Dynamic collections are skipped, because Steam builds them itself.
 
 ### Library editing
 
 Editing non-Steam games, ROMs and licensed Steam games (covers, launch options). Automatic and manual backup and restore of `shortcuts.vdf` (the file that stores the library of third-party games). Steam restart mode in the settings: **automatic** (the program closes and starts Steam itself) or **manual** (you decide when to restart Steam, and the program correctly writes `shortcuts.vdf` after it is closed).
 
+### Removing games from the library
+
+The **Remove from library** button (a trash can) appears between the panels when no mode between them is active (ROMs, Wrappers, Libraries, Saves, Collections) and only games that are already added are ticked. The same action is the last item of the right-click menu of a game in the panels and of the tile menu in the Library (for one game or for all ticked ones). After a confirmation the program closes Steam if it is running, makes a backup of `shortcuts.vdf`, deletes the shortcuts of the games from all Steam profiles, cleans the leftovers (covers, hero, logo, wide cover, icon, cover source data) and starts Steam again. Game files are not touched.
+
+- **Shift + click also deletes the game from the disk.** While *Shift* is held the button turns red. The confirmation lists the folders that will be deleted. Games installed with an installer are uninstalled with their own uninstaller first (the program waits until you finish it); if it is cancelled, the game stays in the library. Unsafe folders (a drive root, a link, Windows, Program Files, user folders, the Steam folder, a panel root, or a folder that still holds another game of the library) are never deleted. Files are deleted permanently, not to the Recycle Bin.
+- **Installed Steam games** (`steamapps\common`) have no shortcut and are removed only in Steam itself, so the program offers no removal for them.
+
 ### More
 
-- **"Open on startup"** setting: file panels or the Library window; the column widths of the lists are remembered.
+- **"Open on startup"** setting: file panels or the Library window. The columns of the lists fit their content automatically.
 - Six interface languages: Русский, English, 简体中文, Español, Português (Brasil), Deutsch; you can add your own language files.
 - Fast start and smooth work with large libraries: lists and tiles are built in portions, scrolling does not freeze, and a repeated start is sped up by a cache of compiled blocks.
+- Long tooltips are wrapped into a compact box; icons are drawn pixel-perfectly at any display scale.
 - No telemetry.
 
 ---
@@ -198,10 +214,13 @@ Result: `dist\Steam Commander.exe`.
 |---|---|
 | Double click / **Enter** | Open the game card |
 | **Space** | Size of the ticked game folders, and a check of whether these games can be moved between the panels |
-| **Ctrl+A** | Select all folders and files in the panel |
+| **Ctrl+A** | Select all folders and files in the panel; in the Library window, tick all visible games |
 | **Esc** | Close the game card or window |
 | **Alt+Shift+Enter** | Size of all folders in the panel |
 | **F5** | Refresh the panels / Library window |
+| **Shift** + click on *Remove from library* | Remove the game from the library and delete its folder from the disk |
+| Letters in an open drop-down list | Jump to the first item that starts with them (**Enter** or a click chooses it) |
+| **Delete** in the favorites list | Remove the selected folder from favorites |
 
 ---
 
@@ -210,6 +229,7 @@ Result: `dist\Steam Commander.exe`.
 | What | Where |
 |---|---|
 | Settings, emulator profiles | `%APPDATA%\Steam Commander` |
+| Favorite folders | `config.ini` |
 | Steam game database | `%APPDATA%\Steam Commander\steam_apps_db.json` |
 | Upscaler libraries | `%APPDATA%\Steam Commander` |
 | Save database (Ludusavi) | `%APPDATA%\Steam Commander\saves` |
@@ -264,6 +284,7 @@ Steam-Commander/
 - Save search relies on the Ludusavi database and heuristics: for rare games you may have to confirm the path by hand
 - Animated covers are decoded in the background, so heavy files do not start playing at once
 - Steam collections are written only while Steam is closed; dynamic collections are not supported
+- Installed Steam games cannot be removed by the program: use Steam for that. Deleting a game folder with *Shift* is irreversible
 - Windows only
 
 ---
@@ -282,7 +303,7 @@ Steam Commander is an unofficial community project. It is not affiliated with Va
 Covers belong to their owners. The application icon is an original design.  
 The save database is based on the [Ludusavi Manifest](https://github.com/mtkennerly/ludusavi-manifest) (MIT).
 
-The program modifies `shortcuts.vdf`, can replace upscaler DLLs and can overwrite save files when restoring. Use at your own risk. Make a backup before bulk operations.
+The program modifies `shortcuts.vdf`, can replace upscaler DLLs, can overwrite save files when restoring and (with *Shift* on *Remove from library*) can delete game folders from the disk. Use at your own risk. Make a backup before bulk operations.
 
 ---
 
@@ -296,9 +317,11 @@ The program modifies `shortcuts.vdf`, can replace upscaler DLLs and can overwrit
 
 If the program turned out to be useful:
 
-- [Donatty](https://donatty.com/vitalibabinok)
-- [DeStream](https://destream.net/live/VitaliBabinok)
-- [Boosty](https://boosty.to/babinok/donate)
+<p align="center">
+  <a href="https://donatty.com/vitalibabinok"><img src="https://img.shields.io/badge/Donatty-Support-orange?style=for-the-badge" alt="Donatty"></a>
+  <a href="https://destream.net/live/VitaliBabinok"><img src="https://img.shields.io/badge/DeStream-Support-blueviolet?style=for-the-badge" alt="DeStream"></a>
+  <a href="https://boosty.to/babinok/donate"><img src="https://img.shields.io/badge/Boosty-Support-f15f2c?style=for-the-badge" alt="Boosty"></a>
+</p>
 
 **USDT** (minimum 5 USDT):
 
