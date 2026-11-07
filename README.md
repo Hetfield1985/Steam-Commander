@@ -139,7 +139,11 @@ Two independent panels (any folders and drives). Search, sorting, folder size, a
 
 In the Library window, to the right of the *Filter* button, there is a collection dropdown (as in Steam): *All collections*, *Favorites*, *Hidden*, your collections with the number of games, and *Uncategorized*; *Group by collections* lays the games out in blocks with a collection header. The right-click *Collections* item opens a window with check boxes for one or all ticked games (a square means that only some of the games are in the collection).
 
-The **Collections** button of the main window lets you pick collections for new games in advance (they are put into every card, also on auto import), and the button in the game card sets them for one game. For games that are already added, the bottom *Change collections (N)* button applies the ticks. To write the changes the program closes Steam, updates `localconfig.vdf` and `cloud-storage-namespace-1.json`, and starts Steam again; copies of both files are saved first (the last 10 are kept). Dynamic collections are skipped, because Steam builds them itself.
+The **Collections** button of the main window lets you pick collections for new games in advance (they are put into every card, also on auto import), and the button in the game card (see the screenshot below) sets them for one game. For games that are already added, the bottom *Change collections (N)* button applies the ticks. To write the changes the program closes Steam, updates `localconfig.vdf` and `cloud-storage-namespace-1.json`, and starts Steam again; copies of both files are saved first (the last 10 are kept). Dynamic collections are skipped, because Steam builds them itself.
+
+<p align="center">
+  <img src="assets/screenshots/Collections.png" width="700" alt="Choosing collections in the game card">
+</p>
 
 ### Library editing
 
