@@ -6,6 +6,35 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [2.2.6] - 2026-11-09
+
+### Added
+* **Steam is closed without closing the program.** When Steam is restarted (after removing games, swapping an emulator / wrapper, writing shortcuts and so on), the program no longer kills its own process: if Steam started the program, it is a child of `steam.exe`, and the old `taskkill /T` took the program down together with the Steam tree. The list of processes is now built by hand (every `steam.exe` and its descendants except the program itself); if that fails, a fallback closes only `steam.exe` and `steamwebhelper.exe`.
+
+### Improved
+* **The file panels no longer flicker.** Switching the mode, refreshing the panels and receiving scan results used to blank both lists for a moment and then redraw the rows one by one from top to bottom. The panels now erase their background only below the last row, and a refresh runs with list redrawing suspended: the old rows stay on screen until the new list is ready and then appear in one update. Resetting the ticks, the selection and the columns is applied in one piece as well, and the old selection is cleared so the list is not scrolled to the previously selected game.
+* **Scrolling and redrawing the panels is faster.** The emulator column looked up the profile of each row through all shortcuts of the library on every repaint. The result is now cached per row and reset whenever the list of installed games changes.
+* **The slide-out menus (*Libraries*, *Saves*) are folded before the panels are refreshed,** so no dark squares are left in their place.
+* **The *Library / Import* window has no taskbar button while it is minimized.** A minimized library used to leave a second preview next to the main window; it is now hidden from the taskbar and gets its normal style back when the window is restored.
+* **The main window stays clickable during long operations** (batch adding, saves, covers): its *disabled* state no longer sticks, so a click on the taskbar preview restores the program.
+* **A successful emulator or wrapper swap no longer opens a window.** The result is written to the status line; a window is shown only for warnings and errors. After the swap the panels are re-read (ticks are kept), so the emulator column and the icons are up to date at once.
+* **The *Remove from library* button is shown for a mixed selection.** If both new and already added games are ticked, both the *Remove from library* button and the bottom *Add new games to the library* button are available. The tooltip counts only the games that can really be removed. Games that are not in the library are never removed, with or without *Shift*.
+* **The trash button shows how many games it will remove.** A small counter badge appears in its top-right corner (blue, red while *Shift* is held; `99+` for large selections). It counts only the ticked games that are already in the library and can be removed, the same number as in the tooltip.
+* **The save backup picker shows the game name in its title and is always shown,** even when there is only one backup (previously a single backup went straight to a confirmation). The same applies to the restore from the game card, the Library and the main window.
+* **SteamGridDB: the source badge of a cover changes together with the picture** instead of after the full file is downloaded, and goes back to the previous one if the download fails.
+* **The tooltip and caption of the logo option are more precise:** *Default for all new games* (the setting affects new cards, ROMs and auto-import, not the games that are already added). Translated into all six languages.
+
+### Fixed
+* **Removing a game from the library leaves no traces in Steam collections.** The shortcut id used to stay in the collections, so the game came back into its old collections when it was added again. The ids of the removed shortcuts are now purged from the collections of all profiles (Steam is already closed at that point).
+* **A removed game no longer looks added until restart.** Games of launchers (*Library / Import*) and the panels kept the *already in Steam* mark after their shortcut was deleted. The marks are now recalculated at once. Steam library games from `steamapps\common` are not touched.
+* **Saves of a game that is already in Steam are found under the right name.** The row of the panel and the saves buttons now use the same record as the game card (the shortcut name and App ID), so the *Presence* / *Backup* status and the backups match the card. The status of a row is updated immediately after a change of saves in the card (detector, reset, backup, restore).
+* **A game whose EXE is selected directly** (not a folder) shows the file name instead of an empty relative path in the lists of found / existing EXE files and in the hint.
+
+### Changed
+* Application version is now 2.2.6.
+
+---
+
 ## [2.2.5] - 2026-11-07
 
 ### Added
