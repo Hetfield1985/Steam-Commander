@@ -1,4 +1,6 @@
-﻿Add-Type -AssemblyName System.Windows.Forms
+﻿# Секундомер запуска (используется диагностикой долгого запуска, см. Write-StartupMark). Стоит первым, чтобы считать и загрузку сборок.
+$script:StartupSw = [System.Diagnostics.Stopwatch]::StartNew()
+Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
 # ---------------------------------------------------------------------------
@@ -27,6 +29,18 @@ $script:WrapperUiEnabled = $true
 # ===========================================================================
 # Единый журнал диагностики (файл SteamCommander_diagnostics.log в папке программы). $true - включить.
 $script:SgdbTimingLog = $false
+# Диагностика мгновенно мелькающих окон консоли/терминала (cmd, conhost, Windows Terminal). Работает только вместе с
+# $script:SgdbTimingLog = $true; пишет в тот же журнал строки CONSOLE-FLASH. $true - включить; по умолчанию выключено,
+# в этом случае C#-код не компилируется и поток-наблюдатель не запускается.
+$script:ConsoleFlashDiag = $false
+# Диагностика долгого запуска (нужен и $script:SgdbTimingLog = $true): строки STARTUP в том же журнале. Показывает, сколько
+# времени ушло до первой строки скрипта (запуск powershell + разбор файла), сколько - на каждый Add-Type (кеш или компиляция),
+# сколько - на этапы запуска (с номерами строк), и в конце выводит сводку с «виновником». $false - выключить.
+$script:StartupDiag = $false
+# ГЛУБОКАЯ диагностика мелькающих окон любого вида (в том числе окон самой программы и дочерних процессов): строки WIN-FLASH,
+# WIN-CREATE, WIN-OWN, WIN-SHOWCALL, WIN-ACTIVATE, WIN-CENSUS, PROC-SPAWN, PROC-EXIT в том же журнале. Нужен и $script:SgdbTimingLog = $true.
+# $false - выключить (тогда C#-код не компилируется, хуки и потоки-наблюдатели не запускаются).
+$script:WindowFlashDiag = $false
 # Анимированные обложки. Форматы SGDB, которые программа пока НЕ умеет показать (отсеиваются из вариантов).
 # Этап 1: GIF и APNG GDI+ читает (в превью виден первый кадр), WebP - нет. После появления декодера WebP
 # (этап 2) здесь ставятся шаблоны, которые ничего не совпадают.
@@ -132,6 +146,114 @@ function Write-SgdbDiag([string]$Tag, $Items) {
             if ($an.Count -gt 0) { $s2 = ($an[0] | ConvertTo-Json -Depth 3 -Compress); if ($s2.Length -gt 600) { $s2 = $s2.Substring(0, 600) } }
         } catch {}
         Write-SgdbTimingLog ('DIAG ' + $Tag + ': n=' + $arr.Count + ' mime[' + $ms + '] types[' + $ts + '] webpReady=' + [string]$script:WebpSupportReady + ' mimeRx=' + [string]$script:SgdbUnsupportedMimeRx + ' first=' + $s1 + ' animSample=' + $s2)
+    } catch {}
+}
+# ===================== ДИАГНОСТИКА ДОЛГОГО ЗАПУСКА =====================
+# Включается флагами в начале файла ($script:SgdbTimingLog и $script:StartupDiag). Всё пишется через Write-SgdbTimingLog.
+#  * STARTUP begin    - сколько прошло от старта процесса до первой строки скрипта (запуск powershell.exe + чтение и разбор файла).
+#  * STARTUP mark     - отметка этапа: t = время от начала скрипта, +N ms = время с ПРЕДЫДУЩЕЙ отметки (то есть работа кода между
+#                       двумя отметками, её и надо смотреть), line = номер строки в этом файле, где отметка поставлена.
+#  * STARTUP Add-Type - каждый вызов Add-Type: cache-hit (DLL из кеша), COMPILED (компиляция csc.exe, самый дорогой случай)
+#                       или real-Add-Type (кеш не использован).
+#  * STARTUP SUMMARY  - итог в момент, когда окно показано: из чего сложилось время и что самое медленное.
+$script:StartupMarks = New-Object System.Collections.ArrayList
+$script:StartupAddTypes = New-Object System.Collections.ArrayList
+$script:StartupLastMs = [long]0
+$script:StartupPreMs = [long]0
+$script:StartupSummaryDone = $false
+function Write-StartupMark {
+    param([string]$Name, [int]$Line = 0)
+    # Этап запуска для диагностики окон (WIN-FLASH): к каждому событию окна пишется последний этап.
+    if ($script:WinFlashReady) { try { [ScWinFlashWatch]::Phase = $Name } catch {} }
+    if (-not ($script:SgdbTimingLog -and $script:StartupDiag)) { return }
+    try {
+        if ($Line -le 0) { $Line = [int]$MyInvocation.ScriptLineNumber }
+        $now = [long]$script:StartupSw.ElapsedMilliseconds
+        $delta = $now - [long]$script:StartupLastMs
+        $script:StartupLastMs = $now
+        [void]$script:StartupMarks.Add([pscustomobject]@{ Name = $Name; Line = $Line; At = $now; Delta = $delta })
+        Write-SgdbTimingLog ('STARTUP mark t=' + $now + 'ms +' + $delta + 'ms line ' + $Line + ': ' + $Name)
+    } catch {}
+}
+function Write-StartupAddType {
+    param([string]$Src, [string]$Kind, [long]$Ms, [string]$Extra = '')
+    if (-not ($script:SgdbTimingLog -and $script:StartupDiag)) { return }
+    try {
+        $names = $Extra
+        if (-not [string]::IsNullOrEmpty($Src)) {
+            $mm = [regex]::Matches($Src, '(?m)^\s*(?:public\s+|internal\s+|static\s+|sealed\s+|abstract\s+)*(?:class|struct|enum|interface)\s+(\w+)')
+            $names = (@($mm | Select-Object -First 4 | ForEach-Object { $_.Groups[1].Value }) -join ',')
+        }
+        [void]$script:StartupAddTypes.Add([pscustomobject]@{ Kind = $Kind; Ms = $Ms; Names = $names })
+        Write-SgdbTimingLog ('STARTUP Add-Type ' + $Kind + ' ' + $Ms + ' ms [' + $names + ']')
+    } catch {}
+}
+function Write-StartupSummary {
+    if (-not ($script:SgdbTimingLog -and $script:StartupDiag)) { return }
+    if ($script:StartupSummaryDone) { return }
+    $script:StartupSummaryDone = $true
+    try {
+        $scriptMs = [long]$script:StartupSw.ElapsedMilliseconds
+        $total = [long]$script:StartupPreMs + $scriptMs
+        $atAll = @($script:StartupAddTypes)
+        $kinds = @{}
+        foreach ($a in $atAll) {
+            $k = [string]$a.Kind
+            if (-not $kinds.ContainsKey($k)) { $kinds[$k] = @{ N = 0; Ms = [long]0 } }
+            $kinds[$k].N = [int]$kinds[$k].N + 1
+            $kinds[$k].Ms = [long]$kinds[$k].Ms + [long]$a.Ms
+        }
+        $atSum = [long]0
+        foreach ($k in $kinds.Keys) { $atSum += [long]$kinds[$k].Ms }
+        $kindText = (@($kinds.Keys | Sort-Object | ForEach-Object { $_ + ' x' + $kinds[$_].N + ' = ' + $kinds[$_].Ms + ' ms' }) -join '; ')
+        Write-SgdbTimingLog ('STARTUP SUMMARY окно показано через ' + $total + ' ms от старта процесса: до первой строки скрипта ' + $script:StartupPreMs + ' ms + выполнение скрипта ' + $scriptMs + ' ms')
+        Write-SgdbTimingLog ('STARTUP SUMMARY Add-Type: всего ' + $atAll.Count + ' вызовов, ' + $atSum + ' ms (' + $kindText + ')')
+        $topM = @($script:StartupMarks | Sort-Object -Property Delta -Descending | Select-Object -First 8)
+        if ($topM.Count -gt 0) {
+            Write-SgdbTimingLog ('STARTUP SUMMARY самые долгие этапы (+ms = работа кода ПЕРЕД отметкой, с предыдущей): ' + (@($topM | ForEach-Object { '+' + $_.Delta + 'ms line ' + $_.Line + ' "' + $_.Name + '"' }) -join ' | '))
+        }
+        $topA = @($atAll | Sort-Object -Property Ms -Descending | Select-Object -First 6)
+        if ($topA.Count -gt 0) {
+            Write-SgdbTimingLog ('STARTUP SUMMARY самые долгие Add-Type: ' + (@($topA | ForEach-Object { $_.Kind + ' ' + $_.Ms + 'ms [' + $_.Names + ']' }) -join ' | '))
+        }
+        # Автоматический вывод: какая из четырёх частей самая большая. Add-Type входит в «выполнение скрипта», поэтому вычитается из него.
+        $other = [Math]::Max([long]0, $scriptMs - $atSum)
+        $compMs = [long]0
+        if ($kinds.ContainsKey('COMPILED')) { $compMs = [long]$kinds['COMPILED'].Ms }
+        $parts = @(
+            [pscustomobject]@{ N = 'до первой строки скрипта (запуск powershell.exe и разбор файла скрипта, часто виноваты антивирус и размер файла)'; V = [long]$script:StartupPreMs },
+            [pscustomobject]@{ N = 'компиляция C#-блоков (кеш типов не сработал, запускается csc.exe)'; V = $compMs },
+            [pscustomobject]@{ N = 'загрузка C#-блоков из кеша и вызовы Add-Type без кеша'; V = [long]($atSum - $compMs) },
+            [pscustomobject]@{ N = 'остальной код запуска (чтение настроек, построение окна, библиотеки; см. самые долгие этапы выше)'; V = [long]$other }
+        )
+        $big = $parts | Sort-Object -Property V -Descending | Select-Object -First 1
+        $pct = 0; if ($total -gt 0) { $pct = [int][Math]::Round(100.0 * [double]$big.V / [double]$total) }
+        Write-SgdbTimingLog ('STARTUP VERDICT: больше всего времени (' + $big.V + ' ms, ' + $pct + '% от ' + $total + ' ms) занимает: ' + $big.N)
+        $cacheInfo = ''
+        try {
+            $cd = [string]$script:ScTypeCacheDir
+            if (-not [string]::IsNullOrWhiteSpace($cd) -and [System.IO.Directory]::Exists($cd)) {
+                $cacheInfo = $cd + ' файлов=' + @([System.IO.Directory]::GetFiles($cd, 'sct_*.dll')).Count
+            } else { $cacheInfo = 'нет (кеш типов не используется)' }
+        } catch {}
+        Write-SgdbTimingLog ('STARTUP SUMMARY кеш типов: ' + $cacheInfo)
+    } catch {
+        Write-SgdbTimingLog ('STARTUP SUMMARY ошибка: ' + $_.Exception.Message)
+    }
+}
+if ($script:SgdbTimingLog -and $script:StartupDiag) {
+    try {
+        $pr = [System.Diagnostics.Process]::GetCurrentProcess()
+        $script:StartupPreMs = [long][Math]::Max(0.0, ((Get-Date) - $pr.StartTime).TotalMilliseconds - [double]$script:StartupSw.ElapsedMilliseconds)
+        $scrInfo = ''
+        try {
+            if (-not [string]::IsNullOrWhiteSpace([string]$PSCommandPath)) {
+                $fi = Get-Item -LiteralPath $PSCommandPath -ErrorAction Stop
+                $scrInfo = ' файл=' + [Math]::Round($fi.Length / 1MB, 2) + ' МБ'
+            }
+        } catch {}
+        Write-SgdbTimingLog ('STARTUP begin pid=' + $pr.Id + ' до первой строки скрипта прошло ' + $script:StartupPreMs + ' ms (запуск powershell.exe + чтение и разбор файла); PowerShell ' + [string]$PSVersionTable.PSVersion + ' ' + [string]$PSVersionTable.PSEdition + ' x64proc=' + [Environment]::Is64BitProcess + $scrInfo)
+        $script:StartupLastMs = [long]$script:StartupSw.ElapsedMilliseconds
     } catch {}
 }
 # Сетевой пул .NET (общий для всех runspace процесса). По умолчанию лимит - 2 соединения на хост,
@@ -243,7 +365,9 @@ function Reset-SgdbConnectionPool {
         } catch {}
     }
 }
+Write-StartupMark 'before Update-SgdbCurlResolve'
 try { Update-SgdbCurlResolve } catch {}
+Write-StartupMark 'Update-SgdbCurlResolve done'
 try { $script:SplashRu = ([System.Globalization.CultureInfo]::CurrentUICulture.TwoLetterISOLanguageName -eq 'ru') } catch {}
 
 function Set-SplashText ([string]$Text) {
@@ -255,7 +379,10 @@ function Set-SplashProgress ([double]$Value) {
     try {
         if ($null -ne $script:SplashState -and $null -ne $script:SplashState['Progress']) {
             if ($Value -gt 1.0) { $Value = 1.0 }
-            if ($Value -gt [double]$script:SplashState['Progress']) { $script:SplashState['Progress'] = $Value }
+            if ($Value -gt [double]$script:SplashState['Progress']) {
+                $script:SplashState['Progress'] = $Value
+                try { Write-StartupMark ('splash progress ' + $Value) ([int]$MyInvocation.ScriptLineNumber) } catch {}
+            }
         }
     } catch {}
 }
@@ -383,6 +510,7 @@ try {
 } catch {
     $script:SplashState = $null
 }
+Write-StartupMark 'splash runspace started'
 Add-Type -AssemblyName System.Design
 
 # ---------------------------------------------------------------------------
@@ -533,6 +661,8 @@ if ($script:ScTypeCacheEnabled -and ($PSVersionTable.PSEdition -ne 'Core')) {
         [void][System.IO.Directory]::CreateDirectory($script:ScTypeCacheDir)
         $script:ScRealAddType = Get-Command -Name Add-Type -CommandType Cmdlet -ErrorAction Stop
         function Add-Type {
+            $swAt = $null; $atExisted = $false
+            if ($script:SgdbTimingLog -and $script:StartupDiag) { $swAt = [System.Diagnostics.Stopwatch]::StartNew() }
             $cacheOk = $false
             $src = $null; $refs = @(); $lang = 'CSharp'
             try {
@@ -561,12 +691,14 @@ if ($script:ScTypeCacheEnabled -and ($PSVersionTable.PSEdition -ne 'Core')) {
                     $sha.Dispose()
                     $hex = ([BitConverter]::ToString($hb) -replace '-', '').Substring(0, 32).ToLowerInvariant()
                     $dll = Join-Path $script:ScTypeCacheDir ('sct_' + $hex + '.dll')
+                    $atExisted = [System.IO.File]::Exists($dll)
                     if (-not [System.IO.File]::Exists($dll)) {
                         $cp = @{ TypeDefinition = $src; Language = $lang; OutputAssembly = $dll; OutputType = 'Library'; ErrorAction = 'Stop' }
                         if (@($refs).Count -gt 0) { $cp['ReferencedAssemblies'] = $refs }
                         & $script:ScRealAddType @cp
                     }
                     [void][System.Reflection.Assembly]::LoadFrom($dll)
+                    if ($null -ne $swAt) { try { $atKind = if ($atExisted) { 'cache-hit' } else { 'COMPILED' }; Write-StartupAddType $src $atKind $swAt.ElapsedMilliseconds } catch {} }
                     return
                 } catch {
                     # Битый или недописанный файл кеша - удаляем, ниже блок компилируется обычным способом.
@@ -575,9 +707,1211 @@ if ($script:ScTypeCacheEnabled -and ($PSVersionTable.PSEdition -ne 'Core')) {
             }
             try { & $script:ScRealAddType @args }
             catch { if ([string]$_.Exception.Message -notmatch 'already exists') { throw } }
+            if ($null -ne $swAt) { try { Write-StartupAddType $src 'real-Add-Type' $swAt.ElapsedMilliseconds ((@($args | Where-Object { $_ -is [string] -and $_.Length -lt 80 })) -join ' ') } catch {} }
         }
     } catch {}
 }
+
+# ===================== ДИАГНОСТИКА МЕЛЬКАЮЩИХ ОКОН КОНСОЛИ/ТЕРМИНАЛА =====================
+# Включается двумя флагами в начале файла: $script:SgdbTimingLog и $script:ConsoleFlashDiag. Выключено - ничего не компилируется.
+# Как это работает: отдельный поток с собственным циклом сообщений ставит системный хук SetWinEventHook на показ, скрытие и
+# уничтожение окон (EVENT_OBJECT_SHOW/HIDE/DESTROY) и реагирует только на окна классов ConsoleWindowClass (conhost) и
+# CASCADIA_HOSTING_WINDOW_CLASS (Windows Terminal). Событие приходит в момент показа окна, поэтому ловятся даже вспышки на
+# несколько миллисекунд. На показ в журнал уходит: процесс-владелец окна, цепочка его родителей с командными строками,
+# признак «запущено этой программой» (fromApp) и список процессов-потомков программы, созданных за последние 4 секунды
+# (для Windows Terminal виновника по цепочке родителей не найти, поэтому смотрим на недавних потомков). На скрытие или
+# уничтожение окна пишется время жизни окна. Строки копятся в очереди и записываются в журнал таймером из основного
+# потока через Write-SgdbTimingLog (единый журнал), в начале строки стоит время самого события.
+function Start-ConsoleFlashDiag {
+    if (-not $script:ConsoleFlashDiag -or -not $script:SgdbTimingLog) { return }
+    try {
+        if (-not ('ScConsoleFlashWatch' -as [type])) {
+            Add-Type -TypeDefinition @'
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Threading;
+
+public static class ScConsoleFlashWatch
+{
+    delegate void WinEventProc(IntPtr hook, uint evt, IntPtr hwnd, int idObject, int idChild, uint thread, uint time);
+
+    [StructLayout(LayoutKind.Sequential)] struct POINT { public int X; public int Y; }
+    [StructLayout(LayoutKind.Sequential)] struct MSG { public IntPtr hwnd; public uint message; public IntPtr wParam; public IntPtr lParam; public uint time; public POINT pt; }
+    [StructLayout(LayoutKind.Sequential)] struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
+    [StructLayout(LayoutKind.Sequential)] struct FILETIME { public uint Low; public uint High; }
+    [StructLayout(LayoutKind.Sequential)]
+    struct PBI { public IntPtr ExitStatus; public IntPtr PebBaseAddress; public IntPtr AffinityMask; public IntPtr BasePriority; public IntPtr UniqueProcessId; public IntPtr InheritedFromUniqueProcessId; }
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    struct PROCESSENTRY32
+    {
+        public uint dwSize; public uint cntUsage; public uint th32ProcessID; public IntPtr th32DefaultHeapID; public uint th32ModuleID;
+        public uint cntThreads; public uint th32ParentProcessID; public int pcPriClassBase; public uint dwFlags;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)] public string szExeFile;
+    }
+    class PInfo { public uint Pid; public uint Ppid; public string Name; }
+
+    [DllImport("user32.dll")] static extern IntPtr SetWinEventHook(uint evMin, uint evMax, IntPtr hmod, WinEventProc proc, uint pid, uint tid, uint flags);
+    [DllImport("user32.dll")] static extern bool UnhookWinEvent(IntPtr hook);
+    [DllImport("user32.dll")] static extern int GetMessage(out MSG m, IntPtr h, uint min, uint max);
+    [DllImport("user32.dll")] static extern bool PeekMessage(out MSG m, IntPtr h, uint min, uint max, uint remove);
+    [DllImport("user32.dll")] static extern bool TranslateMessage(ref MSG m);
+    [DllImport("user32.dll")] static extern IntPtr DispatchMessage(ref MSG m);
+    [DllImport("user32.dll")] static extern bool PostThreadMessage(uint tid, uint msg, IntPtr w, IntPtr l);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr h, StringBuilder sb, int max);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr SendMessageTimeout(IntPtr h, uint msg, IntPtr w, StringBuilder l, uint flags, uint timeout, out IntPtr result);
+    [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+    [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
+    [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h, out RECT r);
+    [DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
+    [DllImport("kernel32.dll")] static extern IntPtr GetConsoleWindow();
+    [DllImport("kernel32.dll")] static extern IntPtr OpenProcess(uint access, bool inherit, uint pid);
+    [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
+    [DllImport("kernel32.dll")] static extern bool IsWow64Process(IntPtr h, out bool wow);
+    [DllImport("kernel32.dll")] static extern bool GetProcessTimes(IntPtr h, out FILETIME c, out FILETIME e, out FILETIME k, out FILETIME u);
+    [DllImport("kernel32.dll")] static extern bool ReadProcessMemory(IntPtr h, IntPtr addr, byte[] buf, int size, out IntPtr read);
+    [DllImport("kernel32.dll")] static extern IntPtr CreateToolhelp32Snapshot(uint flags, uint pid);
+    [DllImport("kernel32.dll", EntryPoint = "Process32FirstW", CharSet = CharSet.Unicode)] static extern bool Process32First(IntPtr s, ref PROCESSENTRY32 e);
+    [DllImport("kernel32.dll", EntryPoint = "Process32NextW", CharSet = CharSet.Unicode)] static extern bool Process32Next(IntPtr s, ref PROCESSENTRY32 e);
+    [DllImport("ntdll.dll", EntryPoint = "NtQueryInformationProcess")] static extern int NtQueryPbi(IntPtr h, int cls, out PBI pbi, int len, out int ret);
+    [DllImport("ntdll.dll", EntryPoint = "NtQueryInformationProcess")] static extern int NtQueryPtr(IntPtr h, int cls, out IntPtr val, int len, out int ret);
+
+    const uint EVENT_OBJECT_DESTROY = 0x8001;
+    const uint EVENT_OBJECT_SHOW = 0x8002;
+    const uint EVENT_OBJECT_HIDE = 0x8003;
+    const uint WINEVENT_SKIPOWNPROCESS = 0x0002;
+
+    static readonly ConcurrentQueue<string> _q = new ConcurrentQueue<string>();
+    static readonly Dictionary<IntPtr, long> _shown = new Dictionary<IntPtr, long>();
+    static readonly uint _self = (uint)Process.GetCurrentProcess().Id;
+    static WinEventProc _proc;
+    static IntPtr _hook;
+    static Thread _thread;
+    static uint _tid;
+    static ManualResetEvent _ready;
+
+    public static bool Start()
+    {
+        if (_thread != null) return _hook != IntPtr.Zero;
+        _ready = new ManualResetEvent(false);
+        _thread = new Thread(Run);
+        _thread.IsBackground = true;
+        _thread.Name = "ScConsoleFlashWatch";
+        _thread.Start();
+        _ready.WaitOne(3000);
+        return _hook != IntPtr.Zero;
+    }
+
+    public static void Stop()
+    {
+        if (_thread == null) return;
+        try { PostThreadMessage(_tid, 0x0012, IntPtr.Zero, IntPtr.Zero); } catch { }
+        try { _thread.Join(1500); } catch { }
+        _thread = null;
+    }
+
+    public static string[] Drain()
+    {
+        List<string> l = new List<string>();
+        string s;
+        while (_q.TryDequeue(out s)) l.Add(s);
+        return l.ToArray();
+    }
+
+    static void Run()
+    {
+        _tid = GetCurrentThreadId();
+        MSG m;
+        PeekMessage(out m, IntPtr.Zero, 0, 0, 0);   // создаёт очередь сообщений потока до того, как Stop пошлёт WM_QUIT
+        _proc = OnEvent;                             // делегат хранится в поле, чтобы его не собрал GC
+        _hook = SetWinEventHook(EVENT_OBJECT_DESTROY, EVENT_OBJECT_HIDE, IntPtr.Zero, _proc, 0, 0, WINEVENT_SKIPOWNPROCESS);
+        _ready.Set();
+        if (_hook == IntPtr.Zero) return;
+        while (GetMessage(out m, IntPtr.Zero, 0, 0) > 0) { TranslateMessage(ref m); DispatchMessage(ref m); }
+        UnhookWinEvent(_hook);
+        _hook = IntPtr.Zero;
+    }
+
+    static void Emit(string what, string details)
+    {
+        _q.Enqueue("CONSOLE-FLASH " + what + " [event " + DateTime.Now.ToString("HH:mm:ss.fff") + "] " + details);
+    }
+
+    static bool IsConsoleClass(string c)
+    {
+        return c == "ConsoleWindowClass" || c == "CASCADIA_HOSTING_WINDOW_CLASS";
+    }
+
+    static void OnEvent(IntPtr hook, uint evt, IntPtr hwnd, int idObject, int idChild, uint thread, uint time)
+    {
+        try
+        {
+            if (idObject != 0 || idChild != 0 || hwnd == IntPtr.Zero) return;
+            if (evt == EVENT_OBJECT_SHOW)
+            {
+                StringBuilder cb = new StringBuilder(256);
+                GetClassName(hwnd, cb, 256);
+                string cls = cb.ToString();
+                if (!IsConsoleClass(cls)) return;
+                lock (_shown) { _shown[hwnd] = Stopwatch.GetTimestamp(); }
+                uint pid; GetWindowThreadProcessId(hwnd, out pid);
+                RECT r; string rect = "?";
+                if (GetWindowRect(hwnd, out r)) rect = r.Left + "," + r.Top + " " + (r.Right - r.Left) + "x" + (r.Bottom - r.Top);
+                Dictionary<uint, PInfo> snap = Snapshot();
+                bool fromApp;
+                string chain = Chain(pid, snap, out fromApp);
+                Emit("show", "hwnd=0x" + hwnd.ToString("X") + " class=" + cls + " visible=" + (IsWindowVisible(hwnd) ? "1" : "0")
+                    + " rect=" + rect + " title='" + TitleOf(hwnd) + "' fromApp=" + (fromApp ? "yes" : "no")
+                    + " chain: " + chain + " | recentAppChildren: " + RecentChildren(snap));
+            }
+            else
+            {
+                long t0;
+                lock (_shown)
+                {
+                    if (!_shown.TryGetValue(hwnd, out t0)) return;
+                    _shown.Remove(hwnd);
+                }
+                long ms = (Stopwatch.GetTimestamp() - t0) * 1000L / Stopwatch.Frequency;
+                Emit("gone", "hwnd=0x" + hwnd.ToString("X") + " visibleFor=" + ms + "ms by=" + (evt == EVENT_OBJECT_HIDE ? "hide" : "destroy"));
+            }
+        }
+        catch { }
+    }
+
+    static string TitleOf(IntPtr h)
+    {
+        try
+        {
+            StringBuilder sb = new StringBuilder(260);
+            IntPtr res;
+            // WM_GETTEXT с таймаутом: зависший владелец окна не должен вешать наш поток-наблюдатель (SMTO_BLOCK | SMTO_ABORTIFHUNG).
+            SendMessageTimeout(h, 0x000D, new IntPtr(259), sb, 3, 200, out res);
+            return Trim(sb.ToString(), 120);
+        }
+        catch { return ""; }
+    }
+
+    static string Trim(string s, int max)
+    {
+        if (s == null) return "";
+        s = s.Replace("\r", " ").Replace("\n", " ").Replace('"', '\'');
+        if (s.Length > max) s = s.Substring(0, max) + "...";
+        return s;
+    }
+
+    static Dictionary<uint, PInfo> Snapshot()
+    {
+        Dictionary<uint, PInfo> d = new Dictionary<uint, PInfo>();
+        IntPtr s = CreateToolhelp32Snapshot(0x2, 0);   // TH32CS_SNAPPROCESS
+        if (s == IntPtr.Zero || s == new IntPtr(-1)) return d;
+        try
+        {
+            PROCESSENTRY32 e = new PROCESSENTRY32();
+            e.dwSize = (uint)Marshal.SizeOf(typeof(PROCESSENTRY32));
+            if (Process32First(s, ref e))
+            {
+                do
+                {
+                    PInfo p = new PInfo();
+                    p.Pid = e.th32ProcessID; p.Ppid = e.th32ParentProcessID; p.Name = e.szExeFile;
+                    d[p.Pid] = p;
+                    e.dwSize = (uint)Marshal.SizeOf(typeof(PROCESSENTRY32));
+                } while (Process32Next(s, ref e));
+            }
+        }
+        finally { CloseHandle(s); }
+        return d;
+    }
+
+    static long CreationTime(uint pid)
+    {
+        IntPtr h = OpenProcess(0x1000, false, pid);   // PROCESS_QUERY_LIMITED_INFORMATION
+        if (h == IntPtr.Zero) return 0;
+        try
+        {
+            FILETIME c, e, k, u;
+            if (!GetProcessTimes(h, out c, out e, out k, out u)) return 0;
+            return ((long)c.High << 32) | (long)c.Low;
+        }
+        catch { return 0; }
+        finally { CloseHandle(h); }
+    }
+
+    static long AgeMs(long creation)
+    {
+        return (DateTime.UtcNow.ToFileTimeUtc() - creation) / 10000L;
+    }
+
+    // Командная строка чужого процесса: читается из его PEB. Не получится для защищённых/повышенных процессов (будет пусто).
+    static string GetCommandLine(uint pid)
+    {
+        IntPtr h = OpenProcess(0x0410, false, pid);   // PROCESS_QUERY_INFORMATION | PROCESS_VM_READ
+        if (h == IntPtr.Zero) return "";
+        try
+        {
+            bool os64 = Environment.Is64BitOperatingSystem;
+            bool targetWow = false;
+            if (os64) { bool w; if (IsWow64Process(h, out w)) targetWow = w; }
+            bool selfWow = os64 && !Environment.Is64BitProcess;
+            if (selfWow && !targetWow) return "";   // 32-битный наблюдатель не читает 64-битный процесс
+            int ret;
+            if (targetWow)
+            {
+                IntPtr peb32;
+                if (NtQueryPtr(h, 26, out peb32, IntPtr.Size, out ret) != 0 || peb32 == IntPtr.Zero) return "";   // ProcessWow64Information
+                return ReadParams(h, peb32.ToInt64(), 0x10, 0x40, true);
+            }
+            PBI pbi;
+            if (NtQueryPbi(h, 0, out pbi, Marshal.SizeOf(typeof(PBI)), out ret) != 0) return "";
+            if (Environment.Is64BitProcess) return ReadParams(h, pbi.PebBaseAddress.ToInt64(), 0x20, 0x70, false);
+            return ReadParams(h, pbi.PebBaseAddress.ToInt64(), 0x10, 0x40, true);
+        }
+        catch { return ""; }
+        finally { CloseHandle(h); }
+    }
+
+    static string ReadParams(IntPtr h, long peb, int ppOffset, int cmdOffset, bool is32)
+    {
+        IntPtr read;
+        byte[] b = new byte[8];
+        int ptrSize = is32 ? 4 : 8;
+        if (!ReadProcessMemory(h, new IntPtr(peb + ppOffset), b, ptrSize, out read)) return "";
+        long pp = is32 ? (long)BitConverter.ToUInt32(b, 0) : BitConverter.ToInt64(b, 0);
+        if (pp == 0) return "";
+        byte[] us = new byte[16];
+        if (!ReadProcessMemory(h, new IntPtr(pp + cmdOffset), us, is32 ? 8 : 16, out read)) return "";
+        int len = BitConverter.ToUInt16(us, 0);
+        long buf = is32 ? (long)BitConverter.ToUInt32(us, 4) : BitConverter.ToInt64(us, 8);
+        if (len <= 0 || buf == 0) return "";
+        if (len > 2048) len = 2048;
+        byte[] sb = new byte[len];
+        if (!ReadProcessMemory(h, new IntPtr(buf), sb, len, out read)) return "";
+        int got = (int)read.ToInt64();
+        if (got > len || got <= 0) got = len;
+        return Encoding.Unicode.GetString(sb, 0, got);
+    }
+
+    // Цепочка «процесс <- родитель <- ...» с командными строками и возрастом. Останавливается на этой программе (=THIS-APP).
+    static string Chain(uint pid, Dictionary<uint, PInfo> snap, out bool fromApp)
+    {
+        fromApp = false;
+        StringBuilder sb = new StringBuilder();
+        uint cur = pid;
+        long childCt = 0;
+        for (int depth = 0; depth < 8 && cur != 0; depth++)
+        {
+            PInfo pi;
+            if (!snap.TryGetValue(cur, out pi))
+            {
+                if (depth > 0) sb.Append(" <- [pid " + cur + " not running]");
+                break;
+            }
+            long ct = CreationTime(cur);
+            if (depth > 0)
+            {
+                sb.Append(" <- ");
+                // Родитель обязан быть создан раньше потомка; иначе PID переиспользован и цепочка уже недостоверна.
+                if (ct != 0 && childCt != 0 && ct > childCt) { sb.Append("[pid " + cur + " reused, chain stops]"); break; }
+            }
+            sb.Append(pi.Name + "(" + cur + ")");
+            if (cur == _self) { sb.Append("=THIS-APP"); fromApp = true; break; }
+            if (ct != 0) sb.Append(" age=" + AgeMs(ct) + "ms");
+            if (depth < 3)
+            {
+                string cl = GetCommandLine(cur);
+                if (cl.Length > 0) sb.Append(" cmd='" + Trim(cl, 300) + "'");
+            }
+            childCt = ct;
+            cur = pi.Ppid;
+        }
+        return sb.ToString();
+    }
+
+    // Потомки этой программы (любой глубины), созданные за последние 4 секунды: так находится виновник, когда окно принадлежит Windows Terminal.
+    static string RecentChildren(Dictionary<uint, PInfo> snap)
+    {
+        StringBuilder sb = new StringBuilder();
+        int n = 0;
+        foreach (KeyValuePair<uint, PInfo> kv in snap)
+        {
+            uint p = kv.Key;
+            if (p == _self) continue;
+            uint cur = kv.Value.Ppid;
+            bool ours = false;
+            for (int d = 0; d < 10 && cur != 0; d++)
+            {
+                if (cur == _self) { ours = true; break; }
+                PInfo pi;
+                if (!snap.TryGetValue(cur, out pi)) break;
+                cur = pi.Ppid;
+            }
+            if (!ours) continue;
+            long ct = CreationTime(p);
+            if (ct == 0) continue;
+            long age = AgeMs(ct);
+            if (age < 0 || age > 4000) continue;
+            if (n >= 6) { sb.Append("; ..."); break; }
+            if (n > 0) sb.Append("; ");
+            string cl = GetCommandLine(p);
+            sb.Append(kv.Value.Name + "(" + p + ") parent=" + kv.Value.Ppid + " age=" + age + "ms");
+            if (cl.Length > 0) sb.Append(" cmd='" + Trim(cl, 300) + "'");
+            n++;
+        }
+        return n == 0 ? "none" : sb.ToString();
+    }
+
+    public static string Header()
+    {
+        Dictionary<uint, PInfo> snap = Snapshot();
+        PInfo me;
+        uint pp = snap.TryGetValue(_self, out me) ? me.Ppid : 0;
+        bool fa;
+        IntPtr c = GetConsoleWindow();
+        string con = c == IntPtr.Zero ? "none" : ("0x" + c.ToString("X") + (IsWindowVisible(c) ? " VISIBLE" : " hidden"));
+        return "pid=" + _self + " proc64=" + Environment.Is64BitProcess + " hostConsole=" + con + " parents: " + Chain(pp, snap, out fa);
+    }
+}
+'@
+        }
+        $okW = [ScConsoleFlashWatch]::Start()
+        # Какой терминал в системе «по умолчанию»: если Windows Terminal, вспышка консоли выглядит как окно Windows Terminal.
+        $defTerm = '?'
+        try {
+            $cs = Get-ItemProperty -LiteralPath 'HKCU:\Console\%%Startup' -ErrorAction Stop
+            $dt = [string]$cs.DelegationTerminal
+            if ($dt -eq '{E12CFF52-A866-4C77-9A90-F570A7AA2C6B}') { $defTerm = 'Windows Terminal' }
+            elseif ([string]::IsNullOrWhiteSpace($dt) -or $dt -eq '{00000000-0000-0000-0000-000000000000}') { $defTerm = 'system default' }
+            else { $defTerm = $dt }
+        } catch { $defTerm = 'not set (system default)' }
+        $build = ''
+        try { $build = [string](Get-ItemProperty -LiteralPath 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' -ErrorAction Stop).CurrentBuild } catch {}
+        Write-SgdbTimingLog ('CONSOLE-FLASH start hook=' + $okW + ' winBuild=' + $build + ' defaultTerminal=' + $defTerm + ' psVersion=' + [string]$PSVersionTable.PSVersion + ' ' + [ScConsoleFlashWatch]::Header())
+        # Очередь сбрасывается в журнал из основного потока; до появления цикла сообщений строки просто копятся.
+        $script:ConsoleFlashTimer = New-Object System.Windows.Forms.Timer
+        $script:ConsoleFlashTimer.Interval = 500
+        $script:ConsoleFlashTimer.Add_Tick({ try { Write-ConsoleFlashDiagQueue } catch {} })
+        $script:ConsoleFlashTimer.Start()
+    } catch {
+        Write-SgdbTimingLog ('CONSOLE-FLASH start failed: ' + $_.Exception.Message)
+    }
+}
+function Write-ConsoleFlashDiagQueue {
+    if ($null -eq $script:ConsoleFlashTimer) { return }
+    try { foreach ($l in [ScConsoleFlashWatch]::Drain()) { Write-SgdbTimingLog $l } } catch {}
+}
+function Stop-ConsoleFlashDiag {
+    if ($null -eq $script:ConsoleFlashTimer) { return }
+    try { $script:ConsoleFlashTimer.Stop() } catch {}
+    try { Write-ConsoleFlashDiagQueue } catch {}
+    try { [ScConsoleFlashWatch]::Stop() } catch {}
+    try { Write-ConsoleFlashDiagQueue } catch {}
+    try { $script:ConsoleFlashTimer.Dispose() } catch {}
+    $script:ConsoleFlashTimer = $null
+}
+$script:ConsoleFlashTimer = $null
+Start-ConsoleFlashDiag
+
+# ===================== ГЛУБОКАЯ ДИАГНОСТИКА ЛЮБЫХ МЕЛЬКАЮЩИХ ОКОН (в том числе окон самой программы) =====================
+# Включается двумя флагами в начале файла: $script:SgdbTimingLog и $script:WindowFlashDiag. Выключено - ничего не компилируется.
+# Отличие от CONSOLE-FLASH: тот смотрит только на окна консоли и Windows Terminal и пропускает окна собственного процесса.
+# Здесь ловится ЛЮБОЕ окно верхнего уровня (любого класса, любого процесса, в том числе этой программы), которое было видно
+# меньше 1,5 с. Всё пишется через Write-SgdbTimingLog в единый журнал, строки начинаются с WIN-, PROC-:
+#  * WIN-FLASH    - окно было видно меньше 1,5 с: класс, заголовок, размер, прозрачность, процесс и цепочка родителей, а для окон
+#                   самой программы - СТЕК ВЫЗОВОВ (функции и номера строк скрипта + методы WinForms), из которого окно создано,
+#                   показано и активировано. По номеру строки сразу видно, какой код его открыл.
+#  * WIN-CREATE / WIN-SHOWCALL / WIN-ACTIVATE / WIN-OWN - хронология окон самой программы (создание, показ/скрытие, активация).
+#  * PROC-SPAWN / PROC-EXIT - запуск и завершение любых дочерних процессов программы (curl.exe, cmd, powershell и т.д.) с командной
+#                   строкой; опрос каждые 45 мс, поэтому мелькнувший на 100-200 мс процесс виден; рядом поле phase.
+#  * WIN-CENSUS   - список окон верхнего уровня процесса через 8, 16 и 30 с после старта (какие окна вообще существуют и видны ли).
+# phase - последний этап запуска (из отметок STARTUP mark), чтобы привязать событие ко времени.
+function Start-WindowFlashDiag {
+    if (-not $script:WindowFlashDiag -or -not $script:SgdbTimingLog) { return }
+    try {
+        if (-not ('ScWinFlashWatch' -as [type])) {
+            Add-Type -TypeDefinition @'
+using System;
+using System.Collections;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Reflection;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Threading;
+
+public static class ScWinFlashWatch
+{
+    delegate void WinEventProc(IntPtr hook, uint evt, IntPtr hwnd, int idObject, int idChild, uint thread, uint time);
+    delegate IntPtr CbtHookProc(int code, IntPtr wParam, IntPtr lParam);
+    delegate bool EnumWinProc(IntPtr h, IntPtr l);
+
+    [StructLayout(LayoutKind.Sequential)] struct POINT { public int X; public int Y; }
+    [StructLayout(LayoutKind.Sequential)] struct MSG { public IntPtr hwnd; public uint message; public IntPtr wParam; public IntPtr lParam; public uint time; public POINT pt; }
+    [StructLayout(LayoutKind.Sequential)] struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
+    [StructLayout(LayoutKind.Sequential)] struct FILETIME { public uint Low; public uint High; }
+    [StructLayout(LayoutKind.Sequential)]
+    struct PBI { public IntPtr ExitStatus; public IntPtr PebBaseAddress; public IntPtr AffinityMask; public IntPtr BasePriority; public IntPtr UniqueProcessId; public IntPtr InheritedFromUniqueProcessId; }
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    struct PROCESSENTRY32
+    {
+        public uint dwSize; public uint cntUsage; public uint th32ProcessID; public IntPtr th32DefaultHeapID; public uint th32ModuleID;
+        public uint cntThreads; public uint th32ParentProcessID; public int pcPriClassBase; public uint dwFlags;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)] public string szExeFile;
+    }
+    [StructLayout(LayoutKind.Sequential)]
+    struct CREATESTRUCT
+    {
+        public IntPtr lpCreateParams; public IntPtr hInstance; public IntPtr hMenu; public IntPtr hwndParent;
+        public int cy; public int cx; public int y; public int x; public int style;
+        public IntPtr lpszName; public IntPtr lpszClass; public int dwExStyle;
+    }
+    [StructLayout(LayoutKind.Sequential)]
+    struct CBT_CREATEWND { public IntPtr lpcs; public IntPtr hwndInsertAfter; }
+
+    class PInfo { public uint Pid; public uint Ppid; public string Name; }
+    class ProcInfo { public string Name = "?"; public uint Ppid; public long Ct; public string Cmd = ""; }
+    class SpawnInfo { public string Name; public long Seen; }
+    class WinInfo
+    {
+        public uint EvtTime; public long Ts; public uint Pid; public uint Tid; public bool Own; public bool Eye; public bool Related;
+        public string Cls = ""; public string Title = ""; public string Detail = ""; public string Phase = ""; public string Chain = "";
+    }
+
+    [DllImport("user32.dll")] static extern IntPtr SetWinEventHook(uint evMin, uint evMax, IntPtr hmod, WinEventProc proc, uint pid, uint tid, uint flags);
+    [DllImport("user32.dll")] static extern bool UnhookWinEvent(IntPtr hook);
+    [DllImport("user32.dll", EntryPoint = "SetWindowsHookExW")] static extern IntPtr SetCbtHook(int idHook, CbtHookProc proc, IntPtr hmod, uint tid);
+    [DllImport("user32.dll")] static extern bool UnhookWindowsHookEx(IntPtr hook);
+    [DllImport("user32.dll")] static extern IntPtr CallNextHookEx(IntPtr hook, int code, IntPtr wParam, IntPtr lParam);
+    [DllImport("user32.dll")] static extern int GetMessage(out MSG m, IntPtr h, uint min, uint max);
+    [DllImport("user32.dll")] static extern bool PeekMessage(out MSG m, IntPtr h, uint min, uint max, uint remove);
+    [DllImport("user32.dll")] static extern bool TranslateMessage(ref MSG m);
+    [DllImport("user32.dll")] static extern IntPtr DispatchMessage(ref MSG m);
+    [DllImport("user32.dll")] static extern bool PostThreadMessage(uint tid, uint msg, IntPtr w, IntPtr l);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr h, StringBuilder sb, int max);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int InternalGetWindowText(IntPtr h, StringBuilder sb, int max);
+    [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+    [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
+    [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h, out RECT r);
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongW")] static extern int GetWinLong(IntPtr h, int idx);
+    [DllImport("user32.dll")] static extern bool GetLayeredWindowAttributes(IntPtr h, out uint key, out byte alpha, out uint flags);
+    [DllImport("user32.dll")] static extern int GetSystemMetrics(int idx);
+    [DllImport("user32.dll")] static extern IntPtr GetWindow(IntPtr h, uint cmd);
+    [DllImport("user32.dll")] static extern bool EnumWindows(EnumWinProc proc, IntPtr l);
+    [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr h, int attr, out int val, int size);
+    [DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
+    [DllImport("kernel32.dll")] static extern IntPtr OpenProcess(uint access, bool inherit, uint pid);
+    [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
+    [DllImport("kernel32.dll")] static extern bool IsWow64Process(IntPtr h, out bool wow);
+    [DllImport("kernel32.dll")] static extern bool GetProcessTimes(IntPtr h, out FILETIME c, out FILETIME e, out FILETIME k, out FILETIME u);
+    [DllImport("kernel32.dll")] static extern bool ReadProcessMemory(IntPtr h, IntPtr addr, byte[] buf, int size, out IntPtr read);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, EntryPoint = "QueryFullProcessImageNameW")] static extern bool QueryImage(IntPtr h, uint flags, StringBuilder sb, ref int size);
+    [DllImport("kernel32.dll")] static extern IntPtr CreateToolhelp32Snapshot(uint flags, uint pid);
+    [DllImport("kernel32.dll", EntryPoint = "Process32FirstW", CharSet = CharSet.Unicode)] static extern bool Process32First(IntPtr s, ref PROCESSENTRY32 e);
+    [DllImport("kernel32.dll", EntryPoint = "Process32NextW", CharSet = CharSet.Unicode)] static extern bool Process32Next(IntPtr s, ref PROCESSENTRY32 e);
+    [DllImport("ntdll.dll", EntryPoint = "NtQueryInformationProcess")] static extern int NtQueryPbi(IntPtr h, int cls, out PBI pbi, int len, out int ret);
+    [DllImport("ntdll.dll", EntryPoint = "NtQueryInformationProcess")] static extern int NtQueryPtr(IntPtr h, int cls, out IntPtr val, int len, out int ret);
+
+    const uint EVENT_OBJECT_CREATE = 0x8000;
+    const uint EVENT_OBJECT_DESTROY = 0x8001;
+    const uint EVENT_OBJECT_SHOW = 0x8002;
+    const uint EVENT_OBJECT_HIDE = 0x8003;
+    const long FlashMs = 1500;
+
+    static readonly ConcurrentQueue<string> _q = new ConcurrentQueue<string>();
+    static readonly Dictionary<IntPtr, WinInfo> _wins = new Dictionary<IntPtr, WinInfo>();
+    static readonly Dictionary<IntPtr, string> _created = new Dictionary<IntPtr, string>();
+    static readonly Dictionary<IntPtr, string> _showCall = new Dictionary<IntPtr, string>();
+    static readonly Dictionary<IntPtr, string> _actSite = new Dictionary<IntPtr, string>();
+    static readonly Dictionary<uint, ProcInfo> _procs = new Dictionary<uint, ProcInfo>();
+    static readonly Dictionary<string, string> _chains = new Dictionary<string, string>();
+    static readonly uint _self = (uint)Process.GetCurrentProcess().Id;
+    static readonly Stopwatch _sw = Stopwatch.StartNew();
+    public static string Phase = "";
+    static int _caps, _createLines, _ownLines, _flashLines, _actLines, _callLines, _procLines;
+    static volatile bool _stop;
+    static bool _started;
+    static uint _mainTid, _tid;
+    static IntPtr _hook, _cbt;
+    static WinEventProc _proc;
+    static CbtHookProc _cbtProc;
+    static Thread _thread, _pthread;
+    static ManualResetEvent _ready;
+    [ThreadStatic] static bool _inCbt;
+    static Type _rsType;
+    static PropertyInfo _rsDef, _rsDbg;
+
+    public static bool Start()
+    {
+        if (_started) return _hook != IntPtr.Zero;
+        _started = true;
+        _mainTid = GetCurrentThreadId();
+        try { _cbtProc = new CbtHookProc(CbtProc); _cbt = SetCbtHook(5, _cbtProc, IntPtr.Zero, _mainTid); }
+        catch { _cbt = IntPtr.Zero; }
+        _ready = new ManualResetEvent(false);
+        _thread = new Thread(Run);
+        _thread.IsBackground = true;
+        _thread.Name = "ScWinFlashWatch";
+        _thread.Start();
+        _ready.WaitOne(3000);
+        _pthread = new Thread(ProcLoop);
+        _pthread.IsBackground = true;
+        _pthread.Name = "ScWinFlashProc";
+        _pthread.Start();
+        return _hook != IntPtr.Zero;
+    }
+
+    public static void Stop()
+    {
+        _stop = true;
+        try { if (_cbt != IntPtr.Zero) { UnhookWindowsHookEx(_cbt); _cbt = IntPtr.Zero; } } catch { }
+        try { if (_tid != 0) PostThreadMessage(_tid, 0x0012, IntPtr.Zero, IntPtr.Zero); } catch { }
+        try { if (_thread != null) _thread.Join(1500); } catch { }
+        try { if (_pthread != null) _pthread.Join(600); } catch { }
+    }
+
+    public static string[] Drain()
+    {
+        List<string> l = new List<string>();
+        string s;
+        while (_q.TryDequeue(out s)) l.Add(s);
+        return l.ToArray();
+    }
+
+    public static string Header()
+    {
+        return "pid=" + _self + " mainTid=" + _mainTid + " cbtHook=" + (_cbt != IntPtr.Zero) + " winEventHook=" + (_hook != IntPtr.Zero)
+            + " procWatch=on flashThresholdMs=" + FlashMs
+            + " virtualScreen=" + GetSystemMetrics(76) + "," + GetSystemMetrics(77) + " " + GetSystemMetrics(78) + "x" + GetSystemMetrics(79)
+            + " psStackProbe='" + PsStack(4) + "' netStackProbe='" + NetStack(4) + "'";
+    }
+
+    public static string[] DumpOwn()
+    {
+        List<string> res = new List<string>();
+        EnumWinProc cb = delegate(IntPtr h, IntPtr l)
+        {
+            uint pid;
+            GetWindowThreadProcessId(h, out pid);
+            if (pid == _self) res.Add(Describe(h));
+            return true;
+        };
+        EnumWindows(cb, IntPtr.Zero);
+        GC.KeepAlive(cb);
+        return res.ToArray();
+    }
+
+    static string Describe(IntPtr h)
+    {
+        bool eye;
+        bool vis = IsWindowVisible(h);
+        string look = Look(h, vis, out eye);
+        uint pid;
+        uint tid = GetWindowThreadProcessId(h, out pid);
+        IntPtr ow = GetWindow(h, 4);
+        return "hwnd=0x" + h.ToString("X") + " class=" + ClassOf(h) + " title='" + TitleOf(h) + "' tid=" + tid + (tid == _mainTid ? "(main)" : "")
+            + " owner=" + (ow == IntPtr.Zero ? "none" : "0x" + ow.ToString("X")) + " eyeVisible=" + (eye ? "YES" : "no") + " " + look;
+    }
+
+    static void Run()
+    {
+        _tid = GetCurrentThreadId();
+        MSG m;
+        PeekMessage(out m, IntPtr.Zero, 0, 0, 0);
+        _proc = OnEvent;
+        _hook = SetWinEventHook(EVENT_OBJECT_CREATE, EVENT_OBJECT_HIDE, IntPtr.Zero, _proc, 0, 0, 0);
+        _ready.Set();
+        if (_hook == IntPtr.Zero) return;
+        while (GetMessage(out m, IntPtr.Zero, 0, 0) > 0) { TranslateMessage(ref m); DispatchMessage(ref m); }
+        UnhookWinEvent(_hook);
+        _hook = IntPtr.Zero;
+    }
+
+    static void Emit(string tag, string details)
+    {
+        _q.Enqueue(tag + " [event " + DateTime.Now.ToString("HH:mm:ss.fff") + " t=" + _sw.ElapsedMilliseconds + "ms] " + details);
+    }
+
+    // ---------- Хук CBT на потоке интерфейса: синхронно в момент создания/активации/показа окна берём стек вызовов ----------
+    static IntPtr CbtProc(int code, IntPtr wParam, IntPtr lParam)
+    {
+        if (!_inCbt)
+        {
+            _inCbt = true;
+            try
+            {
+                if (code == 3) OnCreateWnd(wParam, lParam);
+                else if (code == 5) OnActivate(wParam);
+                else if (code == 1) OnMinMax(wParam, lParam);
+            }
+            catch { }
+            finally { _inCbt = false; }
+        }
+        return CallNextHookEx(IntPtr.Zero, code, wParam, lParam);
+    }
+
+    static void OnCreateWnd(IntPtr hwnd, IntPtr lParam)
+    {
+        CBT_CREATEWND cw = (CBT_CREATEWND)Marshal.PtrToStructure(lParam, typeof(CBT_CREATEWND));
+        if (cw.lpcs == IntPtr.Zero) return;
+        CREATESTRUCT cs = (CREATESTRUCT)Marshal.PtrToStructure(cw.lpcs, typeof(CREATESTRUCT));
+        if ((cs.style & 0x40000000) != 0) return;
+        if (cs.hwndParent == new IntPtr(-3)) return;
+        if (Interlocked.Increment(ref _caps) > 700) return;
+        string info = "class=" + StrFromPtr(cs.lpszClass) + " name='" + Trim(StrFromPtr(cs.lpszName), 60) + "' size=" + cs.cx + "x" + cs.cy
+            + " pos=" + cs.x + "," + cs.y + " style=0x" + cs.style.ToString("X") + " ex=0x" + cs.dwExStyle.ToString("X")
+            + ((cs.style & 0x10000000) != 0 ? " VISIBLE-ON-CREATE" : "") + " phase='" + Phase + "'";
+        string site = Site();
+        lock (_created) { if (_created.Count > 1500) _created.Clear(); _created[hwnd] = info + " " + site; }
+        if (Interlocked.Increment(ref _createLines) <= 250) Emit("WIN-CREATE", "hwnd=0x" + hwnd.ToString("X") + " " + info + " " + site);
+    }
+
+    static void OnActivate(IntPtr hwnd)
+    {
+        if (!IsTop(hwnd)) return;
+        if (Interlocked.Increment(ref _caps) > 700) return;
+        string site = Site();
+        lock (_actSite) { if (_actSite.Count > 1500) _actSite.Clear(); _actSite[hwnd] = "t=" + _sw.ElapsedMilliseconds + "ms " + site; }
+        if (Interlocked.Increment(ref _actLines) <= 200)
+            Emit("WIN-ACTIVATE", "hwnd=0x" + hwnd.ToString("X") + " class=" + ClassOf(hwnd) + " title='" + TitleOf(hwnd) + "' phase='" + Phase + "' " + site);
+    }
+
+    static void OnMinMax(IntPtr hwnd, IntPtr lParam)
+    {
+        if (!IsTop(hwnd)) return;
+        if (Interlocked.Increment(ref _caps) > 700) return;
+        int cmd = (int)(lParam.ToInt64() & 0xFFFF);
+        string site = Site();
+        lock (_showCall) { if (_showCall.Count > 1500) _showCall.Clear(); _showCall[hwnd] = "cmd=" + cmd + " t=" + _sw.ElapsedMilliseconds + "ms " + site; }
+        if (Interlocked.Increment(ref _callLines) <= 200)
+            Emit("WIN-SHOWCALL", "hwnd=0x" + hwnd.ToString("X") + " cmd=" + cmd + " class=" + ClassOf(hwnd) + " title='" + TitleOf(hwnd) + "' phase='" + Phase + "' " + site);
+    }
+
+    static string Site()
+    {
+        return "ps[" + PsStack(7) + "] net[" + NetStack(10) + "]";
+    }
+
+    // Стек PowerShell (функции и номера строк скрипта) через отражение: Runspace.DefaultRunspace.Debugger.GetCallStack().
+    static string PsStack(int max)
+    {
+        try
+        {
+            if (_rsType == null)
+            {
+                foreach (Assembly a in AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    if (a.GetName().Name == "System.Management.Automation")
+                    {
+                        _rsType = a.GetType("System.Management.Automation.Runspaces.Runspace");
+                        break;
+                    }
+                }
+                if (_rsType == null) return "";
+                _rsDef = _rsType.GetProperty("DefaultRunspace", BindingFlags.Public | BindingFlags.Static);
+                _rsDbg = _rsType.GetProperty("Debugger", BindingFlags.Public | BindingFlags.Instance);
+            }
+            if (_rsDef == null || _rsDbg == null) return "";
+            object rs = _rsDef.GetValue(null, null);
+            if (rs == null) return "";
+            object dbg = _rsDbg.GetValue(rs, null);
+            if (dbg == null) return "";
+            MethodInfo gc = dbg.GetType().GetMethod("GetCallStack", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance, null, Type.EmptyTypes, null);
+            if (gc == null) return "";
+            IEnumerable en = gc.Invoke(dbg, null) as IEnumerable;
+            if (en == null) return "";
+            StringBuilder sb = new StringBuilder();
+            int n = 0;
+            foreach (object f in en)
+            {
+                if (f == null) continue;
+                if (n >= max) { sb.Append("<-..."); break; }
+                Type ft = f.GetType();
+                string fn = PropStr(ft, f, "FunctionName");
+                string ln = PropStr(ft, f, "ScriptLineNumber");
+                if (n > 0) sb.Append("<-");
+                sb.Append(fn + ":" + ln);
+                n++;
+            }
+            return sb.ToString();
+        }
+        catch { return ""; }
+    }
+
+    static string PropStr(Type t, object o, string name)
+    {
+        try
+        {
+            PropertyInfo p = t.GetProperty(name);
+            if (p == null) return "";
+            object v = p.GetValue(o, null);
+            return v == null ? "" : v.ToString();
+        }
+        catch { return ""; }
+    }
+
+    // Стек .NET: нужны методы WinForms/System.Drawing и типов программы; служебные кадры PowerShell пропускаются.
+    static string NetStack(int max)
+    {
+        try
+        {
+            StackTrace st = new StackTrace(false);
+            StringBuilder sb = new StringBuilder();
+            int n = 0;
+            for (int i = 0; i < st.FrameCount && n < max; i++)
+            {
+                MethodBase m = st.GetFrame(i).GetMethod();
+                if (m == null) continue;
+                Type dt = m.DeclaringType;
+                string ns = dt == null ? "" : (dt.Namespace ?? "");
+                if (dt != null && dt.Name == "ScWinFlashWatch") continue;
+                if (ns.StartsWith("System.Management.Automation") || ns.StartsWith("Microsoft.PowerShell") || ns.StartsWith("System.Runtime")
+                    || ns.StartsWith("System.Dynamic") || ns.StartsWith("System.Threading") || ns.StartsWith("System.Reflection")) continue;
+                if (n > 0) sb.Append("<-");
+                sb.Append((dt == null ? "?" : dt.Name) + "." + m.Name);
+                n++;
+            }
+            return sb.ToString();
+        }
+        catch { return ""; }
+    }
+
+    // ---------- Хук событий окон (во всех процессах, включая свой) ----------
+    static void OnEvent(IntPtr hook, uint evt, IntPtr hwnd, int idObject, int idChild, uint thread, uint time)
+    {
+        try
+        {
+            if (idObject != 0 || idChild != 0 || hwnd == IntPtr.Zero) return;
+            if (evt == EVENT_OBJECT_DESTROY || evt == EVENT_OBJECT_HIDE) OnGone(hwnd, evt, time);
+            else OnShown(hwnd, evt, time);
+        }
+        catch { }
+    }
+
+    static void OnShown(IntPtr hwnd, uint evt, uint time)
+    {
+        bool known;
+        lock (_created) { known = _created.ContainsKey(hwnd); }
+        if (!known && !IsTop(hwnd)) return;
+        bool vis = IsWindowVisible(hwnd);
+        if (evt == EVENT_OBJECT_CREATE && !vis) return;
+        lock (_wins) { if (_wins.ContainsKey(hwnd)) return; }
+        uint pid;
+        uint tid = GetWindowThreadProcessId(hwnd, out pid);
+        string cls = ClassOf(hwnd);
+        if (cls.Length == 0)
+        {
+            if (!known) return;
+            cls = "?gone";
+            pid = _self;
+        }
+        bool own = pid == _self;
+        WinInfo wi = new WinInfo();
+        wi.EvtTime = time; wi.Ts = _sw.ElapsedMilliseconds; wi.Pid = pid; wi.Tid = tid; wi.Own = own; wi.Cls = cls;
+        wi.Title = cls == "?gone" ? "" : TitleOf(hwnd);
+        wi.Phase = Phase;
+        bool eye;
+        wi.Detail = Look(hwnd, vis, out eye);
+        wi.Eye = eye;
+        if (!own)
+        {
+            wi.Chain = ChainFor(pid);
+            wi.Related = wi.Chain.IndexOf("THIS-APP", StringComparison.Ordinal) >= 0;
+        }
+        lock (_wins) { if (_wins.Count > 2000) _wins.Clear(); _wins[hwnd] = wi; }
+        if (own && Interlocked.Increment(ref _ownLines) <= 400)
+        {
+            string cr = Get(_created, hwnd);
+            Emit("WIN-OWN show", "hwnd=0x" + hwnd.ToString("X") + " class=" + cls + " title='" + wi.Title + "' tid=" + tid + (tid == _mainTid ? "(main)" : "")
+                + " eyeVisible=" + (eye ? "YES" : "no") + " " + wi.Detail + " phase='" + wi.Phase + "'" + (cr == null ? "" : " | created: " + cr));
+        }
+    }
+
+    static void OnGone(IntPtr hwnd, uint evt, uint time)
+    {
+        WinInfo wi;
+        lock (_wins) { if (!_wins.TryGetValue(hwnd, out wi)) return; _wins.Remove(hwnd); }
+        long life = unchecked((int)(time - wi.EvtTime));
+        if (life < 0 || life > 600000) life = _sw.ElapsedMilliseconds - wi.Ts;
+        string by = evt == EVENT_OBJECT_HIDE ? "hide" : "destroy";
+        string cr = Get(_created, hwnd);
+        string sc = Get(_showCall, hwnd);
+        string ac = Get(_actSite, hwnd);
+        if (evt == EVENT_OBJECT_DESTROY)
+        {
+            lock (_created) { _created.Remove(hwnd); }
+            lock (_showCall) { _showCall.Remove(hwnd); }
+            lock (_actSite) { _actSite.Remove(hwnd); }
+        }
+        bool flash = life < FlashMs;
+        string body = "hwnd=0x" + hwnd.ToString("X") + " visibleFor=" + life + "ms by=" + by + " class=" + wi.Cls + " title='" + wi.Title + "' pid=" + wi.Pid + " tid=" + wi.Tid
+            + (wi.Own ? " OWN" + (wi.Tid == _mainTid ? "(main thread)" : "") : (wi.Related ? " related-to-app" : " foreign"))
+            + " eyeVisible=" + (wi.Eye ? "YES" : "no") + " " + wi.Detail + " phase-at-show='" + wi.Phase + "'";
+        if (wi.Own)
+        {
+            string ext = (cr == null ? "" : " | created: " + cr) + (sc == null ? "" : " | lastShowCall: " + sc) + (ac == null ? "" : " | lastActivate: " + ac);
+            if (flash) { if (Interlocked.Increment(ref _flashLines) <= 300) Emit("WIN-FLASH", body + ext); }
+            else if (Interlocked.Increment(ref _ownLines) <= 400) Emit("WIN-OWN hide", body);
+        }
+        else if (flash && (wi.Eye || wi.Related))
+        {
+            if (Interlocked.Increment(ref _flashLines) <= 300) Emit("WIN-FLASH", body + " | chain: " + wi.Chain);
+        }
+    }
+
+    static string Get(Dictionary<IntPtr, string> d, IntPtr k)
+    {
+        string v;
+        lock (d) { if (!d.TryGetValue(k, out v)) v = null; }
+        return v;
+    }
+
+    static bool IsTop(IntPtr h)
+    {
+        int st = GetWinLong(h, -16);
+        return st != 0 && (st & 0x40000000) == 0;
+    }
+
+    static string ClassOf(IntPtr h)
+    {
+        StringBuilder sb = new StringBuilder(256);
+        int n = GetClassName(h, sb, 256);
+        return n > 0 ? sb.ToString() : "";
+    }
+
+    static string TitleOf(IntPtr h)
+    {
+        try
+        {
+            StringBuilder sb = new StringBuilder(260);
+            InternalGetWindowText(h, sb, 259);
+            return Trim(sb.ToString(), 120);
+        }
+        catch { return ""; }
+    }
+
+    static string StrFromPtr(IntPtr p)
+    {
+        try
+        {
+            if (p == IntPtr.Zero) return "";
+            long v = p.ToInt64();
+            if (v >= 0 && v <= 0xFFFF) return "#atom" + v;
+            return Marshal.PtrToStringUni(p);
+        }
+        catch { return ""; }
+    }
+
+    static string Trim(string s, int max)
+    {
+        if (s == null) return "";
+        s = s.Replace("\r", " ").Replace("\n", " ").Replace('"', '\'');
+        if (s.Length > max) s = s.Substring(0, max) + "...";
+        return s;
+    }
+
+    static string ExFlags(int ex)
+    {
+        StringBuilder sb = new StringBuilder();
+        if ((ex & 0x80) != 0) sb.Append("toolwindow,");
+        if ((ex & 0x08000000) != 0) sb.Append("noactivate,");
+        if ((ex & 0x8) != 0) sb.Append("topmost,");
+        if ((ex & 0x80000) != 0) sb.Append("layered,");
+        if ((ex & 0x20) != 0) sb.Append("transparent,");
+        if ((ex & 0x40000) != 0) sb.Append("appwindow,");
+        return sb.Length == 0 ? "" : " [" + sb.ToString().TrimEnd(',') + "]";
+    }
+
+    // Похоже ли окно на реально видимое глазом: показано, не cloaked (DWM), не полностью прозрачное, не нулевого размера, в пределах экрана.
+    static string Look(IntPtr h, bool vis, out bool eye)
+    {
+        RECT r;
+        bool haveR = GetWindowRect(h, out r);
+        int w = haveR ? r.Right - r.Left : 0;
+        int hh = haveR ? r.Bottom - r.Top : 0;
+        int cloaked = 0;
+        try { DwmGetWindowAttribute(h, 13, out cloaked, 4); } catch { }
+        int ex = GetWinLong(h, -20);
+        int alpha = 255;
+        if ((ex & 0x80000) != 0)
+        {
+            uint key; byte a; uint fl;
+            if (GetLayeredWindowAttributes(h, out key, out a, out fl) && (fl & 2) != 0) alpha = a;
+        }
+        int vx = GetSystemMetrics(76), vy = GetSystemMetrics(77), vw = GetSystemMetrics(78), vh = GetSystemMetrics(79);
+        bool onScreen = haveR && r.Right > vx && r.Left < vx + vw && r.Bottom > vy && r.Top < vy + vh;
+        eye = vis && cloaked == 0 && alpha > 0 && w >= 2 && hh >= 2 && onScreen;
+        int st = GetWinLong(h, -16);
+        return "vis=" + (vis ? "1" : "0") + " cloaked=" + cloaked + " alpha=" + alpha
+            + " rect=" + (haveR ? (r.Left + "," + r.Top + " " + w + "x" + hh) : "?") + " onScreen=" + (onScreen ? "1" : "0")
+            + " style=0x" + st.ToString("X") + " ex=0x" + ex.ToString("X") + ExFlags(ex);
+    }
+
+    // ---------- Процессы: имя, родитель, время создания, командная строка (с кешем) ----------
+    static Dictionary<uint, PInfo> Snapshot()
+    {
+        Dictionary<uint, PInfo> d = new Dictionary<uint, PInfo>();
+        IntPtr s = CreateToolhelp32Snapshot(0x2, 0);
+        if (s == IntPtr.Zero || s == new IntPtr(-1)) return d;
+        try
+        {
+            PROCESSENTRY32 e = new PROCESSENTRY32();
+            e.dwSize = (uint)Marshal.SizeOf(typeof(PROCESSENTRY32));
+            if (Process32First(s, ref e))
+            {
+                do
+                {
+                    PInfo p = new PInfo();
+                    p.Pid = e.th32ProcessID; p.Ppid = e.th32ParentProcessID; p.Name = e.szExeFile;
+                    d[p.Pid] = p;
+                    e.dwSize = (uint)Marshal.SizeOf(typeof(PROCESSENTRY32));
+                } while (Process32Next(s, ref e));
+            }
+        }
+        finally { CloseHandle(s); }
+        return d;
+    }
+
+    static ProcInfo GetProc(uint pid)
+    {
+        ProcInfo pi;
+        lock (_procs) { if (_procs.TryGetValue(pid, out pi)) return pi; }
+        pi = new ProcInfo();
+        try
+        {
+            IntPtr h = OpenProcess(0x1000, false, pid);
+            if (h != IntPtr.Zero)
+            {
+                try
+                {
+                    StringBuilder sb = new StringBuilder(520);
+                    int sz = 520;
+                    if (QueryImage(h, 0, sb, ref sz))
+                    {
+                        string p = sb.ToString();
+                        int i = p.LastIndexOf('\\');
+                        pi.Name = i >= 0 ? p.Substring(i + 1) : p;
+                    }
+                    FILETIME c, e, k, u;
+                    if (GetProcessTimes(h, out c, out e, out k, out u)) pi.Ct = ((long)c.High << 32) | (long)c.Low;
+                }
+                finally { CloseHandle(h); }
+            }
+            uint pp;
+            pi.Cmd = CmdAndParent(pid, out pp);
+            pi.Ppid = pp;
+            if (pp == 0 || pi.Name == "?")
+            {
+                Dictionary<uint, PInfo> snap = Snapshot();
+                PInfo sp;
+                if (snap.TryGetValue(pid, out sp))
+                {
+                    if (pi.Ppid == 0) pi.Ppid = sp.Ppid;
+                    if (pi.Name == "?") pi.Name = sp.Name;
+                }
+            }
+        }
+        catch { }
+        lock (_procs) { if (_procs.Count > 3000) _procs.Clear(); _procs[pid] = pi; }
+        return pi;
+    }
+
+    static string Born(long ct)
+    {
+        if (ct <= 0) return "?";
+        try { return DateTime.FromFileTime(ct).ToString("HH:mm:ss.fff"); }
+        catch { return "?"; }
+    }
+
+    static string ChainFor(uint pid)
+    {
+        ProcInfo first = GetProc(pid);
+        string key = pid + ":" + first.Ct;
+        string c;
+        lock (_chains) { if (_chains.TryGetValue(key, out c)) return c; }
+        c = BuildChain(pid);
+        lock (_chains) { if (_chains.Count > 1000) _chains.Clear(); _chains[key] = c; }
+        return c;
+    }
+
+    static string BuildChain(uint pid)
+    {
+        StringBuilder sb = new StringBuilder();
+        uint cur = pid;
+        long childCt = 0;
+        for (int d = 0; d < 8 && cur != 0; d++)
+        {
+            ProcInfo pi = GetProc(cur);
+            if (d > 0)
+            {
+                sb.Append(" <- ");
+                if (pi.Ct != 0 && childCt != 0 && pi.Ct > childCt) { sb.Append("[pid " + cur + " reused, chain stops]"); break; }
+            }
+            sb.Append(pi.Name + "(" + cur + ")");
+            if (cur == _self) { sb.Append("=THIS-APP"); break; }
+            if (pi.Ct != 0) sb.Append(" born=" + Born(pi.Ct));
+            if (d < 3 && pi.Cmd.Length > 0) sb.Append(" cmd='" + Trim(pi.Cmd, 260) + "'");
+            if (pi.Name == "?" && pi.Ppid == 0) { sb.Append(" [not readable or not running]"); break; }
+            childCt = pi.Ct;
+            cur = pi.Ppid;
+        }
+        return sb.ToString();
+    }
+
+    static string CmdAndParent(uint pid, out uint ppid)
+    {
+        ppid = 0;
+        IntPtr h = OpenProcess(0x0410, false, pid);
+        if (h == IntPtr.Zero) return "";
+        try
+        {
+            int ret;
+            PBI pbi;
+            bool havePbi = NtQueryPbi(h, 0, out pbi, Marshal.SizeOf(typeof(PBI)), out ret) == 0;
+            if (havePbi) ppid = (uint)pbi.InheritedFromUniqueProcessId.ToInt64();
+            bool os64 = Environment.Is64BitOperatingSystem;
+            bool targetWow = false;
+            if (os64) { bool w; if (IsWow64Process(h, out w)) targetWow = w; }
+            bool selfWow = os64 && !Environment.Is64BitProcess;
+            if (selfWow && !targetWow) return "";
+            if (targetWow)
+            {
+                IntPtr peb32;
+                if (NtQueryPtr(h, 26, out peb32, IntPtr.Size, out ret) != 0 || peb32 == IntPtr.Zero) return "";
+                return ReadParams(h, peb32.ToInt64(), 0x10, 0x40, true);
+            }
+            if (!havePbi) return "";
+            if (Environment.Is64BitProcess) return ReadParams(h, pbi.PebBaseAddress.ToInt64(), 0x20, 0x70, false);
+            return ReadParams(h, pbi.PebBaseAddress.ToInt64(), 0x10, 0x40, true);
+        }
+        catch { return ""; }
+        finally { CloseHandle(h); }
+    }
+
+    static string ReadParams(IntPtr h, long peb, int ppOffset, int cmdOffset, bool is32)
+    {
+        IntPtr read;
+        byte[] b = new byte[8];
+        int ptrSize = is32 ? 4 : 8;
+        if (!ReadProcessMemory(h, new IntPtr(peb + ppOffset), b, ptrSize, out read)) return "";
+        long pp = is32 ? (long)BitConverter.ToUInt32(b, 0) : BitConverter.ToInt64(b, 0);
+        if (pp == 0) return "";
+        byte[] us = new byte[16];
+        if (!ReadProcessMemory(h, new IntPtr(pp + cmdOffset), us, is32 ? 8 : 16, out read)) return "";
+        int len = BitConverter.ToUInt16(us, 0);
+        long buf = is32 ? (long)BitConverter.ToUInt32(us, 4) : BitConverter.ToInt64(us, 8);
+        if (len <= 0 || buf == 0) return "";
+        if (len > 2048) len = 2048;
+        byte[] sb = new byte[len];
+        if (!ReadProcessMemory(h, new IntPtr(buf), sb, len, out read)) return "";
+        int got = (int)read.ToInt64();
+        if (got > len || got <= 0) got = len;
+        return Encoding.Unicode.GetString(sb, 0, got);
+    }
+
+    // ---------- Наблюдатель за процессами: любой новый потомок программы (опрос каждые 45 мс) ----------
+    static bool IsOurs(uint p, Dictionary<uint, PInfo> snap)
+    {
+        PInfo me;
+        if (!snap.TryGetValue(p, out me)) return false;
+        uint cur = me.Ppid;
+        for (int d = 0; d < 10 && cur != 0; d++)
+        {
+            if (cur == _self) return true;
+            PInfo pi;
+            if (!snap.TryGetValue(cur, out pi)) return false;
+            cur = pi.Ppid;
+        }
+        return false;
+    }
+
+    static void ProcLoop()
+    {
+        Dictionary<uint, bool> known = new Dictionary<uint, bool>();
+        Dictionary<uint, SpawnInfo> spawned = new Dictionary<uint, SpawnInfo>();
+        bool first = true;
+        while (!_stop)
+        {
+            try
+            {
+                Dictionary<uint, PInfo> snap = Snapshot();
+                List<uint> gone = new List<uint>();
+                foreach (KeyValuePair<uint, SpawnInfo> kv in spawned) { if (!snap.ContainsKey(kv.Key)) gone.Add(kv.Key); }
+                foreach (uint g in gone)
+                {
+                    SpawnInfo si = spawned[g];
+                    spawned.Remove(g);
+                    if (Interlocked.Increment(ref _procLines) <= 500)
+                        Emit("PROC-EXIT", si.Name + "(" + g + ") was alive for at least " + (_sw.ElapsedMilliseconds - si.Seen) + "ms (seen by the poller)");
+                }
+                List<uint> stale = new List<uint>();
+                foreach (KeyValuePair<uint, bool> kv in known) { if (!snap.ContainsKey(kv.Key)) stale.Add(kv.Key); }
+                foreach (uint s in stale) known.Remove(s);
+                foreach (KeyValuePair<uint, PInfo> kv in snap)
+                {
+                    uint p = kv.Key;
+                    if (known.ContainsKey(p)) continue;
+                    known[p] = true;
+                    if (first) continue;
+                    if (!IsOurs(p, snap)) continue;
+                    SpawnInfo si = new SpawnInfo();
+                    si.Name = kv.Value.Name; si.Seen = _sw.ElapsedMilliseconds;
+                    spawned[p] = si;
+                    if (Interlocked.Increment(ref _procLines) <= 500)
+                        Emit("PROC-SPAWN", kv.Value.Name + "(" + p + ") parent=" + kv.Value.Ppid + " phase='" + Phase + "' chain: " + ChainFor(p));
+                }
+            }
+            catch { }
+            first = false;
+            Thread.Sleep(45);
+        }
+    }
+}
+'@
+        }
+        $okW = [ScWinFlashWatch]::Start()
+        $script:WinFlashReady = $true
+        Write-SgdbTimingLog ('WIN-FLASH start ok=' + $okW + ' ' + [ScWinFlashWatch]::Header())
+        $script:WinFlashCensus = New-Object System.Collections.ArrayList
+        foreach ($cMs in @(8000, 16000, 30000)) { [void]$script:WinFlashCensus.Add([long]$cMs) }
+        $script:WinFlashSw = [System.Diagnostics.Stopwatch]::StartNew()
+        $script:WindowFlashTimer = New-Object System.Windows.Forms.Timer
+        $script:WindowFlashTimer.Interval = 400
+        $script:WindowFlashTimer.Add_Tick({ try { Write-WindowFlashDiagQueue } catch {} })
+        $script:WindowFlashTimer.Start()
+    } catch {
+        $script:WinFlashReady = $false
+        Write-SgdbTimingLog ('WIN-FLASH start failed: ' + $_.Exception.Message)
+    }
+}
+function Write-WindowFlashDiagQueue {
+    if ($null -eq $script:WindowFlashTimer) { return }
+    try { foreach ($l in [ScWinFlashWatch]::Drain()) { Write-SgdbTimingLog $l } } catch {}
+    try {
+        if ($script:WinFlashCensus.Count -gt 0 -and $script:WinFlashSw.ElapsedMilliseconds -ge [long]$script:WinFlashCensus[0]) {
+            $atMs = [long]$script:WinFlashCensus[0]
+            $script:WinFlashCensus.RemoveAt(0)
+            Write-SgdbTimingLog ('WIN-CENSUS t=' + $atMs + 'ms phase=' + [ScWinFlashWatch]::Phase + ': окна верхнего уровня этого процесса')
+            foreach ($l in [ScWinFlashWatch]::DumpOwn()) { Write-SgdbTimingLog ('WIN-CENSUS ' + $l) }
+        }
+    } catch {}
+}
+function Stop-WindowFlashDiag {
+    if ($null -eq $script:WindowFlashTimer) { return }
+    try { $script:WindowFlashTimer.Stop() } catch {}
+    try { Write-WindowFlashDiagQueue } catch {}
+    try { [ScWinFlashWatch]::Stop() } catch {}
+    try { Write-WindowFlashDiagQueue } catch {}
+    try { $script:WindowFlashTimer.Dispose() } catch {}
+    $script:WindowFlashTimer = $null
+    $script:WinFlashReady = $false
+}
+$script:WindowFlashTimer = $null
+$script:WinFlashReady = $false
+Start-WindowFlashDiag
 
 # Хелпер: жёстко прячет нативную горизонтальную полосу прокрутки у control'а
 # (даже если WinForms по каким-то причинам считает, что она нужна — например,
@@ -1020,6 +2354,217 @@ function Enable-SCOwnerMinimize {
         if ($null -eq $script:scOwnerMinimizeHooks) { $script:scOwnerMinimizeHooks = New-Object System.Collections.ArrayList }
         [void]$script:scOwnerMinimizeHooks.Add((New-Object ScOwnerMinimizeHook($Dialog, $Owner)))
         $Dialog.MinimizeBox = $true
+    } catch {}
+}
+
+# ----------------------------------------------------------------------------------------------------------------------
+# Каскадное закрытие цепочки окон (главное -> карточка -> SteamGridDB -> просмотр обложки).
+# Все они открываются модально (ShowDialog с владельцем), а Windows блокирует владельца (EnableWindow false). Кнопка «закрыть»
+# в превью на панели задач у заблокированного окна не работает — закрывалось только самое верхнее окно. Теперь владельцев
+# после показа диалога разблокируем, а модальность сохраняем сами: клики и клавиши в окне, у которого есть окно выше, глотаются
+# (ScModalShield), а закрытие окна (WM_CLOSE) сначала закрывает все окна выше него по цепочке, затем само окно.
+# 4 -> закрывается только оно; 3 -> 3 и 4; 2 -> 2, 3, 4; 1 -> вся программа. Если окно выше отказалось закрываться
+# (FormClosing с отменой), каскад останавливается, нижние окна остаются открытыми.
+# ----------------------------------------------------------------------------------------------------------------------
+if (-not ('ScCascade' -as [type])) {
+    try {
+        Add-Type -ReferencedAssemblies @('System.Drawing','System.Windows.Forms') -TypeDefinition @'
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+using System.Windows.Forms;
+
+public static class ScCascade
+{
+    [DllImport("user32.dll")] static extern IntPtr GetWindow(IntPtr h, uint cmd);
+    [DllImport("user32.dll")] static extern IntPtr GetAncestor(IntPtr h, uint flags);
+    [DllImport("user32.dll")] static extern bool EnableWindow(IntPtr h, bool enable);
+    [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr h);
+    const uint GW_OWNER = 4;
+
+    static readonly List<Form> _reg = new List<Form>();
+    static readonly Dictionary<Form, ScCascadeHook> _hooks = new Dictionary<Form, ScCascadeHook>();
+    static bool _filterOn;
+
+    public static void Attach(Form f, bool covers)
+    {
+        if (f == null || f.IsDisposed || _hooks.ContainsKey(f)) return;
+        if (!_filterOn) { _filterOn = true; Application.AddMessageFilter(new ScModalShield()); }
+        _hooks[f] = new ScCascadeHook(f);
+        if (covers)
+        {
+            f.Shown += delegate
+            {
+                try
+                {
+                    if (!_reg.Contains(f)) _reg.Add(f);
+                    // ShowDialog заблокировал владельцев (EnableWindow false); возвращаем доступность, чтобы кнопка «закрыть» в превью
+                    // на панели задач доходила до каждого окна цепочки. Ввод в них блокирует ScModalShield.
+                    IntPtr o = GetWindow(f.Handle, GW_OWNER);
+                    while (o != IntPtr.Zero) { EnableWindow(o, true); o = GetWindow(o, GW_OWNER); }
+                }
+                catch { }
+            };
+        }
+        f.FormClosed += delegate { try { _reg.Remove(f); } catch { } };
+        f.Disposed += delegate { try { _reg.Remove(f); _hooks.Remove(f); } catch { } };
+    }
+
+    static int Depth(IntPtr h)
+    {
+        int n = 0;
+        IntPtr o = GetWindow(h, GW_OWNER);
+        while (o != IntPtr.Zero && n < 64) { n++; o = GetWindow(o, GW_OWNER); }
+        return n;
+    }
+
+    static bool IsOwnedBy(IntPtr child, IntPtr owner)
+    {
+        int guard = 0;
+        IntPtr o = GetWindow(child, GW_OWNER);
+        while (o != IntPtr.Zero && guard++ < 64) { if (o == owner) return true; o = GetWindow(o, GW_OWNER); }
+        return false;
+    }
+
+    static bool Alive(Form d)
+    {
+        try { return d != null && !d.IsDisposed && d.IsHandleCreated && d.Visible && d.DialogResult == DialogResult.None; }
+        catch { return false; }
+    }
+
+    // Окна выше данного по цепочке владельцев, самые верхние первыми.
+    public static List<Form> Above(Form f)
+    {
+        List<Form> res = new List<Form>();
+        try
+        {
+            if (f == null || f.IsDisposed || !f.IsHandleCreated) return res;
+            IntPtr fh = f.Handle;
+            foreach (Form d in _reg.ToArray())
+                if (d != f && Alive(d) && IsOwnedBy(d.Handle, fh)) res.Add(d);
+            res.Sort(delegate (Form a, Form b) { return Depth(b.Handle).CompareTo(Depth(a.Handle)); });
+        }
+        catch { }
+        return res;
+    }
+
+    // Самое верхнее окно цепочки над окном с данным хэндлом (null — над ним ничего нет).
+    public static Form TopAbove(IntPtr root)
+    {
+        Form best = null; int bd = -1;
+        try
+        {
+            foreach (Form d in _reg.ToArray())
+            {
+                if (!Alive(d) || d.Handle == root || !IsOwnedBy(d.Handle, root)) continue;
+                int dp = Depth(d.Handle);
+                if (dp > bd) { bd = dp; best = d; }
+            }
+        }
+        catch { }
+        return best;
+    }
+
+    public static bool AnyRegistered { get { return _reg.Count > 0; } }
+
+    // Закрывает окна по порядку; false — какое-то окно отказалось закрываться.
+    public static bool CloseAll(List<Form> kids)
+    {
+        foreach (Form k in kids)
+        {
+            try { if (!k.IsDisposed && k.IsHandleCreated) k.Close(); } catch { }
+            try { if (Alive(k)) return false; } catch { }
+        }
+        return true;
+    }
+
+    public static void ActivateTop(Form f)
+    {
+        try
+        {
+            Form top = TopAbove(f.Handle);
+            if (top != null && top.IsHandleCreated) { if (top.WindowState == FormWindowState.Minimized) top.WindowState = FormWindowState.Normal; SetForegroundWindow(top.Handle); }
+        }
+        catch { }
+    }
+
+    public static IntPtr RootOf(IntPtr h)
+    {
+        try { IntPtr r = GetAncestor(h, 2); return r == IntPtr.Zero ? h : r; } catch { return h; }
+    }
+}
+
+public class ScCascadeHook : NativeWindow
+{
+    readonly Form _form;
+    bool _busy;
+    public ScCascadeHook(Form f)
+    {
+        _form = f;
+        if (f.IsHandleCreated) AssignHandle(f.Handle);
+        f.HandleCreated += delegate { try { if (Handle != IntPtr.Zero) ReleaseHandle(); AssignHandle(_form.Handle); } catch { } };
+        f.HandleDestroyed += delegate { try { if (Handle != IntPtr.Zero) ReleaseHandle(); } catch { } };
+    }
+    protected override void WndProc(ref Message m)
+    {
+        // WM_CLOSE = 0x0010 (крестик, Alt+F4, «закрыть» в превью на панели задач)
+        if (m.Msg == 0x0010 && !_busy)
+        {
+            List<Form> kids = ScCascade.Above(_form);
+            if (kids.Count > 0)
+            {
+                bool ok = false;
+                _busy = true;
+                try { ok = ScCascade.CloseAll(kids); } catch { ok = false; } finally { _busy = false; }
+                if (!ok) { m.Result = IntPtr.Zero; return; }
+            }
+        }
+        // WM_ACTIVATE = 0x0006: окно, над которым есть другое, не получает фокус — возвращаем его верхнему окну цепочки.
+        else if (m.Msg == 0x0006 && (((long)m.WParam) & 0xFFFF) != 0 && ScCascade.AnyRegistered)
+        {
+            try
+            {
+                if (ScCascade.Above(_form).Count > 0)
+                {
+                    Form f = _form;
+                    f.BeginInvoke(new MethodInvoker(delegate { ScCascade.ActivateTop(f); }));
+                }
+            }
+            catch { }
+        }
+        base.WndProc(ref m);
+    }
+}
+
+// Заменяет модальность: пока над окном есть окно цепочки, клики мышью (клиентская область) и клавиши в нём не доходят.
+public class ScModalShield : IMessageFilter
+{
+    [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr h);
+    public bool PreFilterMessage(ref Message m)
+    {
+        int msg = m.Msg;
+        bool input = (msg >= 0x0201 && msg <= 0x020D) || msg == 0x0100 || msg == 0x0101 || msg == 0x0102;
+        if (!input || !ScCascade.AnyRegistered) return false;
+        try
+        {
+            IntPtr root = ScCascade.RootOf(m.HWnd);
+            Form top = ScCascade.TopAbove(root);
+            if (top == null) return false;
+            if (msg == 0x0201 || msg == 0x0204 || msg == 0x0207) { try { if (top.IsHandleCreated) SetForegroundWindow(top.Handle); } catch { } }
+            return true;
+        }
+        catch { return false; }
+    }
+}
+'@ -ErrorAction Stop
+    } catch {}
+}
+function Enable-SCCascadeClose {
+    # $Covers = $true: окно показывается модально поверх владельца (регистрируется в цепочке); $false — только реагирует на закрытие (главное окно).
+    param($Form, [bool]$Covers = $true)
+    try {
+        if ($null -eq $Form -or -not ('ScCascade' -as [type])) { return }
+        [ScCascade]::Attach($Form, $Covers)
     } catch {}
 }
 
@@ -1974,6 +3519,29 @@ public static class SCScrollSkin
 
     static void OnControlAdded(object s, ControlEventArgs e) { Apply(e.Control); }
 
+    // ===== Курсор «рука» над кнопками =====
+    // Страховка для всех окон программы: кнопки, флажки, переключатели и ссылки без явно заданного курсора получают «руку»
+    // (у кого курсор задан в коде - не трогаем). Обходит и элементы, которые добавят в окно позже.
+    static ConditionalWeakTable<Control, object> handSeen = new ConditionalWeakTable<Control, object>();
+    public static void ApplyHand(Control c)
+    {
+        if (c == null || c.IsDisposed) return;
+        object o;
+        if (handSeen.TryGetValue(c, out o)) return;
+        handSeen.Add(c, new object());
+        try
+        {
+            if ((c is Button || c is CheckBox || c is RadioButton || c is LinkLabel) && c.Cursor == Cursors.Default) c.Cursor = Cursors.Hand;
+            c.ControlAdded += OnHandControlAdded;
+            Control[] kids = new Control[c.Controls.Count];
+            c.Controls.CopyTo(kids, 0);
+            for (int i = 0; i < kids.Length; i++) ApplyHand(kids[i]);
+        }
+        catch { }
+    }
+
+    static void OnHandControlAdded(object s, ControlEventArgs e) { ApplyHand(e.Control); }
+
     static bool Interesting(Control c)
     {
         return c is DataGridView || c is ListBox || c is ListView || c is TextBoxBase
@@ -2138,7 +3706,11 @@ public static class SCVdfParser
     } catch {}
 }
 function Enable-SCScrollSkin ($Control) {
-    try { if ('SCScrollSkin' -as [type]) { [SCScrollSkin]::Apply($Control) } } catch {}
+    try { if ('SCScrollSkin' -as [type]) { [SCScrollSkin]::Apply($Control); [SCScrollSkin]::ApplyHand($Control) } } catch {}
+}
+# Только курсор «рука» над кнопками (без скин-полос прокрутки) - для окон, которые не вызывают Enable-SCScrollSkin.
+function Enable-SCHandCursor ($Control) {
+    try { if ('SCScrollSkin' -as [type]) { [SCScrollSkin]::ApplyHand($Control) } } catch {}
 }
 
 Set-SplashProgress 0.06
@@ -3625,7 +5197,7 @@ Set-SplashProgress 0.52
 # Единая версия приложения — используется в заголовке главного окна, в
 # подписи внизу окна настроек и в User-Agent HTTP-запросов. Меняйте только
 # здесь при выпуске новой версии.
-$global:appVersion = "2.2.6"
+$global:appVersion = "2.2.7"
 $global:appTitle = "Steam Commander"
 # Ссылки на исходный код и поддержку автора (окно «Поддержать» в настройках). Меняйте только здесь.
 $global:appRepoUrl = "https://github.com/Hetfield1985/Steam-Commander"
@@ -3747,7 +5319,7 @@ $script:I18n = @{
         lib_restore_btn = 'Вернуть бэкапы'
         lib_filter_btn = 'Фильтр'
         lib_filter_src = 'Показывать игры'
-        lib_filter_launchers = 'Из лаунчеров'
+        lib_filter_launchers = 'Лаунчеры'
         lib_filter_emus = 'Эмуляторы (ROM)'
         lib_filter_emu_undef = 'Не определены'
         lib_filter_wrappers = 'Врапперы'
@@ -3823,7 +5395,17 @@ $script:I18n = @{
         coll_dlg_empty = 'В Steam нет коллекций с ручным составом. Создайте коллекцию в Steam, и она появится здесь.'
         coll_dlg_ok = 'Применить'
         coll_close_steam = 'Чтобы изменить коллекции, программа закроет Steam и запустит его снова. Продолжить?'
+        coll_new = 'Создать коллекцию'
+        coll_del_menu = 'Удалить коллекцию'
+        coll_new_title = 'Название коллекции'
+        coll_new_exists = 'Коллекция с таким названием уже есть: {0}'
+        coll_del_confirm = 'Удалить коллекцию «{0}»? Игры останутся в библиотеке.'
+        coll_del_confirm_restart = 'Удалить коллекцию «{0}»? Игры останутся в библиотеке. Для этого программа закроет Steam и запустит его снова.'
+        coll_created = 'Коллекция «{0}» создана'
+        coll_deleted = 'Коллекция «{0}» удалена'
+        coll_struct_fail = 'Не удалось изменить файлы коллекций Steam'
         coll_done = 'Коллекции обновлены: игр — {0}, изменено коллекций — {1}'
+        coll_queued = 'Изменения коллекций ждут перезапуска Steam: они запишутся по кнопке «Перезапустить Steam»'
         coll_nochange = 'Состав коллекций не изменился'
         coll_fail = 'Не удалось изменить коллекции: {0}'
         coll_missing = 'Коллекция не найдена в файлах Steam: {0}'
@@ -4159,8 +5741,20 @@ $script:I18n = @{
         sl_sg_alts = 'SteamGridDB: загружаю альтернативы для {0}…'
         sl_sg_noalts = 'SteamGridDB: альтернативы для этого типа не найдены.'
         custom_tile = 'Добавить свою'
+        preview_eye_tip = 'Открыть в полном разрешении'
+        preview_title = 'Просмотр обложки'
+        preview_loading = 'Загружаю оригинал…'
+        preview_failed = 'Не удалось загрузить оригинал — показана миниатюра.'
+        preview_failed_nothumb = 'Не удалось загрузить изображение.'
+        preview_unsupported = 'Этот формат нельзя показать здесь — показана миниатюра.'
+        preview_hint = 'Esc или щелчок — закрыть'
+        preview_meta_author = 'Автор'
+        preview_meta_likes = 'Лайки'
+        preview_meta_views = 'Просмотры'
+        preview_meta_date = 'Загружено'
         custom_label = 'Своя'
         custom_label_exe = 'Из EXE'
+        custom_label_tip = 'Добавленная вручную из файла'
         icon_exe_tip = 'Взять иконку из EXE в лучшем качестве'
         icon_exe_pick = 'Выберите EXE, из которого взять иконку'
         icon_exe_filter = 'Программы и библиотеки|*.exe;*.dll|Все файлы|*.*'
@@ -4440,10 +6034,14 @@ $script:I18n = @{
         rom_emu_pick_tip = 'Клик — выбрать активный эмулятор из списка, добавленного в Настройках.'
         btn_remove_lib = 'Удалить из библиотеки'
         btn_remove_lib_tip = 'Удалить из библиотеки отмеченные игры ({0}). Файлы на диске не затрагиваются. Shift — удалить и саму игру с диска (сначала запускается деинсталлятор).'
+        btn_remove_disk_tip = 'Shift: ПОЛНОСТЬЮ удалить с диска отмеченные файлы и папки ({0}). Игры из библиотеки сначала убираются из неё. В Корзину файлы не попадают.'
+        disk_remove_confirm = 'ПОЛНОСТЬЮ УДАЛИТЬ с диска отмеченные файлы и папки ({0})?\n\n{1}\n\nЭто действие безвозвратно: в Корзину они не попадают.'
+        disk_remove_done = 'Удалено с диска: {0}.'
         lib_remove_confirm = 'Удалить из библиотеки Steam игры: {0}?\n\nЯрлыки будут удалены из всех профилей Steam, файлы игр на диске не затрагиваются. Если Steam запущен, он будет закрыт и запущен заново. Перед записью создаётся резервная копия shortcuts.vdf.'
         lib_remove_done = 'Удалено из библиотеки: {0}.'
         lib_remove_confirm_files = 'Удалить из библиотеки Steam игры ({0}) и ПОЛНОСТЬЮ УДАЛИТЬ их файлы с диска?\n\nБудут удалены папки:\n{1}\n\nЭто действие удалит все файлы игр с диска безвозвратно (в Корзину они не попадают). Ярлыки будут удалены из всех профилей Steam. Если Steam запущен, он будет закрыт и запущен заново.'
         lib_remove_files_done = 'Папок удалено с диска: {0}.'
+        lib_remove_files_progress = 'Удаление папки «{0}»: {1}%'
         lib_remove_files_fail = 'Не удалось удалить папок с диска: {0}. {1}'
         lib_remove_files_skip = 'Папка не удалена (небезопасный путь или в ней есть другие игры библиотеки): {0}'
         lib_remove_uninstall_note = 'Для игр, установленных через инсталлятор, сначала будет запущен их деинсталлятор. Завершите удаление в его окне - программа дождётся окончания: {0}.'
@@ -4659,7 +6257,17 @@ $script:I18n = @{
         coll_dlg_empty = 'Steam has no manual collections yet. Create one in Steam and it will appear here.'
         coll_dlg_ok = 'Apply'
         coll_close_steam = 'To change collections the program will close Steam and start it again. Continue?'
+        coll_new = 'Create collection'
+        coll_del_menu = 'Delete collection'
+        coll_new_title = 'Collection name'
+        coll_new_exists = 'A collection with this name already exists: {0}'
+        coll_del_confirm = 'Delete the collection “{0}”? The games will stay in your library.'
+        coll_del_confirm_restart = 'Delete the collection “{0}”? The games will stay in your library. The program will close Steam and start it again.'
+        coll_created = 'Collection “{0}” created'
+        coll_deleted = 'Collection “{0}” deleted'
+        coll_struct_fail = 'Could not change the Steam collection files'
         coll_done = 'Collections updated: {0} games, {1} collections changed'
+        coll_queued = 'Collection changes are queued: they will be written when you click "Restart Steam"'
         coll_nochange = 'Collection membership did not change'
         coll_fail = 'Could not change the collections: {0}'
         coll_missing = 'Collection not found in the Steam files: {0}'
@@ -4995,8 +6603,20 @@ $script:I18n = @{
         sl_sg_alts = 'SteamGridDB: loading alternatives for {0}…'
         sl_sg_noalts = 'SteamGridDB: no alternatives found for this type.'
         custom_tile = 'Add your own'
+        preview_eye_tip = 'View full size'
+        preview_title = 'Cover preview'
+        preview_loading = 'Loading the full-size image…'
+        preview_failed = 'Could not load the full-size image — showing the thumbnail.'
+        preview_failed_nothumb = 'Could not load the image.'
+        preview_unsupported = 'This format cannot be shown here — showing the thumbnail.'
+        preview_hint = 'Esc or click to close'
+        preview_meta_author = 'Author'
+        preview_meta_likes = 'Likes'
+        preview_meta_views = 'Views'
+        preview_meta_date = 'Uploaded'
         custom_label = 'Yours'
         custom_label_exe = 'From EXE'
+        custom_label_tip = 'Added manually from a file'
         icon_exe_tip = 'Take the icon from the EXE in best quality'
         icon_exe_pick = 'Choose the EXE to take the icon from'
         icon_exe_filter = 'Programs and libraries|*.exe;*.dll|All files|*.*'
@@ -5276,10 +6896,14 @@ $script:I18n = @{
         rom_emu_pick_tip = 'Click to choose the active emulator from the list added in Settings.'
         btn_remove_lib = 'Remove from library'
         btn_remove_lib_tip = 'Remove the checked games from the library ({0}). Files on disk are not touched. Hold Shift to also delete the installed game from disk (its uninstaller is run first).'
+        btn_remove_disk_tip = 'Shift: PERMANENTLY delete the checked files and folders from disk ({0}). Library games are removed from the library first. Nothing goes to the Recycle Bin.'
+        disk_remove_confirm = 'PERMANENTLY DELETE the checked files and folders from disk ({0})?\n\n{1}\n\nThis cannot be undone: they do not go to the Recycle Bin.'
+        disk_remove_done = 'Deleted from disk: {0}.'
         lib_remove_confirm = 'Remove these games from the Steam library: {0}?\n\nThe shortcuts will be deleted from all Steam profiles; game files on disk are not touched. If Steam is running, it will be closed and started again. A backup of shortcuts.vdf is made before writing.'
         lib_remove_done = 'Removed from the library: {0}.'
         lib_remove_confirm_files = 'Remove these games from the Steam library ({0}) and PERMANENTLY DELETE their files from disk?\n\nThese folders will be deleted:\n{1}\n\nThis action deletes all game files from the disk and cannot be undone (they do not go to the Recycle Bin). The shortcuts will be deleted from all Steam profiles. If Steam is running, it will be closed and started again.'
         lib_remove_files_done = 'Folders deleted from disk: {0}.'
+        lib_remove_files_progress = 'Deleting folder "{0}": {1}%'
         lib_remove_files_fail = 'Could not delete folders from disk: {0}. {1}'
         lib_remove_files_skip = 'Folder not deleted (unsafe path or other library games live inside it): {0}'
         lib_remove_uninstall_note = 'Games installed with an installer will first be uninstalled with their own uninstaller. Finish the removal in its window - the program will wait for it to end: {0}.'
@@ -5474,7 +7098,17 @@ $script:I18n = @{
         coll_dlg_empty = 'Steam 中还没有手动分类。请先在 Steam 中创建分类，它会显示在这里。'
         coll_dlg_ok = '应用'
         coll_close_steam = '修改分类需要先关闭 Steam，完成后程序会重新启动它。是否继续？'
+        coll_new = '创建分类'
+        coll_del_menu = '删除分类'
+        coll_new_title = '分类名称'
+        coll_new_exists = '已存在同名分类：{0}'
+        coll_del_confirm = '删除分类“{0}”？游戏仍会保留在库中。'
+        coll_del_confirm_restart = '删除分类“{0}”？游戏仍会保留在库中。为此程序会关闭 Steam 并重新启动。'
+        coll_created = '分类“{0}”已创建'
+        coll_deleted = '分类“{0}”已删除'
+        coll_struct_fail = '无法修改 Steam 分类文件'
         coll_done = '分类已更新：{0} 个游戏，{1} 个分类有变动'
+        coll_queued = '分类更改已加入队列：点击“重启 Steam”后写入'
         coll_nochange = '分类内容没有变化'
         coll_fail = '无法修改分类：{0}'
         coll_missing = '在 Steam 文件中找不到分类：{0}'
@@ -5779,6 +7413,7 @@ $script:I18n = @{
         custom_tile = '添加自定义'
         custom_label = '自定义'
         custom_label_exe = '来自 EXE'
+        custom_label_tip = '手动从文件添加'
         icon_exe_tip = '以最佳画质从 EXE 获取图标'
         icon_exe_pick = '选择要提取图标的 EXE'
         icon_exe_filter = '程序和库|*.exe;*.dll|所有文件|*.*'
@@ -6162,6 +7797,7 @@ $script:I18n = @{
         lib_remove_done = '已从库中移除：{0}。'
         lib_remove_confirm_files = '要将这些游戏从 Steam 库中移除（{0}），并从磁盘上永久删除其文件吗？\n\n将删除以下文件夹：\n{1}\n\n此操作会删除磁盘上的所有游戏文件且无法撤销（不会进入回收站）。快捷方式将从所有 Steam 配置文件中删除。如果 Steam 正在运行，将被关闭并重新启动。'
         lib_remove_files_done = '已从磁盘删除文件夹：{0}。'
+        lib_remove_files_progress = '正在删除文件夹“{0}”：{1}%'
         lib_remove_files_fail = '无法从磁盘删除文件夹：{0}。{1}'
         lib_remove_files_skip = '文件夹未删除（路径不安全，或其中包含其他库游戏）：{0}'
         lib_remove_uninstall_note = '使用安装程序安装的游戏将先用其自带的卸载程序卸载。请在其窗口中完成卸载，程序会等待其结束：{0}。'
@@ -6311,7 +7947,17 @@ $script:I18n = @{
         coll_dlg_empty = 'Steam aún no tiene colecciones manuales. Crea una en Steam y aparecerá aquí.'
         coll_dlg_ok = 'Aplicar'
         coll_close_steam = 'Para cambiar las colecciones, el programa cerrará Steam y lo iniciará de nuevo. ¿Continuar?'
+        coll_new = 'Crear colección'
+        coll_del_menu = 'Eliminar colección'
+        coll_new_title = 'Nombre de la colección'
+        coll_new_exists = 'Ya existe una colección con este nombre: {0}'
+        coll_del_confirm = '¿Eliminar la colección «{0}»? Los juegos seguirán en la biblioteca.'
+        coll_del_confirm_restart = '¿Eliminar la colección «{0}»? Los juegos seguirán en la biblioteca. El programa cerrará Steam y lo iniciará de nuevo.'
+        coll_created = 'Colección «{0}» creada'
+        coll_deleted = 'Colección «{0}» eliminada'
+        coll_struct_fail = 'No se pudieron modificar los archivos de colecciones de Steam'
         coll_done = 'Colecciones actualizadas: {0} juegos, {1} colecciones modificadas'
+        coll_queued = 'Cambios de colecciones en cola: se escribirán al pulsar «Reiniciar Steam»'
         coll_nochange = 'La pertenencia a colecciones no ha cambiado'
         coll_fail = 'No se pudieron cambiar las colecciones: {0}'
         coll_missing = 'No se encontró la colección en los archivos de Steam: {0}'
@@ -6616,6 +8262,7 @@ $script:I18n = @{
         custom_tile = 'Añadir la tuya'
         custom_label = 'Propia'
         custom_label_exe = 'Desde EXE'
+        custom_label_tip = 'Añadida manualmente desde un archivo'
         icon_exe_tip = 'Obtener el icono del EXE con la mejor calidad'
         icon_exe_pick = 'Elige el EXE del que tomar el icono'
         icon_exe_filter = 'Programas y bibliotecas|*.exe;*.dll|Todos los archivos|*.*'
@@ -6999,6 +8646,7 @@ $script:I18n = @{
         lib_remove_done = 'Quitados de la biblioteca: {0}.'
         lib_remove_confirm_files = '¿Quitar estos juegos de la biblioteca de Steam ({0}) y ELIMINAR PERMANENTEMENTE sus archivos del disco?\n\nSe eliminarán estas carpetas:\n{1}\n\nEsta acción elimina todos los archivos del juego del disco y no se puede deshacer (no van a la Papelera de reciclaje). Los accesos directos se eliminarán de todos los perfiles de Steam. Si Steam está en ejecución, se cerrará y se volverá a iniciar.'
         lib_remove_files_done = 'Carpetas eliminadas del disco: {0}.'
+        lib_remove_files_progress = 'Eliminando carpeta «{0}»: {1}%'
         lib_remove_files_fail = 'No se pudieron eliminar carpetas del disco: {0}. {1}'
         lib_remove_files_skip = 'Carpeta no eliminada (ruta no segura o contiene otros juegos de la biblioteca): {0}'
         lib_remove_uninstall_note = 'Los juegos instalados con un instalador se desinstalarán primero con su propio desinstalador. Termina la eliminación en su ventana; el programa esperará a que acabe: {0}.'
@@ -7148,7 +8796,17 @@ $script:I18n = @{
         coll_dlg_empty = 'O Steam ainda não tem coleções manuais. Crie uma no Steam e ela aparecerá aqui.'
         coll_dlg_ok = 'Aplicar'
         coll_close_steam = 'Para alterar as coleções, o programa vai fechar o Steam e iniciá-lo de novo. Continuar?'
+        coll_new = 'Criar coleção'
+        coll_del_menu = 'Excluir coleção'
+        coll_new_title = 'Nome da coleção'
+        coll_new_exists = 'Já existe uma coleção com este nome: {0}'
+        coll_del_confirm = 'Excluir a coleção «{0}»? Os jogos continuarão na biblioteca.'
+        coll_del_confirm_restart = 'Excluir a coleção «{0}»? Os jogos continuarão na biblioteca. O programa vai fechar o Steam e iniciá-lo de novo.'
+        coll_created = 'Coleção «{0}» criada'
+        coll_deleted = 'Coleção «{0}» excluída'
+        coll_struct_fail = 'Não foi possível alterar os arquivos de coleções do Steam'
         coll_done = 'Coleções atualizadas: {0} jogos, {1} coleções alteradas'
+        coll_queued = 'Alterações das coleções na fila: serão gravadas ao clicar em «Reiniciar o Steam»'
         coll_nochange = 'A participação nas coleções não mudou'
         coll_fail = 'Não foi possível alterar as coleções: {0}'
         coll_missing = 'Coleção não encontrada nos arquivos do Steam: {0}'
@@ -7453,6 +9111,7 @@ $script:I18n = @{
         custom_tile = 'Adicionar a sua'
         custom_label = 'Sua'
         custom_label_exe = 'Do EXE'
+        custom_label_tip = 'Adicionada manualmente a partir de um arquivo'
         icon_exe_tip = 'Obter o ícone do EXE na melhor qualidade'
         icon_exe_pick = 'Escolha o EXE do qual obter o ícone'
         icon_exe_filter = 'Programas e bibliotecas|*.exe;*.dll|Todos os arquivos|*.*'
@@ -7836,6 +9495,7 @@ $script:I18n = @{
         lib_remove_done = 'Removidos da biblioteca: {0}.'
         lib_remove_confirm_files = 'Remover estes jogos da biblioteca da Steam ({0}) e EXCLUIR PERMANENTEMENTE seus arquivos do disco?\n\nEstas pastas serão excluídas:\n{1}\n\nEsta ação exclui todos os arquivos do jogo do disco e não pode ser desfeita (eles não vão para a Lixeira). Os atalhos serão excluídos de todos os perfis da Steam. Se a Steam estiver em execução, ela será fechada e iniciada novamente.'
         lib_remove_files_done = 'Pastas excluídas do disco: {0}.'
+        lib_remove_files_progress = 'Excluindo pasta «{0}»: {1}%'
         lib_remove_files_fail = 'Não foi possível excluir pastas do disco: {0}. {1}'
         lib_remove_files_skip = 'Pasta não excluída (caminho inseguro ou contém outros jogos da biblioteca): {0}'
         lib_remove_uninstall_note = 'Jogos instalados com um instalador serão desinstalados primeiro com o próprio desinstalador. Conclua a remoção na janela dele; o programa vai esperar o término: {0}.'
@@ -7985,7 +9645,17 @@ $script:I18n = @{
         coll_dlg_empty = 'In Steam gibt es noch keine manuellen Sammlungen. Lege dort eine an, dann erscheint sie hier.'
         coll_dlg_ok = 'Übernehmen'
         coll_close_steam = 'Um Sammlungen zu ändern, beendet das Programm Steam und startet es danach neu. Fortfahren?'
+        coll_new = 'Sammlung erstellen'
+        coll_del_menu = 'Sammlung löschen'
+        coll_new_title = 'Name der Sammlung'
+        coll_new_exists = 'Eine Sammlung mit diesem Namen existiert bereits: {0}'
+        coll_del_confirm = 'Sammlung „{0}“ löschen? Die Spiele bleiben in der Bibliothek.'
+        coll_del_confirm_restart = 'Sammlung „{0}“ löschen? Die Spiele bleiben in der Bibliothek. Das Programm beendet Steam und startet es danach neu.'
+        coll_created = 'Sammlung „{0}“ erstellt'
+        coll_deleted = 'Sammlung „{0}“ gelöscht'
+        coll_struct_fail = 'Die Steam-Sammlungsdateien konnten nicht geändert werden'
         coll_done = 'Sammlungen aktualisiert: {0} Spiele, {1} Sammlungen geändert'
+        coll_queued = 'Sammlungsänderungen vorgemerkt: Sie werden mit „Steam neu starten“ geschrieben'
         coll_nochange = 'Die Zugehörigkeit zu Sammlungen hat sich nicht geändert'
         coll_fail = 'Sammlungen konnten nicht geändert werden: {0}'
         coll_missing = 'Sammlung in den Steam-Dateien nicht gefunden: {0}'
@@ -8290,6 +9960,7 @@ $script:I18n = @{
         custom_tile = 'Eigenes hinzufügen'
         custom_label = 'Eigenes'
         custom_label_exe = 'Aus EXE'
+        custom_label_tip = 'Manuell aus einer Datei hinzugefügt'
         icon_exe_tip = 'Symbol aus der EXE in bester Qualität übernehmen'
         icon_exe_pick = 'Wähle die EXE, aus der das Symbol übernommen werden soll'
         icon_exe_filter = 'Programme und Bibliotheken|*.exe;*.dll|Alle Dateien|*.*'
@@ -9500,7 +11171,9 @@ function Create-InitialDirs {
         New-Item -ItemType Directory -Path $global:coverSourcesDir -Force | Out-Null
     }
 }
+Write-StartupMark 'before Create-InitialDirs'
 Create-InitialDirs
+Write-StartupMark 'Create-InitialDirs done'
 function Get-FolderSize ($path) {
     $size = 0
     try {
@@ -10583,6 +12256,8 @@ $script:pendingShortcutWrites = @{}
 # Коллекции из карточек пакетного добавления: пока Steam запущен, их запись откладывается до его закрытия
 # (иначе Steam перезапишет файлы коллекций при выходе). Применяются вместе с ярлыками, см. Apply-PendingCollectionOps.
 $script:pendingCollectionOps = New-Object System.Collections.ArrayList
+# Версия очереди: входит в подпись кэша снимка коллекций, чтобы изменения в очереди сразу были видны в интерфейсе.
+$script:pendingCollVer = 0
 function Write-SteamShortcutsFile([string]$path, [byte[]]$bytes) {
     [System.IO.File]::WriteAllBytes($path, $bytes)
     try {
@@ -10596,6 +12271,7 @@ function Write-SteamShortcutsFile([string]$path, [byte[]]$bytes) {
 # (карточка игры, shortcuts.vdf). Пока флаг поднят, кнопка «Перезапустить Steam» заменяет «Библиотеку» (главное окно) и видна внизу окна библиотеки.
 # Флаг сбрасывается перезапуском через кнопку или когда Steam закрыт (при следующем запуске он и так прочитает всё заново).
 $script:steamRestartNeeded = $false
+$script:libDialogOpen = $false
 $script:steamRestartShown = $false
 function Get-SteamRestartWanted {
     try { return (((Get-SteamRestartMode) -eq 'manual') -and [bool]$script:steamRestartNeeded) } catch { return $false }
@@ -10635,18 +12311,13 @@ function Apply-PendingSteamShortcutWrites {
     return $n
 }
 
-# Кнопка «Перезапустить Steam» (ручной режим): штатно просим Steam завершиться (-shutdown), ждём до 20 секунд,
-# при необходимости закрываем принудительно, закрепляем записанное программой в shortcuts.vdf и запускаем Steam.
+# Перезапуск Steam (одинаковый везде: кнопка, конец пакетного добавления, перенос): Steam закрывается принудительно и сразу,
+# как в Close-SteamForWrite (без `steam -shutdown`: при мягком закрытии Steam ждёт запущенные через него программы, в том числе
+# саму программу, и показывает окно «Выключение Steam…»). Затем закрепляется записанное в shortcuts.vdf и Steam запускается снова.
 function Restart-SteamNow {
     $exe = [string](Get-ConfiguredSteamExePath)
     if (Test-SteamRunning) {
-        try { Start-Process -FilePath $exe -ArgumentList '-shutdown' } catch {}
-        $sw = [System.Diagnostics.Stopwatch]::StartNew()
-        while ((Test-SteamRunning) -and $sw.ElapsedMilliseconds -lt 20000) {
-            [System.Windows.Forms.Application]::DoEvents()
-            Start-Sleep -Milliseconds 100
-        }
-        if (Test-SteamRunning) { Stop-SteamProcessResponsive }
+        Stop-SteamProcessResponsive
         $sw2 = [System.Diagnostics.Stopwatch]::StartNew()
         while ($sw2.ElapsedMilliseconds -lt 800) { [System.Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 30 }
     }
@@ -10973,8 +12644,11 @@ function Load-Configuration {
         } catch {}
     }
 }
+Write-StartupMark 'before Initialize-Localization'
 try { [void](Initialize-Localization) } catch {}
+Write-StartupMark 'Initialize-Localization done'
 Load-Configuration
+Write-StartupMark 'Load-Configuration done'
 # Язык не выбран (первый запуск) или в config.ini неизвестное значение — берём язык
 # интерфейса Windows, если он есть в таблице, иначе английский.
 if (-not $script:I18n.ContainsKey([string]$global:language)) {
@@ -11363,6 +13037,7 @@ function Start-StartupKeyChecks {
     }
 }
 Start-StartupKeyChecks
+Write-StartupMark 'Start-StartupKeyChecks done'
 
 # ------------------- Локальная база App ID <-> название -------------------
 # Используется ТОЛЬКО для поиска игры по названию в карточке (см.
@@ -13280,13 +14955,16 @@ tS3XNNRXurdTWfMaZe+8W6mVQfdC7rpeFfMarrXRbFUawspM4gKe2AtNvEZ+kaGw0o62VcvtNOtWqeW5
 '@
 # SEED-END
 
+Write-StartupMark 'before Install-EmbeddedSteamAppsSeed'
 Install-EmbeddedSteamAppsSeed
+Write-StartupMark 'Install-EmbeddedSteamAppsSeed done'
 
 # Разбираем файл базы заранее, в фоне, чтобы первый поиск в карточке не ждал.
 try { [SteamAppsIndex]::BeginLoad([string]$global:steamAppsDbFile) } catch {}
 
 # Если базы нет или она устарела — обновляем её тихо, в фоне.
 Start-LocalSteamAppsDbAutoUpdate
+Write-StartupMark 'Start-LocalSteamAppsDbAutoUpdate done'
 
 
 if ([string]::IsNullOrWhiteSpace([string]$global:steamInstallPath)) {
@@ -13433,6 +15111,7 @@ function Get-AppIcon {
 }
 
 Set-SplashProgress 0.58
+Write-StartupMark 'main form: build begin'
 $form = New-SCForm
 $form.Text = "$($global:appTitle) $($global:appVersion)"
 try { $appIconObj = Get-AppIcon; if ($null -ne $appIconObj) { $form.Icon = $appIconObj } } catch {}
@@ -15340,8 +17019,9 @@ function Set-MainLibsFlyout ([bool]$Open) {
         $script:mainLibsFlyout = $Open
         if ($Open) {
             $ty = [int]$btnMainLibs.Top
-            $lx = [int]$btnMainLibs.Left - [int]$btnMainLibsUpd.Width + 1
-            $rx = [int]$btnMainLibs.Left + [int]$btnMainLibs.Width - 1
+            $gap = 3   # 1 px тёмный отступ + 1 px синяя линия подложки + 1 px тёмный отступ
+            $lx = [int]$btnMainLibs.Left - [int]$btnMainLibsUpd.Width - $gap
+            $rx = [int]$btnMainLibs.Left + [int]$btnMainLibs.Width + $gap
             $btnMainLibsUpd.Location = New-Object System.Drawing.Point($lx, $ty)
             $btnMainLibsRst.Location = New-Object System.Drawing.Point($rx, $ty)
             $btnMainLibsUpd.Visible = $true
@@ -16038,9 +17718,10 @@ function Set-MainSavesFlyout ([bool]$Open) {
             # Одновременно открытым может быть только один список: кнопки апскейлеров сворачиваем.
             try { if ([bool]$script:mainLibsFlyout) { Set-MainLibsFlyout $false } } catch {}
             $ty = [int]$btnMainSaves.Top
-            $lx = [int]$btnMainSaves.Left - [int]$btnMainSavesBackup.Width + 1
-            $rx = [int]$btnMainSaves.Left + [int]$btnMainSaves.Width - 1
-            $sy = $ty - [int]$btnMainSavesScan.Height + 1
+            $gap = 3   # 1 px тёмный отступ + 1 px синяя линия подложки + 1 px тёмный отступ
+            $lx = [int]$btnMainSaves.Left - [int]$btnMainSavesBackup.Width - $gap
+            $rx = [int]$btnMainSaves.Left + [int]$btnMainSaves.Width + $gap
+            $sy = $ty - [int]$btnMainSavesScan.Height - $gap
             $btnMainSavesBackup.Location = New-Object System.Drawing.Point($lx, $ty)
             $btnMainSavesRestore.Location = New-Object System.Drawing.Point($rx, $ty)
             $btnMainSavesScan.Location = New-Object System.Drawing.Point([int]$btnMainSaves.Left, $sy)
@@ -16449,7 +18130,7 @@ function Invoke-MainSavesOperation ([string]$Mode, $OnlyGames = $null) {
                             } elseif ($roots.Count -gt 1) {
                                 # Несколько мест сохранений: автоматически не записываем — пользователь отметит нужные галочками.
                                 [void]$pendingPick.Add([PSCustomObject]@{ Name = $nm; GP = $gp; Roots = @($roots) })
-                            } elseif (Set-SaveDefined $gp.Name $gp.SteamAppId ([string[]]@($roots | ForEach-Object { [string]$_.Path }))) {
+                            } elseif (Set-SaveDefined $gp.Name $gp.SteamAppId ([string[]]@($roots | ForEach-Object { [string]$_.Path })) -Origins (New-SaveOriginMap $roots)) {
                                 $cRec++
                                 [void]$repRows.Add([PSCustomObject]@{ Status = 'ok'; Name = $nm; Details = $det })
                             } else {
@@ -16536,7 +18217,7 @@ function Invoke-MainSavesOperation ([string]$Mode, $OnlyGames = $null) {
                 if ($srcs.Count -gt 0) { $det += (' — ' + ((@($srcs | Select-Object -First 3)) -join ', ')) }
                 $det += (' — ' + [string]$paths[0])
                 if ($paths.Count -gt 1) { $det += (' (+' + ($paths.Count - 1) + ')') }
-                if (Set-SaveDefined $pp.GP.Name $pp.GP.SteamAppId ([string[]]$paths)) {
+                if (Set-SaveDefined $pp.GP.Name $pp.GP.SteamAppId ([string[]]$paths) -Origins (New-SaveOriginMap $chosen)) {
                     $cRec++
                     [void]$repRows.Add([PSCustomObject]@{ Status = 'ok'; Name = $pp.Name; Details = $det })
                 } else {
@@ -16742,7 +18423,14 @@ function Invoke-MainCollApplyExisting ($snap, $existing, $changes) {
         try { $steamWasRunning = Test-SteamRunning } catch {}
         if ($steamWasRunning) {
             if ((Get-SteamRestartMode) -eq 'manual') {
-                if (-not (Wait-SteamClosedByUser)) { $labelHeader.Text = (T 'steam_close_cancelled'); $steamWasRunning = $false; return }
+                # Ручной режим: Steam не трогаем и не ждём. Изменения встают в очередь и запишутся по кнопке перезапуска Steam.
+                foreach ($p in $plan) {
+                    Add-PendingCardCollections ([PSCustomObject]@{ Snap = $snap; Init = @($p.Init); Sel = @($p.Sel) }) ([string]$p.E.AppId) '' 'shortcut' $p.E.Rec
+                }
+                $steamWasRunning = $false
+                $script:mainCollApplyOk = $true
+                $labelHeader.Text = (T 'coll_queued')
+                return
             } else {
                 # Без вопроса: нажатие «Сменить коллекции» уже означает согласие на перезапуск Steam.
                 if (-not (Close-SteamForWrite)) { $labelHeader.Text = (T 'steam_close_cancelled'); $steamWasRunning = $false; return }
@@ -17335,7 +19023,8 @@ $btnMainWrappersMode.AccessibleName = 'Wrappers'
 # Режимы ROMs/Wrappers показывают на этом же месте индикатор, поэтому кнопка и индикатор друг друга исключают.
 $btnMainRemoveLib = New-MainModeButton 519 482 'del' (T 'btn_remove_lib')
 $btnMainRemoveLib.AccessibleName = 'RemoveFromLibrary'
-$btnMainRemoveLib.Visible = $false
+$btnMainRemoveLib.Visible = $true
+$btnMainRemoveLib.Enabled = $false   # неактивна, пока нечего удалять; скрывается только в режимах ROMs/Wrappers (Update-MainLibraryButtonState)
 $script:removeLibTipText = ''
 # Число игр, которые удалит кнопка (значок-счётчик на корзине). Выставляет Update-MainLibraryButtonState.
 $script:removeLibCount = 0
@@ -17347,7 +19036,7 @@ $script:delShiftTimer.Add_Tick({
     try {
         if ($null -eq $btnMainRemoveLib -or -not [bool]$btnMainRemoveLib.Visible) { return }
         $shNow = (([System.Windows.Forms.Control]::ModifierKeys -band [System.Windows.Forms.Keys]::Shift) -eq [System.Windows.Forms.Keys]::Shift)
-        if ($shNow -ne [bool]$script:delShiftLast) { $script:delShiftLast = $shNow; $btnMainRemoveLib.Invalidate() }
+        if ($shNow -ne [bool]$script:delShiftLast) { $script:delShiftLast = $shNow; $btnMainRemoveLib.Invalidate(); try { Update-MainLibraryButtonState } catch {} }
     } catch {}
 })
 $script:delShiftTimer.Start()
@@ -17792,6 +19481,7 @@ function Show-RomEmulatorPickerPopup ([string]$Kind = 'emulator') {
         $dotsPanel.Size = New-Object System.Drawing.Size($dotsW, $visibleGridH)
         $dotsPanel.Location = New-Object System.Drawing.Point(($flowLeft + $gridW), $hdrH)
         $dotsPanel.BackColor = $steamUi.Panel
+        $dotsPanel.Cursor = [System.Windows.Forms.Cursors]::Hand
         $body.Controls.Add($dotsPanel)
     }
 
@@ -18514,7 +20204,10 @@ function Save-Configuration {
     } catch { Write-ConfigLog ("Save-Configuration: " + $_.Exception.Message) }
 }
 
-$form.Add_FormClosing({ if ($script:moveInProgress) { $_.Cancel = $true; $labelHeader.Text = (T 'mv2_busy'); return }; try { if ($script:pendingShortcutWrites.Count -gt 0 -or $script:pendingCollectionOps.Count -gt 0) { if (Test-SteamRunning) { [void](Wait-SteamClosedByUser) }; [void](Apply-PendingSteamShortcutWrites) } } catch {}; Stop-StartupBackgroundJobs; Save-Configuration; Remove-TemporaryCovers })
+# Страховка: Steam при своём закрытии (выход через меню, обновление, -shutdown) просит окна запущенных через него программ закрыться
+# (CloseReason = TaskManagerClosing). Главное окно такой запрос игнорирует всегда: программа закрывается только самим пользователем
+# (крестик, Alt+F4), а не вместе со Steam.
+$form.Add_FormClosing({ try { if ($_.CloseReason -eq [System.Windows.Forms.CloseReason]::TaskManagerClosing) { $_.Cancel = $true; return } } catch {}; if ($script:moveInProgress) { $_.Cancel = $true; $labelHeader.Text = (T 'mv2_busy'); return }; try { if ($script:pendingShortcutWrites.Count -gt 0 -or $script:pendingCollectionOps.Count -gt 0) { if (Test-SteamRunning) { [void](Wait-SteamClosedByUser) }; [void](Apply-PendingSteamShortcutWrites) } } catch {}; Stop-StartupBackgroundJobs; Save-Configuration; Remove-TemporaryCovers })
 
 # Игры, убранные из списка клавишей Delete. Это ТОЛЬКО скрытие в интерфейсе:
 # папки на диске не трогаются. Действует до кнопки «Обновить» или перезапуска.
@@ -21355,6 +23048,14 @@ function Clear-RemovedShortcutCollections ($removedEntries, $keepApp) {
         } catch {}
     }
     if ($byCid.Count -eq 0) { return }
+    # Ручной режим при запущенном Steam: он перезапишет файлы коллекций своей копией из памяти при выходе, поэтому очистка
+    # встаёт в очередь (как перенос игр в коллекции) и запишется при перезапуске Steam.
+    try {
+        if ((Test-SteamRunning) -and (Get-SteamRestartMode) -eq 'manual') {
+            Add-PendingCollPlan $byCid @{}
+            return
+        }
+    } catch {}
     $stamp = (Get-Date).ToString('yyyyMMdd-HHmmss')
     $found = @{}
     foreach ($pd in @(Get-ConfiguredSteamProfileDirectories)) {
@@ -21729,21 +23430,41 @@ function Invoke-MainRemoveFromLibrary ($Games = $null, [bool]$DeleteFiles = $fal
                         if (-not $folderAllRemoved.ContainsKey($fk)) { $folderAllRemoved[$fk] = $true }
                         if (-not $isRemoved) { $folderAllRemoved[$fk] = $false }
                     }
+                    # Прогресс удаления папок: общий прогресс-бар главного окна, статус - в $labelHeader.
+                    $script:rmDelTotal = [Math]::Max(1, $folderAllRemoved.Count)
+                    $script:rmDelIdx = -1
+                    $script:rmDelName = ''
+                    $onDelProgress = {
+                        param([int64]$dn, [int64]$tt)
+                        try {
+                            $frac = $(if ($tt -gt 0) { [double]$dn / [double]$tt } else { 1.0 })
+                            $pctDel = [int][Math]::Floor(100.0 * ($script:rmDelIdx + $frac) / $script:rmDelTotal)
+                            $pctDel = [Math]::Max(1, [Math]::Min(99, $pctDel))
+                            $progressBarFolder.Value = $pctDel
+                            $labelHeader.Text = (T 'lib_remove_files_progress' @($script:rmDelName, $pctDel))
+                            [System.Windows.Forms.Application]::DoEvents()
+                        } catch {}
+                    }
                     foreach ($fk in @($folderAllRemoved.Keys)) {
                         $gf = [string]$okFolders[$fk]
+                        $script:rmDelIdx++
+                        $script:rmDelName = [System.IO.Path]::GetFileName($gf.TrimEnd('\', '/'))
                         if (-not [bool]$folderAllRemoved[$fk]) { [void]$folderSkipped.Add($gf); continue }
                         # Деинсталлятор уже убрал папку целиком - считаем её удалённой.
                         if (-not [System.IO.Directory]::Exists($gf)) { $filesDeleted++; continue }
                         try {
                             # Повторная проверка прямо перед удалением.
                             if (-not (Test-GameFolderSafeToDelete $gf @($remainExes.ToArray()))) { [void]$folderSkipped.Add($gf); continue }
-                            Remove-GamePathPumped $gf
+                            & $onDelProgress 0 1
+                            Remove-GamePathPumped $gf $onDelProgress
                             $filesDeleted++
                         } catch {
                             [void]$filesFailed.Add($gf + ' (' + [string]$_.Exception.Message + ')')
                             try { Write-LauncherLog ('Remove folder: ' + $gf + ': ' + $_.Exception.Message) } catch {}
                         }
                     }
+                    # Таймер главного окна сам спрячет бар через ~1.2 с после 100%.
+                    try { $progressBarFolder.Value = 100 } catch {}
                 }
             }
         } finally {
@@ -21783,6 +23504,114 @@ function Invoke-MainRemoveFromLibrary ($Games = $null, [bool]$DeleteFiles = $fal
     } catch {
         try { $form.UseWaitCursor = $false } catch {}
         try { $labelHeader.Text = [string]$_.Exception.Message } catch {}
+    }
+}
+
+# Можно ли удалить с диска отмеченный элемент панели, которого нет в библиотеке (Shift на корзине): файл или папка, не лицензионная
+# игра Steam; для папки - те же проверки безопасности, что и при удалении игры из библиотеки.
+function Test-MainDiskItemDeletable ([string]$Path, $RemainingExes = $null) {
+    try {
+        if ([string]::IsNullOrWhiteSpace($Path)) { return $false }
+        if (Test-PanelPathIsSteamApp $Path) { return $false }
+        if ([System.IO.Directory]::Exists($Path)) { return (Test-GameFolderSafeToDelete $Path @($RemainingExes)) }
+        if ([System.IO.File]::Exists($Path)) {
+            if (([System.IO.File]::GetAttributes($Path) -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) { return $false }
+            return $true
+        }
+        return $false
+    } catch { return $false }
+}
+
+# Shift на корзине: физически удаляет отмеченные файлы и папки, которых нет в библиотеке. Возвращает $false, если пользователь отказался.
+function Invoke-MainDeleteDiskItems ($Items) {
+    try {
+        if ($script:batchInProgress -or $script:moveInProgress) { return $false }
+        $all = @($Items)
+        if ($all.Count -eq 0) { return $true }
+        # Папку, внутри которой лежит exe ярлыка из библиотеки, не трогаем.
+        $remainExes = New-Object System.Collections.Generic.List[string]
+        try { $form.UseWaitCursor = $true; [System.Windows.Forms.Application]::DoEvents() } catch {}
+        try {
+            foreach ($en in @(Get-SteamLibraryEntries)) {
+                try { if ([string]$en.Kind -eq 'shortcut') { [void]$remainExes.Add([string]$en.Exe) } } catch {}
+            }
+        } finally { try { $form.UseWaitCursor = $false } catch {} }
+        $todo = New-Object System.Collections.Generic.List[object]
+        $skipped = New-Object System.Collections.Generic.List[string]
+        foreach ($it in $all) {
+            $ip = ([string]$it.Path).Trim().TrimEnd('\', '/')
+            if (Test-MainDiskItemDeletable $ip @($remainExes.ToArray())) {
+                [void]$todo.Add([PSCustomObject]@{ Path = $ip; Name = [string]$it.Name; Source = [string]$it.Source })
+            } else { [void]$skipped.Add($ip) }
+        }
+        if ($todo.Count -eq 0) {
+            if ($skipped.Count -gt 0) {
+                $skLines = New-Object System.Collections.Generic.List[string]
+                foreach ($sk in $skipped) { [void]$skLines.Add((T 'lib_remove_files_skip' @($sk))) }
+                try { Show-AppMessageBox($form, ($skLines.ToArray() -join "`n"), $global:appTitle, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null } catch {}
+            }
+            return $true
+        }
+        $shownP = (@($todo | Select-Object -First 10 | ForEach-Object { [string]$_.Path })) -join "`n"
+        if ($todo.Count -gt 10) { $shownP += "`n…" }
+        $ask = (T 'disk_remove_confirm' @($todo.Count, $shownP)).Replace('\n', "`n")
+        $ans = Show-AppMessageBox($form, $ask, $global:appTitle, [System.Windows.Forms.MessageBoxButtons]::YesNo, 17)
+        if ($ans -ne [System.Windows.Forms.DialogResult]::Yes) { return $false }
+
+        try { $form.UseWaitCursor = $true; [System.Windows.Forms.Application]::DoEvents() } catch {}
+        $deleted = 0
+        $failed = New-Object System.Collections.Generic.List[string]
+        $removedItems = New-Object System.Collections.Generic.List[object]
+        # Прогресс удаления: общий прогресс-бар главного окна, статус - в $labelHeader (как при удалении папок игр).
+        $script:rmDelTotal = [Math]::Max(1, $todo.Count)
+        $script:rmDelIdx = -1
+        $script:rmDelName = ''
+        $onDelProgress = {
+            param([int64]$dn, [int64]$tt)
+            try {
+                $frac = $(if ($tt -gt 0) { [double]$dn / [double]$tt } else { 1.0 })
+                $pctDel = [int][Math]::Floor(100.0 * ($script:rmDelIdx + $frac) / $script:rmDelTotal)
+                $pctDel = [Math]::Max(1, [Math]::Min(99, $pctDel))
+                $progressBarFolder.Value = $pctDel
+                $labelHeader.Text = (T 'lib_remove_files_progress' @($script:rmDelName, $pctDel))
+                [System.Windows.Forms.Application]::DoEvents()
+            } catch {}
+        }
+        try {
+            foreach ($t in $todo) {
+                $script:rmDelIdx++
+                $script:rmDelName = [System.IO.Path]::GetFileName($t.Path)
+                try {
+                    # Повторная проверка прямо перед удалением.
+                    if (-not (Test-MainDiskItemDeletable $t.Path @($remainExes.ToArray()))) { [void]$skipped.Add($t.Path); continue }
+                    & $onDelProgress 0 1
+                    Remove-GamePathPumped $t.Path $onDelProgress
+                    $deleted++
+                    [void]$removedItems.Add($t)
+                } catch {
+                    [void]$failed.Add($t.Path + ' (' + [string]$_.Exception.Message + ')')
+                    try { Write-LauncherLog ('Remove path: ' + $t.Path + ': ' + $_.Exception.Message) } catch {}
+                }
+            }
+            try { $progressBarFolder.Value = 100 } catch {}
+        } finally { try { $form.UseWaitCursor = $false } catch {} }
+        try { $form.Activate() } catch {}
+        foreach ($rt in $removedItems) {
+            try { if ([string]$rt.Source -eq 'C') { $global:checkedC.Remove([string]$rt.Name) } else { $global:checkedD.Remove([string]$rt.Name) } } catch {}
+        }
+        try { Refresh-Panels } catch {}
+        try { $labelHeader.Text = (T 'disk_remove_done' @($deleted)) } catch {}
+        if ($failed.Count -gt 0 -or $skipped.Count -gt 0) {
+            $probLines = New-Object System.Collections.Generic.List[string]
+            if ($failed.Count -gt 0) { [void]$probLines.Add((T 'lib_remove_files_fail' @($failed.Count, ($failed.ToArray() -join '; ')))) }
+            foreach ($sk in $skipped) { [void]$probLines.Add((T 'lib_remove_files_skip' @($sk))) }
+            try { Show-AppMessageBox($form, ($probLines.ToArray() -join "`n"), $global:appTitle, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null } catch {}
+        }
+        return $true
+    } catch {
+        try { $form.UseWaitCursor = $false } catch {}
+        try { $labelHeader.Text = [string]$_.Exception.Message } catch {}
+        return $false
     }
 }
 
@@ -23233,6 +25062,7 @@ function Get-AnimatedCoverFrames([byte[]]$Bytes, [int]$MaxSide = 640, [long]$Bud
 }
 
 # ---- Общий таймер проигрывания ----
+Write-StartupMark 'main form controls built, cover-animation module begins'
 $script:CoverAnimEntries = New-Object System.Collections.ArrayList
 $script:CoverAnimCache = New-Object System.Collections.ArrayList
 $script:CoverAnimTimer = $null
@@ -29682,7 +31512,7 @@ function Get-SgdbNoteText ($Item) {
     return (($lines.ToArray()) -join "`n")
 }
 
-# Плашка «значок + число»: Kind = 'heart' (лайки) или 'dl' (скачивания). Кэшируется по виду и тексту.
+# Плашка «значок + число»: Kind = 'heart' (лайки), 'eye' (просмотры) или 'dl' (скачивания). Кэшируется по виду и тексту.
 function Get-SgdbStatBadgeBitmap ([string]$Kind, [string]$Text) {
     if ($null -eq $script:SgdbBadgeStatCache) { $script:SgdbBadgeStatCache = @{} }
     $key = $Kind + '|' + $Text
@@ -29717,6 +31547,21 @@ function Get-SgdbStatBadgeBitmap ([string]$Kind, [string]$Text) {
                 $pts[$i] = New-Object System.Drawing.PointF([single]($padX + $hu[$i][0] * $iw), [single]($hy0 + $hu[$i][1] * $hh))
             }
             $g.FillPolygon($icoBr, $pts)
+        } elseif ($Kind -eq 'eye') {
+            # Глаз: контур «чечевицы» + зрачок (как у кнопки просмотра в карточке).
+            $icoBr = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 102, 192, 244))
+            $ox = [double]$padX
+            $penEye = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(255, 102, 192, 244), 1.4)
+            $penEye.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+            $penEye.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+            $gpEye = New-Object System.Drawing.Drawing2D.GraphicsPath
+            try {
+                $yMid = [single]($iy + $ih / 2.0)
+                $gpEye.AddBezier([single]($ox + 0.5), $yMid, [single]($ox + 3.0), [single]($iy + 0.5), [single]($ox + 8.0), [single]($iy + 0.5), [single]($ox + 10.5), $yMid)
+                $gpEye.AddBezier([single]($ox + 10.5), $yMid, [single]($ox + 8.0), [single]($iy + $ih - 0.5), [single]($ox + 3.0), [single]($iy + $ih - 0.5), [single]($ox + 0.5), $yMid)
+                $g.DrawPath($penEye, $gpEye)
+                $g.FillEllipse($icoBr, [single]($ox + 3.6), [single]($iy + 2.8), [single]3.8, [single]3.8)
+            } finally { $gpEye.Dispose(); $penEye.Dispose() }
         } else {
             # Скачивание: стрелка вниз над лотком.
             $icoBr = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 176, 186, 198))
@@ -29782,6 +31627,628 @@ function Get-SgdbNoteBadgeBitmap {
             if ($null -ne $o) { try { $o.Dispose() } catch {} }
         }
     }
+}
+
+# Данные обложки SteamGridDB для окна просмотра: автор, лайки, просмотры, дата загрузки, страница на сайте.
+# Имена полей в ответе сайта могут отличаться, поэтому перебираются несколько вариантов; чего нет - возвращается $null.
+function Get-SgdbPropValue ($Obj, [string[]]$Names) {
+    if ($null -eq $Obj) { return $null }
+    foreach ($n in $Names) {
+        try {
+            $pp = $Obj.PSObject.Properties[$n]
+            if ($null -ne $pp -and $null -ne $pp.Value -and -not [string]::IsNullOrWhiteSpace([string]$pp.Value)) { return $pp.Value }
+        } catch {}
+    }
+    return $null
+}
+function Get-SgdbItemMeta ($Item) {
+    if ($null -eq $Item) { return $null }
+    $author = $null
+    $authorUrl = $null
+    $a = Get-SgdbPropValue $Item @('author', 'user', 'uploader', 'author_name', 'username')
+    if ($null -ne $a) {
+        if ($a -is [string]) { $author = $a }
+        else {
+            $nm = Get-SgdbPropValue $a @('name', 'username', 'display_name', 'nickname', 'steam_name')
+            if ($null -ne $nm) { $author = [string]$nm }
+            # Профиль на SGDB: обычно steam64; иногда готовый url / id.
+            $au = Get-SgdbPropValue $a @('url', 'profile', 'profile_url', 'link')
+            if ($null -ne $au -and [string]$au -match '(?i)^https?://') { $authorUrl = [string]$au }
+            if ([string]::IsNullOrWhiteSpace($authorUrl)) {
+                $sid = Get-SgdbPropValue $a @('steam64', 'steam_id', 'steamid', 'steamId', 'id')
+                if ($null -ne $sid -and [string]$sid -match '^\d+$') {
+                    $authorUrl = 'https://www.steamgriddb.com/profile/' + [string]$sid
+                }
+            }
+        }
+    }
+    $likes = Get-SgdbPropValue $Item @('hearts', 'likes')
+    $views = Get-SgdbPropValue $Item @('views', 'view_count', 'viewCount', 'view', 'hits', 'downloads')
+    $dateText = $null
+    $dv = Get-SgdbPropValue $Item @('created_at', 'createdAt', 'uploaded_at', 'uploadedAt', 'date', 'created', 'timestamp', 'time')
+    if ($null -ne $dv) {
+        try {
+            $dt = $null
+            $num = 0.0
+            if ($dv -isnot [string] -and $dv -isnot [datetime] -and [double]::TryParse([string]$dv, [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$num)) {
+                if ($num -gt 100000000000) { $num = $num / 1000.0 }
+                $dt = [DateTimeOffset]::FromUnixTimeSeconds([long]$num).LocalDateTime
+            } elseif ($dv -is [datetime]) { $dt = ([datetime]$dv).ToLocalTime() }
+            else {
+                $parsed = [DateTimeOffset]::MinValue
+                if ([DateTimeOffset]::TryParse([string]$dv, [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::AssumeUniversal, [ref]$parsed)) { $dt = $parsed.LocalDateTime }
+            }
+            if ($null -ne $dt) { $dateText = $dt.ToString('dd.MM.yyyy') }
+        } catch {}
+    }
+    $id = Get-SgdbPropValue $Item @('id')
+    $imgUrl = ''
+    try { $imgUrl = [string](Get-SgdbPropValue $Item @('url')) } catch {}
+    $kind = 'grid'
+    if ($imgUrl -match '(?i)steamgriddb\.com/(grid|hero|logo|icon)/') { $kind = $Matches[1].ToLower() }
+    $pageUrl = $null
+    if ($null -ne $id -and [string]$id -match '^\d+$') { $pageUrl = 'https://www.steamgriddb.com/' + $kind + '/' + [string]$id }
+    $wRes = Get-SgdbPropValue $Item @('width', 'w')
+    $hRes = Get-SgdbPropValue $Item @('height', 'h')
+    $resolution = $null
+    try {
+        $wi = 0; $hi = 0
+        if ($null -ne $wRes) { [void][int]::TryParse([string]$wRes, [ref]$wi) }
+        if ($null -ne $hRes) { [void][int]::TryParse([string]$hRes, [ref]$hi) }
+        if ($wi -gt 0 -and $hi -gt 0) { $resolution = ('{0}x{1}' -f $wi, $hi) }
+    } catch {}
+    $res = [PSCustomObject]@{ Author = $author; AuthorUrl = $authorUrl; Likes = $likes; Views = $views; Date = $dateText; Url = $pageUrl; Resolution = $resolution }
+    try {
+        if ($script:SgdbTimingLog) {
+            $keys = (@($Item.PSObject.Properties | ForEach-Object { $_.Name }) -join ',')
+            $raw = ''; try { $raw = ($Item | ConvertTo-Json -Depth 3 -Compress); if ($raw.Length -gt 1200) { $raw = $raw.Substring(0, 1200) } } catch {}
+            Write-SgdbTimingLog ('PREVIEW META keys=[' + $keys + '] raw=' + $raw)
+        }
+    } catch {}
+    return $res
+}
+
+# ===================== ПРОСМОТР ОБЛОЖКИ В ПОЛНОМ РАЗРЕШЕНИИ =====================
+# Кнопка «глаз» по центру плитки в окне выбора обложек открывает это окно: сначала сразу показывается
+# миниатюра, а оригинал докачивается в фоне (curl.exe) и заменяет её, когда готов. Esc или щелчок — закрыть.
+function Show-SgdbFullPreview {
+    param($owner, [string]$source, $thumbBytes = $null, [bool]$thumbIsFull = $false, $item = $null)
+    if ([string]::IsNullOrWhiteSpace($source) -and $null -eq $thumbBytes) { return }
+    $st = @{ Img = $null; Stream = $null; ThumbImg = $null; ThumbStream = $null; Proc = $null; Tmp = $null; Timer = $null; Closed = $false }
+    $isLocal = $false
+    try { $isLocal = (-not [string]::IsNullOrWhiteSpace($source)) -and (Test-Path -LiteralPath $source -PathType Leaf) } catch {}
+
+    # Если «миниатюра» на плитке уже и есть полный файл (анимированная обложка: плитка докачала оригинал), второй раз его
+    # не качаем: байты кладутся во временный файл и открываются как локальный. Это главное ускорение анимированных обложек.
+    if ($thumbIsFull -and $null -ne $thumbBytes -and -not $isLocal) {
+        try {
+            $fullTmp = [System.IO.Path]::Combine($global:tempCovers, ('sgdb_full_{0}.tmp' -f [guid]::NewGuid().ToString('N')))
+            [System.IO.File]::WriteAllBytes($fullTmp, [byte[]]$thumbBytes)
+            $source = $fullTmp; $isLocal = $true; $st.Tmp = $fullTmp; $thumbBytes = $null
+        } catch {}
+    }
+
+    # Миниатюра, которую GDI+ не умеет разобрать (например WebP у анимированной обложки), всё равно что её нет:
+    # иначе окно открывалось бы пустым, с надписью «Загружаю оригинал…», на всё время загрузки.
+    if ($null -ne $thumbBytes) {
+        $thumbOk = $false
+        $tms = $null; $timg = $null
+        try {
+            $tms = New-Object System.IO.MemoryStream(,[byte[]]$thumbBytes)
+            $timg = [System.Drawing.Image]::FromStream($tms)
+            if ($timg.Width -ge 1 -and $timg.Height -ge 1) { $thumbOk = $true }
+        } catch {}
+        try { if ($timg) { $timg.Dispose() } } catch {}
+        try { if ($tms) { $tms.Dispose() } } catch {}
+        if (-not $thumbOk) { $thumbBytes = $null }
+    }
+
+    # Оригинал без готовой миниатюры сначала скачивается, а окно создаётся только когда есть что показать: никакого
+    # пустого окна «Загружаю оригинал…». Пока идёт загрузка, у владельца курсор ожидания; повторный вход блокируется.
+    $preFailed = $false
+    if ($null -eq $thumbBytes -and -not $isLocal -and -not [string]::IsNullOrWhiteSpace($source)) {
+        if ($script:SgdbPreviewBusy) { return }
+        $script:SgdbPreviewBusy = $true
+        $preTmp = [System.IO.Path]::Combine($global:tempCovers, ('sgdb_full_{0}.tmp' -f [guid]::NewGuid().ToString('N')))
+        $okp = $false
+        try {
+            try { if ($null -ne $owner) { $owner.UseWaitCursor = $true } } catch {}
+            $pp = $null
+            try {
+                $psi = New-Object System.Diagnostics.ProcessStartInfo
+                $psi.FileName = 'curl.exe'
+                $psi.Arguments = ('-L --silent --show-error --fail --connect-timeout 8 --max-time 90 --retry 2 --retry-delay 1 --compressed -H "Accept: image/webp,image/apng,image/png,image/*;q=0.8" -A "{2}/{3}" -o "{0}" "{1}"' -f $preTmp, $source, $global:appTitle, $global:appVersion)
+                $psi.UseShellExecute = $false
+                $psi.CreateNoWindow = $true
+                $pp = New-Object System.Diagnostics.Process
+                $pp.StartInfo = $psi
+                if (-not $pp.Start()) { $pp = $null }
+            } catch { $pp = $null }
+            if ($null -ne $pp) { while (-not $pp.WaitForExit(30)) { [System.Windows.Forms.Application]::DoEvents() } }
+            try { if ($null -ne $pp -and $pp.ExitCode -eq 0 -and (Test-Path -LiteralPath $preTmp) -and (Get-Item -LiteralPath $preTmp).Length -ge 128) { $okp = $true } } catch {}
+            if (-not $okp) {
+                # curl.exe недоступен или не смог подключиться — один запасной заход через Invoke-WebRequest.
+                try {
+                    Invoke-WebRequest -Uri $source -UserAgent 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' -TimeoutSec 40 -UseBasicParsing -OutFile $preTmp -ErrorAction Stop
+                    if ((Test-Path -LiteralPath $preTmp) -and (Get-Item -LiteralPath $preTmp).Length -ge 128) { $okp = $true }
+                } catch {}
+            }
+        } finally {
+            $script:SgdbPreviewBusy = $false
+            try { if ($null -ne $owner) { $owner.UseWaitCursor = $false } } catch {}
+        }
+        try { if ($null -ne $owner -and $owner.IsDisposed) { try { Remove-Item -LiteralPath $preTmp -Force -ErrorAction SilentlyContinue } catch {}; return } } catch {}
+        if ($okp) { $source = $preTmp; $isLocal = $true; $st.Tmp = $preTmp }
+        else { $preFailed = $true; try { Remove-Item -LiteralPath $preTmp -Force -ErrorAction SilentlyContinue } catch {} }
+    }
+
+    $f = New-SCForm
+    $f.Text = (T 'preview_title')
+    $f.FormBorderStyle = 'Sizable'
+    $f.StartPosition = 'CenterParent'
+    $f.KeyPreview = $true
+    $f.BackColor = [System.Drawing.Color]::FromArgb(13,20,28)
+    $f.ForeColor = [System.Drawing.Color]::FromArgb(220,223,228)
+    $f.Font = New-Object System.Drawing.Font("Segoe UI",9)
+    $f.MinimumSize = New-Object System.Drawing.Size(360,260)
+    # Значок окна: источник загрузки обложки — SGDB или «папка» для своих файлов.
+    try {
+        $previewFromSgdb = ($null -ne $item)
+        if (-not $previewFromSgdb -and -not $isLocal) { $previewFromSgdb = $true }
+        if ($previewFromSgdb) {
+            $sgdbIco = Get-SteamGridDbFormIcon
+            if ($null -ne $sgdbIco) { $f.Icon = $sgdbIco }
+        } else {
+            $locIco = Get-LocalSourceFormIcon
+            if ($null -ne $locIco) { $f.Icon = $locIco }
+        }
+    } catch {}
+    $scr = $null
+    try { $scr = [System.Windows.Forms.Screen]::FromControl($owner) } catch {}
+    if ($null -eq $scr) { $scr = [System.Windows.Forms.Screen]::PrimaryScreen }
+    $wa = $scr.WorkingArea
+    # Пока нет ни миниатюры, ни оригинала, окно маленькое (только строка «Загружаю оригинал…»): на весь экран оно
+    # раскрывается лишь по пропорциям картинки в $fitToImage, иначе при долгой загрузке висит пустое большое окно.
+    $f.ClientSize = New-Object System.Drawing.Size(460, 240)
+
+    $view = New-Object System.Windows.Forms.PictureBox
+    $view.Dock = 'Fill'
+    $view.SizeMode = [System.Windows.Forms.PictureBoxSizeMode]::Zoom
+    $view.BackColor = [System.Drawing.Color]::FromArgb(13,20,28)
+    $view.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $f.Controls.Add($view)
+
+    # Панель сведений об обложке (SteamGridDB): одна компактная центрированная строка.
+    # Рисуется целиком в Paint — без FlowLayout и разъезда по высоте.
+    $metaH = 0
+    $metaPanel = $null
+    $metaState = $null
+    $metaInfo = $null
+    try { $metaInfo = Get-SgdbItemMeta $item } catch { $metaInfo = $null }
+    if ($null -ne $metaInfo) {
+        $sepCh = [string][char]0x00B7
+        $timesCh = [string][char]0x00D7
+        $metaState = [ordered]@{
+            Dim = $null
+            Size = $null
+            Author = $null
+            AuthorUrl = $null
+            Date = $null
+            Likes = $null
+            Views = $null
+            Url = $null
+            HeartBmp = $null
+            EyeBmp = $null
+            Hits = @()
+        }
+        try {
+            if ($null -ne $metaInfo.Resolution -and -not [string]::IsNullOrWhiteSpace([string]$metaInfo.Resolution)) {
+                $metaState.Dim = ([string]$metaInfo.Resolution + 'px')
+            }
+        } catch {}
+        try {
+            if ($null -ne $metaInfo.Author -and -not [string]::IsNullOrWhiteSpace([string]$metaInfo.Author)) {
+                $metaState.Author = [string]$metaInfo.Author
+            }
+            if ($null -ne $metaInfo.AuthorUrl -and -not [string]::IsNullOrWhiteSpace([string]$metaInfo.AuthorUrl)) {
+                $metaState.AuthorUrl = [string]$metaInfo.AuthorUrl
+            }
+        } catch {}
+        try {
+            if ($null -ne $metaInfo.Date -and -not [string]::IsNullOrWhiteSpace([string]$metaInfo.Date)) {
+                $metaState.Date = [string]$metaInfo.Date
+            }
+        } catch {}
+        try {
+            $metaState.Likes = Format-SgdbCount $(if ($null -ne $metaInfo.Likes) { $metaInfo.Likes } else { 0 })
+            $metaState.HeartBmp = Get-SgdbStatBadgeBitmap 'heart' $metaState.Likes
+        } catch {}
+        try {
+            $metaState.Views = Format-SgdbCount $(if ($null -ne $metaInfo.Views) { $metaInfo.Views } else { 0 })
+            $metaState.EyeBmp = Get-SgdbStatBadgeBitmap 'eye' $metaState.Views
+        } catch {}
+        try {
+            if ($null -ne $metaInfo.Url -and -not [string]::IsNullOrWhiteSpace([string]$metaInfo.Url)) {
+                $metaState.Url = [string]$metaInfo.Url
+            }
+        } catch {}
+
+        $metaPanel = New-Object System.Windows.Forms.Panel
+        $metaPanel.Dock = 'Bottom'
+        $metaPanel.Height = 28
+        $metaPanel.BackColor = [System.Drawing.Color]::FromArgb(17, 24, 32)
+        $metaPanel.Cursor = [System.Windows.Forms.Cursors]::Default
+        $metaH = 28
+        try { $script:previewMetaH = 28 } catch {}
+
+        $metaPanel.Add_Paint({
+            param($s, $e)
+            try {
+                if ($null -eq $metaState) { return }
+                $g = $e.Graphics
+                $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+                $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::ClearTypeGridFit
+                $font = $s.Font
+                if ($null -eq $font) { $font = New-Object System.Drawing.Font('Segoe UI', 9) }
+                $muted = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(200, 205, 212))
+                $accent = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(102, 192, 244))
+                $sepBr = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(110, 120, 132))
+                $sf = New-Object System.Drawing.StringFormat([System.Drawing.StringFormat]::GenericTypographic)
+                $sf.Alignment = [System.Drawing.StringAlignment]::Near
+                $sf.LineAlignment = [System.Drawing.StringAlignment]::Center
+                try {
+                    $parts = New-Object System.Collections.ArrayList
+                    $addPart = {
+                        param([string]$kind, [string]$text, $bmp, [string]$href, [bool]$stick = $false)
+                        [void]$parts.Add([PSCustomObject]@{ Kind = $kind; Text = $text; Bmp = $bmp; Href = $href; Stick = $stick; Width = 0 })
+                    }
+                    if (-not [string]::IsNullOrWhiteSpace([string]$metaState.Dim)) {
+                        & $addPart 'text' ([string]$metaState.Dim) $null $null $false
+                    }
+                    if (-not [string]::IsNullOrWhiteSpace([string]$metaState.Size)) {
+                        & $addPart 'text' ([string]$metaState.Size) $null $null $false
+                    }
+                    if (-not [string]::IsNullOrWhiteSpace([string]$metaState.Author)) {
+                        & $addPart 'text' ((T 'preview_meta_author') + ':') $null $null $false
+                        if (-not [string]::IsNullOrWhiteSpace([string]$metaState.AuthorUrl)) {
+                            & $addPart 'link' ([string]$metaState.Author) $null ([string]$metaState.AuthorUrl) $true
+                        } else {
+                            & $addPart 'text' ([string]$metaState.Author) $null $null $true
+                        }
+                    }
+                    if (-not [string]::IsNullOrWhiteSpace([string]$metaState.Date)) {
+                        & $addPart 'text' ((T 'preview_meta_date') + ':') $null $null $false
+                        & $addPart 'text' ([string]$metaState.Date) $null $null $true
+                    }
+                    if ($null -ne $metaState.HeartBmp) {
+                        & $addPart 'icon' $null $metaState.HeartBmp $null $false
+                    }
+                    if ($null -ne $metaState.EyeBmp) {
+                        & $addPart 'icon' $null $metaState.EyeBmp $null $false
+                    }
+                    if (-not [string]::IsNullOrWhiteSpace([string]$metaState.Url)) {
+                        & $addPart 'link' 'URL' $null ([string]$metaState.Url) $false
+                    }
+                    if ($parts.Count -eq 0) { return }
+
+                    $gap = 5.0
+                    $stickGap = 4.0
+                    $sepW = [double]$g.MeasureString($sepCh, $font, 1000, $sf).Width
+                    $total = 0.0
+                    for ($i = 0; $i -lt $parts.Count; $i++) {
+                        $p = $parts[$i]
+                        if ($p.Kind -eq 'icon' -and $null -ne $p.Bmp) {
+                            $p.Width = [double]$p.Bmp.Width
+                        } else {
+                            $p.Width = [Math]::Ceiling([double]$g.MeasureString([string]$p.Text, $font, 1000, $sf).Width)
+                        }
+                        $parts[$i] = $p
+                        if ($i -gt 0) {
+                            if ([bool]$p.Stick) { $total += $stickGap }
+                            else { $total += $gap + $sepW + $gap }
+                        }
+                        $total += $p.Width
+                    }
+
+                    $x = [Math]::Max(4.0, ([double]$s.ClientSize.Width - $total) / 2.0)
+                    $yMid = [double]$s.ClientSize.Height / 2.0
+                    $hits = New-Object System.Collections.ArrayList
+
+                    for ($i = 0; $i -lt $parts.Count; $i++) {
+                        $p = $parts[$i]
+                        if ($i -gt 0) {
+                            if ([bool]$p.Stick) {
+                                $x += $stickGap
+                            } else {
+                                $x += $gap
+                                $g.DrawString($sepCh, $font, $sepBr, [single]$x, [single]$yMid, $sf)
+                                $x += $sepW + $gap
+                            }
+                        }
+                        if ($p.Kind -eq 'icon' -and $null -ne $p.Bmp) {
+                            $iy = [int][Math]::Round($yMid - $p.Bmp.Height / 2.0)
+                            $g.DrawImage($p.Bmp, [int][Math]::Round($x), $iy, $p.Bmp.Width, $p.Bmp.Height)
+                        } elseif ($p.Kind -eq 'link') {
+                            $g.DrawString([string]$p.Text, $font, $accent, [single]$x, [single]$yMid, $sf)
+                            $rect = New-Object System.Drawing.Rectangle([int][Math]::Floor($x), 0, [int][Math]::Ceiling($p.Width), [int]$s.ClientSize.Height)
+                            [void]$hits.Add([PSCustomObject]@{ Rect = $rect; Href = [string]$p.Href })
+                        } else {
+                            $g.DrawString([string]$p.Text, $font, $muted, [single]$x, [single]$yMid, $sf)
+                        }
+                        $x += $p.Width
+                    }
+                    $metaState.Hits = @($hits.ToArray())
+                } finally {
+                    $muted.Dispose(); $accent.Dispose(); $sepBr.Dispose(); $sf.Dispose()
+                }
+            } catch {}
+        })
+
+        $metaPanel.Add_MouseMove({
+            param($s, $e)
+            try {
+                $hand = $false
+                if ($null -ne $metaState -and $null -ne $metaState.Hits) {
+                    foreach ($h in @($metaState.Hits)) {
+                        if ($h.Rect.Contains($e.Location)) { $hand = $true; break }
+                    }
+                }
+                $s.Cursor = if ($hand) { [System.Windows.Forms.Cursors]::Hand } else { [System.Windows.Forms.Cursors]::Default }
+            } catch {}
+        })
+        $metaPanel.Add_MouseClick({
+            param($s, $e)
+            try {
+                if ($null -eq $metaState -or $null -eq $metaState.Hits) { return }
+                foreach ($h in @($metaState.Hits)) {
+                    if ($h.Rect.Contains($e.Location) -and -not [string]::IsNullOrWhiteSpace([string]$h.Href)) {
+                        try { Start-Process -FilePath ([string]$h.Href) } catch {}
+                        break
+                    }
+                }
+            } catch {}
+        })
+        $metaPanel.Add_Resize({ param($s, $e) try { $s.Invalidate() } catch {} })
+
+        $f.Controls.Add($metaPanel)
+        $metaH = [int]$metaPanel.Height
+        try { $script:previewMetaH = $metaH } catch {}
+    }
+
+    $info = New-Object System.Windows.Forms.Label
+    $info.Dock = 'Bottom'
+    $info.Height = 28
+    $info.TextAlign = 'MiddleCenter'
+    $info.BackColor = [System.Drawing.Color]::FromArgb(23,29,37)
+    $info.ForeColor = [System.Drawing.Color]::FromArgb(170,178,190)
+    $f.Controls.Add($info)
+
+    $hint = '  ' + (T 'preview_hint')
+
+    # Подгоняет окно под пропорции изображения: клиентская область = картинка (масштаб как у Zoom, в пределах
+    # 88% x 86% рабочей области) + строка информации снизу, поэтому вокруг изображения нет пустых полей.
+    $fitToImage = {
+        param($img)
+        try {
+            if ($null -eq $img -or $img.Width -lt 1 -or $img.Height -lt 1) { return }
+            $mh = [int]$metaH
+            try { if ($null -ne $metaPanel -and -not $metaPanel.IsDisposed) { $mh = [Math]::Max(0, [int]$metaPanel.Height) } } catch {}
+            $infoH = [int]$info.Height + $mh
+            $maxW = [double][int]($wa.Width * 0.88)
+            $maxH = [double]([int]($wa.Height * 0.86) - $infoH)
+            $k = [Math]::Min($maxW / [double]$img.Width, $maxH / [double]$img.Height)
+            $w = [Math]::Max(1, [int][Math]::Floor($img.Width * $k))
+            $h = [Math]::Max(1, [int][Math]::Floor($img.Height * $k))
+            $cx = $f.Left + [int]($f.Width / 2); $cy = $f.Top + [int]($f.Height / 2)
+            $f.ClientSize = New-Object System.Drawing.Size($w, ($h + $infoH))
+            if ($f.Visible -and $f.WindowState -eq [System.Windows.Forms.FormWindowState]::Normal) {
+                $nx = [Math]::Max($wa.Left, [Math]::Min($cx - [int]($f.Width / 2), $wa.Right - $f.Width))
+                $ny = [Math]::Max($wa.Top, [Math]::Min($cy - [int]($f.Height / 2), $wa.Bottom - $f.Height))
+                $f.Location = New-Object System.Drawing.Point($nx, $ny)
+            }
+        } catch {}
+    }
+
+    # Миниатюра (если уже была скачана на плитке) — показывается мгновенно, пока грузится оригинал.
+    if ($null -ne $thumbBytes) {
+        try {
+            $st.ThumbStream = New-Object System.IO.MemoryStream(,[byte[]]$thumbBytes)
+            $st.ThumbImg = [System.Drawing.Image]::FromStream($st.ThumbStream)
+            $view.Image = $st.ThumbImg
+            & $fitToImage $st.ThumbImg
+        } catch { $st.ThumbImg = $null }
+    }
+
+    # Показывает файл целиком (WebP -> первый кадр; WebM показать нечем).
+    $showFile = {
+        param([string]$path)
+        $fmt = ''
+        try { $fmt = [string](Get-ImageContainerInfo $path).Format } catch {}
+        if ($fmt -eq 'webm') { return 'unsupported' }
+        $bytes = [System.IO.File]::ReadAllBytes($path)
+        $img = $null; $ms = $null
+        if ($fmt -eq 'webp') {
+            $img = Get-WebpFirstFrameBitmap $path
+            if ($null -eq $img) { return 'failed' }
+        } else {
+            $ms = New-Object System.IO.MemoryStream(,$bytes)
+            $img = [System.Drawing.Image]::FromStream($ms)
+        }
+        try { Stop-CoverAnimation $view $false $true } catch {}
+        $view.Image = $null
+        try { if ($st.Img) { $st.Img.Dispose() } } catch {}
+        try { if ($st.Stream) { $st.Stream.Dispose() } } catch {}
+        $st.Img = $img; $st.Stream = $ms
+        $view.Image = $img
+        & $fitToImage $img
+        # Анимированный APNG / WebP: после первого кадра остальные раскодируются в фоне и играют (GIF GDI+ проигрывает сама).
+        try {
+            $ci = Get-ImageContainerInfo $path
+            if ([bool]$ci.Animated -and [string]$ci.Format -ne 'gif') {
+                $aSide = [int][Math]::Min(1600, [Math]::Max(480, [Math]::Max($img.Width, $img.Height)))
+                Queue-CoverAnimJob $view $path $bytes $aSide ([long]125829120) 120 $true $false
+            }
+        } catch {}
+        $kb = $bytes.Length / 1KB
+        $sz = if ($kb -ge 1024) { ('{0:N1} MB' -f ($kb / 1024)) } else { ('{0:N0} KB' -f $kb) }
+        $dot = [string][char]0x00B7; $times = [string][char]0x00D7
+        $dimText = ('{0}{1}{2}px' -f $img.Width, $times, $img.Height)
+        $metaHasDim = $false
+        try {
+            if ($null -ne $metaState) {
+                $metaState.Dim = $dimText
+                $metaState.Size = $sz
+                $metaHasDim = $true
+                try { if ($null -ne $metaPanel -and -not $metaPanel.IsDisposed) { $metaPanel.Invalidate() } } catch {}
+            }
+        } catch {}
+        if ($metaHasDim) {
+            $info.Text = ([string]$hint).TrimStart()
+        } else {
+            $info.Text = ($dimText + $dot + $sz) + $hint
+        }
+        return 'ok'
+    }
+
+    $finishFail = {
+        param([string]$key)
+        if ($null -ne $st.ThumbImg) { $info.Text = (T $key) + $hint } else { $info.Text = (T 'preview_failed_nothumb') + $hint }
+    }
+
+    $close = { try { $f.Close() } catch {} }
+    $view.Add_Click($close)
+    $f.Add_KeyDown({
+        param($s,$e)
+        if ($e.KeyCode -eq [System.Windows.Forms.Keys]::Escape) { $e.Handled = $true; & $close }
+    })
+
+    $f.Add_FormClosed({
+        $st.Closed = $true
+        try { if ($st.Timer) { $st.Timer.Stop(); $st.Timer.Dispose() } } catch {}
+        try { if ($st.Proc -and -not $st.Proc.HasExited) { $st.Proc.Kill() } } catch {}
+        try { Stop-CoverAnimation $view $false $true } catch {}
+        try { $view.Image = $null } catch {}
+        foreach ($k in @('Img','Stream','ThumbImg','ThumbStream')) { try { if ($st[$k]) { $st[$k].Dispose() } } catch {} }
+        try { if ($st.Tmp -and (Test-Path -LiteralPath $st.Tmp)) { Remove-Item -LiteralPath $st.Tmp -Force -ErrorAction SilentlyContinue } } catch {}
+    })
+
+    if ($isLocal) {
+        # Своя обложка / иконка с диска: открываем файл сразу.
+        $info.Text = (T 'preview_loading')
+        try {
+            $r = & $showFile $source
+            if ($r -ne 'ok') { & $finishFail 'preview_unsupported' }
+        } catch { & $finishFail 'preview_failed' }
+    } elseif ($preFailed) {
+        & $finishFail 'preview_failed'
+    } else {
+        $info.Text = (T 'preview_loading')
+        $st.Tmp = [System.IO.Path]::Combine($global:tempCovers, ('sgdb_full_{0}.tmp' -f [guid]::NewGuid().ToString('N')))
+        try {
+            $psi = New-Object System.Diagnostics.ProcessStartInfo
+            $psi.FileName = 'curl.exe'
+            $psi.Arguments = ('-L --silent --show-error --fail --connect-timeout 8 --max-time 90 --retry 2 --retry-delay 1 --compressed -H "Accept: image/webp,image/apng,image/png,image/*;q=0.8" -A "{2}/{3}" -o "{0}" "{1}"' -f $st.Tmp, $source, $global:appTitle, $global:appVersion)
+            $psi.UseShellExecute = $false
+            $psi.CreateNoWindow = $true
+            $p = New-Object System.Diagnostics.Process
+            $p.StartInfo = $psi
+            if ($p.Start()) { $st.Proc = $p }
+        } catch { $st.Proc = $null }
+
+        $tm = New-Object System.Windows.Forms.Timer
+        $tm.Interval = 100
+        $st.Timer = $tm
+        $tm.Add_Tick({
+            if ($st.Closed) { return }
+            $done = $true
+            try { if ($null -ne $st.Proc) { $done = $st.Proc.HasExited } } catch { $done = $true }
+            if (-not $done) { return }
+            $st.Timer.Stop()
+            $ok = $false
+            try { if ($null -ne $st.Proc -and $st.Proc.ExitCode -eq 0 -and (Test-Path -LiteralPath $st.Tmp) -and (Get-Item -LiteralPath $st.Tmp).Length -ge 128) { $ok = $true } } catch {}
+            if (-not $ok) {
+                # curl.exe недоступен или не смог подключиться — один запасной заход через Invoke-WebRequest.
+                try {
+                    $info.Text = (T 'preview_loading')
+                    [System.Windows.Forms.Application]::DoEvents()
+                    Invoke-WebRequest -Uri $source -UserAgent 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' -TimeoutSec 40 -UseBasicParsing -OutFile $st.Tmp -ErrorAction Stop
+                    if ((Test-Path -LiteralPath $st.Tmp) -and (Get-Item -LiteralPath $st.Tmp).Length -ge 128) { $ok = $true }
+                } catch {}
+            }
+            if ($st.Closed) { return }
+            if ($ok) {
+                try {
+                    $r = & $showFile $st.Tmp
+                    if ($r -ne 'ok') { & $finishFail 'preview_unsupported' }
+                } catch { & $finishFail 'preview_failed' }
+            } else { & $finishFail 'preview_failed' }
+        })
+        $tm.Start()
+    }
+
+    try { Enable-SCCascadeClose $f $true } catch {}
+    try { if ($null -ne $owner) { [void]$f.ShowDialog($owner) } else { [void]$f.ShowDialog() } } catch {}
+    try { $f.Dispose() } catch {}
+}
+
+# Кнопка с глазом ровно по центру миниатюры плитки. Выглядит так же, как «глаз» (скрыть логотип) в карточке игры:
+# плоская кнопка 26x24 в цветах темы, значок рисует Invoke-EditorDrawIcon 'eye'. Работает и для вариантов SteamGridDB
+# (источник — URL в $pb.Tag, миниатюра — $pb.ThumbBytes), и для своих обложек (источник — путь к файлу в $pb.Tag).
+# Открывает полноразмерный просмотр для плитки (PictureBox). Используется и кнопкой-глазком, и правой кнопкой мыши по плитке.
+function Show-SgdbPreviewForPb {
+    param($pb, $owner)
+    try {
+        $srcStr = [string]$pb.Tag
+        $tb = $null
+        try { if ($null -ne $pb.PSObject.Properties['ThumbBytes']) { $tb = $pb.ThumbBytes } } catch {}
+        $tf = $false
+        try { if ($null -ne $pb.PSObject.Properties['ThumbIsFull']) { $tf = [bool]$pb.ThumbIsFull } } catch {}
+        $mi = $null
+        try { if ($null -ne $pb.PSObject.Properties['SgdbItem']) { $mi = $pb.SgdbItem } } catch {}
+        Show-SgdbFullPreview $owner $srcStr $tb $tf $mi
+    } catch {}
+}
+
+function Add-SgdbPreviewEye {
+    param($card, $pb, $owner, $tip = $null)
+    $eye = New-Object System.Windows.Forms.Button
+    $eye.Size = New-Object System.Drawing.Size(26, 24)
+    $ex = [int]($pb.Left + [Math]::Floor(($pb.Width - 26) / 2))
+    # Строка значков под рамкой обложки: 22 px, начинается через 5 px после низа миниатюры; кнопка 24 px центрируется по ней.
+    $ey = [int]($pb.Top + $pb.Height + 5 - 1)
+    $eye.Location = New-Object System.Drawing.Point($ex,$ey)
+    $eye.FlatStyle = 'Flat'
+    $eye.FlatAppearance.BorderColor = $steamUi.Border
+    $eye.BackColor = $steamUi.Panel
+    $eye.ForeColor = $steamUi.Text
+    $eye.Font = New-Object System.Drawing.Font('Segoe MDL2 Assets', 10)
+    $eye.Padding = New-Object System.Windows.Forms.Padding(0)
+    $eye.Text = ''
+    $eye.TabStop = $false
+    $eye.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $eye.Tag = @{ Pb = $pb; Owner = $owner }
+    $eye.Add_Paint({
+        param($sender, $e)
+        try { Invoke-EditorDrawIcon $e.Graphics 'eye' $sender.ForeColor $sender.ClientSize $false } catch {}
+    })
+    $eye.Add_Click({
+        try { Show-SgdbPreviewForPb $this.Tag.Pb $this.Tag.Owner } catch {}
+    })
+    # Правая кнопка мыши по миниатюре = то же, что и глазок: показать обложку в большом разрешении.
+    try {
+        $pb | Add-Member -NotePropertyName PreviewOwner -NotePropertyValue $owner -Force
+        $pb.Add_MouseUp({
+            param($s, $e)
+            try {
+                if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Right) {
+                    Show-SgdbPreviewForPb $s $s.PreviewOwner
+                }
+            } catch {}
+        })
+    } catch {}
+    $card.Controls.Add($eye)
+    $eye.BringToFront()
+    if ($null -ne $tip) { try { $tip.SetToolTip($eye, (T 'preview_eye_tip')) } catch {} }
 }
 
 function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$thumbHeight, $owner, $customStore = $null, $moreProvider = $null, $platformKeys = @()) {
@@ -30035,11 +32502,13 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
         $pb.Cursor=[System.Windows.Forms.Cursors]::Hand
         $pb.Tag=$url
         $pb | Add-Member -NotePropertyName ThumbIsFull -NotePropertyValue ([bool]($thumbUrl -eq $url)) -Force
+        try { $pb | Add-Member -NotePropertyName SgdbItem -NotePropertyValue $item -Force } catch {}
         $card.Controls.Add($pb)
 
         # Анимация загрузки поверх конкретно этой миниатюры.
         $spinner=New-CoverSpinner $pb ([System.Drawing.Color]::FromArgb(102,192,244)) 46
         $pb.Controls.Add($spinner)
+        try { Add-SgdbPreviewEye $card $pb $dlg $dialogState.Tip } catch {}
 
         # Значки в строке ПОД рамкой обложки (на самой обложке ничего не рисуется; номеров у плиток больше нет):
         #   слева - «анимированная обложка» и «комментарий автора» (текст комментария - во всплывающей подсказке),
@@ -30084,8 +32553,10 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
             } catch {}
         }
 
-        $pb.Add_Click({
+        $pb.Add_MouseClick({
+            param($s,$e)
             try {
+                if($e.Button -ne [System.Windows.Forms.MouseButtons]::Left){ return }
                 $picked=[string]$this.Tag
                 if(-not [string]::IsNullOrWhiteSpace($picked)){
                     try {
@@ -30851,17 +33322,46 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
                 try { if ([bool](Get-ImageContainerInfo $path).Animated) { $pb | Add-Member -NotePropertyName AnimBytes -NotePropertyValue $bytes -Force; Queue-CoverTileAnimation $pb } } catch {}
             } catch {}
             $card.Controls.Add($pb)
+            try { Add-SgdbPreviewEye $card $pb $dlg $dialogState.Tip } catch {}
 
-            $num=New-Object System.Windows.Forms.Label
-            $num.Text=(T $labelKey)
-            $num.Location=New-Object System.Drawing.Point(5,($thumbHeight+10))
-            $num.Size=New-Object System.Drawing.Size($thumbWidth,22)
-            $num.TextAlign='MiddleCenter'
-            $num.ForeColor=[System.Drawing.Color]::FromArgb(102,192,244)
-            $card.Controls.Add($num)
-
-            $pb.Add_Click({
+            # Под рамкой слева: для своих файлов — значок папки (как бейдж Local),
+            # для иконок из EXE — прежняя текстовая подпись «Из EXE».
+            if ($labelKey -eq 'custom_label_exe') {
+                $num=New-Object System.Windows.Forms.Label
+                $num.Text=(T $labelKey)
+                $num.Location=New-Object System.Drawing.Point(5,($thumbHeight+10))
+                $num.Size=New-Object System.Drawing.Size($thumbWidth,22)
+                $num.TextAlign='MiddleLeft'
+                $num.ForeColor=[System.Drawing.Color]::FromArgb(102,192,244)
+                $card.Controls.Add($num)
+                $num.SendToBack()
+            } else {
+                $ownBadge=New-Object System.Windows.Forms.PictureBox
+                $ownBadge.SizeMode=[System.Windows.Forms.PictureBoxSizeMode]::Normal
+                $ownBadge.BackColor=[System.Drawing.Color]::FromArgb(13,20,28)
+                $ownBmp=$null
+                try { $ownBmp=Get-LocalSourceIconBitmap } catch {}
+                if ($null -ne $ownBmp) {
+                    $ownBadge.Image=$ownBmp
+                    $ownBadge.Size=New-Object System.Drawing.Size($ownBmp.Width,$ownBmp.Height)
+                    $ownBadge.Location=New-Object System.Drawing.Point(5,[int]($thumbHeight+10+[Math]::Floor((22-$ownBmp.Height)/2)))
+                } else {
+                    $ownBadge.Size=New-Object System.Drawing.Size(20,20)
+                    $ownBadge.Location=New-Object System.Drawing.Point(5,($thumbHeight+11))
+                }
+                $card.Controls.Add($ownBadge)
+                $ownBadge.BringToFront()
                 try {
+                    if ($null -ne $dialogState.Tip) {
+                        $dialogState.Tip.SetToolTip($ownBadge,(T 'custom_label_tip'))
+                    }
+                } catch {}
+            }
+
+            $pb.Add_MouseClick({
+                param($s,$e)
+                try {
+                    if($e.Button -ne [System.Windows.Forms.MouseButtons]::Left){ return }
                     $picked=[string]$this.Tag
                     if(-not [string]::IsNullOrWhiteSpace($picked) -and (Test-Path -LiteralPath $picked)){
                         $dialogState.Result=$picked
@@ -30882,7 +33382,8 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
                 $mi.Tag=$tag
                 $mi.Add_Click({ try { & $removeCustomCard $this.Tag } catch {} })
                 [void]$menu.Items.Add($mi)
-                $pb.ContextMenuStrip=$menu
+                # Контекстное меню отключено: правая кнопка мыши теперь открывает просмотр в полном разрешении (удаление — красным крестиком).
+                # $pb.ContextMenuStrip=$menu
 
                 # Красный крестик в правом верхнем углу миниатюры.
                 $xb=New-Object System.Windows.Forms.PictureBox
@@ -31273,6 +33774,7 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
     $dlg.ClientSize=New-Object System.Drawing.Size(1084, ($flow.Bottom+12))
 
     try { Initialize-FormForSmallScreen -Form $dlg -Owner $owner } catch {}
+    try { Enable-SCCascadeClose $dlg $true } catch {}
     $dlg.ShowDialog($owner)|Out-Null
     return $dialogState.Result
 }
@@ -32151,6 +34653,18 @@ function Get-LibUniformIcon ([string]$Id, [int]$Size = 0) {
     return $bmp
 }
 
+# Враппер, через который запускается ярлык Non-Steam (профиль из «Настроек -> Врапперы») или $null.
+# ROM-ярлыки не учитываем: у них свой значок эмулятора.
+function Get-EntryLaunchWrapperProfile ($entry) {
+    try {
+        if ($null -eq $entry -or [string]$entry.Kind -ne 'shortcut') { return $null }
+        if (@($global:launchWrappers).Count -eq 0) { return $null }
+        $lw = Find-LaunchWrapperForShortcut ([string]$entry.Exe) ([string]$entry.LaunchOptions)
+        if ($null -ne $lw -and $null -ne $lw.Wrapper) { return $lw.Wrapper }
+    } catch {}
+    return $null
+}
+
 # Значок эмулятора для ROM-плиток: исходник берём в максимальном качестве из exe (до 256 px),
 # а не 32-пиксельный из кэша, и приводим к тому же размеру/полям, что и значки лаунчеров.
 function Get-LibEmulatorBadgeBitmap ($Emu, [int]$Size = 0) {
@@ -32501,6 +35015,42 @@ function Get-SteamGridDbFormIcon {
         } finally { $ms.Dispose() }
     } catch { $global:sgdbFormIcon = $null }
     return $global:sgdbFormIcon
+}
+
+# Иконка «папка» для заголовка окна (свои/локальные обложки). Та же фигурка, что
+# в бейдже источника «Local» в карточке и в меню выбора обложек.
+$global:localSourceFormIcon = $null
+function Get-LocalSourceFormIcon {
+    if ($null -ne $global:localSourceFormIcon) { return $global:localSourceFormIcon }
+    try {
+        $src = Get-LocalSourceIconBitmap
+        if ($null -eq $src) { return $null }
+        try {
+            $bmp = New-Object System.Drawing.Bitmap 32, 32
+            $g = [System.Drawing.Graphics]::FromImage($bmp)
+            try {
+                $g.Clear([System.Drawing.Color]::Transparent)
+                $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+                $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
+                $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+                $scale = [Math]::Min(28.0 / [Math]::Max(1, [int]$src.Width), 28.0 / [Math]::Max(1, [int]$src.Height))
+                $dstW = [int][Math]::Round($src.Width * $scale)
+                $dstH = [int][Math]::Round($src.Height * $scale)
+                $g.DrawImage($src, [int][Math]::Round((32 - $dstW) / 2.0), [int][Math]::Round((32 - $dstH) / 2.0), $dstW, $dstH)
+            } finally { $g.Dispose() }
+            try { $global:localSourceFormIcon = [System.Drawing.Icon]::FromHandle($bmp.GetHicon()) } finally { $bmp.Dispose() }
+        } finally { try { $src.Dispose() } catch {} }
+    } catch { $global:localSourceFormIcon = $null }
+    return $global:localSourceFormIcon
+}
+
+# Значок окна карточки из EXE выбранной игры (для уже добавленной игры).
+function Get-FormIconFromExePath ([string]$exePath) {
+    try {
+        $p = ([string]$exePath).Trim().Trim('"')
+        if ([string]::IsNullOrWhiteSpace($p) -or -not (Test-Path -LiteralPath $p -PathType Leaf)) { return $null }
+        return [System.Drawing.Icon]::ExtractAssociatedIcon($p)
+    } catch { return $null }
 }
 
 # Значки для кнопок переключения источника поиска (Steam / SGDB) в карточке игры.
@@ -33932,6 +36482,7 @@ function New-EditorCoverSlot($parent, [string]$title, [int]$x, [int]$y, [int]$w,
     $pb.Size = New-Object System.Drawing.Size(([int]$w - 20), ([int]$h - 45))
     $pb.SizeMode = [System.Windows.Forms.PictureBoxSizeMode]::Zoom
     $pb.BackColor = $steamUi.Input
+    $pb.Cursor = [System.Windows.Forms.Cursors]::Hand
     $group.Controls.Add($pb)
 
     $missing = New-Object System.Windows.Forms.PictureBox
@@ -37146,7 +39697,10 @@ function Find-SaveHeuristic {
 
         $items = New-Object System.Collections.ArrayList
         $seenP = @{}
+        $exH = @(Get-SaveBackupExcludeDirs)
         foreach ($c in @($cands | Sort-Object -Property Score -Descending)) {
+            # Папки самой программы (данные, кэш типов, бэкапы) сохранениями не считаются.
+            if (Test-SavePathExcluded ([string]$c.Path) $exH) { continue }
             $pk = ([string]$c.Path).TrimEnd('\', '/').ToLowerInvariant()
             if ($seenP.ContainsKey($pk)) { continue }
             $seenP[$pk] = $true
@@ -37998,12 +40552,38 @@ function Get-SaveFileSha ([string]$Path, $Sha) {
 
 # Из найденных Find-GameSaveLocations элементов делает корни: файл/папка, плейсхолдерный путь, список файлов.
 # Папки, лежащие внутри уже взятых папок, отбрасываются (чтобы не архивировать дважды).
+# Папки самой программы, которые никогда не бывают сохранениями игры: папка данных (%AppData%\Steam Commander, в ней же хранилище и
+# папка бэкапов по умолчанию), кэш типов (%LocalAppData%\SteamCommander) и сама папка бэкапов (она может быть задана в другом месте).
+# Нужно, когда Steam Commander добавлен в Steam как игра: эвристика находит для неё эти папки по имени, и без этого фильтра
+# в архив попадали бы прежние бэкапы (бэкапы бэкапов, архив рос с каждым запуском, а хэш менялся и «без изменений» не срабатывало).
+function Get-SaveOwnLocalDir { return (Join-Path ([string][Environment]::GetFolderPath('LocalApplicationData')) 'SteamCommander') }
+function Get-SaveBackupExcludeDirs {
+    $res = New-Object System.Collections.ArrayList
+    foreach ($x in @([string]$global:appDataDir, (Get-SaveOwnLocalDir), (Get-SaveStoreRoot), (Get-SaveBackupFolderPath))) {
+        try {
+            $xs = ([string]$x).Trim().TrimEnd('\', '/')
+            if ($xs.Length -ge 3) { [void]$res.Add($xs + '\') }
+        } catch {}
+    }
+    return @($res)
+}
+function Test-SavePathExcluded ([string]$Path, $ExDirs) {
+    if ([string]::IsNullOrEmpty($Path)) { return $false }
+    $pp = $Path.TrimEnd('\', '/') + '\'
+    foreach ($e in @($ExDirs)) {
+        if ($pp.StartsWith([string]$e, [System.StringComparison]::OrdinalIgnoreCase)) { return $true }
+    }
+    return $false
+}
+
 function Get-SaveRoots ($Items, [hashtable]$Ctx) {
     $dirs = New-Object System.Collections.ArrayList
     $files = New-Object System.Collections.ArrayList
+    $exDirs = @(Get-SaveBackupExcludeDirs)
     foreach ($it in @($Items)) {
         if ([string]$it.Kind -ne 'file') { continue }
         $p = [string]$it.Path
+        if (Test-SavePathExcluded $p $exDirs) { continue }
         if ([System.IO.Directory]::Exists($p)) { if (-not (Test-SaveReparse $p)) { [void]$dirs.Add($it) } }
         elseif ([System.IO.File]::Exists($p)) { [void]$files.Add($it) }
     }
@@ -38020,6 +40600,12 @@ function Get-SaveRoots ($Items, [hashtable]$Ctx) {
     $roots = New-Object System.Collections.ArrayList
     foreach ($d in $keptDirs) {
         $fl = @(Get-SaveFilesUnder ([string]$d.Path))
+        # Файлы из папки бэкапов/хранилища, лежащей внутри найденной папки, в бэкап не берём.
+        if ($exDirs.Count -gt 0 -and $fl.Count -gt 0) {
+            $flKeep = New-Object System.Collections.ArrayList
+            foreach ($ff in $fl) { if (-not (Test-SavePathExcluded ([string]$ff) $exDirs)) { [void]$flKeep.Add($ff) } }
+            $fl = @($flKeep)
+        }
         if ($fl.Count -eq 0) { continue }
         [void]$roots.Add(@{ Kind = 'dir'; Path = ([string]$d.Path).TrimEnd('\', '/'); Tpl = (ConvertTo-SaveTemplate ([string]$d.Path).TrimEnd('\', '/') $Ctx); Label = [string]$d.Label; Source = [string]$d.Source; Files = $fl })
     }
@@ -38177,11 +40763,13 @@ function Write-SaveArchive ([string]$Dest, $Roots, $RegKeys, [hashtable]$Info, [
         if ([System.IO.File]::Exists($tmp)) { [System.IO.File]::Delete($tmp) }
         $z = [System.IO.Compression.ZipFile]::Open($tmp, [System.IO.Compression.ZipArchiveMode]::Create)
         $metaRoots = New-Object System.Collections.ArrayList
+        $pathLines = New-Object System.Collections.ArrayList
         $idx = 0; $count = 0; $bytes = 0L
         foreach ($r in @($Roots)) {
             $idx++
             $rootPath = [string]$r.Path
-            [void]$metaRoots.Add(@{ Idx = $idx; Kind = [string]$r.Kind; Tpl = [string]$r.Tpl; Label = [string]$r.Label; Source = [string]$r.Source })
+            [void]$metaRoots.Add(@{ Idx = $idx; Kind = [string]$r.Kind; Tpl = [string]$r.Tpl; Path = $rootPath; Label = [string]$r.Label; Source = [string]$r.Source })
+            [void]$pathLines.Add(('f' + $idx + '/  <-  ' + $rootPath + $(if ([string]$r.Label -ne '') { '   [' + [string]$r.Label + ']' } else { '' })))
             foreach ($f in @($r.Files)) {
                 $rel = if ([string]$r.Kind -eq 'dir') { $f.Substring($rootPath.Length).TrimStart('\', '/').Replace('\', '/') } else { [System.IO.Path]::GetFileName($f) }
                 $en = $z.CreateEntry('f' + $idx + '/' + $rel, [System.IO.Compression.CompressionLevel]::Optimal)
@@ -38215,6 +40803,7 @@ function Write-SaveArchive ([string]$Dest, $Roots, $RegKeys, [hashtable]$Info, [
                 $src = [System.IO.File]::OpenRead($rf); $dst = $en.Open(); $src.CopyTo($dst, 81920)
             } finally { if ($null -ne $dst) { $dst.Dispose() }; if ($null -ne $src) { $src.Dispose() } }
             [void]$metaRegs.Add(@{ Idx = $ri; Key = [string]$rk })
+            [void]$pathLines.Add(('reg/' + $ri + '.reg  <-  ' + [string]$rk))
         }
         $meta = [ordered]@{
             Format = 1
@@ -38227,6 +40816,12 @@ function Write-SaveArchive ([string]$Dest, $Roots, $RegKeys, [hashtable]$Info, [
             Roots = @($metaRoots)
             Regs = @($metaRegs)
         }
+        # Читаемый список: где на диске лежали сохранения (папка f<N>/ в архиве <- исходный полный путь).
+        try {
+            $pe = $z.CreateEntry('paths.txt', [System.IO.Compression.CompressionLevel]::Optimal)
+            $pw = New-Object System.IO.StreamWriter($pe.Open(), (New-Object System.Text.UTF8Encoding($true)))
+            try { $pw.Write(([string]$Info.Name + "`r`n" + (@($pathLines.ToArray()) -join "`r`n") + "`r`n")) } finally { $pw.Dispose() }
+        } catch {}
         $json = ConvertTo-Json -InputObject $meta -Depth 6
         $me = $z.CreateEntry('meta.json', [System.IO.Compression.CompressionLevel]::Optimal)
         $sw = New-Object System.IO.StreamWriter($me.Open(), (New-Object System.Text.UTF8Encoding($false)))
@@ -38606,7 +41201,10 @@ function Read-SaveDefinedStore {
             foreach ($p in @($obj.PSObject.Properties)) {
                 $paths = New-Object System.Collections.ArrayList
                 foreach ($x in @($p.Value.Paths)) { if (-not [string]::IsNullOrWhiteSpace([string]$x)) { [void]$paths.Add([string]$x) } }
-                $data[[string]$p.Name] = @{ Name = [string]$p.Value.Name; Paths = @($paths); Date = [string]$p.Value.Date; Source = [string]$p.Value.Source }
+                # Origins: откуда взят каждый путь (Ludusavi, эмулятор кряка, эвристика...). У старых записей поля нет.
+                $orig = @{}
+                try { if ($null -ne $p.Value.Origins) { foreach ($op in @($p.Value.Origins.PSObject.Properties)) { if (-not [string]::IsNullOrWhiteSpace([string]$op.Value)) { $orig[[string]$op.Name] = [string]$op.Value } } } } catch {}
+                $data[[string]$p.Name] = @{ Name = [string]$p.Value.Name; Paths = @($paths); Date = [string]$p.Value.Date; Source = [string]$p.Value.Source; Origins = $orig }
             }
         }
         $script:saveDefData = $data
@@ -38624,7 +41222,14 @@ function Write-SaveDefinedStore ($Data) {
         $f = Get-SaveDefinedFile
         $obj = [ordered]@{}
         foreach ($k in @($Data.Keys | Sort-Object)) {
-            $obj[[string]$k] = [ordered]@{ Name = [string]$Data[$k].Name; Paths = @($Data[$k].Paths); Date = [string]$Data[$k].Date; Source = [string]$Data[$k].Source }
+            $ent = [ordered]@{ Name = [string]$Data[$k].Name; Paths = @($Data[$k].Paths); Date = [string]$Data[$k].Date; Source = [string]$Data[$k].Source }
+            $og = $Data[$k].Origins
+            if ($null -ne $og -and @($og.Keys).Count -gt 0) {
+                $ogo = [ordered]@{}
+                foreach ($ok in @($og.Keys | Sort-Object)) { $ogo[[string]$ok] = [string]$og[$ok] }
+                $ent['Origins'] = $ogo
+            }
+            $obj[[string]$k] = $ent
         }
         $json = ConvertTo-Json -InputObject $obj -Depth 5
         $tmp = $f + '.tmp'
@@ -38647,12 +41252,39 @@ function Get-SaveDefined ([string]$Name, [long]$SteamAppId = 0) {
 }
 
 # Source: 'track' — места определены вручную слежением за запуском игры (лупа в карточке горит только для таких), 'auto' — поиском без запуска.
-function Set-SaveDefined ([string]$Name, [long]$SteamAppId, [string[]]$Paths, [string]$Source = 'auto') {
+# Название источника найденного места: корень Get-SaveRoots (Source/Label) или кандидат окна выбора (Origin).
+# Манифест Ludusavi подписывается «Ludusavi», остальные источники - своей меткой (эмулятор кряка, Эвристика, Steam Cloud).
+function Get-SaveOriginText ($Item) {
+    try {
+        $o = [string]$Item.Origin
+        if (-not [string]::IsNullOrWhiteSpace($o)) { return $o }
+        if ([string]$Item.Source -eq 'manifest') { return 'Ludusavi' }
+        return [string]$Item.Label
+    } catch { return '' }
+}
+# Путь -> источник для записи в defined_saves.json (только выбранные пути, если задан OnlyPaths).
+function New-SaveOriginMap ($Items, [string[]]$OnlyPaths = $null) {
+    $m = @{}
+    foreach ($it in @($Items)) {
+        try {
+            $pth = [string]$it.Path
+            if ([string]::IsNullOrWhiteSpace($pth)) { continue }
+            if ($null -ne $OnlyPaths -and ($OnlyPaths -notcontains $pth)) { continue }
+            $o = Get-SaveOriginText $it
+            if (-not [string]::IsNullOrWhiteSpace($o)) { $m[$pth] = $o }
+        } catch {}
+    }
+    return $m
+}
+
+function Set-SaveDefined ([string]$Name, [long]$SteamAppId, [string[]]$Paths, [string]$Source = 'auto', [hashtable]$Origins = $null) {
     try {
         $d = Read-SaveDefinedStore
         $copy = @{}
         foreach ($k in @($d.Keys)) { $copy[[string]$k] = $d[$k] }
-        $copy[(Get-SaveDefinedKey $Name $SteamAppId)] = @{ Name = [string]$Name; Paths = @($Paths); Date = [datetime]::Now.ToString('yyyy-MM-dd HH:mm:ss'); Source = $Source }
+        $ogNew = @{}
+        if ($null -ne $Origins) { foreach ($ok in @($Origins.Keys)) { if (@($Paths) -contains [string]$ok) { $ogNew[[string]$ok] = [string]$Origins[$ok] } } }
+        $copy[(Get-SaveDefinedKey $Name $SteamAppId)] = @{ Name = [string]$Name; Paths = @($Paths); Date = [datetime]::Now.ToString('yyyy-MM-dd HH:mm:ss'); Source = $Source; Origins = $ogNew }
         return (Write-SaveDefinedStore $copy)
     } catch { return $false }
 }
@@ -38678,7 +41310,10 @@ function Get-SaveDefinedItems ([string]$Name, [long]$SteamAppId = 0) {
         foreach ($p in @($d.Paths)) {
             $pp = [string]$p
             if ([System.IO.Directory]::Exists($pp) -or [System.IO.File]::Exists($pp)) {
-                [void]$items.Add(@{ Kind = 'file'; Path = $pp; Source = 'defined'; Label = $label })
+                # Метка - реальный источник места (Ludusavi, эмулятор кряка...), если он запомнен; у старых записей и у «слежения» - общая.
+                $lbl = $label
+                try { $og = [string]$d.Origins[$pp]; if (-not [string]::IsNullOrWhiteSpace($og)) { $lbl = $og } } catch {}
+                [void]$items.Add(@{ Kind = 'file'; Path = $pp; Source = 'defined'; Label = $lbl })
             }
         }
     } catch {}
@@ -38943,7 +41578,7 @@ function Get-SaveDetectorExcludes {
         '\steam\htmlcache\', '\steam\logs\', '\epicgameslauncher\', '\gog.com\galaxy\', '\ea app\', '\electronic arts\ea desktop\',
         '\battle.net\', '\blizzard entertainment\battle.net\', '\ubisoft game launcher\', '\overwolf\', '\dropbox\', '\windowsapps\'
     )) { [void]$ex.Add($s) }
-    foreach ($own in @([string]$global:appDataDir, (Get-SaveBackupFolderPath))) {
+    foreach ($own in @([string]$global:appDataDir, (Get-SaveOwnLocalDir), (Get-SaveBackupFolderPath))) {
         if (-not [string]::IsNullOrWhiteSpace($own)) { [void]$ex.Add(($own.TrimEnd('\', '/') + '\')) }
     }
     return @($ex)
@@ -39080,7 +41715,7 @@ function Get-SaveDetectorDbCandidates ($Params, [switch]$Heuristic, [string[]]$E
             }
             [void]$out.Add([PSCustomObject]@{
                 Path = [string]$r.Path; Kind = [string]$r.Kind; Files = @($r.Files).Count; Bytes = $bytes
-                Last = $last; Score = 100; Checked = $true
+                Last = $last; Score = 100; Checked = $true; Origin = (Get-SaveOriginText $r)
             })
         }
     } catch {}
@@ -39102,7 +41737,7 @@ function New-SaveDetectorCandidatesFromRoots ([object[]]$Roots) {
         }
         [void]$out.Add([PSCustomObject]@{
             Path = [string]$r.Path; Kind = [string]$r.Kind; Files = @($r.Files).Count; Bytes = $bytes
-            Last = $last; Score = 100; Checked = $true
+            Last = $last; Score = 100; Checked = $true; Origin = (Get-SaveOriginText $r)
         })
     }
     return @($out)
@@ -39880,7 +42515,9 @@ function Set-SaveDetectorCheckedFromDefined ($Cands, [string]$Name, [long]$Steam
                     if ($fi.LastWriteTime -gt $last) { $last = $fi.LastWriteTime }
                 } catch {}
             }
-            [void]$extra.Add([PSCustomObject]@{ Path = $pth; Kind = 'dir'; Files = $files.Count; Bytes = $bytes; Last = $last; Score = 100; Checked = $true })
+            $ogOld = ''
+            try { $ogOld = [string]$def.Origins[$pth] } catch {}
+            [void]$extra.Add([PSCustomObject]@{ Path = $pth; Kind = 'dir'; Files = $files.Count; Bytes = $bytes; Last = $last; Score = 100; Checked = $true; Origin = $ogOld })
         }
         return @($list + @($extra))
     } catch { return $list }
@@ -39915,7 +42552,7 @@ function Invoke-SaveDetector {
                 $db = @(Set-SaveDetectorCheckedFromDefined $db $name $appId)
                 $pick = Show-SaveDetectorPicker -Owner $Owner -Candidates $db -HintKey $hintKey -AllowTrack $false
                 if ([string]$pick.Action -eq 'use') {
-                    if (Set-SaveDefined $name $appId ([string[]]@($pick.Paths))) { $res.Status = 'set'; $res.Count = @($pick.Paths).Count } else { $res.Status = 'fail'; $res.Error = 'defined_saves.json' }
+                    if (Set-SaveDefined $name $appId ([string[]]@($pick.Paths)) -Origins (New-SaveOriginMap $db ([string[]]@($pick.Paths)))) { $res.Status = 'set'; $res.Count = @($pick.Paths).Count } else { $res.Status = 'fail'; $res.Error = 'defined_saves.json' }
                     return $res
                 }
                 if ([string]$pick.Action -ne 'track') { return $res }
@@ -41900,6 +44537,7 @@ function Show-ProgramSettingsDialog {
     $romsSection.Size = New-Object System.Drawing.Size($romsContentWidth, 25)
     $romsSection.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 10.5)
     $romsSection.ForeColor = $steamUi.Accent
+    $romsSection.Cursor = [System.Windows.Forms.Cursors]::Hand
     $dlg.Controls.Add($romsSection)
 
     # Пояснение под заголовком «Эмуляторы» убрано (место нужно, чтобы уложиться в размер главного окна).
@@ -42022,6 +44660,7 @@ function Show-ProgramSettingsDialog {
 
     $wrapSection = New-Object System.Windows.Forms.Label
     $wrapSection.Text = (T 'wrap_section')
+    $wrapSection.Cursor = [System.Windows.Forms.Cursors]::Hand
     $dlg.Controls.Add($wrapSection)
 
     $paintSettingsTab = {
@@ -43979,7 +46618,7 @@ function Show-ProgramSettingsDialog {
     }
     try { Initialize-FormForSmallScreen -Form $dlg -Owner $(if ($settingsSeamless) { $form } else { $null }) } catch {}
     try {
-        if ($settingsSeamless) { $dlg.ShowDialog($form) | Out-Null } else { $dlg.ShowDialog() | Out-Null }
+        if ($settingsSeamless) { try { Enable-SCCascadeClose $dlg $true } catch {}; $dlg.ShowDialog($form) | Out-Null } else { $dlg.ShowDialog() | Out-Null }
     } finally {
         if ($settingsSeamless) {
             # Страховка: если окно не дошло до Add_Shown (ошибка при показе) — главное окно не должно остаться невидимым.
@@ -45722,7 +48361,7 @@ function Get-EpicLauncherSource ($SteamShortcuts) {
 # процесс игры не виден, окно открывается позади. Поэтому в ярлык вместо игры пишется
 # маленький exe в %APPDATA%\Steam Commander\launcher: он открывает ссылку, ждёт процесс
 # из папки игры, выводит его окно вперёд и живёт, пока игра запущена.
-$script:scLauncherVersion = '36'
+$script:scLauncherVersion = '40'
 $script:scLauncherSource = @'
 using System;
 using System.Collections.Generic;
@@ -45799,10 +48438,30 @@ namespace SCLauncherNS
 
         static int selfPid = 0;
 
-        // Запись журнала (SCLauncher.log) отключена.
-        static void Log(string s)
+        // Пакетная (UWP/GDK) игра: идентификатор пакета из shell:AppsFolder\<PFN>!App.
+        // Игру ищем и по пути (--dir), и по пакету процесса: после переноса игры в другую папку
+        // (например C:\Games\...\Content вместо WindowsApps) путь из ярлыка уже не совпадает.
+        static string pkgFamily = "";
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+        static extern int GetPackageFamilyName(IntPtr hProcess, ref uint len, StringBuilder name);
+
+        static bool HasPackageFamily(int pid)
         {
+            IntPtr h = OpenProcess(0x1000, false, pid);
+            if (h == IntPtr.Zero) return false;
+            try
+            {
+                uint len = 256;
+                StringBuilder sb = new StringBuilder(256);
+                int rc = GetPackageFamilyName(h, ref len, sb);
+                return rc == 0 && sb.ToString().Equals(pkgFamily, StringComparison.OrdinalIgnoreCase);
+            }
+            catch { return false; }
+            finally { CloseHandle(h); }
         }
+
+        static void Log(string s) { }
 
         static string GetImagePath(int pid)
         {
@@ -45829,7 +48488,12 @@ namespace SCLauncherNS
                     int id = p.Id;
                     if (id == self || id == 0 || id == 4) continue;
                     string path = GetImagePath(id);
-                    if (path.Length > 0 && path.StartsWith(dir, StringComparison.OrdinalIgnoreCase))
+                    bool hit = path.Length > 0 && path.StartsWith(dir, StringComparison.OrdinalIgnoreCase);
+                    // Пакетная игра могла запуститься из другой папки, чем в --dir: сверяем пакет процесса.
+                    if (!hit && pkgFamily.Length > 0 && path.Length > 0
+                        && !path.StartsWith(Environment.GetFolderPath(Environment.SpecialFolder.Windows), StringComparison.OrdinalIgnoreCase)
+                        && HasPackageFamily(id)) hit = true;
+                    if (hit)
                     {
                         // EA: служебные процессы из папки игры (EACoreServer и т.п.) не считаются игрой.
                         if (eaMode && IsEaHelperPath(path)) continue;
@@ -47067,6 +49731,7 @@ namespace SCLauncherNS
                 if (closeEa) cmd += " --ea 1";
                 if (closeBnet) cmd += " --bnet 1";
                 if (eaMode) cmd += " --eamode 1";
+                if (pkgFamily.Length > 0) cmd += " --pkg \"" + pkgFamily + "\"";
                 WmiCreate(cmd);
             }
             catch (Exception ex) { Log("watchdog start: " + ex.Message); }
@@ -48046,6 +50711,7 @@ namespace SCLauncherNS
                     else if (a == "--ea") closeEa = (args[i + 1] == "1");
                     else if (a == "--bnet") closeBnet = (args[i + 1] == "1");
                     else if (a == "--eamode") eaMode = (args[i + 1] == "1");
+                    else if (a == "--pkg") pkgFamily = args[i + 1];
                     else if (a == "--client") client = args[i + 1];
                     else if (a == "--exe") exePath = args[i + 1];
                     else if (a == "--rom-archive") romArchive = args[i + 1];
@@ -48062,6 +50728,12 @@ namespace SCLauncherNS
                     else if (a == "--emupid") { int re; if (int.TryParse(args[i + 1], out re) && re > 0) romEmuPid = re; }
                     else if (a == "--cleanup-roms") cleanupRoms = (args[i + 1] == "1");
                 }
+                if (pkgFamily.Length == 0 && uri.StartsWith("shell:AppsFolder\\", StringComparison.OrdinalIgnoreCase))
+                {
+                    string pf = uri.Substring(17);
+                    int bang = pf.IndexOf('!');
+                    if (bang > 0) pkgFamily = pf.Substring(0, bang);
+                }
                 if (cleanupRoms) { CleanupOrphanRoms(); return 0; }
                 if (romWatchPid > 0) return RunRomWatchdog(romWatchPid, romEmuPid, romEmu, romDirArg);
                 if (romArchive.Length > 0) return RunRomArchive(romArchive, romEmu, romCore, romExts, romSz, romExtra, baseDir, romEntry, romGeneric, romArgs, romLang);
@@ -48071,7 +50743,6 @@ namespace SCLauncherNS
 
                 if (watchPid > 0) return RunWatchdog(watchPid, dir, self, closeEgs, closeGog, closeUbi, closeEa, closeBnet);
                 if (uri.Length == 0) { Log("bad args"); return 2; }
-                Log("start dir=" + dir + " uri=" + uri);
 
                 // gog:<id> - игра GOG запускается через клиент Galaxy (путь к нему в --client).
                 bool isGog = uri.StartsWith("gog:", StringComparison.OrdinalIgnoreCase);
@@ -48234,7 +50905,6 @@ namespace SCLauncherNS
                     if (pids.Count == 0) { Log("game process not found"); return 1; }
                 }
                 Log("game running, pids=" + pids.Count);
-                foreach (int gpid in pids) Log("game pid " + gpid + ": " + GetImagePath(gpid));
                 if (gogStartedByUs) MinimizeGalaxyWindows();
                 if (bnetStartedByUs) QuietBnetWindows(false);
 
@@ -48259,8 +50929,6 @@ namespace SCLauncherNS
                     {
                         try
                         {
-                            if (wpr.HasExited) Log("game pid " + wpr.Id + " exited after " + (int)(DateTime.UtcNow - tw).TotalMilliseconds + " ms, code=0x" + wpr.ExitCode.ToString("X"));
-                            else Log("game pid " + wpr.Id + " still alive after 30 s");
                         }
                         catch (Exception ex) { Log("exit info failed: " + ex.Message); }
                         finally { try { wpr.Dispose(); } catch { } }
@@ -48284,7 +50952,6 @@ namespace SCLauncherNS
                     attempts++;
                     stable = 0;
                     Focus(w, attempts >= 3);
-                    Log("focus attempt " + attempts);
                 }
 
                 int missing = 0;
@@ -48292,18 +50959,18 @@ namespace SCLauncherNS
                 // EA: «игра запущена» = есть процессы самой игры (служебные, вроде EACoreServer, не считаются,
                 // см. eaMode). Чтобы Steam узнал о выходе сразу, для EA держим дескрипторы процессов игры и,
                 // как только все завершились, проверяем список без ожидания 3 с (раз в 0,5 с).
-                List<Process> trk = (isEa || isBnet) ? TrackPids(pids, null) : null;
-                int needMiss = isEa ? 4 : 3;
+                List<Process> trk = TrackPids(pids, null);
+                int needMiss = isBnet ? 3 : 4;
                 while (true)
                 {
                     Thread.Sleep(500);
-                    if (StopRequested) { Log("stop requested -> closing game"); CloseGame(dir, self); return 0; }
+                    if (StopRequested) { Log("stop requested (WM_CLOSE from Steam) -> closing game"); CloseGame(dir, self); return 0; }
                     tick++;
-                    bool fast = (isEa || isBnet) && (missing > 0 || AllExited(trk));
+                    bool fast = (missing > 0 || AllExited(trk));
                     // Список процессов просматриваем раз в 3 секунды (флаг остановки — каждые 0,5 с).
                     if (!fast && (tick % 6) != 0) continue;
                     pids = FindGamePids(dir, self);
-                    if (isEa || isBnet) trk = TrackPids(pids, trk);
+                    trk = TrackPids(pids, trk);
                     if (pids.Count == 0)
                     {
                         missing++;
@@ -48312,12 +50979,10 @@ namespace SCLauncherNS
                     else missing = 0;
                 }
                 Log("game exited");
-                if (egsStartedByUs) CloseEgsIfIdle(dir, self);
-                if (gogStartedByUs) CloseGalaxyIfIdle(dir, self);
-                if (ubiStartedByUs) CloseUbiIfIdle(dir, self);
-                if (eaStartedByUs) CloseEaIfIdle(dir, self);
-                // Клиент Battle.net закрывает сторож (отдельный процесс вне дерева Steam), чтобы Steam
-                // сразу увидел выход из игры и не ждал 15-25 с.
+                // Лончер (EGS / Galaxy / Ubisoft Connect / EA app / Battle.net), запущенный нами вместе с игрой,
+                // закрывает сторож - отдельный процесс вне дерева Steam, который StartWatchdog уже запустил.
+                // Закрывать его здесь нельзя: ожидание сохранений и закрытие занимают 12-25 с, всё это время
+                // SCLauncher.exe жив, и Steam показывает, что игра запущена.
                 return 0;
             }
             catch (Exception ex)
@@ -48436,6 +51101,36 @@ function Get-EaOfferIdsFromInstallDir ([string]$Dir) {
         }
         if ($ids.Count -eq 0) { return '' }
         return [string]::Join(',', $ids.ToArray())
+    } catch { return '' }
+}
+
+# Xbox / Microsoft Store: ссылка запуска shell:AppsFolder\<PackageFamilyName>!<AppId>.
+# Имя пакета берём из MicrosoftGame.Config (Entry.GameId), семейство и AppId - из установленного пакета.
+function Get-XboxLaunchUri ($Entry) {
+    try {
+        if (-not (Test-IsLauncherEntry $Entry)) { return '' }
+        if ([string]$Entry.Launcher -ne 'xbox') { return '' }
+        $name = ([string]$Entry.GameId).Trim()
+        if ([string]::IsNullOrWhiteSpace($name) -or $name -notmatch '^[A-Za-z0-9_\-\.]+$') { return '' }
+        if ($null -eq $script:xboxUriCache) { $script:xboxUriCache = @{} }
+        $ck = $name.ToLowerInvariant()
+        if ($script:xboxUriCache.ContainsKey($ck)) { return [string]$script:xboxUriCache[$ck] }
+        $uri = ''
+        try {
+            $pkg = @(Get-AppxPackage -Name $name -ErrorAction Stop) | Select-Object -First 1
+            if ($null -ne $pkg -and -not [string]::IsNullOrWhiteSpace([string]$pkg.PackageFamilyName)) {
+                $appId = ''
+                try {
+                    $man = Get-AppxPackageManifest -Package ([string]$pkg.PackageFullName) -ErrorAction Stop
+                    $app = @($man.Package.Applications.Application) | Select-Object -First 1
+                    if ($null -ne $app) { $appId = [string]$app.Id }
+                } catch {}
+                if ([string]::IsNullOrWhiteSpace($appId)) { $appId = 'App' }
+                $uri = 'shell:AppsFolder\' + [string]$pkg.PackageFamilyName + '!' + $appId
+            }
+        } catch { Write-LauncherLog ('xbox uri (' + $name + '): ' + $_.Exception.Message) }
+        $script:xboxUriCache[$ck] = $uri
+        return $uri
     } catch { return '' }
 }
 
@@ -48558,6 +51253,8 @@ function Test-LauncherEntryWrapped ($Entry) {
         # Ubisoft: через Ubisoft Connect (ссылка uplay://), если ID установки числовой; иначе прямой exe, как раньше.
         'ubisoft' { return (-not [string]::IsNullOrWhiteSpace((Get-UbisoftLaunchUri $Entry))) }
         'ea' { return (-not [string]::IsNullOrWhiteSpace((Get-EaLaunchUri $Entry))) }
+        # Xbox / Microsoft Store (GDK): запуск через shell:AppsFolder\<PFN>!<AppId>, чтобы SCLauncher следил за процессами пакета.
+        'xbox' { return (-not [string]::IsNullOrWhiteSpace((Get-XboxLaunchUri $Entry))) }
         'battlenet' { return ((-not [string]::IsNullOrWhiteSpace((Get-BattleNetLaunchUri $Entry))) -and (-not [string]::IsNullOrWhiteSpace((Get-BattleNetClientExe)))) }
         default { return $false }
     }
@@ -48570,6 +51267,7 @@ function Get-LauncherLaunchUri ($Entry) {
         'gog'   { return (Get-GogLaunchUri $Entry) }
         'ubisoft' { return (Get-UbisoftLaunchUri $Entry) }
         'ea'    { return (Get-EaLaunchUri $Entry) }
+        'xbox'  { return (Get-XboxLaunchUri $Entry) }
         'battlenet' { return (Get-BattleNetLaunchUri $Entry) }
         default { return '' }
     }
@@ -51347,6 +54045,57 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
         }
         g.SmoothingMode = old;
     }
+    // Кнопки в меню коллекций: AccessibleDescription 'collrow' - справа «минус» (удалить коллекцию), 'colladd' - справа «плюс» (создать).
+    // Зона кнопки - GlyphZone px у правого края пункта; под курсором - подсветка (меню перерисовывается при движении мыши).
+    public static int GlyphZone = 28;
+    // Пункт меню коллекций, чья кнопка сейчас под курсором (null - ни одной). Выставляется из PowerShell.
+    public static ToolStripItem HotItem = null;
+    static void DrawCollGlyph(Graphics g, ToolStripItem it)
+    {
+        bool minus = (it.AccessibleDescription == "collrow");
+        bool plus = (it.AccessibleDescription == "colladd");
+        if (!minus && !plus) return;
+        int w = it.Width, h = it.Height;
+        Rectangle zr = new Rectangle(w - GlyphZone, 1, GlyphZone - 2, h - 2);
+        // Единственный источник правды о подсветке - HotItem (его выставляет таймер меню по положению мыши): так отрисовка
+        // и состояние не расходятся (раньше позицию мыши считали отдельно здесь и в таймере, и на границах зоны они не совпадали).
+        bool hot = object.ReferenceEquals(it, HotItem);
+        // Маленькая квадратная кнопка в стиле кнопки «X» Steam (как у «Клавиша заглушения»): скруглённый светлее фона квадрат,
+        // внутри крестик (удалить коллекцию) или плюс (создать). Под курсором - светлее, значок белый.
+        int bs = System.Math.Min(16, System.Math.Min(zr.Width, zr.Height));
+        Rectangle br = new Rectangle(zr.X + (zr.Width - bs) / 2, zr.Y + (zr.Height - bs) / 2, bs, bs);
+        Color fill = hot ? Color.FromArgb(30, 144, 230) : Color.FromArgb(54, 62, 73);
+        Color c = hot ? Color.White : Color.FromArgb(200, 207, 215);
+        System.Drawing.Drawing2D.SmoothingMode oldSm = g.SmoothingMode;
+        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        using (System.Drawing.Drawing2D.GraphicsPath gp = new System.Drawing.Drawing2D.GraphicsPath())
+        using (SolidBrush fb = new SolidBrush(fill))
+        {
+            int rd = 4;
+            gp.AddArc(br.X, br.Y, rd, rd, 180, 90);
+            gp.AddArc(br.Right - rd - 1, br.Y, rd, rd, 270, 90);
+            gp.AddArc(br.Right - rd - 1, br.Bottom - rd - 1, rd, rd, 0, 90);
+            gp.AddArc(br.X, br.Bottom - rd - 1, rd, rd, 90, 90);
+            gp.CloseFigure();
+            g.FillPath(fb, gp);
+        }
+        float cx = br.X + br.Width / 2f, cy = br.Y + br.Height / 2f, d = 3.2f;
+        using (Pen p2 = new Pen(c, 1.3f))
+        {
+            p2.StartCap = System.Drawing.Drawing2D.LineCap.Round; p2.EndCap = System.Drawing.Drawing2D.LineCap.Round;
+            if (plus)
+            {
+                g.DrawLine(p2, cx - d - 0.5f, cy, cx + d + 0.5f, cy);
+                g.DrawLine(p2, cx, cy - d - 0.5f, cx, cy + d + 0.5f);
+            }
+            else
+            {
+                g.DrawLine(p2, cx - d, cy - d, cx + d, cy + d);
+                g.DrawLine(p2, cx + d, cy - d, cx - d, cy + d);
+            }
+        }
+        g.SmoothingMode = oldSm;
+    }
     protected override void OnRenderToolStripBackground(ToolStripRenderEventArgs e)
     {
         if (e.ToolStrip is ToolStripDropDown) { using (SolidBrush b = new SolidBrush(SCFilterColors.MenuBg)) { e.Graphics.FillRectangle(b, e.AffectedBounds); } }
@@ -51381,6 +54130,10 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
     }
     protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
     {
+        // Штатный текст-сочетание клавиш («×» / «+») у пунктов-кнопок коллекций не рисуем: он нужен только чтобы зарезервировать место справа,
+        // а сам значок («минус» / «плюс») рисует DrawCollGlyph - иначе рядом с ним торчит лишний значок.
+        if ((e.Item.AccessibleDescription == "collrow" || e.Item.AccessibleDescription == "colladd") && (e.Text == "×" || e.Text == "+")) { return; }
+        DrawCollGlyph(e.Graphics, e.Item);
         if (IsPlay(e.Item)) { e.TextColor = Color.White; }
         // В меню без колонки значков значок «Запуск» стоит строго по левому краю текста остальных пунктов (не выступает за него),
         // а текст «Запуск» сдвинут правее значка. TextRectangle здесь ещё без сдвига PlayColumn.
@@ -51404,6 +54157,27 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
             rp.X += PlayColumn;
             if (e.Item.AccessibleDescription == "play") { rp.X += PlayIconInset + PlayIconWidth + PlayIconGap; rp.Width -= PlayIconInset + PlayIconWidth + PlayIconGap; }
             e.TextRectangle = rp;
+        }
+        // «+ Создать коллекцию…» (AccessibleDescription == "collnew"): плюс рисуем вектором слева от текста (симметричный, ровно по центру строки),
+        // а сам текст сдвигаем правее значка. Плюс из шрифта получался мелким и кривым.
+        if (e.Item.AccessibleDescription == "collnew")
+        {
+            Rectangle rn = e.TextRectangle;
+            // Целые пиксели без сглаживания: плюс 7x7, перекладины по 1 px, строго симметричный и чёткий (со сглаживанием на таком размере размывается).
+            int pcx = rn.X + 7, pcy = e.Item.Height / 2, ph = 3;
+            System.Drawing.Drawing2D.SmoothingMode oldSmN = e.Graphics.SmoothingMode;
+            System.Drawing.Drawing2D.PixelOffsetMode oldPoN = e.Graphics.PixelOffsetMode;
+            e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.None;
+            e.Graphics.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.None;
+            using (SolidBrush pb = new SolidBrush(e.TextColor))
+            {
+                e.Graphics.FillRectangle(pb, pcx - ph, pcy, 2 * ph + 1, 1);
+                e.Graphics.FillRectangle(pb, pcx, pcy - ph, 1, 2 * ph + 1);
+            }
+            e.Graphics.PixelOffsetMode = oldPoN;
+            e.Graphics.SmoothingMode = oldSmN;
+            rn.X += 18; rn.Width -= 18;
+            e.TextRectangle = rn;
         }
         base.OnRenderItemText(e);
     }
@@ -51590,7 +54364,9 @@ function Backup-SteamCollectionFiles ([string]$root, [string]$stamp) {
     [void][System.IO.Directory]::CreateDirectory($dest)
     foreach ($rel in @('config\cloudstorage\cloud-storage-namespace-1.json', 'config\localconfig.vdf')) {
         $src = Join-Path $root $rel
-        if ([System.IO.File]::Exists($src)) { [System.IO.File]::Copy($src, (Join-Path $dest ([System.IO.Path]::GetFileName($rel))), $true) }
+        # Метка времени одна на несколько записей подряд (очередь изменений): исходное состояние не перезаписываем более поздним.
+        $dstF = Join-Path $dest ([System.IO.Path]::GetFileName($rel))
+        if ([System.IO.File]::Exists($src) -and -not [System.IO.File]::Exists($dstF)) { [System.IO.File]::Copy($src, $dstF, $false) }
     }
     try {
         $old = @(Get-ChildItem -LiteralPath $base -Directory -ErrorAction SilentlyContinue | Sort-Object -Property Name -Descending | Select-Object -Skip 10)
@@ -51737,6 +54513,237 @@ function Update-SteamCollectionsInProfile ([string]$root, $byCid, $found, [strin
     }
 }
 
+# ===== Создание и удаление коллекций (структура, не состав) =====
+# Как делает сам Steam (сверено по архиву «до / после создания / после удаления»):
+#  создание - в cloud-storage-namespace-1.json в конец массива добавляется пара ["user-collections.<id>", {key, timestamp, value, version, conflictResolutionMethod:"custom", strMethodId:"union-collections"}],
+#             value - строка JSON {id, name, added[], removed[]}, version = максимальная в файле + 1; в localconfig.vdf (строка "user-collections") появляется объект {id, added[], removed[]};
+#  удаление - запись в cloud заменяется «надгробием» {key, timestamp, is_deleted:true, version = max + 1}, а объект коллекции из localconfig.vdf убирается полностью.
+# id вида uc- + 12 случайных символов. Steam должен быть закрыт.
+# Собственный сериализатор JSON: JavaScriptSerializer падает («циклическая ссылка» PSParameterizedProperty), если в словарь попал объект, обёрнутый в PSObject.
+function ConvertTo-CollJson ($v) {
+    if ($v -is [System.Management.Automation.PSObject]) { $v = $v.psobject.BaseObject }
+    if ($null -eq $v) { return 'null' }
+    if ($v -is [string] -or $v -is [char]) {
+        $sb = New-Object System.Text.StringBuilder
+        [void]$sb.Append('"')
+        foreach ($ch in ([string]$v).ToCharArray()) {
+            $c = [int]$ch
+            if ($ch -eq '"') { [void]$sb.Append('\"') }
+            elseif ($ch -eq '\') { [void]$sb.Append('\\') }
+            elseif ($c -eq 10) { [void]$sb.Append('\n') }
+            elseif ($c -eq 13) { [void]$sb.Append('\r') }
+            elseif ($c -eq 9) { [void]$sb.Append('\t') }
+            elseif ($c -lt 32) { [void]$sb.Append(('\u{0:x4}' -f $c)) }
+            else { [void]$sb.Append($ch) }
+        }
+        [void]$sb.Append('"')
+        return $sb.ToString()
+    }
+    if ($v -is [bool]) { if ($v) { return 'true' } else { return 'false' } }
+    if ($v -is [System.IConvertible] -and ($v -is [ValueType])) {
+        return ([System.Convert]::ToString($v, [System.Globalization.CultureInfo]::InvariantCulture))
+    }
+    if ($v -is [System.Collections.IDictionary]) {
+        $parts = New-Object System.Collections.Generic.List[string]
+        foreach ($k in @($v.Keys)) {
+            [void]$parts.Add((ConvertTo-CollJson ([string]$k)) + ':' + (ConvertTo-CollJson $v[$k]))
+        }
+        return '{' + ($parts -join ',') + '}'
+    }
+    if ($v -is [System.Collections.IEnumerable]) {
+        $parts = New-Object System.Collections.Generic.List[string]
+        foreach ($it in $v) { [void]$parts.Add((ConvertTo-CollJson $it)) }
+        return '[' + ($parts -join ',') + ']'
+    }
+    return (ConvertTo-CollJson ([string]$v))
+}
+
+function New-SteamCollectionId {
+    $chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
+    $sb = New-Object System.Text.StringBuilder
+    [void]$sb.Append('uc-')
+    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    try {
+        $buf = New-Object byte[] 12
+        $rng.GetBytes($buf)
+        foreach ($b in $buf) { [void]$sb.Append($chars[([int]$b) % $chars.Length]) }
+    } finally { $rng.Dispose() }
+    return $sb.ToString()
+}
+
+# $op: 'create' или 'delete'. Возвращает $true, если хоть один файл профиля изменён.
+function Edit-SteamCollectionList ([string]$root, [string]$op, [string]$cid, [string]$name, [string]$stamp) {
+    $ser = Get-CollSerializer
+    $utf8 = New-Object System.Text.UTF8Encoding($false)
+    $dictT = [System.Collections.Generic.Dictionary[string,object]]
+    $dictName = 'System.Collections.Generic.Dictionary[string,object]'
+    $nowTs = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+    $cloudPath = Join-Path $root 'config\cloudstorage\cloud-storage-namespace-1.json'
+    $lcPath = Join-Path $root 'config\localconfig.vdf'
+    $key = 'user-collections.' + $cid
+
+    # --- localconfig.vdf ---
+    $lcText = $null; $lcBom = $false; $lcGroup = $null; $lcDict = $null
+    if ([System.IO.File]::Exists($lcPath)) {
+        $bytes = [System.IO.File]::ReadAllBytes($lcPath)
+        $off = 0
+        if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) { $lcBom = $true; $off = 3 }
+        $lcText = $utf8.GetString($bytes, $off, $bytes.Length - $off)
+        $lcMatch = [regex]::Match($lcText, '(?m)^\s*"user-collections"\s+"((?:[^"\\]|\\.)*)"')
+        if ($lcMatch.Success) {
+            $unesc = [System.Text.RegularExpressions.MatchEvaluator]{
+                param($m2)
+                $c2 = $m2.Groups[1].Value
+                if ($c2 -eq 'n') { "`n" } elseif ($c2 -eq 't') { "`t" } else { $c2 }
+            }
+            $parsedL = $ser.DeserializeObject([regex]::Replace($lcMatch.Groups[1].Value, '\\(.)', $unesc))
+            if ($parsedL -is $dictT) { $lcDict = $parsedL; $lcGroup = $lcMatch.Groups[1] }
+        }
+    }
+    $lcDirty = $false
+    if ($null -ne $lcDict) {
+        if ($op -eq 'create') {
+            if (-not $lcDict.ContainsKey($cid)) {
+                $lo = New-Object $dictName
+                $lo['id'] = $cid
+                $lo['added'] = @()
+                $lo['removed'] = @()
+                $lcDict[$cid] = $lo
+                $lcDirty = $true
+            }
+        } else {
+            if ($lcDict.Remove($cid)) { $lcDirty = $true }
+        }
+    }
+
+    # --- cloud-storage-namespace-1.json ---
+    $cloudNewText = $null
+    if ([System.IO.File]::Exists($cloudPath)) {
+        $raw = [System.IO.File]::ReadAllText($cloudPath, $utf8)
+        if (-not [string]::IsNullOrWhiteSpace($raw)) {
+            $cloudParsed = $ser.DeserializeObject($raw)
+            $pairs = New-Object System.Collections.Generic.List[object]
+            $stack = New-Object System.Collections.Generic.Stack[object]
+            $stack.Push($cloudParsed)
+            while ($stack.Count -gt 0) {
+                $node = $stack.Pop()
+                if ($node -is [System.Collections.IList]) {
+                    if ($node.Count -ge 2 -and $node[0] -is [string] -and $node[1] -is $dictT) { [void]$pairs.Add($node) }
+                    else { foreach ($sub in $node) { if ($null -ne $sub -and $sub -is [System.Collections.IList]) { $stack.Push($sub) } } }
+                }
+            }
+            $maxVer = [int64]0
+            $verIsStr = $false
+            $mine = $null
+            foreach ($p in $pairs) {
+                try {
+                    $v0 = $p[1]['version']
+                    $vv = [int64][string]$v0
+                    if ($vv -gt $maxVer) { $maxVer = $vv }
+                    if ($v0 -is [string]) { $verIsStr = $true }
+                } catch {}
+                if ([string]$p[0] -eq $key) { $mine = $p }
+            }
+            $newVer = $maxVer + 1
+            $verVal = $(if ($verIsStr) { [string]$newVer } else { $newVer })
+            if ($op -eq 'create') {
+                if ($null -eq $mine) {
+                    # Пары лежат прямо в корневом массиве - дописываем новую в его конец прямо в тексте, остальной файл не трогаем.
+                    $rootOk = ($cloudParsed -is [System.Collections.IList])
+                    if ($rootOk -and $cloudParsed.Count -gt 0) {
+                        $f0 = $cloudParsed[0]
+                        $rootOk = ($f0 -is [System.Collections.IList] -and $f0.Count -ge 2 -and $f0[0] -is [string])
+                    }
+                    if (-not $rootOk) { throw 'Unsupported cloud-storage-namespace-1.json structure' }
+                    $val = New-Object $dictName
+                    $val['id'] = $cid
+                    $val['name'] = $name
+                    $val['added'] = @()
+                    $val['removed'] = @()
+                    $meta = New-Object $dictName
+                    $meta['key'] = $key
+                    $meta['timestamp'] = $nowTs
+                    $meta['value'] = (ConvertTo-CollJson $val)
+                    $meta['version'] = $verVal
+                    $meta['conflictResolutionMethod'] = 'custom'
+                    $meta['strMethodId'] = 'union-collections'
+                    $pairJson = (ConvertTo-CollJson @($key, $meta))
+                    $trim = $raw.TrimEnd()
+                    $last = $trim.LastIndexOf(']')
+                    if ($last -lt 0) { throw 'Unsupported cloud-storage-namespace-1.json structure' }
+                    $sep = $(if ($cloudParsed.Count -gt 0) { ',' } else { '' })
+                    $cloudNewText = $trim.Substring(0, $last) + $sep + $pairJson + $trim.Substring($last)
+                }
+            } else {
+                if ($null -ne $mine) {
+                    $tomb = New-Object $dictName
+                    $tomb['key'] = $key
+                    $tomb['timestamp'] = $nowTs
+                    $tomb['is_deleted'] = $true
+                    $tomb['version'] = $verVal
+                    $mine[1] = $tomb
+                    $cloudNewText = (ConvertTo-CollJson $cloudParsed)
+                }
+            }
+        }
+    }
+
+    if ($null -eq $cloudNewText -and -not $lcDirty) { return $false }
+    Backup-SteamCollectionFiles $root $stamp
+    if ($null -ne $cloudNewText) { Write-CollFileAtomic $cloudPath ([byte[]]$utf8.GetBytes($cloudNewText)) }
+    if ($lcDirty) {
+        $newJson = (ConvertTo-CollJson $lcDict)
+        $esc = $newJson.Replace('\', '\\').Replace('"', '\"')
+        $newText = $lcText.Substring(0, $lcGroup.Index) + $esc + $lcText.Substring($lcGroup.Index + $lcGroup.Length)
+        $outBytes = [byte[]]$utf8.GetBytes($newText)
+        if ($lcBom) { $outBytes = [byte[]](([byte[]](0xEF, 0xBB, 0xBF)) + $outBytes) }
+        Write-CollFileAtomic $lcPath $outBytes
+    }
+    return $true
+}
+
+# Окно «Название коллекции» (по образцу Show-FavoriteRenameDialog). Возвращает строку или $null.
+function Show-CollectionNameDialog ($Owner) {
+    $dlgN = New-Object System.Windows.Forms.Form
+    Enable-SCHandCursor $dlgN
+    try {
+        $dlgN.Text = (T 'coll_new_title')
+        $dlgN.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedDialog
+        $dlgN.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterParent
+        $dlgN.MaximizeBox = $false; $dlgN.MinimizeBox = $false; $dlgN.ShowInTaskbar = $false
+        $dlgN.ClientSize = New-Object System.Drawing.Size(380, 92)
+        $dlgN.BackColor = $steamUi.Bg
+        try { if ($null -ne $Owner -and $null -ne $Owner.Icon) { $dlgN.Icon = $Owner.Icon } } catch {}
+        $tbN = New-Object System.Windows.Forms.TextBox
+        $tbN.Location = New-Object System.Drawing.Point(14, 14)
+        $tbN.Width = 352
+        $tbN.MaxLength = 120
+        $tbN.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+        $tbN.BackColor = $steamUi.Input
+        $tbN.ForeColor = $steamUi.Text
+        $tbN.Font = New-Object System.Drawing.Font('Segoe UI', 9)
+        $dlgN.Controls.Add($tbN)
+        $okN = New-Object System.Windows.Forms.Button
+        $okN.Text = (T 'set_save'); $okN.DialogResult = [System.Windows.Forms.DialogResult]::OK
+        $okN.Location = New-Object System.Drawing.Point(178, 52); $okN.Size = New-Object System.Drawing.Size(92, 28)
+        $cnN = New-Object System.Windows.Forms.Button
+        $cnN.Text = (T 'set_cancel'); $cnN.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+        $cnN.Location = New-Object System.Drawing.Point(274, 52); $cnN.Size = New-Object System.Drawing.Size(92, 28)
+        foreach ($bN in @($okN, $cnN)) {
+            $bN.FlatStyle = 'Flat'; $bN.FlatAppearance.BorderColor = $steamUi.Border
+            $bN.BackColor = $steamUi.Panel; $bN.ForeColor = $steamUi.Text
+            $dlgN.Controls.Add($bN)
+        }
+        $dlgN.AcceptButton = $okN; $dlgN.CancelButton = $cnN
+        $dlgN.Add_Shown({ param($s, $e) try { $s.Controls[0].Focus() } catch {} })
+        if ($dlgN.ShowDialog($Owner) -eq [System.Windows.Forms.DialogResult]::OK) {
+            $v = ([string]$tbN.Text).Replace("`r", ' ').Replace("`n", ' ').Trim()
+            if ($v.Length -gt 0) { return $v }
+        }
+        return $null
+    } catch { return $null } finally { try { $dlgN.Dispose() } catch {} }
+}
+
 # Снимает теги с узла одного ярлыка shortcuts.vdf (узел с Body.Children). Оставшиеся теги перенумеровываются 0,1,2...
 # Работает и с разобранным файлом, и с записью, закэшированной в окне библиотеки. Возвращает число снятых тегов.
 function Remove-TagNodesByName ($shortcutNode, [string[]]$namesLower) {
@@ -51857,6 +54864,7 @@ function Get-CollSnapshotSignature {
 function Read-SteamCollectionsSnapshot {
     $sig = $null
     try { $sig = Get-CollSnapshotSignature } catch { $sig = $null }
+    if ($sig) { $sig = [string]$sig + '|q' + [string]$script:pendingCollVer }
     if ($sig -and $null -ne $script:collSnapCache -and [string]$script:collSnapSig -eq $sig) { return $script:collSnapCache }
     $res = Read-SteamCollectionsSnapshotCore
     if ($sig) { $script:collSnapCache = $res; $script:collSnapSig = $sig }
@@ -51969,6 +54977,8 @@ function Read-SteamCollectionsSnapshotCore {
             } catch {}
         }
     } catch {}
+    # Изменения, ожидающие перезапуска Steam, показываем сразу (в файлах они появятся после записи).
+    try { Apply-PendingCollOverlay $map $list $nameMap } catch {}
     return [PSCustomObject]@{ Map = $map; List = $list.ToArray(); NameMap = $nameMap }
 }
 
@@ -52124,8 +55134,10 @@ function Invoke-CardCollectionsSave ($state, [string]$appId, [string]$oldAppId, 
             Add-PendingCardCollections $state $appId $oldAppId $kind $shortcutRecord
             return ''
         }
+        # Ручной режим: окно «закройте Steam» не показываем. Коллекции встают в очередь и запишутся по кнопке перезапуска Steam.
         if ((Test-SteamRunning) -and (Get-SteamRestartMode) -eq 'manual') {
-            if (-not (Wait-SteamClosedByUser)) { return [string](T 'steam_close_cancelled') }
+            Add-PendingCardCollections $state $appId $oldAppId $kind $shortcutRecord
+            return ''
         }
         $r = @(Save-CardCollections $state.Snap $appId $oldAppId $kind @($state.Init) @($state.Sel) $shortcutRecord)
         if ($r.Count -eq 0) { return '' }
@@ -52138,22 +55150,174 @@ function Invoke-CardCollectionsSave ($state, [string]$appId, [string]$oldAppId, 
 
 # Пакетное добавление: Steam в это время запущен и закроется один раз в конце пакета, поэтому коллекции игры
 # не пишем сразу, а запоминаем. Запись выполняет Apply-PendingCollectionOps, когда Steam закрыт.
+# Ручной режим перезапуска: пока Steam запущен, изменения коллекций не блокируют работу, а встают в очередь и записываются, когда Steam закрыт
+# (кнопка «Перезапустить Steam» или закрытие Steam пользователем). Очередь упорядочена; каждый элемент применяется как отдельная запись.
+# Типы: (без Type) - коллекции игры из карточки, 'plan' - перенос игр в коллекции/из них, 'struct' - создание или удаление коллекции.
+function Register-PendingCollChange {
+    $script:pendingCollVer = [int]$script:pendingCollVer + 1
+    $script:collSnapCache = $null
+    try { Set-SteamRestartNeeded } catch {}
+}
+
 function Add-PendingCardCollections ($state, [string]$appId, [string]$oldAppId, [string]$kind, $shortcutRecord) {
     if ($null -eq $script:pendingCollectionOps) { $script:pendingCollectionOps = New-Object System.Collections.ArrayList }
     [void]$script:pendingCollectionOps.Add([PSCustomObject]@{ Snap = $state.Snap; AppId = $appId; OldAppId = $oldAppId; Kind = $kind; Init = @($state.Init); Sel = @($state.Sel); Rec = $shortcutRecord })
+    Register-PendingCollChange
 }
 
+# $byCid: id коллекции -> список { Ids; Want; Kind }; $nameOf: ключ 'col:<id>' -> название (для сообщения об ошибке).
+function Add-PendingCollPlan ($byCid, $nameOf) {
+    if ($null -eq $script:pendingCollectionOps) { $script:pendingCollectionOps = New-Object System.Collections.ArrayList }
+    [void]$script:pendingCollectionOps.Add([PSCustomObject]@{ Type = 'plan'; ByCid = $byCid; Names = $nameOf })
+    # Прямой список «игра|коллекция -> in/out» для немедленного показа в интерфейсе (плоский ключ, без вложенных словарей).
+    try {
+        if ($null -eq $script:pendingCollMember) { $script:pendingCollMember = @{} }
+        foreach ($qcid in @($byCid.Keys)) {
+            $qck = 'col:' + [string]$qcid
+            $qlst = $byCid[$qcid]
+            $qn = 0
+            try { $qn = [int]$qlst.Count } catch { $qn = 0 }
+            for ($qi = 0; $qi -lt $qn; $qi++) {
+                $qit = $qlst[$qi]
+                if ($null -eq $qit -or $null -eq $qit.Ids) { continue }
+                $qm = [int64]$qit.Ids.Main
+                $qlist = @([string]$qm)
+                if ([string]$qit.Kind -eq 'shortcut') {
+                    $qlist += [string]($qm - 4294967296)
+                    $qlist += [string](($qm -shl 32) -bor 33554432)
+                }
+                foreach ($qfs in $qlist) { $script:pendingCollMember[([string]$qfs + '|' + [string]$qck)] = [string]$qit.Want }
+            }
+        }
+    } catch { $script:collOverlayError = 'delta: ' + [string]$_.Exception.Message + ' @ ' + [string]$_.InvocationInfo.Line.Trim() }
+    Register-PendingCollChange
+}
+
+function Add-PendingCollStruct ([string]$op, [string]$cid, [string]$name) {
+    if ($null -eq $script:pendingCollectionOps) { $script:pendingCollectionOps = New-Object System.Collections.ArrayList }
+    [void]$script:pendingCollectionOps.Add([PSCustomObject]@{ Type = 'struct'; Op = $op; Cid = $cid; Name = $name })
+    Register-PendingCollChange
+}
+
+# Вносит одну игру в коллекцию (или убирает) в наборах, которые строят читатели коллекций (appid в разных видах -> список ключей).
+function Set-CollOverlayMember ($map, [string]$ckey, $ids, [string]$want) {
+    if ($null -eq $ids) { return }
+    $forms = New-Object System.Collections.Generic.List[string]
+    [void]$forms.Add([string]$ids.Main)
+    foreach ($f in @($ids.All)) { $fs = [string]$f; if (-not $forms.Contains($fs)) { [void]$forms.Add($fs) } }
+    foreach ($fs in $forms) {
+        if ($want -eq 'in') {
+            if (-not $map.ContainsKey($fs)) { $map[$fs] = New-Object System.Collections.Generic.List[string] }
+            if (-not $map[$fs].Contains($ckey)) { [void]$map[$fs].Add($ckey) }
+        } elseif ($map.ContainsKey($fs)) { [void]$map[$fs].Remove($ckey) }
+    }
+}
+
+# Накладывает ожидающие изменения на то, что прочитано из файлов Steam: состав коллекций, список и имена.
+# Вызывается читателями снимка (карточка и главное окно), библиотеки и панелей; сами файлы не трогает.
+function Apply-PendingCollOverlay ($map, $list, $nameMap) {
+    if ($null -eq $script:pendingCollectionOps -or $script:pendingCollectionOps.Count -eq 0) { return }
+    foreach ($op in @($script:pendingCollectionOps.ToArray())) {
+        try {
+            $ty = [string]$op.Type
+            if ($ty -eq 'plan') {
+                foreach ($pcid in @($op.ByCid.Keys)) {
+                    $pck = 'col:' + [string]$pcid
+                    $plst = $op.ByCid[$pcid]
+                    $pn = 0
+                    try { $pn = [int]$plst.Count } catch { $pn = 0 }
+                    for ($pi2 = 0; $pi2 -lt $pn; $pi2++) {
+                        $pit = $plst[$pi2]
+                        try {
+                            if ($null -eq $pit -or $null -eq $pit.Ids) { continue }
+                            $pforms = New-Object System.Collections.Generic.List[string]
+                            [void]$pforms.Add([string]$pit.Ids.Main)
+                            foreach ($pf in @($pit.Ids.All)) { $pfs = [string]$pf; if (-not $pforms.Contains($pfs)) { [void]$pforms.Add($pfs) } }
+                            foreach ($pfs in $pforms) {
+                                if ([string]$pit.Want -eq 'in') {
+                                    if (-not $map.ContainsKey($pfs)) { $map[$pfs] = New-Object System.Collections.Generic.List[string] }
+                                    if (-not $map[$pfs].Contains($pck)) { [void]$map[$pfs].Add($pck) }
+                                } elseif ($map.ContainsKey($pfs)) { [void]$map[$pfs].Remove($pck) }
+                            }
+                        } catch { $script:collOverlayError = 'overlay: ' + [string]$_.Exception.Message + ' @ ' + [string]$_.InvocationInfo.Line.Trim() }
+                    }
+                }
+            } elseif ($ty -eq 'struct') {
+                $ck = 'col:' + [string]$op.Cid
+                if ([string]$op.Op -eq 'create') {
+                    $has = $false
+                    foreach ($x in $list) { if ([string]$x.Key -eq $ck) { $has = $true; break } }
+                    if (-not $has) { [void]$list.Add([PSCustomObject]@{ Key = $ck; Name = [string]$op.Name }) }
+                    $nameMap[([string]$op.Name).Trim().ToLowerInvariant()] = $ck
+                } else {
+                    for ($i = $list.Count - 1; $i -ge 0; $i--) { if ([string]$list[$i].Key -eq $ck) { $list.RemoveAt($i) } }
+                    foreach ($nk in @($nameMap.Keys)) { if ([string]$nameMap[$nk] -eq $ck) { [void]$nameMap.Remove($nk) } }
+                    foreach ($mk in @($map.Keys)) { try { [void]$map[$mk].Remove($ck) } catch {} }
+                }
+            } else {
+                # Коллекции игры из карточки: то же, что считает Save-CardCollections.
+                $idsNew = Get-CollEntryIds ([PSCustomObject]@{ AppId = [string]$op.AppId; Kind = [string]$op.Kind })
+                if ($null -eq $idsNew) { continue }
+                $moved = (-not [string]::IsNullOrWhiteSpace([string]$op.OldAppId) -and [string]$op.OldAppId -ne [string]$op.AppId)
+                $idsOld = $null
+                if ($moved) { $idsOld = Get-CollEntryIds ([PSCustomObject]@{ AppId = [string]$op.OldAppId; Kind = [string]$op.Kind }) }
+                $init = @{}; foreach ($k in @($op.Init)) { $init[[string]$k] = $true }
+                $sel = @{}; foreach ($k in @($op.Sel)) { $sel[[string]$k] = $true }
+                $union = @{}; foreach ($k in $init.Keys) { $union[[string]$k] = $true }; foreach ($k in $sel.Keys) { $union[[string]$k] = $true }
+                foreach ($k in @($union.Keys)) {
+                    if (-not ([string]$k).StartsWith('col:')) { continue }
+                    $wantIn = $sel.ContainsKey($k); $wasIn = $init.ContainsKey($k)
+                    if ($moved) {
+                        if ($wasIn -and $null -ne $idsOld) { Set-CollOverlayMember $map $k $idsOld 'out' }
+                        if ($wantIn) { Set-CollOverlayMember $map $k $idsNew 'in' }
+                    } elseif ($wantIn -and -not $wasIn) { Set-CollOverlayMember $map $k $idsNew 'in' }
+                    elseif ($wasIn -and -not $wantIn) { Set-CollOverlayMember $map $k $idsNew 'out' }
+                }
+            }
+        } catch {}
+    }
+}
+
+# Записывает накопленные изменения по порядку. Работает только при закрытом Steam (иначе он перезапишет файлы своей копией из памяти).
 function Apply-PendingCollectionOps {
     try {
         if ($null -eq $script:pendingCollectionOps -or $script:pendingCollectionOps.Count -eq 0) { return }
         if (Test-SteamRunning) { return }
         $ops = @($script:pendingCollectionOps.ToArray())
         $script:pendingCollectionOps.Clear()
+        $script:pendingCollMember = @{}
+        $script:pendingCollVer = [int]$script:pendingCollVer + 1
+        $script:collSnapCache = $null
         $errs = New-Object System.Collections.Generic.List[string]
+        # Одна метка на всю очередь: резервная копия файлов коллекций хранит состояние до первой записи.
+        $stamp = (Get-Date).ToString('yyyyMMdd-HHmmss')
         foreach ($op in $ops) {
             try {
-                $r = @(Save-CardCollections $op.Snap ([string]$op.AppId) ([string]$op.OldAppId) ([string]$op.Kind) @($op.Init) @($op.Sel) $op.Rec)
-                if ($r.Count -gt 0 -and [string]$r[$r.Count - 1]) { [void]$errs.Add([string]$r[$r.Count - 1]) }
+                $ty = [string]$op.Type
+                if ($ty -eq 'plan') {
+                    $found = @{}
+                    foreach ($pd in @(Get-ConfiguredSteamProfileDirectories)) {
+                        try { $null = Update-SteamCollectionsInProfile ([string]$pd.FullName) $op.ByCid $found $stamp }
+                        catch { [void]$errs.Add([string]$_.Exception.Message) }
+                    }
+                    foreach ($mc in @($op.ByCid.Keys)) {
+                        if (-not $found.ContainsKey([string]$mc)) {
+                            $nm = [string]$op.Names['col:' + [string]$mc]
+                            if ([string]::IsNullOrWhiteSpace($nm)) { $nm = [string]$mc }
+                            [void]$errs.Add((T 'coll_missing' @($nm)))
+                        }
+                    }
+                } elseif ($ty -eq 'struct') {
+                    $any = $false
+                    foreach ($pd in @(Get-ConfiguredSteamProfileDirectories)) {
+                        try { if (Edit-SteamCollectionList ([string]$pd.FullName) ([string]$op.Op) ([string]$op.Cid) ([string]$op.Name) $stamp) { $any = $true } }
+                        catch { [void]$errs.Add([string]$_.Exception.Message) }
+                    }
+                    if (-not $any) { [void]$errs.Add((T 'coll_struct_fail')) }
+                } else {
+                    $r = @(Save-CardCollections $op.Snap ([string]$op.AppId) ([string]$op.OldAppId) ([string]$op.Kind) @($op.Init) @($op.Sel) $op.Rec)
+                    if ($r.Count -gt 0 -and [string]$r[$r.Count - 1]) { [void]$errs.Add([string]$r[$r.Count - 1]) }
+                }
             } catch { [void]$errs.Add([string]$_.Exception.Message) }
         }
         if ($errs.Count -gt 0) {
@@ -52634,43 +55798,32 @@ function Show-SteamLibraryBrowser {
         $h = [float]$sender.ClientSize.Height
         $cx = $w / 2.0
         $cy = $h / 2.0
-        # Круглая подложка в стиле Steam (при наведении / нажатии).
-        if ($script:libBackDown -or $script:libBackHover) {
-            $bgCol = if ($script:libBackDown) {
-                [System.Drawing.Color]::FromArgb(38, 76, 108)
-            } else {
-                [System.Drawing.Color]::FromArgb(42, 56, 72)
-            }
-            $pad = 1.5
-            $brush = New-Object System.Drawing.SolidBrush($bgCol)
-            try { $g.FillEllipse($brush, $pad, $pad, $w - $pad * 2, $h - $pad * 2) } finally { $brush.Dispose() }
-            if ($script:libBackHover -and -not $script:libBackDown) {
-                $ringCol = [System.Drawing.Color]::FromArgb(70, 102, 192, 244)
-                $ringPen = New-Object System.Drawing.Pen($ringCol, 1.2)
-                try { $g.DrawEllipse($ringPen, $pad, $pad, $w - $pad * 2, $h - $pad * 2) } finally { $ringPen.Dispose() }
-            }
-        }
-        # Стрелка «‹»: чуть толще, скруглённые концы, лёгкий сдвиг влево для оптического центра.
+        # Стрелка «назад» как в клиенте Steam: тонкая стрелка «←» (линия со стрелочным наконечником), без подложки.
+        # Обычное состояние - серая, при наведении - белая, при нажатии - чуть темнее.
         $arrowCol = if ($script:libBackDown) {
-            [System.Drawing.Color]::White
+            [System.Drawing.Color]::FromArgb(176, 183, 194)
         } elseif ($script:libBackHover) {
-            $steamUi.Accent
+            [System.Drawing.Color]::White
         } else {
-            $steamUi.Muted
+            [System.Drawing.Color]::FromArgb(112, 119, 132)
         }
-        $ox = $cx - 1.0
-        $arm = 6.0
-        $pen = New-Object System.Drawing.Pen($arrowCol, 2.4)
+        $half = 7.5     # половина длины стрелки по горизонтали
+        $head = 7.0     # вылет наконечника по вертикали (и по горизонтали от острия)
+        $x0 = $cx - $half + 1.0   # острие (миттер-стык выступает ещё на ~2 px)
+        $x1 = $cx + $half
+        $pen = New-Object System.Drawing.Pen($arrowCol, 3.0)
         try {
-            $pen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
-            $pen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
-            $pen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
-            $pts = @(
-                (New-Object System.Drawing.PointF(($ox + $arm * 0.55), ($cy - $arm))),
-                (New-Object System.Drawing.PointF(($ox - $arm * 0.55), $cy)),
-                (New-Object System.Drawing.PointF(($ox + $arm * 0.55), ($cy + $arm)))
-            )
-            $g.DrawLines($pen, $pts)
+            $pen.StartCap = [System.Drawing.Drawing2D.LineCap]::Flat
+            $pen.EndCap = [System.Drawing.Drawing2D.LineCap]::Flat
+            $pen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Miter
+            # Древко.
+            $g.DrawLine($pen, [single]$x0, [single]$cy, [single]$x1, [single]$cy)
+            # Наконечник: два ровных плеча от острия влево-вверх и влево-вниз.
+            $g.DrawLines($pen, @(
+                (New-Object System.Drawing.PointF(($x0 + $head), ($cy - $head))),
+                (New-Object System.Drawing.PointF($x0, $cy)),
+                (New-Object System.Drawing.PointF(($x0 + $head), ($cy + $head)))
+            ))
         } finally { $pen.Dispose() }
     })
     $btnLibBack.Add_Click({ $script:libClosingViaBack = $true; try { $dlg.Close() } catch {} })
@@ -53465,6 +56618,7 @@ function Show-SteamLibraryBrowser {
                 } catch {}
             }
         } catch {}
+        try { Apply-PendingCollOverlay $map $list $nameMap } catch {}
         $script:libCollMap = $map
         $script:libCollList = $list.ToArray()
         $script:libCollNameMap = $nameMap
@@ -53516,6 +56670,22 @@ function Show-SteamLibraryBrowser {
                     }
                 }
             }
+            # Ожидающие перезапуска Steam переносы игр: показываем сразу, поверх прочитанного из файлов.
+            try {
+                if ($an -and $null -ne $script:pendingCollMember -and $script:pendingCollMember.Count -gt 0) {
+                    $pu = [int64]$an
+                    $pforms = @([string]$an, [string]($pu - 4294967296), [string](($pu -shl 32) -bor 33554432))
+                    foreach ($pk in @($script:pendingCollMember.Keys)) {
+                        $pks = [string]$pk
+                        $sep = $pks.IndexOf('|')
+                        if ($sep -lt 0) { continue }
+                        if ($pforms -notcontains $pks.Substring(0, $sep)) { continue }
+                        $pck2 = $pks.Substring($sep + 1)
+                        if ([string]$script:pendingCollMember[$pk] -eq 'in') { if (-not $found.Contains($pck2)) { [void]$found.Add($pck2) } }
+                        else { [void]$found.Remove($pck2) }
+                    }
+                }
+            } catch { $script:collOverlayError = 'lookup: ' + [string]$_.Exception.Message + ' @ ' + [string]$_.InvocationInfo.Line.Trim() }
             if ([string]$en.Kind -eq 'shortcut' -and $null -ne $script:libCollNameMap -and $script:libCollNameMap.Count -gt 0) {
                 foreach ($tg in @(& $getEntryTags $en)) {
                     $tk = ([string]$tg).Trim().ToLowerInvariant()
@@ -53759,6 +56929,8 @@ function Show-SteamLibraryBrowser {
                 $ek = [string](& $getEntryEmuKey $en)
                 if ($ek -and $off.ContainsKey($ek)) { return $false }
             }
+            # Лаунчеры: снятая общая галочка прячет игры всех лаунчеров, галочка отдельного лаунчера (ключ launcher:<id>) - только его игры.
+            if ($cat -like 'launcher:*' -and $null -ne $off -and $off.ContainsKey('launch')) { return $false }
             # Враппер ярлыка: «Врапперы» прячет все игры через врапперы, галочка отдельного враппера - только его игры.
             if ($cat -eq 'wrap' -and $null -ne $off -and $off.Count -gt 0) {
                 $wk = [string](& $getEntryWrapKey $en)
@@ -53882,6 +57054,8 @@ function Show-SteamLibraryBrowser {
                 } elseif ($c -eq 'wrap') {
                     $wc = [string](& $getEntryWrapKey $en)
                     if ($wc) { if ($counts.ContainsKey($wc)) { $counts[$wc] = [int]$counts[$wc] + 1 } else { $counts[$wc] = 1 } }
+                } elseif ($c -like 'launcher:*') {
+                    if ($counts.ContainsKey('launch')) { $counts['launch'] = [int]$counts['launch'] + 1 } else { $counts['launch'] = 1 }
                 }
             }
 
@@ -53951,6 +57125,28 @@ function Show-SteamLibraryBrowser {
                             } else {
                                 foreach ($it1 in @($snd.Owner.Items)) {
                                     if ($it1 -is [System.Windows.Forms.ToolStripMenuItem] -and $null -ne $it1.Tag -and ([string]$it1.Tag -like 'wrap:*')) { $script:libFilterOff[[string]$it1.Tag] = $true }
+                                }
+                            }
+                            foreach ($it in @($snd.Owner.Items)) {
+                                if ($it -is [System.Windows.Forms.ToolStripMenuItem] -and $null -ne $it.Tag) { & $paintItem $it }
+                            }
+                        } elseif ($k -eq 'launch' -or $k -like 'launcher:*') {
+                            # Связь «Лаунчеры» и отдельных лаунчеров (как «Врапперы» и врапперы): включили лаунчер - «Лаунчеры» включается сам;
+                            # включили «Лаунчеры» - включаются все; выключили «Лаунчеры» - выключаются все; сняли последний - «Лаунчеры» тоже снимается.
+                            if ($k -like 'launcher:*') {
+                                if ($wasOff) { [void]$script:libFilterOff.Remove('launch') }
+                                else {
+                                    $anyLaunOn = $false
+                                    foreach ($it0 in @($snd.Owner.Items)) {
+                                        if ($it0 -is [System.Windows.Forms.ToolStripMenuItem] -and ([string]$it0.Tag) -like 'launcher:*' -and -not $script:libFilterOff.ContainsKey([string]$it0.Tag)) { $anyLaunOn = $true; break }
+                                    }
+                                    if (-not $anyLaunOn) { $script:libFilterOff['launch'] = $true }
+                                }
+                            } elseif ($wasOff) {
+                                foreach ($ok in @($script:libFilterOff.Keys)) { if ([string]$ok -like 'launcher:*') { [void]$script:libFilterOff.Remove($ok) } }
+                            } else {
+                                foreach ($it1 in @($snd.Owner.Items)) {
+                                    if ($it1 -is [System.Windows.Forms.ToolStripMenuItem] -and $null -ne $it1.Tag -and ([string]$it1.Tag -like 'launcher:*')) { $script:libFilterOff[[string]$it1.Tag] = $true }
                                 }
                             }
                             foreach ($it in @($snd.Owner.Items)) {
@@ -54060,7 +57256,7 @@ function Show-SteamLibraryBrowser {
             foreach ($k in @($script:libFilterOff.Keys)) { if (([string]$k -like 'launcher:*') -and -not $lids.Contains([string]$k)) { [void]$lids.Add([string]$k) } }
             if ($lids.Count -gt 0) {
                 [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
-                & $addHeader (T 'lib_filter_launchers')
+                & $addCheck 'launch' (& $cntText (T 'lib_filter_launchers') 'launch') $null 'parent'
                 $lrows = @()
                 foreach ($k in $lids) {
                     $id = ([string]$k).Substring(9)
@@ -54074,9 +57270,15 @@ function Show-SteamLibraryBrowser {
                     }
                     $lrows += ,@([string]$k, $nm, $ic)
                 }
-                foreach ($lr in @($lrows | Sort-Object { [string]$_[1] })) {
-                    & $addCheck ([string]$lr[0]) (& $cntText ([string]$lr[1]) ([string]$lr[0])) $lr[2]
+                $lrSorted = @($lrows | Sort-Object { [string]$_[1] })
+                $lrIdx = 0
+                foreach ($lr in $lrSorted) {
+                    $lrIdx++
+                    $lrRole = if ($lrIdx -eq $lrSorted.Count) { 'childlast' } else { 'child' }
+                    & $addCheck ([string]$lr[0]) (& $cntText ([string]$lr[1]) ([string]$lr[0])) $lr[2] $lrRole
                 }
+            } elseif ($script:libFilterOff.ContainsKey('launch')) {
+                [void]$script:libFilterOff.Remove('launch')
             }
 
             # Коллекции Steam вынесены из этого меню в отдельный выпадающий список справа от кнопки «Фильтр» ($btnColl).
@@ -54152,9 +57354,31 @@ function Show-SteamLibraryBrowser {
     $dlg.Controls.Add($btnColl)
     $btnColl.Add_Paint({ param($s, $e) & $paintLibIcon $s $e 'coll' })
 
+    # Первая из отмеченных галочкой игр вкладки Steam ($null — ничего не отмечено). Пока игры отмечены, кнопка коллекций
+    # работает как пункт «Коллекции» контекстного меню: меняет коллекции отмеченных игр.
+    $getCollBtnSelEntry = {
+        try {
+            if ($null -eq $script:libSteamSelected -or $script:libSteamSelected.Count -eq 0) { return $null }
+            foreach ($x in @($script:libBrowserEntries)) {
+                if ($script:libSteamSelected.ContainsKey([string](& $getSteamEntryKey $x))) { return $x }
+            }
+        } catch {}
+        return $null
+    }
+
     # Подпись и подсветка кнопки: выбрана коллекция — её название и акцентная рамка, иначе «Все коллекции».
     $updateCollBtn = {
         try {
+            $selEn = & $getCollBtnSelEntry
+            if ($null -ne $selEn) {
+                $tgN = @(& $getCtxCollTargets $selEn).Count
+                $btnColl.Text = ''
+                try { $libToolTip.SetToolTip($btnColl, $(if ($tgN -gt 1) { T 'lib_ctx_coll_sel' @($tgN) } else { T 'lib_ctx_coll' })) } catch {}
+                $btnColl.FlatAppearance.BorderColor = $steamUi.Accent2
+                $btnColl.BackColor = [System.Drawing.Color]::FromArgb(25,55,75)
+                $btnColl.Invalidate()
+                return
+            }
             $sel = [string]$script:libCollSel
             $nm = (T 'lib_coll_all')
             if ($sel) {
@@ -54210,6 +57434,18 @@ function Show-SteamLibraryBrowser {
                 } catch {}
             })
 
+            # Есть отмеченные игры: вместо перехода по коллекциям — смена коллекций отмеченных игр (как в контекстном меню).
+            $selEn = & $getCollBtnSelEntry
+            if ($null -ne $selEn) {
+                $cmenu.Name = 'sccollset'
+                & $addCollMenuItem $cmenu $selEn $true
+                if ($cmenu.Items.Count -gt 0) {
+                    # Без MinimumSize: иначе меню шире пунктов, и подсветка «Применить» с разделителем не доходят до правого края.
+                    $cmenu.Show($btnColl, (New-Object System.Drawing.Point(0, $btnColl.Height)))
+                }
+                return
+            }
+
             & $loadCollections
             $noneKey = [string]$script:libFilterCollNoneKey
             # Сколько игр библиотеки в каждой коллекции (по всем записям вкладки Steam, без учёта поиска и фильтра).
@@ -54227,7 +57463,7 @@ function Show-SteamLibraryBrowser {
             $colRows = @(@($script:libCollList) | Where-Object { $null -ne $_ -and [string]$_.Key -ne 'col:hidden' } | Sort-Object -Property { [string]$_.Name } -CaseSensitive:$false)
 
             $addCollItem = {
-                param([string]$key, [string]$text)
+                param([string]$key, [string]$text, [bool]$canDel = $false)
                 $mi = New-Object System.Windows.Forms.ToolStripMenuItem
                 $mi.Text = $text
                 $mi.Tag = $key
@@ -54237,9 +57473,26 @@ function Show-SteamLibraryBrowser {
                 # «Все коллекции» отмечено, только если не включена группировка (она отмечается своим пунктом).
                 if ($isSel -and $key -eq '*' -and [bool]$script:libCollGrouped) { $isSel = $false }
                 $mi.CheckState = $(if ($isSel) { [System.Windows.Forms.CheckState]::Checked } else { [System.Windows.Forms.CheckState]::Unchecked })
+                if ($canDel) {
+                    # Справа у пункта кнопка «минус»: клик по её зоне удаляет коллекцию вместо выбора (рисует SCFilterRenderer).
+                    $mi.AccessibleDescription = 'collrow'
+                    # Значок «×» справа - штатный текст сочетания клавиш: Windows сам выравнивает его по правому краю пункта.
+                    $mi.ShowShortcutKeys = $true
+                    $mi.ShortcutKeyDisplayString = [string][char]0x00D7
+                    $mi.Add_MouseDown({
+                        param($snd, $ea)
+                        try { $script:libCollGlyphHit = ($ea.X -ge ($snd.Width - [SCFilterRenderer]::GlyphZone)) } catch { $script:libCollGlyphHit = $false }
+                    })
+                }
                 $mi.Add_Click({
                     param($snd, $ea)
                     try {
+                        if ([bool]$script:libCollGlyphHit -and [string]$snd.AccessibleDescription -eq 'collrow') {
+                            $script:libCollGlyphHit = $false
+                            & $collStructChange 'delete' ([string]$snd.Tag)
+                            return
+                        }
+                        $script:libCollGlyphHit = $false
                         $k = [string]$snd.Tag
                         $script:libCollSel = $(if ($k -eq '*') { '' } else { $k })
                         $script:libCollGrouped = $false
@@ -54270,13 +57523,66 @@ function Show-SteamLibraryBrowser {
             foreach ($cr in $colRows) {
                 $n1 = 0
                 if ($cc.ContainsKey([string]$cr.Key)) { $n1 = [int]$cc[[string]$cr.Key] }
-                & $addCollItem ([string]$cr.Key) (([string]$cr.Name) + '  (' + [string]$n1 + ')')
+                & $addCollItem ([string]$cr.Key) (([string]$cr.Name) + '  (' + [string]$n1 + ')') ([string]$cr.Key -ne 'col:favorite')
             }
             # «Без категории» — как в Steam: игры, которых нет ни в одной коллекции.
             # Если игр без категории нет — пункт не показываем (кроме случая, когда он сейчас выбран и его нужно уметь снять).
             if ($colRows.Count -gt 0 -and ($noneCount -gt 0 -or [string]$script:libCollSel -eq $noneKey)) {
                 & $addCollItem $noneKey ((T 'lib_filter_coll_none') + '  (' + [string]$noneCount + ')')
             }
+            # В самом низу, после разделителя: «Создать коллекцию» (без галочки, текст на уровне названий, справа «плюс» в одной колонке с «минусами»).
+            [void]$cmenu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
+            $miNew = New-Object System.Windows.Forms.ToolStripMenuItem
+            # Как в Steam: «+ Создать коллекцию…» - плюс слева перед текстом, без кнопки справа.
+            $miNew.Text = ((T 'coll_new') + [string][char]0x2026)
+            $miNew.Tag = '__new__'
+            $miNew.AccessibleDescription = 'collnew'   # плюс слева от текста рисует SCFilterRenderer
+            $miNew.BackColor = [System.Drawing.Color]::FromArgb(22, 28, 36)
+            $miNew.ForeColor = $steamUi.Text
+            $miNew.Add_Click({ param($snd, $ea) try { & $collStructChange 'create' '' } catch {} })
+            [void]$cmenu.Items.Add($miNew)
+            # Подсветка кнопки под курсором: перерисовываем меню, когда курсор входит в зону кнопки или выходит из неё.
+            # Запоминаем именно пункт, чья кнопка сейчас под курсором (а не просто флаг): иначе при переходе с кнопки одной строки на кнопку
+            # другой строки меню не перерисовывалось бы и подсветка «залипала» на прежней.
+            $script:libCollGlyphHot = $false
+            $script:libCollGlyphHotItem = $null
+            # События мыши меню приходят не всегда (пункты перехватывают их сами), поэтому положение курсора опрашивает таймер,
+            # пока меню открыто: так подсветка кнопки включается и выключается надёжно. Рисует кнопку SCFilterRenderer по текущей позиции мыши.
+            $script:libCollMenu = $cmenu
+            $script:libCollHotTimer = New-Object System.Windows.Forms.Timer
+            $script:libCollHotTimer.Interval = 15
+            [SCFilterRenderer]::HotItem = $null
+            $script:libCollHotTimer.Add_Tick({
+                try {
+                    $m = $script:libCollMenu
+                    if ($null -eq $m -or $m.IsDisposed -or -not $m.Visible) { return }
+                    $pt = $m.PointToClient([System.Windows.Forms.Control]::MousePosition)
+                    $hotItem = $null
+                    $it = $m.GetItemAt($pt)
+                    if ($null -ne $it -and ([string]$it.AccessibleDescription -eq 'collrow' -or [string]$it.AccessibleDescription -eq 'colladd')) {
+                        if (($pt.X - $it.Bounds.X) -ge ($it.Width - [SCFilterRenderer]::GlyphZone)) { $hotItem = $it }
+                    }
+                    if (-not [object]::ReferenceEquals($hotItem, $script:libCollGlyphHotItem)) {
+                        $oldItem = $script:libCollGlyphHotItem
+                        $script:libCollGlyphHotItem = $hotItem
+                        $script:libCollGlyphHot = ($null -ne $hotItem)
+                        [SCFilterRenderer]::HotItem = $hotItem
+                        $m.Cursor = $(if ($null -ne $hotItem) { [System.Windows.Forms.Cursors]::Hand } else { [System.Windows.Forms.Cursors]::Default })
+                        # Перерисовываем только прежний и новый пункты (без мерцания всего меню).
+                        if ($null -ne $oldItem) { $m.Invalidate($oldItem.Bounds) }
+                        if ($null -ne $hotItem) { $m.Invalidate($hotItem.Bounds) }
+                    }
+                } catch {}
+            })
+            $cmenu.Add_Closed({
+                try {
+                    if ($null -ne $script:libCollHotTimer) { $script:libCollHotTimer.Stop(); $script:libCollHotTimer.Dispose(); $script:libCollHotTimer = $null }
+                    $script:libCollGlyphHotItem = $null
+                    $script:libCollGlyphHot = $false
+                    [SCFilterRenderer]::HotItem = $null
+                } catch {}
+            })
+            $script:libCollHotTimer.Start()
             $cmenu.MinimumSize = New-Object System.Drawing.Size(220, 0)
             $cmenu.Show($btnColl, (New-Object System.Drawing.Point(0, $btnColl.Height)))
         } catch {}
@@ -55426,7 +58732,14 @@ function Show-SteamLibraryBrowser {
             $tileIsRom = $false
             try { $tileIsRom = [bool](Test-ShortcutIsRomEntry $entry) } catch { $tileIsRom = $false }
             if ($tileIsRom) { $srcLid = '' }
-            if (-not [string]::IsNullOrWhiteSpace($srcLid)) {
+            # Игра через враппер: значок враппера в углу (как значок эмулятора у ROM), приоритет над лаунчером - как в фильтре.
+            $tileWrapProf = $null
+            if (-not $tileIsRom) { try { $tileWrapProf = Get-EntryLaunchWrapperProfile $entry } catch { $tileWrapProf = $null } }
+            if ($null -ne $tileWrapProf) {
+                $wrapBadgeIcon = $null
+                try { $wrapBadgeIcon = Get-LibEmulatorBadgeBitmap $tileWrapProf } catch { $wrapBadgeIcon = $null }
+                if ($null -ne $wrapBadgeIcon) { Add-LauncherBadgeToPictureBox $pic $wrapBadgeIcon 22 6 }
+            } elseif (-not [string]::IsNullOrWhiteSpace($srcLid)) {
                 if ($null -ne $script:libLauncherMap -and $script:libLauncherMap.ContainsKey($srcLid)) {
                     $srcIcon = $script:libLauncherMap[$srcLid].Icon
                     if ($null -ne $srcIcon) { Add-LauncherBadgeToPictureBox $pic $srcIcon 22 6 }
@@ -57145,10 +60458,13 @@ function Show-SteamLibraryBrowser {
             if ($byCid.Count -eq 0) { $lblLibStatus.Text = (T 'coll_nochange'); return }
 
             # Steam перезаписывает файлы коллекций своей копией из памяти, поэтому писать можно только при закрытом Steam.
+            $queueOnly = $false
             try { $steamWasRunning = Test-SteamRunning } catch {}
             if ($steamWasRunning) {
                 if ((Get-SteamRestartMode) -eq 'manual') {
-                    if (-not (Wait-SteamClosedByUser)) { $lblLibStatus.Text = (T 'steam_close_cancelled'); $steamWasRunning = $false; return }
+                    # Ручной режим: окно «закройте Steam» не показываем и работу не блокируем. Запись встаёт в очередь и выполнится по кнопке перезапуска Steam.
+                    $queueOnly = $true
+                    $steamWasRunning = $false
                 } else {
                     $ansC = Show-AppMessageBox($dlg, (T 'coll_close_steam'), $global:appTitle, [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
                     if ($ansC -ne [System.Windows.Forms.DialogResult]::Yes) { $steamWasRunning = $false; return }
@@ -57162,9 +60478,12 @@ function Show-SteamLibraryBrowser {
             $found = @{}
             $stamp = (Get-Date).ToString('yyyyMMdd-HHmmss')
             try {
-                foreach ($pd in @(Get-ConfiguredSteamProfileDirectories)) {
-                    try { Update-SteamCollectionsInProfile ([string]$pd.FullName) $byCid $found $stamp }
-                    catch { [void]$errors.Add([string]$_.Exception.Message) }
+                if ($queueOnly) { Add-PendingCollPlan $byCid $nameOf }
+                else {
+                    foreach ($pd in @(Get-ConfiguredSteamProfileDirectories)) {
+                        try { Update-SteamCollectionsInProfile ([string]$pd.FullName) $byCid $found $stamp }
+                        catch { [void]$errors.Add([string]$_.Exception.Message) }
+                    }
                 }
                 if ($tagWork.Count -gt 0) {
                     $tagRes = Remove-ShortcutTagsBatch @($tagWork.ToArray())
@@ -57180,7 +60499,7 @@ function Show-SteamLibraryBrowser {
                 $dlg.UseWaitCursor = $false
             }
             $missing = New-Object System.Collections.Generic.List[string]
-            foreach ($mc in @($byCid.Keys)) { if (-not $found.ContainsKey([string]$mc)) { [void]$missing.Add([string]$nameOf['col:' + [string]$mc]) } }
+            if (-not $queueOnly) { foreach ($mc in @($byCid.Keys)) { if (-not $found.ContainsKey([string]$mc)) { [void]$missing.Add([string]$nameOf['col:' + [string]$mc]) } } }
             if ($missing.Count -gt 0) { [void]$errors.Add((T 'coll_missing' @(($missing.ToArray() -join ', ')))) }
 
             # Состав прочитываем заново и перерисовываем плитки (на случай, если сейчас включён фильтр по коллекции).
@@ -57192,7 +60511,7 @@ function Show-SteamLibraryBrowser {
             if ($errors.Count -gt 0) {
                 Show-AppMessageBox($dlg, (T 'coll_fail' @(($errors.ToArray() -join "`n"))), $global:appTitle, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
             } else {
-                $lblLibStatus.Text = (T 'coll_done' @($total, $byCid.Count))
+                $lblLibStatus.Text = $(if ($queueOnly) { (T 'coll_queued') + $(if ($script:collOverlayError) { ' [overlay: ' + $script:collOverlayError + ']' } else { '' }) } else { T 'coll_done' @($total, $byCid.Count) })
             }
         } catch {
             try { Write-LauncherLog ('ctxCollections: ' + $_.Exception.Message + ' | ' + [string]$_.ScriptStackTrace) } catch {}
@@ -57203,18 +60522,131 @@ function Show-SteamLibraryBrowser {
             $script:libCtxSaveBusy = $false
         }
     }
+    # Создание / удаление коллекции из меню коллекций. $op: 'create' | 'delete'; $ckey - ключ 'col:<id>' (для удаления).
+    # Подтверждение одно: удаление (и перезапуск Steam, если он запущен и режим автоматический); в ручном режиме - только удаление.
+    $collStructChange = {
+        param([string]$op, [string]$ckey)
+        if ($script:libCtxSaveBusy -or $script:libUpdRunning -or $script:libRestoreRunning -or $script:libImportRunning -or $script:libSaveRunning) { return }
+        $script:libCtxSaveBusy = $true
+        $steamWasRunning = $false
+        try {
+            try { & $hideLibHoverCardNow } catch {}
+            $lblLibStatus.Text = ''
+            $script:libCollMap = $null
+            & $loadCollections
+            $cid = ''; $cname = ''
+            $tagWork = New-Object System.Collections.Generic.List[object]
+            if ($op -eq 'create') {
+                $cname = Show-CollectionNameDialog $dlg
+                if ([string]::IsNullOrWhiteSpace($cname)) { return }
+                $cname = ([string]$cname).Trim()
+                foreach ($cl in @($script:libCollList)) {
+                    if ($null -ne $cl -and ([string]$cl.Name).Trim().ToLowerInvariant() -eq $cname.ToLowerInvariant()) {
+                        Show-AppMessageBox($dlg, (T 'coll_new_exists' @($cname)), $global:appTitle, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
+                        return
+                    }
+                }
+                $cid = New-SteamCollectionId
+            } else {
+                if (-not $ckey.StartsWith('col:')) { return }
+                $cid = $ckey.Substring(4)
+                if ($cid -eq 'favorite' -or $cid -eq 'hidden') { return }
+                foreach ($cl in @($script:libCollList)) { if ($null -ne $cl -and [string]$cl.Key -eq $ckey) { $cname = [string]$cl.Name; break } }
+                if ([string]::IsNullOrWhiteSpace($cname)) { return }
+                # Теги-коллекции у ярлыков Non-Steam (имя тега = имя коллекции): без их снятия Steam создаст коллекцию заново.
+                $nmLow = $cname.Trim().ToLowerInvariant()
+                foreach ($g in @($script:libBrowserEntries)) {
+                    if ($null -eq $g -or [string]$g.Kind -ne 'shortcut') { continue }
+                    $hasTag = $false
+                    foreach ($tg in @(& $getEntryTags $g)) { if (([string]$tg).Trim().ToLowerInvariant() -eq $nmLow) { $hasTag = $true; break } }
+                    if ($hasTag) { [void]$tagWork.Add([PSCustomObject]@{ Entry = $g; NamesLower = @($nmLow) }) }
+                }
+            }
+
+            $queueOnly = $false
+            $running = $false
+            try { $running = [bool](Test-SteamRunning) } catch {}
+            $manual = ((Get-SteamRestartMode) -eq 'manual')
+            if ($op -eq 'delete') {
+                $qText = $(if ($running -and -not $manual) { T 'coll_del_confirm_restart' @($cname) } else { T 'coll_del_confirm' @($cname) })
+                $ans = Show-AppMessageBox($dlg, $qText, $global:appTitle, [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
+                if ($ans -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+            } elseif ($running -and -not $manual) {
+                $ans2 = Show-AppMessageBox($dlg, (T 'coll_close_steam'), $global:appTitle, [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
+                if ($ans2 -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+            }
+            if ($running) {
+                $steamWasRunning = $true
+                if ($manual) {
+                    # Ручной режим: без окна ожидания. Создание/удаление встаёт в очередь и выполнится по кнопке перезапуска Steam.
+                    $queueOnly = $true
+                    $steamWasRunning = $false
+                } else {
+                    if (-not (Close-SteamForWrite)) { $lblLibStatus.Text = (T 'steam_close_cancelled'); $steamWasRunning = $false; return }
+                }
+            }
+
+            $dlg.UseWaitCursor = $true
+            [System.Windows.Forms.Application]::DoEvents()
+            $errors = New-Object System.Collections.Generic.List[string]
+            $anyChanged = $false
+            $stamp = (Get-Date).ToString('yyyyMMdd-HHmmss')
+            try {
+                if ($queueOnly) { Add-PendingCollStruct $op $cid $cname; $anyChanged = $true }
+                else {
+                    foreach ($pd in @(Get-ConfiguredSteamProfileDirectories)) {
+                        try { if (Edit-SteamCollectionList ([string]$pd.FullName) $op $cid $cname $stamp) { $anyChanged = $true } }
+                        catch { [void]$errors.Add([string]$_.Exception.Message) }
+                    }
+                }
+                if ($tagWork.Count -gt 0) {
+                    $tagRes = Remove-ShortcutTagsBatch @($tagWork.ToArray())
+                    if ($null -ne $tagRes -and [string]$tagRes.Error) { [void]$errors.Add([string]$tagRes.Error) }
+                    if ($null -ne $tagRes -and [int]$tagRes.Removed -gt 0) {
+                        foreach ($tw in $tagWork) { try { [void](Remove-TagNodesByName $tw.Entry.ShortcutRecord.Entry ([string[]]$tw.NamesLower)) } catch {} }
+                    }
+                }
+            } finally {
+                if ($steamWasRunning -and -not $manual) { try { Start-SteamIfAuto ([string](Get-ConfiguredSteamExePath)) } catch {} }
+                $steamWasRunning = $false
+                $dlg.UseWaitCursor = $false
+            }
+            if (-not $anyChanged -and $errors.Count -eq 0) { [void]$errors.Add((T 'coll_struct_fail')) }
+
+            if ($op -eq 'delete' -and [string]$script:libCollSel -eq $ckey) { $script:libCollSel = '' }
+            try { & $loadCollections } catch {}
+            try { if ($tagWork.Count -gt 0) { & $refreshLibAfterEdit $null } } catch {}
+            try { & $applyLibFilter } catch {}
+            if ($errors.Count -gt 0) {
+                Show-AppMessageBox($dlg, (T 'coll_fail' @(($errors.ToArray() -join "`n"))), $global:appTitle, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
+            } else {
+                $lblLibStatus.Text = $(if ($queueOnly) { T 'coll_queued' } elseif ($op -eq 'create') { T 'coll_created' @($cname) } else { T 'coll_deleted' @($cname) })
+            }
+        } catch {
+            try { Write-LauncherLog ('collStructChange: ' + $_.Exception.Message + ' | ' + [string]$_.ScriptStackTrace) } catch {}
+            try { Show-AppMessageBox($dlg, (T 'coll_fail' @([string]$_.Exception.Message)), $global:appTitle, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null } catch {}
+        } finally {
+            try { $dlg.UseWaitCursor = $false } catch {}
+            $script:libCtxSaveBusy = $false
+        }
+    }
     $addCollMenuItem = {
-        param($snd, $en)
+        param($snd, $en, $direct)
+        # $direct: список коллекций строится прямо в меню $snd (кнопка коллекций при выбранных играх), без вложенного пункта «Коллекции».
         $tg = @(& $getCtxCollTargets $en)
         $txtC = $(if ($tg.Count -gt 1) { T 'lib_ctx_coll_sel' @($tg.Count) } else { T 'lib_ctx_coll' })
         $bgC = [System.Drawing.Color]::FromArgb(22, 28, 36)
         $script:libCollDrop = $null
-        $itC = New-Object System.Windows.Forms.ToolStripMenuItem($txtC)
-        $itC.BackColor = $bgC
-        $itC.ForeColor = $steamUi.Text
-        $itC.Tag = [PSCustomObject]@{ Targets = $tg }
-        & $setMenuIcon $itC 'coll'
-        [void]$snd.Items.Add($itC)
+        if ([bool]$direct) {
+            $itC = [PSCustomObject]@{ DropDown = $snd }
+        } else {
+            $itC = New-Object System.Windows.Forms.ToolStripMenuItem($txtC)
+            $itC.BackColor = $bgC
+            $itC.ForeColor = $steamUi.Text
+            $itC.Tag = [PSCustomObject]@{ Targets = $tg }
+            & $setMenuIcon $itC 'coll'
+            [void]$snd.Items.Add($itC)
+        }
 
         $colls = @()
         try {
@@ -57224,6 +60656,7 @@ function Show-SteamLibraryBrowser {
         } catch { $colls = @() }
         if ($colls.Count -eq 0) {
             # Коллекций нет: клик показывает пояснение (как раньше).
+            if ([bool]$direct) { try { & $ctxCollections @($tg) } catch {}; return }
             $itC.Add_Click({ param($s2, $e2) try { & $ctxCollections @($s2.Tag.Targets) } catch {} })
             return
         }
@@ -57249,11 +60682,13 @@ function Show-SteamLibraryBrowser {
         }
         $dd = $itC.DropDown
         $script:libCollDrop = $dd
-        try { $dd.Renderer = $snd.Renderer } catch {}
-        $dd.BackColor = $bgC
-        $dd.ForeColor = $steamUi.Text
-        $dd.Font = $snd.Font
-        try { $dd.ShowCheckMargin = $true; $dd.ShowImageMargin = $false } catch {}
+        if (-not [bool]$direct) {
+            try { $dd.Renderer = $snd.Renderer } catch {}
+            $dd.BackColor = $bgC
+            $dd.ForeColor = $steamUi.Text
+            $dd.Font = $snd.Font
+            try { $dd.ShowCheckMargin = $true; $dd.ShowImageMargin = $false } catch {}
+        }
         $dd.Add_Closing({ param($s, $e) try { if ($e.CloseReason -eq [System.Windows.Forms.ToolStripDropDownCloseReason]::ItemClicked -and $null -ne $script:libCollDrop -and $script:libCollDrop.Visible -and $script:libCollDrop.Bounds.Contains([System.Windows.Forms.Cursor]::Position)) { $e.Cancel = $true } } catch {} })
         foreach ($sr in @($sortRows.ToArray() | Sort-Object -Property Ord, Low)) {
             $ck = [string]$sr.C.Key
@@ -57334,7 +60769,7 @@ function Show-SteamLibraryBrowser {
         $itOk.BackColor = $bgC
         $itOk.ForeColor = $steamUi.Text
         try { $itOk.Font = New-Object System.Drawing.Font($snd.Font, [System.Drawing.FontStyle]::Bold) } catch {}
-        $itOk.Tag = [PSCustomObject]@{ Targets = $tg; Owner = $itC }
+        $itOk.Tag = [PSCustomObject]@{ Targets = $tg; Owner = $itC; Direct = [bool]$direct; Menu = $snd }
         $itOk.Add_Click({
             param($s2, $e2)
             try {
@@ -57345,6 +60780,7 @@ function Show-SteamLibraryBrowser {
                     if ($null -ne $xt -and $null -ne $xt.PSObject.Properties['Key'] -and [string]$xt.Key -ne '__none__' -and [int]$xt.Cur -ne 2 -and [int]$xt.Cur -ne [int]$xt.Init) { $h[[string]$xt.Key] = [int]$xt.Cur }
                 }
                 try { & $closeLibContextMenus } catch {}
+                if ([bool]$s2.Tag.Direct) { try { $s2.Tag.Menu.Close() } catch {} }
                 & $ctxCollections @($s2.Tag.Targets) $h
             } catch { try { Write-LauncherLog ('collApply: ' + $_.Exception.Message) } catch {} }
         })
@@ -57451,9 +60887,24 @@ function Show-SteamLibraryBrowser {
                 # Текущее ядро RetroArch показываем галочкой только когда меню относится к одной игре.
                 $curCore = ''
                 if ($markCurrent -and $thisTargets.Count -eq 1) { $curCore = [string](Get-EntryRetroArchCore $en) }
+                # Какой эмулятор отмечать галочкой: у одной игры - её эмулятор; у нескольких отмеченных - общий, если он у всех один и тот же.
+                $markProfId = ''
+                if ($markCurrent) {
+                    if ($thisTargets.Count -eq 1) {
+                        if ($null -ne $curProf) { $markProfId = [string]$curProf.Id }
+                    } else {
+                        $idSet = @{}
+                        foreach ($tg0 in @($targets)) {
+                            $cp0 = $null
+                            try { $cp0 = Get-EntryEmulatorProfile $tg0 } catch {}
+                            if ($null -eq $cp0) { $idSet[''] = $true } else { $idSet[[string]$cp0.Id] = $true }
+                        }
+                        if ($idSet.Count -eq 1) { $markProfId = [string]@($idSet.Keys)[0] }
+                    }
+                }
                 foreach ($ep in $profiles) {
                     if ($skipProfileId -ne '' -and [string]$ep.Id -eq $skipProfileId) { continue }
-                    $isCur = ($markCurrent -and $thisTargets.Count -eq 1 -and $null -ne $curProf -and [string]$ep.Id -eq [string]$curProf.Id)
+                    $isCur = ($markCurrent -and $markProfId -ne '' -and [string]$ep.Id -eq $markProfId)
                     # Список ядер здесь НЕ читаем (сотни .info-файлов, при первом открытии это секунды): он грузится,
                     # когда пользователь выберет RetroArch. Здесь только проверяем, что рядом с exe есть папка cores.
                     $hasCores = $false
@@ -57464,7 +60915,14 @@ function Show-SteamLibraryBrowser {
                     } catch { $hasCores = $false }
                     if ($hasCores) {
                         # RetroArch: пункт открывает окно выбора ядра с поиском (в длинном меню нет прокрутки колесом).
-                        $mi = & $newItem ([string]$ep.Name + [string][char]0x2026) ([PSCustomObject]@{ Targets = @($targets); Profile = $ep; Core = ''; Picker = $true; CurCore = $curCore; Title = [string]$ep.Name })
+                        # Ядро RetroArch для выбора в окне ядер: у нескольких игр - общее, если оно у всех одно.
+                        $epCore = $curCore
+                        if ($isCur -and $thisTargets.Count -gt 1) {
+                            $coreSet = @{}
+                            foreach ($tg1 in @($targets)) { try { $coreSet[[string](Get-EntryRetroArchCore $tg1)] = $true } catch {} }
+                            if ($coreSet.Count -eq 1) { $epCore = [string]@($coreSet.Keys)[0] }
+                        }
+                        $mi = & $newItem ([string]$ep.Name + [string][char]0x2026) ([PSCustomObject]@{ Targets = @($targets); Profile = $ep; Core = ''; Picker = $true; CurCore = $epCore; Title = [string]$ep.Name })
                         $mi.Checked = $isCur
                     } else {
                         $mi = & $newItem ([string]$ep.Name) ([PSCustomObject]@{ Targets = @($targets); Profile = $ep; Core = '' })
@@ -57801,6 +61259,9 @@ function Show-SteamLibraryBrowser {
         $isRomHover = $false
         if (-not $isSteam) { try { $isRomHover = [bool](Test-ShortcutIsRomEntry $entry) } catch { $isRomHover = $false } }
         if ($isRomHover) { $srcLid = '' }
+        $hoverWrapProf = $null
+        if (-not $isSteam -and -not $isRomHover) { try { $hoverWrapProf = Get-EntryLaunchWrapperProfile $entry } catch { $hoverWrapProf = $null } }
+        if ($null -ne $hoverWrapProf) { $srcLid = '' }
         $srcIcon = $null
         if (-not [string]::IsNullOrWhiteSpace($srcLid) -and $null -ne $script:libLauncherMap -and $script:libLauncherMap.ContainsKey($srcLid)) {
             try { $srcIcon = $script:libLauncherMap[$srcLid].Icon } catch { $srcIcon = $null }
@@ -57853,6 +61314,18 @@ function Show-SteamLibraryBrowser {
                     $hoverKindBadge = if ($showRom) { $libHoverRomBadge } else { $libHoverNsBadge }
                     $hoverKindBadge.Location = New-Object System.Drawing.Point(8, 119)
                     $bx = $hoverKindBadge.Right + 6
+                    if ($showNs -and $null -ne $hoverWrapProf) {
+                        # Значок враппера — справа от «Non-Steam» (как значок эмулятора справа от «ROM»).
+                        $wrapHoverIcon = $null
+                        try { $wrapHoverIcon = Get-LibEmulatorBadgeBitmap $hoverWrapProf } catch { $wrapHoverIcon = $null }
+                        if ($null -ne $wrapHoverIcon) {
+                            $libHoverLauncherIcon.BackColor = [System.Drawing.Color]::Transparent
+                            $libHoverLauncherIcon.Image = $wrapHoverIcon
+                            $libHoverLauncherIcon.Location = New-Object System.Drawing.Point(($libHoverNsBadge.Right + 4), 117)
+                            $libHoverLauncherIcon.Visible = $true
+                            $bx = $libHoverLauncherIcon.Right + 6
+                        }
+                    }
                     if ($showRom) {
                         # Значок эмулятора — отдельно, справа от «ROM» (размер как у значка лаунчера).
                         $romHoverIcon = $null
@@ -58269,6 +61742,10 @@ function Show-SteamLibraryBrowser {
                     $tileIsRom = $false
                     try { $tileIsRom = [bool](Test-ShortcutIsRomEntry $entry) } catch { $tileIsRom = $false }
                     if ($tileIsRom) { $srcLid = '' }
+                    # Игра через враппер: значок враппера в углу, «Non-Steam» слева от него (по принципу ROM + эмулятор).
+                    $tileWrapProf = $null
+                    if (-not $tileIsRom) { try { $tileWrapProf = Get-EntryLaunchWrapperProfile $entry } catch { $tileWrapProf = $null } }
+                    if ($null -ne $tileWrapProf) { $srcLid = '' }
                     if (-not [string]::IsNullOrWhiteSpace($srcLid)) {
                         try {
                             if ($null -ne $script:libLauncherMap -and $script:libLauncherMap.ContainsKey($srcLid)) {
@@ -58286,6 +61763,13 @@ function Show-SteamLibraryBrowser {
                                 try { $romEmuIcon = Get-LibEmulatorBadgeBitmap (Get-EntryEmulatorProfile $entry) } catch { $romEmuIcon = $null }
                                 if ($null -ne $romEmuIcon) {
                                     Add-LauncherBadgeToPictureBox $pic $romEmuIcon 22 6
+                                    $nsb.Location = New-Object System.Drawing.Point(([int]$script:libTileInnerW - 6 - 22 - 4 - [int]$nsb.Width), 9)
+                                }
+                            } elseif ($null -ne $tileWrapProf) {
+                                $wrapTileIcon = $null
+                                try { $wrapTileIcon = Get-LibEmulatorBadgeBitmap $tileWrapProf } catch { $wrapTileIcon = $null }
+                                if ($null -ne $wrapTileIcon) {
+                                    Add-LauncherBadgeToPictureBox $pic $wrapTileIcon 22 6
                                     $nsb.Location = New-Object System.Drawing.Point(([int]$script:libTileInnerW - 6 - 22 - 4 - [int]$nsb.Width), 9)
                                 }
                             }
@@ -58676,13 +62160,53 @@ function Show-SteamLibraryBrowser {
             if ($null -ne $libRomMenu -and -not $libRomMenu.IsDisposed -and $libRomMenu.Visible) { $libRomMenu.Close() }
         } catch {}
     }
+    # Снимает рамки и галочки со ВСЕХ плиток окна напрямую (не через списки потоков и Tag): вызывается, когда выделение уже пусто.
+    # После переноса в коллекцию сетка перестраивается с задержкой (~3 с) и возвращает плитки из кэша со старыми галочками:
+    # пока выделение пусто, повторно снимаем рамки и галочки с плиток примерно 12 секунд.
+    $script:libClearPollLeft = 0
+    $libClearPollTimer = New-Object System.Windows.Forms.Timer
+    $libClearPollTimer.Interval = 400
+    $libClearPollTimer.Add_Tick({
+        try {
+            $script:libClearPollLeft = [int]$script:libClearPollLeft - 1
+            if ([int]$script:libClearPollLeft -le 0 -or ($null -ne $script:libSteamSelected -and $script:libSteamSelected.Count -gt 0)) { $libClearPollTimer.Stop(); return }
+            & $forceClearTileVisuals
+        } catch { try { $libClearPollTimer.Stop() } catch {} }
+    })
+    $dlg.Add_FormClosed({ try { $libClearPollTimer.Stop(); $libClearPollTimer.Dispose() } catch {} })
+    $forceClearTileVisuals = {
+        try {
+            if ($null -ne $script:libSteamSelected -and $script:libSteamSelected.Count -gt 0) { return }
+            $fcStack = New-Object System.Collections.Generic.Stack[object]
+            $fcStack.Push($scroll)
+            while ($fcStack.Count -gt 0) {
+                $fcCtl = $fcStack.Pop()
+                foreach ($fcCh in @($fcCtl.Controls)) {
+                    try {
+                        if ([string]$fcCh.Name -eq 'SelFrame') {
+                            if ($fcCh.Visible) { $fcCh.Visible = $false }
+                        } elseif ([string]$fcCh.AccessibleDescription -eq 'selcheck') {
+                            if ($script:libDlssNativeOk) { try { if ([int]$fcCh.CheckState -ne 1) { $fcCh.CheckState = 1 } } catch {} }
+                            $fcCh.Invalidate()
+                        }
+                        if ($fcCh.Controls.Count -gt 0) { $fcStack.Push($fcCh) }
+                    } catch {}
+                }
+            }
+            $scroll.Invalidate($true)
+        } catch {}
+    }
     $clearLibSteamSelectionAfterOp = {
         try {
             & $closeLibContextMenus
             if ($null -ne $script:libSteamSelected -and $script:libSteamSelected.Count -gt 0) {
                 $script:libSteamSelected.Clear()
-                try { & $syncSteamTileSelection } catch {}
             }
+            # Плитки перерисовываем всегда: выделение в данных могло быть уже снято, а галочки на плитках остаться.
+            try { & $syncSteamTileSelection } catch {}
+            try { & $forceClearTileVisuals } catch {}
+            try { $libResyncTimer.Stop(); $libResyncTimer.Start() } catch {}
+            try { $script:libClearPollLeft = 30; $libClearPollTimer.Stop(); $libClearPollTimer.Start() } catch {}
             try { & $updateSelectionUi } catch {}
         } catch {}
     }
@@ -58814,6 +62338,15 @@ function Show-SteamLibraryBrowser {
         } catch { try { $libSelSyncTimer.Stop() } catch {} }
     })
     $dlg.Add_FormClosed({ try { $libSelSyncTimer.Stop(); $libSelSyncTimer.Dispose() } catch {} })
+    # Отложенная повторная синхронизация галочек: после операции сетка может перестроиться позже (фильтр по коллекции), и плитки остаются отмеченными.
+    $libResyncTimer = New-Object System.Windows.Forms.Timer
+    $libResyncTimer.Interval = 250
+    $libResyncTimer.Add_Tick({
+        try { $libResyncTimer.Stop() } catch {}
+        try { & $syncSteamTileSelection } catch {}
+        try { & $forceClearTileVisuals } catch {}
+    })
+    $dlg.Add_FormClosed({ try { $libResyncTimer.Stop(); $libResyncTimer.Dispose() } catch {} })
     $syncSteamTileSelection = {
         $near = New-Object System.Collections.Generic.List[object]
         $far = New-Object System.Collections.Generic.List[object]
@@ -59004,6 +62537,7 @@ function Show-SteamLibraryBrowser {
             if ($isL) { $lblCapEmus.Visible = $false; $lblCapWraps.Visible = $false }
             foreach ($c in @($lblAutoImport, $toggleAuto, $btnImport)) { $c.Visible = $isL }
             foreach ($c in @($btnUpdUp, $btnRestoreUp, $btnFilter, $btnColl, $lblCapUpscalers)) { $c.Visible = (-not $isL) }
+            try { & $updateCollBtn } catch {}
             # Кнопка «Фильтр» стоит сразу за поиском (только на вкладке Steam): остальные кнопки и счётчик
             # сдвигаются правее на её ширину + зазор; на вкладках лаунчеров возвращаются на прежние места.
             $fdx = if ($btnFilter.Visible) { [int]($btnFilter.Width + 8) } else { 0 }
@@ -60241,7 +63775,7 @@ function Show-SteamLibraryBrowser {
                             } elseif ($roots.Count -gt 1) {
                                 # Несколько мест сохранений: автоматически не записываем — пользователь отметит нужные галочками.
                                 [void]$pendingPick.Add([PSCustomObject]@{ Name = $nm; GP = $gp; Roots = @($roots) })
-                            } elseif (Set-SaveDefined $gp.Name $gp.SteamAppId ([string[]]@($roots | ForEach-Object { [string]$_.Path }))) {
+                            } elseif (Set-SaveDefined $gp.Name $gp.SteamAppId ([string[]]@($roots | ForEach-Object { [string]$_.Path })) -Origins (New-SaveOriginMap $roots)) {
                                 $cRec++
                                 [void]$repRows.Add([PSCustomObject]@{ Status = 'ok'; Name = $nm; Details = $det })
                             } else {
@@ -60299,7 +63833,7 @@ function Show-SteamLibraryBrowser {
                     if ($srcs.Count -gt 0) { $det += (' — ' + ((@($srcs | Select-Object -First 3)) -join ', ')) }
                     $det += (' — ' + [string]$paths[0])
                     if ($paths.Count -gt 1) { $det += (' (+' + ($paths.Count - 1) + ')') }
-                    if (Set-SaveDefined $pp.GP.Name $pp.GP.SteamAppId ([string[]]$paths)) {
+                    if (Set-SaveDefined $pp.GP.Name $pp.GP.SteamAppId ([string[]]$paths) -Origins (New-SaveOriginMap $chosen)) {
                         $cRec++
                         [void]$repRows.Add([PSCustomObject]@{ Status = 'ok'; Name = $pp.Name; Details = $det })
                     } else {
@@ -60544,6 +64078,8 @@ function Show-SteamLibraryBrowser {
                 try { Write-SCDebug ('applyTileFilter parts: rebuildFlow=' + ($dbgT1 - $dbgT0) + 'ms resumeLayout=' + ($dbgT2 - $dbgT1) + 'ms syncWidth=' + ($dbgT3 - $dbgT2) + 'ms scrollReset=' + ($dbgT4 - $dbgT3) + 'ms vis=' + $vis.Count) } catch {}
             }
             try { $script:libFlowSig[[string]$script:libActiveTab] = (& $libViewSig); $script:libFlowShown[[string]$script:libActiveTab] = [int]$script:libShownCount } catch {}
+            # Плитки, скрытые фильтром, держат старые рамки и галочки: при возврате в сетку приводим их к текущему выделению.
+            try { if ([string]$script:libActiveTab -eq 'steam') { & $syncSteamTileSelection } } catch {}
             # Результат поиска: сразу достраиваем первые плитки (с приоритетом), не дожидаясь фонового таймера.
             try {
                 $script:libMatPrio = $true
@@ -60743,6 +64279,11 @@ function Show-SteamLibraryBrowser {
             $script:batchCardCancelRequested = $true
             return
         }
+        # Запрос на закрытие от Steam (TaskManagerClosing) - не закрытие пользователем: библиотеку не закрываем и программу не завершаем.
+        if (-not $script:libClosingViaBack -and $_.CloseReason -eq [System.Windows.Forms.CloseReason]::TaskManagerClosing) {
+            $_.Cancel = $true
+            return
+        }
         if (-not $script:libClosingViaBack) {
             try { [System.Windows.Forms.Application]::Exit() } catch {}
         }
@@ -60797,7 +64338,9 @@ function Show-SteamLibraryBrowser {
 
     try { Initialize-FormForSmallScreen -Form $dlg -Owner $form } catch {}
     try { Write-SCDebug 'OPEN window built, calling ShowDialog' } catch {}
-    $dlg.ShowDialog($form) | Out-Null
+    $script:libDialogOpen = $true
+    try { Enable-SCCascadeClose $dlg $true } catch {}
+    try { $dlg.ShowDialog($form) | Out-Null } finally { $script:libDialogOpen = $false }
 }
 
 # ===================== КАРТОЧКА ИГРЫ ИЗ БИБЛИОТЕКИ: ЧТЕНИЕ ТОЛЬКО С ДИСКА =====================
@@ -61077,6 +64620,22 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     $dlg.BackColor = $steamUi.Bg
     $dlg.ForeColor = $steamUi.Text
     $dlg.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+    # Значок окна карточки: новая игра — значок программы; уже добавленная — значок
+    # выбранного EXE (если его нет, снова значок программы).
+    try {
+        $cardAppIco = Get-AppIcon
+        $cardGameIco = $null
+        if ($editMode) {
+            $cardExe = ''
+            try { if ($null -ne $existingShortcut) { $cardExe = [string]$existingShortcut.Exe } } catch {}
+            if ([string]::IsNullOrWhiteSpace($cardExe) -and $null -ne $LauncherEntry) {
+                try { $cardExe = [string]$LauncherEntry.Exe } catch {}
+            }
+            try { $cardGameIco = Get-FormIconFromExePath $cardExe } catch { $cardGameIco = $null }
+        }
+        if ($null -ne $cardGameIco) { $dlg.Icon = $cardGameIco }
+        elseif ($null -ne $cardAppIco) { $dlg.Icon = $cardAppIco }
+    } catch {}
 
     # Во время первичного открытия карточки ни одно поле ввода не должно получать
     # фокус автоматически. WinForms обычно передаёт фокус первому доступному
@@ -62148,6 +65707,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     $showDiscEditor = {
         param($initialFiles)
         $ed = New-Object System.Windows.Forms.Form
+        Enable-SCHandCursor $ed
         $ed.Text = (T 'rom_discs_title')
         $ed.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterParent
         $ed.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedDialog
@@ -63089,6 +66649,17 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     }
     $cmbExe.Add_SelectedIndexChanged({
         try {
+            # Уже добавленная игра: значок окна карточки = значок выбранного EXE (или программы, если EXE нет).
+            if ($editMode -and -not $IsRomEntry) {
+                try {
+                    $winExe = ''
+                    try { $winExe = [string](& $getEditorExePath) } catch {}
+                    $winIco = $null
+                    try { $winIco = Get-FormIconFromExePath $winExe } catch {}
+                    if ($null -ne $winIco) { $dlg.Icon = $winIco }
+                    else { $appFb = Get-AppIcon; if ($null -ne $appFb) { $dlg.Icon = $appFb } }
+                } catch {}
+            }
             if ($IsRomEntry) { return }
             if ($slots.Icon.IsLoading) { return }
             # Заменяем иконку, только если сейчас в слоте иконка из EXE (прежнего выбора или сохранённая с пометкой «из EXE»).
@@ -66895,7 +70466,6 @@ $menuD.ShowImageMargin = $false
             # и после закрытия карточки не перезапускаем ($steamWasKilledThisSession остаётся $false).
             if ($editMode -and -not $batchMode -and -not (& $hasOtherEditorChanges)) {
                 $status.Text = (T 'st_done_saved')
-                [System.Media.SystemSounds]::Asterisk.Play()
                 $script:editorSavedChanges = $true
                 $dlg.DialogResult=[System.Windows.Forms.DialogResult]::OK
                 $dlg.Close()
@@ -66942,7 +70512,6 @@ $menuD.ShowImageMargin = $false
                     }
                 } catch {}
                 $status.Text=if($coversSaved){(T 'st_done_saved_covers')}elseif($hasCovers){(T 'st_saved_no_covers')}else{(T 'st_done_saved')}
-                [System.Media.SystemSounds]::Asterisk.Play()
                 $script:editorSavedChanges = $true
                 $dlg.DialogResult=[System.Windows.Forms.DialogResult]::OK
                 $dlg.Close()
@@ -67028,7 +70597,6 @@ $menuD.ShowImageMargin = $false
                 # Сначала гарантированно закрываем карточку. Steam запускается
                 # внешним finally главного обработчика после возврата из ShowDialog.
                 $status.Text=if($coversSaved){(T 'st_done_saved_covers')}elseif($hasCovers){(T 'st_saved_no_covers')}else{(T 'st_done_saved')}
-                [System.Media.SystemSounds]::Asterisk.Play()
                 $script:editorSavedChanges = $true
                 if(-not $editCoverOnly -or $cardCollChanged){ Set-SteamRestartNeeded }
                 $dlg.DialogResult=[System.Windows.Forms.DialogResult]::OK
@@ -67120,7 +70688,6 @@ $menuD.ShowImageMargin = $false
             Set-SteamRestartNeeded
             if(-not $batchMode){Start-SteamIfAuto $steamPathProperty}
             $status.Text=$(if($hasCovers){(T 'st_done_added_covers')}else{(T 'st_done_added_nocovers')})
-            [System.Media.SystemSounds]::Asterisk.Play()
             [System.Windows.Forms.Application]::DoEvents()
             Start-Sleep -Milliseconds 500
             $dlg.Close()
@@ -67266,6 +70833,7 @@ $menuD.ShowImageMargin = $false
             } catch {}
         }
         try { if ($null -ne $cardBackWin) { $cardBackWin.Add_Activated($cardBackHandler) } } catch {}
+        try { Enable-SCCascadeClose $dlg $true } catch {}
         try { $dlg.ShowDialog($ownerWin) | Out-Null }
         finally {
             try { if ($null -ne $cardBackWin) { $cardBackWin.Remove_Activated($cardBackHandler) } } catch {}
@@ -67496,6 +71064,7 @@ function Switch-PanelFavorite ([string]$Panel) {
 
 function Show-FavoriteRenameDialog ([string]$Current) {
     $dlg = New-Object System.Windows.Forms.Form
+    Enable-SCHandCursor $dlg
     try {
         $dlg.Text = (T 'fav_rename_title')
         $dlg.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedDialog
@@ -67654,7 +71223,9 @@ $btnFavC.Add_Click({ Switch-PanelFavorite 'C' })
 $btnFavD.Add_Click({ Switch-PanelFavorite 'D' })
 $btnFavListC.Add_Click({ Show-FavoritesMenu 'C' $pnlPathC })
 $btnFavListD.Add_Click({ Show-FavoritesMenu 'D' $pnlPathD })
+Write-StartupMark 'before Update-FavoriteButtons'
 Update-FavoriteButtons
+Write-StartupMark 'Update-FavoriteButtons done'
 
 
 function Get-MovedSteamPath ($oldGameRoot, $newGameRoot, $oldPath) {
@@ -67978,7 +71549,9 @@ function Install-ScMainWindowGuard ($win) {
         $script:scMainWindowGuard = New-Object ScMainWindowGuard($win)
     } catch {}
 }
+Write-StartupMark 'before Install-ScMainWindowGuard'
 try { Install-ScMainWindowGuard $form } catch {}
+try { Enable-SCCascadeClose $form $false } catch {}
 # Серый крестик на время переноса отключён: окно с изменённым системным меню не реагирует на клик по кнопке на панели задач
 # (проводник подаёт сигнал вместо сворачивания). От закрытия во время переноса защищает $form.Add_FormClosing (moveInProgress).
 # Вернуть серый крестик: $script:ScGrayCloseDuringMove = $true
@@ -68255,20 +71828,80 @@ function Test-FolderCopyMatches ([string]$src, [string]$dst) {
     } catch { return $false }
 }
 
+# Удаление папки по файлам с отчётом о прогрессе: $OnProgress вызывается как (удалено, всего), без вложенных
+# символических ссылок/junction (их удаляем как саму ссылку, содержимое цели не трогаем). Что не удалось —
+# останется на диске, дальше с этим разбирается Remove-GamePathPumped (cmd rd, повторы, исключение).
+function Remove-DirectoryTreeProgress ([string]$root, [scriptblock]$OnProgress) {
+    try { if (([int][System.IO.File]::GetAttributes($root) -band 0x400) -ne 0) { return } } catch { return }
+    $dirs = New-Object System.Collections.Generic.List[string]
+    $links = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+    $stack = New-Object System.Collections.Generic.Stack[string]
+    $dirs.Add($root); $stack.Push($root)
+    $total = [int64]0; $scanned = 0
+    while ($stack.Count -gt 0) {
+        $cur = $stack.Pop()
+        $subs = @()
+        try { $subs = [System.IO.Directory]::GetDirectories($cur) } catch {}
+        foreach ($sd in $subs) {
+            $dirs.Add($sd)
+            $isLink = $false
+            try { $isLink = (([int][System.IO.File]::GetAttributes($sd) -band 0x400) -ne 0) } catch {}
+            if ($isLink) { [void]$links.Add($sd); $total++ } else { $stack.Push($sd) }
+        }
+        try { $total += [int64][System.IO.Directory]::GetFiles($cur).Length } catch {}
+        $scanned++
+        if (($scanned % 100) -eq 0) { [System.Windows.Forms.Application]::DoEvents() }
+    }
+    if ($total -lt 1) { $total = 1 }
+    $done = [int64]0
+    $lastTick = [DateTime]::Now
+    for ($di = $dirs.Count - 1; $di -ge 0; $di--) {
+        $dp = $dirs[$di]
+        if ($links.Contains($dp)) {
+            try { [System.IO.Directory]::Delete($dp, $false) } catch {}
+            $done++
+        } else {
+            $files = @()
+            try { $files = [System.IO.Directory]::GetFiles($dp) } catch {}
+            foreach ($fp in $files) {
+                try { [System.IO.File]::Delete($fp) } catch {
+                    try { [System.IO.File]::SetAttributes($fp, [System.IO.FileAttributes]::Normal); [System.IO.File]::Delete($fp) } catch {}
+                }
+                $done++
+                if (([DateTime]::Now - $lastTick).TotalMilliseconds -ge 100) {
+                    $lastTick = [DateTime]::Now
+                    try { & $OnProgress $done $total } catch {}
+                    [System.Windows.Forms.Application]::DoEvents()
+                }
+            }
+            try { [System.IO.Directory]::Delete($dp, $false) } catch {}
+        }
+    }
+    try { & $OnProgress $done $total } catch {}
+}
+
 # Быстрое удаление папки (cmd rd — на порядок быстрее Remove-Item на десятках тысяч файлов),
 # окно при этом не зависает. Бросает исключение, если что-то осталось.
-function Remove-GamePathPumped ([string]$path) {
+function Remove-GamePathPumped ([string]$path, [scriptblock]$OnProgress = $null) {
     if (-not (Test-Path -LiteralPath $path)) { return }
     if (Test-Path -LiteralPath $path -PathType Leaf) {
         try { [System.IO.File]::SetAttributes($path, [System.IO.FileAttributes]::Normal) } catch {}
         [System.IO.File]::Delete($path)
         return
     }
+    # С отчётом о прогрессе: сначала удаляем по файлам (прогресс-бар), оставшееся добивает cmd rd ниже.
+    if ($null -ne $OnProgress) { try { Remove-DirectoryTreeProgress $path $OnProgress } catch {} }
+    if (-not (Test-Path -LiteralPath $path)) { return }
     if ($path.Contains('%')) {
         # '%' в пути cmd мог бы раскрыть как переменную окружения — используем PowerShell.
         Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction Stop
     } else {
         [void](Invoke-ExternalPumped 'cmd.exe' ('/c rd /s /q "{0}"' -f $path) $null)
+    }
+    # Дескриптор папки могут ещё держать антивирус/индексатор/проводник — даём время и пробуем другими способами.
+    for ($i = 0; $i -lt 6 -and (Test-Path -LiteralPath $path); $i++) {
+        for ($w = 0; $w -lt 5; $w++) { Wait-UiPump 100 }
+        try { [System.IO.Directory]::Delete($path, $true) } catch {}
     }
     if (Test-Path -LiteralPath $path) { throw (New-Object System.IO.IOException(('Not fully removed: ' + $path))) }
 }
@@ -68844,7 +72477,7 @@ function Update-MainLibraryButtonState {
     try { Update-CheckedStatusHint } catch {}
     try {
         if ($script:batchInProgress -or $script:moveInProgress -or $script:sizeCalcBtnSwapped) {
-            try { if ($null -ne $btnMainRemoveLib -and [bool]$btnMainRemoveLib.Visible) { $btnMainRemoveLib.Visible = $false } } catch {}
+            try { if ($null -ne $btnMainRemoveLib -and [bool]$btnMainRemoveLib.Enabled) { $btnMainRemoveLib.Enabled = $false } } catch {}
             return
         }
 
@@ -68903,11 +72536,17 @@ function Update-MainLibraryButtonState {
             $showRemoveLib = ($ready -and $totalChecked -ge 1 -and -not [bool]$script:romsModeEnabled -and -not [bool]$script:wrappersModeEnabled -and -not (Test-MainCheckRestrictionActive))
             # Лицензионные игры Steam (steamapps\common с appmanifest) из библиотеки не удаляются: если отмечены только они - кнопки нет,
             # если вместе с другими - в счётчике подсказки только те, что можно убрать.
+            # Shift: корзина работает и с отмеченными файлами/папками, которых нет в библиотеке (они удаляются с диска), счётчик считает и их.
+            $rlShift = $false
+            try { $rlShift = (([System.Windows.Forms.Control]::ModifierKeys -band [System.Windows.Forms.Keys]::Shift) -eq [System.Windows.Forms.Keys]::Shift) } catch {}
             $removableCount = 0
             if ($showRemoveLib) {
                 foreach ($rg in @(Get-CheckedGames)) {
                     $rgKey = Get-NormalizedGamePathKey ([string]$rg.Path)
-                    if (-not ($rgKey -and $global:installedSteamGames.ContainsKey($rgKey))) { continue }
+                    if (-not ($rgKey -and $global:installedSteamGames.ContainsKey($rgKey))) {
+                        if ($rlShift -and (Test-MainDiskItemDeletable ([string]$rg.Path))) { $removableCount++ }
+                        continue
+                    }
                     if (-not (Test-PanelPathIsSteamApp ([string]$rg.Path))) { $removableCount++ }
                 }
                 if ($removableCount -eq 0) { $showRemoveLib = $false }
@@ -68916,10 +72555,17 @@ function Update-MainLibraryButtonState {
                 $rlCnt = $(if ($showRemoveLib) { [int]$removableCount } else { 0 })
                 if ([int]$script:removeLibCount -ne $rlCnt) { $script:removeLibCount = $rlCnt; try { $btnMainRemoveLib.Invalidate() } catch {} }
                 if ($showRemoveLib) {
-                    $rlTip = (T 'btn_remove_lib_tip' @($removableCount))
+                    $rlTip = $(if ($rlShift) { (T 'btn_remove_disk_tip' @($removableCount)) } else { (T 'btn_remove_lib_tip' @($removableCount)) })
                     if ($rlTip -ne [string]$script:removeLibTipText) { $script:removeLibTipText = $rlTip; $mainToolTip.SetToolTip($btnMainRemoveLib, $rlTip) }
                 }
-                if ([bool]$btnMainRemoveLib.Visible -ne [bool]$showRemoveLib) { $btnMainRemoveLib.Visible = [bool]$showRemoveLib }
+                # Корзина видна всегда, кроме режимов ROMs/Wrappers (там на её месте индикатор эмулятора/враппера).
+                # Нечего удалять (ничего не отмечено, отмечены только новые или лицензионные игры) - она просто неактивна.
+                $rlVisible = (-not [bool]$script:romsModeEnabled -and -not [bool]$script:wrappersModeEnabled -and -not (Test-MainCheckRestrictionActive))
+                if (-not $showRemoveLib -and [string]$script:removeLibTipText -ne [string](T 'btn_remove_lib')) {
+                    $script:removeLibTipText = [string](T 'btn_remove_lib'); $mainToolTip.SetToolTip($btnMainRemoveLib, $script:removeLibTipText)
+                }
+                if ([bool]$btnMainRemoveLib.Enabled -ne [bool]$showRemoveLib) { $btnMainRemoveLib.Enabled = [bool]$showRemoveLib; try { $btnMainRemoveLib.Invalidate() } catch {} }
+                if ([bool]$btnMainRemoveLib.Visible -ne [bool]$rlVisible) { $btnMainRemoveLib.Visible = [bool]$rlVisible }
             }
         } catch {}
 
@@ -69228,8 +72874,32 @@ if (-not $script:panelClickAnchor) {
     }
 }
 
+# Диапазонная отметка от якоря до строки $idx включительно (общая для Shift+щелчка и правого щелчка по галочке).
+function Invoke-GamePanelRangeCheck($listBox, $source, [int]$idx) {
+    $checkedSet = Get-CheckedSet $source
+    $anchor = $script:panelClickAnchor[$source]
+    $from = [int]$anchor.Index
+    if ($from -lt 0 -or $from -ge $listBox.Items.Count) {
+        # Якоря ещё нет (или список изменился) — берём текущую выделенную строку.
+        $from = if ($listBox.SelectedIndex -ge 0) { [int]$listBox.SelectedIndex } else { $idx }
+        $anchor.State = $true
+    }
+    $lo = [Math]::Min($from, $idx)
+    $hi = [Math]::Max($from, $idx)
+    $state = [bool]$anchor.State
+    for ($i = $lo; $i -le $hi; $i++) {
+        $n = Clean-GameName $listBox.Items[$i].ToString()
+        if ($state) { if (Test-MainRowCheckAllowed $source $n) { $checkedSet[$n] = $true } } else { $checkedSet.Remove($n) | Out-Null }
+    }
+    $anchor.Index = $from
+    $listBox.SelectedIndex = $idx
+    $listBox.Invalidate()
+    Update-MainLibraryButtonState
+}
+
 function Invoke-GamePanelClick($listBox, $source, $e) {
     # Правая кнопка открывает контекстное меню (Show-GamePanelContextMenu) и не должна ставить галочку или менять выделение.
+    # Исключение — правый щелчок по галочке: диапазонная отметка, как при Shift (обрабатывается в Show-GamePanelContextMenu).
     if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Right) { return }
     $idx = $listBox.IndexFromPoint($e.Location)
     if ($idx -lt 0 -or $idx -ge $listBox.Items.Count) { return }
@@ -69240,23 +72910,7 @@ function Invoke-GamePanelClick($listBox, $source, $e) {
     $shiftDown = (([System.Windows.Forms.Control]::ModifierKeys -band [System.Windows.Forms.Keys]::Shift) -eq [System.Windows.Forms.Keys]::Shift)
 
     if ($shiftDown) {
-        $from = [int]$anchor.Index
-        if ($from -lt 0 -or $from -ge $listBox.Items.Count) {
-            # Якоря ещё нет (или список изменился) — берём текущую выделенную строку.
-            $from = if ($listBox.SelectedIndex -ge 0) { [int]$listBox.SelectedIndex } else { $idx }
-            $anchor.State = $true
-        }
-        $lo = [Math]::Min($from, $idx)
-        $hi = [Math]::Max($from, $idx)
-        $state = [bool]$anchor.State
-        for ($i = $lo; $i -le $hi; $i++) {
-            $n = Clean-GameName $listBox.Items[$i].ToString()
-            if ($state) { if (Test-MainRowCheckAllowed $source $n) { $checkedSet[$n] = $true } } else { $checkedSet.Remove($n) | Out-Null }
-        }
-        $anchor.Index = $from
-        $listBox.SelectedIndex = $idx
-        $listBox.Invalidate()
-        Update-MainLibraryButtonState
+        Invoke-GamePanelRangeCheck $listBox $source $idx
         return
     }
 
@@ -69997,6 +73651,7 @@ function Update-PanelCollections {
             } catch {}
         }
     } catch {}
+    try { Apply-PendingCollOverlay $map $list $nameMap } catch {}
     $script:panelCollMap = $map
     $script:panelCollList = $list.ToArray()
     $script:panelCollNameMap = $nameMap
@@ -70164,10 +73819,13 @@ function Invoke-PanelCtxCollections {
         if ($byCid.Count -eq 0) { Set-PanelCtxStatus (T 'coll_nochange'); return }
 
         # Steam перезаписывает файлы коллекций своей копией из памяти, поэтому писать можно только при закрытом Steam.
+        $queueOnly = $false
         try { $steamWasRunning = Test-SteamRunning } catch {}
         if ($steamWasRunning) {
             if ((Get-SteamRestartMode) -eq 'manual') {
-                if (-not (Wait-SteamClosedByUser)) { Set-PanelCtxStatus (T 'steam_close_cancelled'); $steamWasRunning = $false; return }
+                # Ручной режим: окно «закройте Steam» не показываем. Запись встаёт в очередь и выполнится по кнопке перезапуска Steam.
+                $queueOnly = $true
+                $steamWasRunning = $false
             } else {
                 $ansC = Show-AppMessageBox($form, (T 'coll_close_steam'), $global:appTitle, [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
                 if ($ansC -ne [System.Windows.Forms.DialogResult]::Yes) { $steamWasRunning = $false; return }
@@ -70181,9 +73839,12 @@ function Invoke-PanelCtxCollections {
         $found = @{}
         $stamp = (Get-Date).ToString('yyyyMMdd-HHmmss')
         try {
-            foreach ($pd in @(Get-ConfiguredSteamProfileDirectories)) {
-                try { Update-SteamCollectionsInProfile ([string]$pd.FullName) $byCid $found $stamp }
-                catch { [void]$errors.Add([string]$_.Exception.Message) }
+            if ($queueOnly) { Add-PendingCollPlan $byCid $nameOf }
+            else {
+                foreach ($pd in @(Get-ConfiguredSteamProfileDirectories)) {
+                    try { Update-SteamCollectionsInProfile ([string]$pd.FullName) $byCid $found $stamp }
+                    catch { [void]$errors.Add([string]$_.Exception.Message) }
+                }
             }
             if ($tagWork.Count -gt 0) {
                 $tagRes = Remove-ShortcutTagsBatch @($tagWork.ToArray())
@@ -70199,7 +73860,7 @@ function Invoke-PanelCtxCollections {
             $form.UseWaitCursor = $false
         }
         $missing = New-Object System.Collections.Generic.List[string]
-        foreach ($mc in @($byCid.Keys)) { if (-not $found.ContainsKey([string]$mc)) { [void]$missing.Add([string]$nameOf['col:' + [string]$mc]) } }
+        if (-not $queueOnly) { foreach ($mc in @($byCid.Keys)) { if (-not $found.ContainsKey([string]$mc)) { [void]$missing.Add([string]$nameOf['col:' + [string]$mc]) } } }
         if ($missing.Count -gt 0) { [void]$errors.Add((T 'coll_missing' @(($missing.ToArray() -join ', ')))) }
 
         # Состав прочитываем заново и перерисовываем плитки (на случай, если сейчас включён фильтр по коллекции).
@@ -70208,7 +73869,7 @@ function Invoke-PanelCtxCollections {
         if ($errors.Count -gt 0) {
             Show-AppMessageBox($form, (T 'coll_fail' @(($errors.ToArray() -join "`n"))), $global:appTitle, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
         } else {
-            Set-PanelCtxStatus (T 'coll_done' @($total, $byCid.Count))
+            Set-PanelCtxStatus $(if ($queueOnly) { T 'coll_queued' } else { T 'coll_done' @($total, $byCid.Count) })
         }
     } catch {
         try { Write-LauncherLog ('ctxCollections: ' + $_.Exception.Message + ' | ' + [string]$_.ScriptStackTrace) } catch {}
@@ -70682,9 +74343,24 @@ function Add-PanelCtxRomDropItems ($Parent, $Targets, [string]$SkipProfileId, [b
     $single = (@($Targets).Count -eq 1)
     $curCore = ''
     if ($MarkCurrent -and $single) { try { $curCore = [string](Get-EntryRetroArchCore $Entry) } catch {} }
+    # Какой эмулятор отмечать галочкой: у одной игры - её эмулятор; у нескольких отмеченных - общий, если он у всех один и тот же.
+    $markProfId = ''
+    if ($MarkCurrent) {
+        if ($single) {
+            if ($null -ne $CurProf) { $markProfId = [string]$CurProf.Id }
+        } else {
+            $idSet = @{}
+            foreach ($tg0 in @($Targets)) {
+                $cp0 = $null
+                try { $cp0 = Get-EntryEmulatorProfile $tg0 } catch {}
+                if ($null -eq $cp0) { $idSet[''] = $true } else { $idSet[[string]$cp0.Id] = $true }
+            }
+            if ($idSet.Count -eq 1) { $markProfId = [string]@($idSet.Keys)[0] }
+        }
+    }
     foreach ($ep in $Profiles) {
         if ($SkipProfileId -ne '' -and [string]$ep.Id -eq $SkipProfileId) { continue }
-        $isCur = ($MarkCurrent -and $single -and $null -ne $CurProf -and [string]$ep.Id -eq [string]$CurProf.Id)
+        $isCur = ($MarkCurrent -and $markProfId -ne '' -and [string]$ep.Id -eq $markProfId)
         $hasCores = $false
         try {
             if (Test-IsRetroArchProfile ([string]$ep.Name) ([string]$ep.ExePath)) {
@@ -70696,7 +74372,14 @@ function Add-PanelCtxRomDropItems ($Parent, $Targets, [string]$SkipProfileId, [b
         $mi.ForeColor = $steamUi.Text
         if ($hasCores) {
             $mi.Text = [string]$ep.Name + [string][char]0x2026
-            $mi.Tag = [PSCustomObject]@{ Targets = @($Targets); Profile = $ep; Core = ''; Picker = $true; CurCore = $curCore; Title = [string]$ep.Name }
+            # Ядро RetroArch для выбора в окне ядер: у нескольких игр - общее, если оно у всех одно.
+            $epCore = $curCore
+            if ($isCur -and -not $single) {
+                $coreSet = @{}
+                foreach ($tg1 in @($Targets)) { try { $coreSet[[string](Get-EntryRetroArchCore $tg1)] = $true } catch {} }
+                if ($coreSet.Count -eq 1) { $epCore = [string]@($coreSet.Keys)[0] }
+            }
+            $mi.Tag = [PSCustomObject]@{ Targets = @($Targets); Profile = $ep; Core = ''; Picker = $true; CurCore = $epCore; Title = [string]$ep.Name }
         } else {
             $mi.Text = [string]$ep.Name
             $mi.Tag = [PSCustomObject]@{ Targets = @($Targets); Profile = $ep; Core = ''; Picker = $false; CurCore = ''; Title = '' }
@@ -70813,6 +74496,14 @@ function Add-PanelCtxRomItems ($Menu, [string]$Name, [string]$Path, [string]$Sou
 function Show-GamePanelContextMenu ($listBox, [string]$source, $e) {
     try {
         if ($e.Button -ne [System.Windows.Forms.MouseButtons]::Right) { return }
+        # Правый щелчок по галочке — диапазонная отметка от якоря до этой строки (как Shift+щелчок), без контекстного меню.
+        $idxCb = $listBox.IndexFromPoint($e.Location)
+        if ($idxCb -ge 0 -and $idxCb -lt $listBox.Items.Count) {
+            if ((Get-RowCheckboxHitRect $listBox.GetItemRectangle($idxCb)).Contains($e.Location)) {
+                Invoke-GamePanelRangeCheck $listBox $source $idxCb
+                return
+            }
+        }
         if (Test-PanelCtxBusy) { return }
         $idx = $listBox.IndexFromPoint($e.Location)
         if ($idx -lt 0 -or $idx -ge $listBox.Items.Count) { return }
@@ -71407,7 +75098,16 @@ $btnMainRemoveLib.Add_Click({
             $rmKey = Get-NormalizedGamePathKey ([string]$_.Path)
             ($rmKey -and $global:installedSteamGames.ContainsKey($rmKey)) -and -not (Test-PanelPathIsSteamApp ([string]$_.Path))
         })
-        if ($rmGames.Count -gt 0) { Invoke-MainRemoveFromLibrary $rmGames $delWithFiles }
+        # Shift: отмеченные файлы и папки, которых нет в библиотеке, удаляются с диска. Отказ в подтверждении отменяет всё действие.
+        $diskOk = $true
+        if ($delWithFiles) {
+            $diskItems = @(Get-CheckedGames | Where-Object {
+                $dkKey = Get-NormalizedGamePathKey ([string]$_.Path)
+                -not ($dkKey -and $global:installedSteamGames.ContainsKey($dkKey)) -and (Test-MainDiskItemDeletable ([string]$_.Path))
+            })
+            if ($diskItems.Count -gt 0) { $diskOk = [bool](Invoke-MainDeleteDiskItems $diskItems) }
+        }
+        if ($diskOk -and $rmGames.Count -gt 0) { Invoke-MainRemoveFromLibrary $rmGames $delWithFiles }
     } catch {}
     try { Update-MainLibraryButtonState } catch {}
 })
@@ -71514,13 +75214,17 @@ if (-not (Test-ConfiguredSteamPathValid) -or -not (Test-ConfiguredSteamProfileVa
     try { Show-ProgramSettingsDialog | Out-Null } catch {}
 }
 
+Write-StartupMark 'before Refresh-Panels'
 Set-SplashProgress 0.82
 try { Set-SplashText (T 'splash_reading') } catch {}
 Refresh-Panels
+Write-StartupMark 'Refresh-Panels done'
 Set-SplashProgress 0.94
 Set-SteamButtonIcons
+Write-StartupMark 'Set-SteamButtonIcons done'
 Install-PathFocusDismissHandlers
 try { Update-RomEmulatorIndicator } catch {}
+Write-StartupMark 'Install-PathFocusDismissHandlers + Update-RomEmulatorIndicator done'
 # F5 — то же, что кнопка "Обновить". KeyPreview нужен, чтобы форма получала клавишу
 # раньше активного контрола (список, поле поиска и т.д.). Сама кнопка сама
 # игнорирует нажатие, пока идёт обновление (Enabled = $false).
@@ -71534,6 +75238,7 @@ $form.Add_KeyDown({
 })
 
 $form.Add_Shown({
+    Write-StartupMark 'form.Shown: begin (window is shown)'
     # Сначала рисуем все контролы (под заставкой), и только потом её закрываем — иначе видны белые прямоугольники.
     try { Invoke-PaintNow $form } catch {}
     # Передний план у нас (заставка) — выводим главное окно вперёд; если пользователь за время загрузки переключился
@@ -71552,6 +75257,9 @@ $form.Add_Shown({
     if ($keepFront) { try { $form.Activate(); $form.BringToFront() } catch {} }
     try { Set-SplashProgress 1.0 } catch {}
     if (-not $libStart) { try { Close-Splash } catch {} }
+    Write-StartupMark 'form.Shown: paint + splash closed'
+    # Окно на экране: сводка запуска (в режиме «окно библиотеки» заставка закроется позже, но главная часть запуска уже позади).
+    try { Write-StartupSummary } catch {}
     try { if ($form.WindowState -eq [System.Windows.Forms.FormWindowState]::Minimized) { $form.WindowState = [System.Windows.Forms.FormWindowState]::Normal } } catch {}
     if ($keepFront) {
         try { $form.Activate() } catch {}
@@ -71601,13 +75309,31 @@ $form.Add_Shown({
         Write-SgdbTimingLog ('STARTUP Start-SteamCdnMirrorProbeIfDue: ' + $swCdn.ElapsedMilliseconds + ' ms')
     } catch {}
     # Открываем библиотеку сразу, как нажатием «Библиотека/Импорт»: пока она строится, видна заставка, файловые панели не показываются.
+    Write-StartupMark 'form.Shown: end of handler'
+    # Первый простой интерфейса после показа: если он наступает поздно, UI занят работой в фоне (прогрев, сканирование и т.п.).
+    if ($script:SgdbTimingLog -and $script:StartupDiag) {
+        try {
+            $script:StartupIdleHandler = [System.EventHandler]{
+                param($s, $e)
+                try {
+                    [System.Windows.Forms.Application]::remove_Idle($script:StartupIdleHandler)
+                    Write-StartupMark 'first UI idle after Shown (interface is responsive)'
+                } catch {}
+            }
+            [System.Windows.Forms.Application]::add_Idle($script:StartupIdleHandler)
+        } catch {}
+    }
     if ($libStart) { try { $btnSteamLibrary.PerformClick() } catch {} }
 })
+Write-StartupMark 'before ShowDialog (events + small-screen setup)'
 [System.Windows.Forms.Application]::DoEvents()
 try { Initialize-FormForSmallScreen -Form $form } catch {}
+Write-StartupMark 'Initialize-FormForSmallScreen done, ShowDialog next'
 # «Открывать при запуске» = «Окно библиотеки»: главное окно показываем невидимым, чтобы файловые панели не мелькнули перед библиотекой.
 try { if (([string]$global:startupOpen) -eq 'library') { $form.Opacity = 0; $global:scHoldRevealForm = $form } } catch {}
 $form.ShowDialog() | Out-Null
+try { Stop-ConsoleFlashDiag } catch {}
+try { Stop-WindowFlashDiag } catch {}
 # Фоновый скан папок игр («Библиотеки») останавливаем вместе с окном.
 try { if ($null -ne $script:mainLibsState) { $script:mainLibsState['Cancel'] = $true } } catch {}
 try { if ($null -ne $script:mainLibsPs) { $script:mainLibsPs.Dispose() } } catch {}
