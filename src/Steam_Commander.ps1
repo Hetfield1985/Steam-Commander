@@ -56,6 +56,7 @@ $script:SgdbUnsupportedUrlRx = '\.webp(\?|$)'
 $script:EmuGlyphData = @(
     @(11, 8, 'iVBORw0KGgoAAAANSUhEUgAAAAsAAAAICAYAAAAvOAWIAAAAQUlEQVR42o2QwQoAMAhCNfb/v9wua5TU2LuZGhFwcHdHQ5lnoQX1lhpdgSQBwHIghkHo60+3dphumyi5r2+8gupvTT4/3rpIiIAAAAAASUVORK5CYII='),
     @(16, 7, 'iVBORw0KGgoAAAANSUhEUgAAABAAAAAHCAYAAAABIM1CAAAAQklEQVR42pWQwQoAIAhDXfT/v/y6FIRa6E6yMd2UXQCwAiTpzMObtJGZPA8wO5ezpOqaQ7Ju/+wPIV627MV/+1W0BUtSM+7bPEDVAAAAAElFTkSuQmCC'),
+    @(18, 10, 'iVBORw0KGgoAAAANSUhEUgAAABIAAAAKCAYAAAC5Sw6hAAAA5klEQVR42o2RPUpDURBGT8KrFOIDU2gkBqw1uIWgC9DCIo11qizABUhqt2BpobsQC1eQJj+kCyIWlh4LR7i+3KgfXO7MnJnvMlxUMqelnmXq5+puboY1Rqh36iDJB1HjN6MH9SLiqX9rFr199T41elG31U409tRGxqBUTyPuqDsxSwEcAw3gCdjgS3vAK6s6AFoRPwLvMXtUAIfAJGAZ9y15PSdxGUYToFtT08YZ0OZ/mgP730lRgZdAHbgB3oCrCr+OVYbAxw+S+cqRulCbGdYMNqqyeuXFLWAMnADLzDrLYGNgMwWfT5g+MBOFlCQAAAAASUVORK5CYII=', 'lib'),
     @(22, 12, 'iVBORw0KGgoAAAANSUhEUgAAABYAAAAMCAYAAABm+U3GAAAAWklEQVR42r2SSw4AIQhDedz/zsxGE2MQBc10ST+hokgAM7MKdwQv4CSULgSobjN7ATQSj4Ysr7uannmeeQ1Z1e7mMn993eh4r77Q+EQqf8MaqvyVKR2eEa+0HzZaX9sGtnO1AAAAAElFTkSuQmCC'),
     @(28, 14, 'iVBORw0KGgoAAAANSUhEUgAAABwAAAAOCAYAAAA8E3wEAAAAhElEQVR4nK2USxbAIAgDQ5/3vzJd9SPFdqxkp8RAUDF3F8BBsp/xExvJdhPKqsPJJKmFgxbWGeh+1DLpcoj6ugiXeocjENeEI2l8hxWOU40WAtWtjXpOWkqKwIU2PZ9ztctOn/7DMmQJ0QeGeGiN7jCbLF+FIO7saFvlvCacmpGBO3x4O31ZHR/teboSAAAAAElFTkSuQmCC', 'main'),
     @(34, 16, 'iVBORw0KGgoAAAANSUhEUgAAACIAAAAQCAYAAABz9a1kAAAAh0lEQVR42s1VQQ7AIAijZP//MrvMZHFjUgUzjqbSWkoUIcquysIt1YhkVgTuDUREAKBvnPEAr2871wg4y8kvriNCyApk8GZmAKDyk9KolRXjeYymkjwqBjvIqfXd6UwfZjcjb8BKEa6QSkfcjMw0GDnGYIfry1rrYaLuKuMGk530nK1+6dH7JyXag9vCMASrAAAAAElFTkSuQmCC'),
@@ -72,6 +73,7 @@ function Draw-EmuGlyphPixel($g, [int]$w, [int]$h, $col, [int]$capW = 0) {
         $maxW = [Math]::Max(1, $w - 6)
         $maxH = [Math]::Max(1, $h - 6)
         # Маска 28x14 (из значков RetroArch) помечена 'main': нужна только главной кнопке, где задан $capW; остальным кнопкам она не подходит, чтобы их значок не менялся.
+        # Маска 18x10 (из значка 24 px) помечена 'lib': нужна кнопке «Эмулятор» окна библиотеки (30x30, capW = 18); порядок записей важен - берётся последняя подходящая.
         if ($capW -gt 0) { $maxW = [Math]::Min($maxW, $capW) }
         foreach ($d in $script:EmuGlyphData) {
             if (($d.Count -gt 3) -and ($capW -le 0)) { continue }
@@ -4111,6 +4113,24 @@ public class SmartExeComboBox : ComboBox
     // вместо Enabled просто блокируем ввод, а рисуем всё сами, как обычно.
     public bool Locked = false;
 
+    // «Недоступно» с видимой стрелкой (список рамок под галочкой «Использовать рамки»): как Locked, Enabled остаётся true,
+    // поэтому системная светлая отрисовка отключённого поля не вылезает. Ввод, колесо и клавиши блокируются, стрелка и текст
+    // рисуются приглушённым цветом DimColor, фон поля задаёт внешний код (BackColor).
+    private bool _dim = false;
+    public Color DimColor = Color.FromArgb(84, 93, 104);
+    public bool Dim
+    {
+        get { return _dim; }
+        set
+        {
+            if (_dim == value) return;
+            _dim = value;
+            if (_dim) { try { ClosePopup(); } catch { } }
+            TabStop = !_dim;
+            if (IsHandleCreated) Invalidate();
+        }
+    }
+
     // Центрированная подпись заблокированного поля. Область DrawItem у закрытого
     // комбобокса не включает зону стрелки справа (~21 px), поэтому текст, нарисованный
     // там, оказывается левее реального центра. Для Locked-полей подпись рисуем здесь,
@@ -4127,7 +4147,45 @@ public class SmartExeComboBox : ComboBox
     private void PaintChrome()
     {
         if (!IsHandleCreated || Width <= 0 || Height <= 0) return;
-        using (Graphics g = Graphics.FromHwnd(Handle))
+        using (Graphics g = Graphics.FromHwnd(Handle)) { PaintChromeTo(g); }
+    }
+
+    [DllImport("user32.dll")]
+    private static extern bool ValidateRect(IntPtr hWnd, IntPtr lpRect);
+
+    // Поля со своим выпадающим списком (CustomDropDown) рисуются целиком сами и без системной отрисовки: поле собирается в
+    // буфере (фон, значение через DrawItem, стрелка, рамка) и выводится одним DrawImage. Системный комбобокс при каждой
+    // перерисовке (щелчок, фокус, наведение) сначала рисует свою светлую кнопку-стрелку и рамку, и поверх них наша
+    // перекраска успевала показать белую вспышку.
+    private bool CustomPaintOn
+    {
+        get { return CustomDropDown && DropDownStyle == ComboBoxStyle.DropDownList && DrawMode == DrawMode.OwnerDrawFixed && IsHandleCreated && !DesignMode; }
+    }
+
+    private void PaintBuffered()
+    {
+        ValidateRect(Handle, IntPtr.Zero);
+        if (Width <= 0 || Height <= 0) return;
+        using (Bitmap bmp = new Bitmap(Width, Height))
+        {
+            using (Graphics bg = Graphics.FromImage(bmp))
+            {
+                using (SolidBrush b = new SolidBrush(BackColor)) { bg.FillRectangle(b, 0, 0, Width, Height); }
+                int idx = SelectedIndex;
+                if (idx >= 0 && idx < Items.Count)
+                {
+                    int w = SystemInformation.VerticalScrollBarWidth + 4;
+                    Rectangle r = new Rectangle(0, 0, Math.Max(1, Width - w - 1), Height);
+                    try { OnDrawItem(new DrawItemEventArgs(bg, Font, r, idx, DrawItemState.ComboBoxEdit, ForeColor, BackColor)); } catch { }
+                }
+                PaintChromeTo(bg);
+            }
+            using (Graphics g = Graphics.FromHwnd(Handle)) { g.DrawImageUnscaled(bmp, 0, 0); }
+        }
+    }
+
+    private void PaintChromeTo(Graphics g)
+    {
         {
             // Перекрываем системные артефакты рамки и стрелки единым фоном.
             using (SolidBrush b = new SolidBrush(BackColor))
@@ -4161,7 +4219,7 @@ public class SmartExeComboBox : ComboBox
                         new Point(cx + halfW, cy - 2),
                         new Point(cx, cy + 3)
                     };
-                    using (SolidBrush arrowBrush = new SolidBrush(ForeColor))
+                    using (SolidBrush arrowBrush = new SolidBrush(_dim ? DimColor : ForeColor))
                     {
                         g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
                         g.FillPolygon(arrowBrush, triangle);
@@ -4401,6 +4459,12 @@ public class SmartExeComboBox : ComboBox
 
     protected override void WndProc(ref Message m)
     {
+        if (_dim)
+        {
+            if (m.Msg == WM_LBUTTONDOWN || m.Msg == WM_LBUTTONDBLCLK || m.Msg == WM_MOUSEWHEEL) { return; }
+            if (m.Msg == CB_SHOWDROPDOWN && m.WParam != IntPtr.Zero) { return; }
+            if (m.Msg == WM_KEYDOWN || m.Msg == WM_SYSKEYDOWN || m.Msg == 0x0102) { return; }
+        }
         if (ArrowHidden)
         {
             if (m.Msg == WM_LBUTTONDOWN || m.Msg == WM_LBUTTONDBLCLK) { return; }
@@ -4454,6 +4518,13 @@ public class SmartExeComboBox : ComboBox
                     return;
                 }
             }
+        }
+
+        if (CustomPaintOn)
+        {
+            if (m.Msg == WM_PAINT) { try { PaintBuffered(); } catch { } return; }
+            if (m.Msg == 0x0014) { m.Result = (IntPtr)1; return; }   // WM_ERASEBKGND: фон рисуем сами
+            if (m.Msg == WM_NCPAINT) { return; }
         }
 
         base.WndProc(ref m);
@@ -4855,8 +4926,18 @@ public class SCToolTip : ToolTip
         typeof(ToolTip).GetProperty("Handle", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
     private bool _needMove;
 
+    // Подсказка, показанная вручную (ShowAt): у отключённой кнопки обычная подсказка WinForms не появляется (кнопка не получает мышь).
+    public string ForcedText;
+    public void ShowAt(string text, Control host, int x, int y, int duration)
+    {
+        ForcedText = text;
+        Show(text, host, x, y, duration);
+    }
+
     // Максимальная ширина текста подсказки (px при 100% масштаба); длинный текст переносится по словам.
     public static int MaxTipWidth = 400;
+    // Пока открыто меню рамок (Enable-MenuDismiss), показ подсказок отменяется: иначе подсказки фона всплывают поверх меню.
+    public static volatile bool Suppress = false;
     private const int PadX = 7;
     private const int PadY = 5;
     private const TextFormatFlags Flags = TextFormatFlags.Left | TextFormatFlags.Top | TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix;
@@ -4878,7 +4959,9 @@ public class SCToolTip : ToolTip
     {
         try
         {
+            if (Suppress) { e.Cancel = true; return; }
             string text = (e.AssociatedControl != null) ? GetToolTip(e.AssociatedControl) : null;
+            if (string.IsNullOrEmpty(text)) text = ForcedText;
             if (string.IsNullOrEmpty(text)) return;
             Font f = SystemFonts.StatusFont;
             Size sz = TextRenderer.MeasureText(text, f, new Size(ScaledMaxWidth(), 0), Flags);
@@ -5197,7 +5280,7 @@ Set-SplashProgress 0.52
 # Единая версия приложения — используется в заголовке главного окна, в
 # подписи внизу окна настроек и в User-Agent HTTP-запросов. Меняйте только
 # здесь при выпуске новой версии.
-$global:appVersion = "2.2.7"
+$global:appVersion = "2.2.8"
 $global:appTitle = "Steam Commander"
 # Ссылки на исходный код и поддержку автора (окно «Поддержать» в настройках). Меняйте только здесь.
 $global:appRepoUrl = "https://github.com/Hetfield1985/Steam-Commander"
@@ -5251,6 +5334,116 @@ $script:I18n = @{
         fav_empty = '(избранное пусто)'
         fav_missing = 'папка недоступна'
         fav_remove = 'Удалить из избранного'
+        frames_btn = 'Рамки…'
+        frames_title = 'Рамки обложек'
+        frames_hint = 'Рамка накладывается на обложку при сохранении игры. Добавьте шаблоны с SteamGridDB или свои файлы.'
+        frames_empty = 'Рамок пока нет. Добавьте шаблон с SteamGridDB или свой файл.'
+        frames_add_sgdb = 'С SteamGridDB…'
+        frames_add_file = 'Из файла…'
+        frames_props = 'Свойства…'
+        frames_remove = 'Удалить'
+        frames_close = 'Закрыть'
+        frames_ok = 'OK'
+        frames_cancel = 'Отмена'
+        frames_name = 'Название'
+        frames_platform = 'Платформа'
+        frames_platform_any = 'Любая'
+        frames_props_title = 'Свойства рамки'
+        frames_file_filter = 'Картинки (*.png;*.jpg;*.jpeg)|*.png;*.jpg;*.jpeg|Все файлы (*.*)|*.*'
+        frames_file_title = 'Выберите шаблон рамки'
+        frames_rect_title = 'Область под обложку'
+        frames_rect_hint = 'Выделенная область станет прозрачной, и сквозь неё будет видна обложка. Тяните область за середину, размер меняйте за маркеры.'
+        frames_rect_reset = 'Сбросить'
+        frames_rect_reset_tip = 'Вернуть область, найденную автоматически'
+        frames_search_title = 'Поиск шаблонов'
+        frames_search_prompt = 'Название платформы или магазина (например, PlayStation, GOG, Epic):'
+        frames_pick_game = 'Выберите запись на SteamGridDB'
+        frames_no_key = 'Для поиска на SteamGridDB нужен ключ API (поле в настройках).'
+        frames_search_none = 'На SteamGridDB ничего не найдено.'
+        frames_no_grids = 'У этой записи нет подходящих шаблонов.'
+        frames_sgdb_title = 'Шаблоны рамок'
+        frames_dl_fail = 'Не удалось скачать шаблон.'
+        frames_bad_file = 'Не удалось прочитать изображение.'
+        frames_add_fail = 'Не удалось добавить рамку.'
+        frames_confirm_remove = 'Удалить рамку «{0}»?'
+        frames_tip = '{0} · {1}×{2}'
+        frames_coll_fail = 'Не удалось получить список шаблонов с SteamGridDB. Проверьте подключение к интернету и повторите.'
+        frames_pick_platform = 'Выберите платформу или магазин'
+        frames_all_platforms = 'Все шаблоны подборки'
+        frames_only_real = 'Только шаблоны с прозрачной областью'
+        frames_tab = 'Рамки'
+        frames_no_transp = 'Без прозрачности'
+        frames_kit_search = 'SteamGridDB'
+        frames_kit_name = 'Имя'
+        frames_kit_click = 'Нажмите, чтобы выбрать обложку'
+        frames_kit_sg_platforms = 'Платформы'
+        frames_kit_sg_launchers = 'Лончеры'
+        frames_kit_sg_emus = 'Ваши эмуляторы'
+        frames_kit_clear = 'Убрать'
+        frames_kit_pin = 'Закрепить обложку: при новом запросе она не изменится'
+        frames_kit_apply_for = 'Использовать для'
+        frames_kit_unbind_q = 'Набор отвязан от эмуляторов, врапперов и лончеров, которые вы сняли. Снять рамки с обложек их игр, уже добавленных в библиотеку Steam ({1})? Если выбрать «Нет», у этих игр рамки останутся, набор только отвязывается.'
+        frames_kit_apply_existing_q = 'Применить набор «{0}» к играм выбранных эмуляторов, врапперов, лончеров и коллекций, уже добавленным в библиотеку Steam ({1})? Если выбрать «Нет», набор будет только привязан: рамки получат новые игры, а обложки уже добавленных не изменятся.'
+        frames_kit_apply_none = 'Не выбрано'
+        frames_kit_apply_colls = 'Коллекции'
+        frames_kit_area = 'Область…'
+        frames_kit_eye = 'Положение обложки в рамке: шаблон подгонки (масштаб и смещение)'
+        frames_kit_fit = 'Вписать'
+        frames_kit_nores = 'Ничего не найдено'
+        frames_kit_need_game = 'Сначала найдите игру на SteamGridDB и выберите её из списка.'
+        frames_kit_need_one = 'Выберите хотя бы одну обложку: вертикальную или горизонтальную.'
+        frames_kit_col_name = 'Комплект'
+        frames_kit_pair = 'Пара'
+        frames_kit_v = 'Вертикальная'
+        frames_kit_h = 'Горизонтальная'
+        frames_kit_none = '(нет)'
+        frames_kit_add_tpl = 'Добавить шаблон…'
+        frames_kit_create = 'Создать'
+        frames_kit_templates = 'Шаблоны…'
+        frames_kit_title_new = 'Новый комплект'
+        frames_kit_title_edit = 'Комплект рамок'
+        frames_kit_confirm_remove = 'Удалить комплект «{0}»?'
+        frames_kit_orient_v = 'вертикальный'
+        frames_kit_orient_h = 'горизонтальный'
+        frames_kit_orient_bad = 'Шаблон добавлен в список шаблонов, но сюда не подходит: нужен {0} шаблон.'
+        frames_bind_btn = 'Привязка…'
+        frames_bind_title = 'Привязка рамок'
+        frames_bind_hint = 'Рамка накладывается на вертикальную обложку при сохранении игры, которая запускается через выбранный эмулятор, враппер или лончер. «Без рамки» отключает наложение.'
+        frames_bind_none = '(без рамки)'
+        frames_bind_emus = 'Эмуляторы'
+        frames_bind_wraps = 'Врапперы'
+        frames_bind_launchers = 'Лончеры'
+        card_frame_tip = 'Рамка обложки'
+        card_frame_none = 'Без рамки'
+        launcher_frame_badge = 'Значок лончера'
+        card_frame_kits_group = 'Рамки'
+        lib_launcher_frames_apply_q = 'Применить выбранный вариант «{0}» к играм этого лончера, уже добавленным в библиотеку Steam ({1})?'
+        frames_use_chk = 'Использовать рамки'
+        emu_frames_apply_q = 'Применить выбранный вариант «{0}» к играм этого эмулятора, уже добавленным в библиотеку Steam ({1})? Если выбрать «Нет», рамки получат только новые игры.'
+        wrap_frames_apply_q = 'Применить выбранный вариант «{0}» к играм этого враппера, уже добавленным в библиотеку Steam ({1})? Если выбрать «Нет», рамки получат только новые игры.'
+        emu_frames_remove_q = 'Выбрано «Без рамки»: после сохранения рамки будут сняты с обложек всех игр этого эмулятора, уже добавленных в библиотеку Steam. Продолжить?'
+        wrap_frames_remove_q = 'Выбрано «Без рамки»: после сохранения рамки будут сняты с обложек всех игр этого враппера, уже добавленных в библиотеку Steam. Продолжить?'
+        emu_frame_badge = 'Значок эмулятора'
+        wrap_frame_badge = 'Значок враппера'
+        frame_badge_any = 'Значок'
+        bulk_frames_tip = 'Рамки обложек выбранных игр'
+        bulk_frames_menu_hdr = 'Рамки обложек ({0})'
+        bulk_frames_none = 'Нет отмеченных игр, добавленных в Steam'
+        bulk_frames_done = 'Рамки обложек обновлены у игр: {0}'
+        bulk_frames_same = 'Менять нечего: выбранный вариант уже стоит'
+        bulk_frames_fail = 'Не удалось изменить обложки: {0}'
+        bulk_frames_nocover = 'нет обложки в Steam'
+        bulk_frames_nolauncher = 'не игра из лончера, значок недоступен'
+        card_frame_fit = 'Вписать обложку'
+        card_frame_adjust = 'Изменить положение…'
+        card_frame_link = 'Связать панели'
+        card_frame_edit = 'Изменить рамку…'
+        card_frame_manage = 'Менеджер рамок…'
+        frame_adjust_title = 'Подгонка обложки под рамку'
+        frame_adjust_reset = 'Сбросить'
+        frame_adjust_save = 'Сохранить'
+        frame_adjust_zoom = 'Масштаб'
+        frame_adjust_hint = 'Колесо — масштаб, перетаскивание — смещение, Enter — сохранить, Esc — отмена'
         fav_rename = 'Переименовать…'
         fav_up = 'Выше'
         fav_down = 'Ниже'
@@ -5268,6 +5461,7 @@ $script:I18n = @{
         col_emu = 'Эмулятор'
         emu_row_none = 'Без эмулятора'
         col_dlss = 'DLSS'
+        col_libs = 'Библиотеки'
         col_dlss_orig = 'Оригинал'
         dlss_row_missing = 'отсутствует'
         dlss_row_unavailable = 'не доступно'
@@ -5300,6 +5494,7 @@ $script:I18n = @{
         lib_cap_upscalers = 'Апскейлеры'
         lib_cap_emus = 'Эмулятор'
         lib_cap_wraps = 'Враппер'
+        lib_cap_frames = 'Рамки'
         lib_count = '{0}'
         lib_selected = 'Выбрано: {0}'
         lib_selected_of = '{0}/{1}'
@@ -5337,6 +5532,8 @@ $script:I18n = @{
         lib_restore_confirm2 = 'Файлы будут заменены копиями .sc_orig, созданными перед обновлением. Закройте игры перед возвратом.'
         lib_all_note = 'Игры не выделены: действие применится ко всем играм текущего списка (с учётом поиска и фильтра).'
         lib_all_confirm = 'Игры не выделены. Выполнить поиск сохранений для всех игр текущего списка: {0}?'
+        lib_upd_all_confirm = 'Игры не выделены. Заменить библиотеки апскейлеров на последние скачанные во всех играх текущего списка: {0}?'
+        lib_restore_all_confirm = 'Игры не выделены. Вернуть оригинальные библиотеки апскейлеров во всех играх текущего списка: {0}?'
         save_btn_backup = 'Бэкап'
         save_btn_restore = 'Вернуть'
         save_tip_backup = 'Бэкап сохранений в отмеченных играх. Если сохранения не менялись, новый архив не создаётся.'
@@ -5387,6 +5584,8 @@ $script:I18n = @{
         lib_ctx_save_scan = 'Найти сохранения'
         lib_ctx_coll = 'Коллекции'
         lib_ctx_coll_sel = 'Коллекции ({0} игр)'
+        lib_ctx_frames = 'Рамки'
+        lib_ctx_frames_sel = 'Рамки ({0} игр)'
         coll_dlg_title_one = 'Коллекции игры «{0}»'
         coll_dlg_title_many = 'Коллекции для выбранных игр ({0})'
         coll_dlg_hint = 'Отметьте коллекции, в которых должна находиться игра. Одна игра может состоять сразу в нескольких.'
@@ -5404,6 +5603,8 @@ $script:I18n = @{
         coll_created = 'Коллекция «{0}» создана'
         coll_deleted = 'Коллекция «{0}» удалена'
         coll_struct_fail = 'Не удалось изменить файлы коллекций Steam'
+        coll_struct_done = 'Коллекции обновлены: создано — {0}, удалено — {1}'
+        coll_new_tag = 'Новая'
         coll_done = 'Коллекции обновлены: игр — {0}, изменено коллекций — {1}'
         coll_queued = 'Изменения коллекций ждут перезапуска Steam: они запишутся по кнопке «Перезапустить Steam»'
         coll_nochange = 'Состав коллекций не изменился'
@@ -5541,8 +5742,10 @@ $script:I18n = @{
         steam_pending_note = 'Перезапустите Steam для применения изменений'
         steam_pending_applied = 'Изменения применены. Теперь можно запускать Steam.'
         btn_restart_steam = 'Перезапустить Steam'
-        btn_change_coll = 'Сменить коллекции ({0})'
-        btn_coll_tip = 'Сменить коллекции отмеченных игр'
+        btn_change_coll = 'Изменить коллекции ({0})'
+        btn_change_frames = 'Сменить рамки ({0})'
+        btn_coll_tip = 'Изменить коллекции отмеченных игр'
+        btn_coll_tip_editor = 'Изменить коллекции'
         btn_libs_tip = 'Библиотеки апскейлеров отмеченных игр'
         btn_libs_upd_tip = 'Обновить библиотеки апскейлеров (DLSS / FSR / XeSS / XeLL)'
         btn_libs_rst_tip = 'Вернуть оригинальные библиотеки из бэкапов (.sc_orig)'
@@ -5554,6 +5757,7 @@ $script:I18n = @{
         btn_saves_backup_n = 'Бэкап сохранений ({0})'
         btn_saves_restore_n = 'Вернуть сохранения ({0})'
         btn_coll_tip_new = 'Поместить в коллекции при добавлении'
+        bulk_frames_tip_new = 'Рамка обложек при добавлении'
         steam_restarted = 'Steam перезапущен'
         steam_wait_msg = 'Steam запущен. Закройте Steam (значок в трее → Выход): программа продолжит сама, как только он закроется. После записи Steam запустите сами.'
         steam_close_cancelled = 'Отменено: Steam не был закрыт'
@@ -5788,6 +5992,8 @@ $script:I18n = @{
         wrap_lbl_exe = 'Программа:'
         wrap_lbl_args = 'Аргументы:'
         wrap_args_hint = '{game} — путь к игре, {args} — ваши параметры из карточки. Пример: "{game}" {args}'
+        wrap_lbl_frames_tip = 'Накладывать рамку из выбранного набора на вертикальную обложку игр, запускаемых через этот враппер. «Без рамки» - рамка не накладывается.'
+        lib_launcher_frames_tip = 'Рамка для обложек новых игр этого лончера (автоимпорт и карточка). «Без рамки» - рамка не накладывается. «Значок» - на обложки дорисовывается значок лончера (на вертикальных справа сверху, на горизонтальных слева сверху). Уже добавленные игры не меняются.'
         wrap_ofd_title = 'Выбор программы-враппера (.exe)'
         wrap_confirm_remove = 'Удалить этот враппер из списка?'
         wrap_err_add = 'Ошибка при добавлении враппера:'
@@ -5947,6 +6153,8 @@ $script:I18n = @{
         emu_chk_extract_tip = 'Распаковывать архив с ромом во временную папку перед запуском эмулятора; после закрытия файлы удаляются.'
         emu_chk_multidisc = 'Мультидиск (m3u)'
         emu_chk_multidisc_tip = 'Мультидисковые игры («(Disc 1)», «(Disc 2)»…) запускаются одним списком m3u, в карточке ROM появляется галочка «Мультидисковый». Для эмуляторов, читающих m3u, включается сама.'
+        emu_lbl_frames = 'Рамки:'
+        emu_lbl_frames_tip = 'Накладывать рамку из выбранного набора на вертикальную обложку игр, запускаемых через этот эмулятор. «Без рамки» - рамка не накладывается.'
         dlg_pick_folder_name = 'Выбор папки'
         dlg_pick_folder_btn = 'Выбрать папку'
         emu_lbl_args = 'Аргументы:'
@@ -6113,6 +6321,115 @@ $script:I18n = @{
         fav_empty = '(no favorites yet)'
         fav_missing = 'folder unavailable'
         fav_remove = 'Remove from favorites'
+        frames_btn = 'Frames…'
+        frames_title = 'Cover frames'
+        frames_hint = 'A frame is applied over the cover when a game is saved. Add templates from SteamGridDB or your own files.'
+        frames_empty = 'No frames yet. Add a template from SteamGridDB or your own file.'
+        frames_add_sgdb = 'From SteamGridDB…'
+        frames_add_file = 'From file…'
+        frames_props = 'Properties…'
+        frames_remove = 'Delete'
+        frames_close = 'Close'
+        frames_ok = 'OK'
+        frames_cancel = 'Cancel'
+        frames_name = 'Name'
+        frames_platform = 'Platform'
+        frames_platform_any = 'Any'
+        frames_props_title = 'Frame properties'
+        frames_file_filter = 'Images (*.png;*.jpg;*.jpeg)|*.png;*.jpg;*.jpeg|All files (*.*)|*.*'
+        frames_file_title = 'Choose a frame template'
+        frames_rect_title = 'Cover area'
+        frames_rect_hint = 'The selected area becomes transparent and the cover shows through it. Drag the area by its middle, resize with the handles.'
+        frames_rect_reset = 'Reset'
+        frames_rect_reset_tip = 'Restore the automatically detected area'
+        frames_search_title = 'Template search'
+        frames_search_prompt = 'Platform or store name (for example PlayStation, GOG, Epic):'
+        frames_pick_game = 'Choose a SteamGridDB entry'
+        frames_no_key = 'A SteamGridDB API key is required (see the field in Settings).'
+        frames_search_none = 'Nothing found on SteamGridDB.'
+        frames_no_grids = 'This entry has no suitable templates.'
+        frames_sgdb_title = 'Frame templates'
+        frames_dl_fail = 'Could not download the template.'
+        frames_bad_file = 'Could not read the image.'
+        frames_add_fail = 'Could not add the frame.'
+        frames_confirm_remove = 'Delete the frame "{0}"?'
+        frames_tip = '{0} · {1}×{2}'
+        frames_coll_fail = 'Could not load the template list from SteamGridDB. Check your internet connection and try again.'
+        frames_pick_platform = 'Choose a platform or store'
+        frames_all_platforms = 'All collection templates'
+        frames_only_real = 'Only templates with a transparent area'
+        frames_tab = 'Frames'
+        frames_no_transp = 'No transparency'
+        frames_kit_search = 'SteamGridDB'
+        frames_kit_name = 'Name'
+        frames_kit_click = 'Click to choose a cover'
+        frames_kit_sg_platforms = 'Platforms'
+        frames_kit_sg_launchers = 'Launchers'
+        frames_kit_sg_emus = 'Your emulators'
+        frames_kit_clear = 'Remove'
+        frames_kit_pin = 'Pin this cover: it stays when you search again'
+        frames_kit_apply_for = 'Use for'
+        frames_kit_unbind_q = 'The set was unlinked from the emulators, wrappers and launchers you cleared. Remove frames from the covers of their games already added to your Steam library ({1})? If you choose "No", those games keep their frames and the set is only unlinked.'
+        frames_kit_apply_existing_q = 'Apply the set "{0}" to games of the selected emulators, wrappers, launchers and collections already added to your Steam library ({1})? If you choose "No", the set is only linked: new games will get the frames, and covers of already added games stay unchanged.'
+        frames_kit_apply_none = 'Nothing selected'
+        frames_kit_apply_colls = 'Collections'
+        frames_kit_area = 'Area…'
+        frames_kit_eye = 'Cover position in the frame: fit template (zoom and offset)'
+        frames_kit_fit = 'Fit'
+        frames_kit_nores = 'Nothing found'
+        frames_kit_need_game = 'Find a game on SteamGridDB first and pick it from the list.'
+        frames_kit_need_one = 'Choose at least one cover: vertical or horizontal.'
+        frames_kit_col_name = 'Set'
+        frames_kit_v = 'Vertical'
+        frames_kit_h = 'Horizontal'
+        frames_kit_none = '(none)'
+        frames_kit_add_tpl = 'Add template…'
+        frames_kit_create = 'Create'
+        frames_kit_templates = 'Templates…'
+        frames_kit_title_new = 'New set'
+        frames_kit_title_edit = 'Frame set'
+        frames_kit_confirm_remove = 'Delete the set "{0}"?'
+        frames_kit_orient_v = 'vertical'
+        frames_kit_orient_h = 'horizontal'
+        frames_kit_orient_bad = 'The template was added to the template list but does not fit here: a {0} template is needed.'
+        frames_bind_btn = 'Bindings…'
+        frames_bind_title = 'Frame bindings'
+        frames_bind_hint = 'The frame is applied to the vertical cover when a game that launches through the chosen emulator, wrapper or launcher is saved. "(no frame)" turns it off.'
+        frames_bind_none = '(no frame)'
+        frames_bind_emus = 'Emulators'
+        frames_bind_wraps = 'Wrappers'
+        frames_bind_launchers = 'Launchers'
+        card_frame_tip = 'Cover frame'
+        card_frame_none = 'No frame'
+        launcher_frame_badge = 'Launcher icon'
+        card_frame_kits_group = 'Frames'
+        lib_launcher_frames_apply_q = 'Apply the selected option "{0}" to games of this launcher already added to your Steam library ({1})?'
+        frames_use_chk = 'Use frames'
+        emu_frames_apply_q = 'Apply the selected option "{0}" to games of this emulator already added to your Steam library ({1})? If you choose "No", only new games will get the frames.'
+        wrap_frames_apply_q = 'Apply the selected option "{0}" to games of this wrapper already added to your Steam library ({1})? If you choose "No", only new games will get the frames.'
+        emu_frames_remove_q = 'You selected "No frame": after saving, frames will be removed from the covers of all games of this emulator already added to your Steam library. Continue?'
+        wrap_frames_remove_q = 'You selected "No frame": after saving, frames will be removed from the covers of all games of this wrapper already added to your Steam library. Continue?'
+        emu_frame_badge = 'Emulator icon'
+        wrap_frame_badge = 'Wrapper icon'
+        frame_badge_any = 'Icon'
+        bulk_frames_tip = 'Cover frames for the selected games'
+        bulk_frames_menu_hdr = 'Cover frames ({0})'
+        bulk_frames_none = 'No checked games added to Steam'
+        bulk_frames_done = 'Cover frames updated for games: {0}'
+        bulk_frames_same = 'Nothing to change: the selected option is already applied'
+        bulk_frames_fail = 'Could not change covers: {0}'
+        bulk_frames_nocover = 'no cover in Steam'
+        bulk_frames_nolauncher = 'not a launcher game, icon is not available'
+        card_frame_fit = 'Fit cover'
+        card_frame_adjust = 'Adjust position…'
+        card_frame_link = 'Link panels'
+        card_frame_edit = 'Edit frame…'
+        card_frame_manage = 'Frame manager…'
+        frame_adjust_title = 'Fit cover to frame'
+        frame_adjust_reset = 'Reset'
+        frame_adjust_save = 'Save'
+        frame_adjust_zoom = 'Zoom'
+        frame_adjust_hint = 'Wheel — zoom, drag — move, Enter — save, Esc — cancel'
         fav_rename = 'Rename…'
         fav_up = 'Move up'
         fav_down = 'Move down'
@@ -6130,6 +6447,7 @@ $script:I18n = @{
         col_emu = 'Emulator'
         emu_row_none = 'No emulator'
         col_dlss = 'DLSS'
+        col_libs = 'Libraries'
         col_dlss_orig = 'Original'
         dlss_row_missing = 'Missing'
         dlss_row_unavailable = 'Unavailable'
@@ -6162,6 +6480,7 @@ $script:I18n = @{
         lib_cap_upscalers = 'Upscalers'
         lib_cap_emus = 'Emulator'
         lib_cap_wraps = 'Wrapper'
+        lib_cap_frames = 'Frames'
         lib_count = '{0}'
         lib_selected = 'Selected: {0}'
         lib_selected_of = '{0}/{1}'
@@ -6199,6 +6518,8 @@ $script:I18n = @{
         lib_restore_confirm2 = 'Files will be replaced with the .sc_orig copies made before updating. Close the games before restoring.'
         lib_all_note = 'No games are selected: the action will apply to all games in the current list (respecting search and filter).'
         lib_all_confirm = 'No games are selected. Search for saves in all games of the current list: {0}?'
+        lib_upd_all_confirm = 'No games are selected. Replace upscaler libraries with the latest downloaded versions in all games of the current list: {0}?'
+        lib_restore_all_confirm = 'No games are selected. Restore the original upscaler libraries in all games of the current list: {0}?'
         save_btn_backup = 'Back up'
         save_btn_restore = 'Restore'
         save_tip_backup = 'Back up the saves of the selected games. If nothing changed, no new archive is created.'
@@ -6249,6 +6570,8 @@ $script:I18n = @{
         lib_ctx_save_scan = 'Find saves'
         lib_ctx_coll = 'Collections'
         lib_ctx_coll_sel = 'Collections ({0} games)'
+        lib_ctx_frames = 'Frames'
+        lib_ctx_frames_sel = 'Frames ({0} games)'
         coll_dlg_title_one = 'Collections of “{0}”'
         coll_dlg_title_many = 'Collections for the selected games ({0})'
         coll_dlg_hint = 'Tick the collections the game should be in. A game can be in several collections at once.'
@@ -6266,6 +6589,8 @@ $script:I18n = @{
         coll_created = 'Collection “{0}” created'
         coll_deleted = 'Collection “{0}” deleted'
         coll_struct_fail = 'Could not change the Steam collection files'
+        coll_struct_done = 'Collections updated: {0} created, {1} deleted'
+        coll_new_tag = 'New'
         coll_done = 'Collections updated: {0} games, {1} collections changed'
         coll_queued = 'Collection changes are queued: they will be written when you click "Restart Steam"'
         coll_nochange = 'Collection membership did not change'
@@ -6404,7 +6729,9 @@ $script:I18n = @{
         steam_pending_applied = 'Changes applied. You can start Steam now.'
         btn_restart_steam = 'Restart Steam'
         btn_change_coll = 'Change collections ({0})'
+        btn_change_frames = 'Change frames ({0})'
         btn_coll_tip = 'Change collections of the selected games'
+        btn_coll_tip_editor = 'Change collections'
         btn_libs_tip = 'Upscaler libraries of the selected games'
         btn_libs_upd_tip = 'Update upscaler libraries (DLSS / FSR / XeSS / XeLL)'
         btn_libs_rst_tip = 'Restore the original libraries from backups (.sc_orig)'
@@ -6416,6 +6743,7 @@ $script:I18n = @{
         btn_saves_backup_n = 'Back up saves ({0})'
         btn_saves_restore_n = 'Restore saves ({0})'
         btn_coll_tip_new = 'Put into collections when added'
+        bulk_frames_tip_new = 'Cover frame when added'
         steam_restarted = 'Steam restarted'
         steam_wait_msg = 'Steam is running. Close Steam (tray icon → Exit); the program will continue on its own as soon as it closes. Start Steam yourself afterwards.'
         steam_close_cancelled = 'Cancelled: Steam was not closed'
@@ -6650,6 +6978,8 @@ $script:I18n = @{
         wrap_lbl_exe = 'Program:'
         wrap_lbl_args = 'Arguments:'
         wrap_args_hint = '{game} - game path, {args} - your parameters from the card. Example: "{game}" {args}'
+        wrap_lbl_frames_tip = 'Apply a frame from the selected set to the vertical cover of games launched through this wrapper. "No frame" - no frame is applied.'
+        lib_launcher_frames_tip = 'Frame for the covers of new games from this launcher (auto-import and the card). "No frame" - no frame is applied. Games already added are not changed.'
         wrap_ofd_title = 'Select wrapper program (.exe)'
         wrap_confirm_remove = 'Remove this wrapper from the list?'
         wrap_err_add = 'Error adding wrapper:'
@@ -6809,6 +7139,8 @@ $script:I18n = @{
         emu_chk_extract_tip = 'Extract the ROM archive to a temporary folder before the emulator starts; the files are deleted when it closes.'
         emu_chk_multidisc = 'Multi-disc (m3u)'
         emu_chk_multidisc_tip = 'Multi-disc games ("(Disc 1)", "(Disc 2)"...) are launched through one m3u list, and the ROM card shows a "Multi-disc" checkbox. Enabled automatically for emulators that read m3u.'
+        emu_lbl_frames = 'Frames:'
+        emu_lbl_frames_tip = 'Apply a frame from the selected set to the vertical cover of games launched through this emulator. "No frame" - no frame is applied.'
         dlg_pick_folder_name = 'Select folder'
         dlg_pick_folder_btn = 'Select folder'
         emu_lbl_args = 'Arguments:'
@@ -6957,6 +7289,7 @@ $script:I18n = @{
         dll_err_no_src = 'source file not found: {0}'
         dll_err_no_dst = 'the game has no such file: {0}'
         splash_reading = 'Reading library…'
+        frames_kit_pair = 'Pair'
     }
     zh = @{
         hint_main = '双击 / 回车 — 游戏卡片。勾选游戏可添加到库或移动'
@@ -6982,6 +7315,7 @@ $script:I18n = @{
         col_emu = '模拟器'
         emu_row_none = '无模拟器'
         col_dlss = 'DLSS'
+        col_libs = '库'
         col_dlss_orig = '原版'
         dlss_row_missing = '缺失'
         dlss_row_unavailable = '不可用'
@@ -7090,6 +7424,8 @@ $script:I18n = @{
         lib_ctx_restore_confirm1 = '还原“{0}”中的原始超分库。'
         lib_ctx_coll = '分类'
         lib_ctx_coll_sel = '分类（{0} 个游戏）'
+        lib_ctx_frames = '边框'
+        lib_ctx_frames_sel = '边框（{0} 个游戏）'
         coll_dlg_title_one = '“{0}”的分类'
         coll_dlg_title_many = '所选游戏的分类（{0}）'
         coll_dlg_hint = '勾选游戏应属于的分类。一个游戏可以同时属于多个分类。'
@@ -7573,6 +7909,8 @@ $script:I18n = @{
         emu_chk_extract_tip = '启动模拟器前将 ROM 压缩包解压到临时文件夹；模拟器关闭后删除临时文件。'
         emu_chk_multidisc = '多碟 (m3u)'
         emu_chk_multidisc_tip = '多碟游戏（“(Disc 1)”“(Disc 2)”等）通过一个 m3u 列表启动，ROM 卡片中会出现“多碟”复选框。对能读取 m3u 的模拟器自动勾选。'
+        emu_lbl_frames = '边框：'
+        emu_lbl_frames_tip = '为通过此模拟器启动的游戏的竖版封面叠加所选套装中的边框。选择“无边框”则不叠加。'
         dlg_pick_folder_name = '选择文件夹'
         dlg_pick_folder_btn = '选择文件夹'
         emu_lbl_args = '参数：'
@@ -7706,9 +8044,12 @@ $script:I18n = @{
         rom_revert_not_exe = '不是通过 exe 启动，无需恢复'
         rom_revert_none = '没有通过模拟器启动的快捷方式'
         lib_cap_wraps = '包装器'
+        lib_cap_frames = '边框'
         lib_filter_wrappers = '包装器'
         lib_all_note = '未选择任何游戏：操作将应用于当前列表中的所有游戏（遵循搜索和筛选条件）。'
         lib_all_confirm = '未选择任何游戏。要在当前列表的所有游戏中搜索存档：{0}？'
+        lib_upd_all_confirm = '未选择任何游戏。要将当前列表所有游戏（{0} 个）中的超分库替换为已下载的最新版本吗？'
+        lib_restore_all_confirm = '未选择任何游戏。要还原当前列表所有游戏（{0} 个）中的原始超分库吗？'
         lib_ctx_save_scan = '查找存档'
         sdet_pick_hint_heur = '存档是通过 Steam Cloud / 启发式搜索找到的。请勾选应视为游戏存档的位置：'
         sdet_pick_hint_multi_all = '为这些游戏找到了多个存档位置。请勾选应视为游戏存档的位置（游戏名称旁的复选框可切换其所有位置）：'
@@ -7717,6 +8058,7 @@ $script:I18n = @{
         sdet_btn_skip_all = '全部跳过'
         save_scan_pick_skipped = '未保存：已跳过选择'
         btn_change_coll = '更改收藏集（{0}）'
+        btn_change_frames = '更改封面边框（{0}）'
         btn_coll_tip = '更改所选游戏的收藏集'
         btn_libs_tip = '所选游戏的超分库'
         btn_libs_upd_tip = '更新超分库（DLSS / FSR / XeSS / XeLL）'
@@ -7729,6 +8071,7 @@ $script:I18n = @{
         btn_saves_backup_n = '备份存档（{0}）'
         btn_saves_restore_n = '还原存档（{0}）'
         btn_coll_tip_new = '添加时放入收藏集'
+        bulk_frames_tip_new = '添加时使用的封面边框'
         src_tip_nokey = 'SteamGridDB 不可用：请在设置中输入并验证 API 密钥'
         card_wrapper_chk = '包装器'
         card_wrapper_empty = '添加包装器'
@@ -7741,6 +8084,8 @@ $script:I18n = @{
         wrap_lbl_exe = '程序：'
         wrap_lbl_args = '参数：'
         wrap_args_hint = '{game} - 游戏路径，{args} - 卡片中您设置的参数。示例："{game}" {args}'
+        wrap_lbl_frames_tip = '为通过此包装器启动的游戏的竖版封面叠加所选套装中的边框。选择“无边框”则不叠加。'
+        lib_launcher_frames_tip = '用于此启动器新游戏封面的边框（自动导入和卡片）。选择“无边框”则不叠加。已添加的游戏不会更改。'
         wrap_ofd_title = '选择包装器程序（.exe）'
         wrap_confirm_remove = '要从列表中删除此包装器吗？'
         wrap_err_add = '添加包装器时出错：'
@@ -7806,6 +8151,130 @@ $script:I18n = @{
         lib_uninstall_unsure = '“{0}”的卸载程序已结束，但系统中仍有其安装记录。将该游戏视为已移除并继续吗（游戏文件夹的残留文件将被删除）？'
         lib_uninstall_start_fail = '无法启动“{0}”的卸载程序：{1}。游戏已保留在库中。'
         lib_remove_fail = '无法移除快捷方式：{0}。{1}'
+        frames_btn = '边框…'
+        frames_title = '封面边框'
+        frames_hint = '保存游戏时，边框会叠加在封面上。可添加来自 SteamGridDB 的模板或自己的文件。'
+        frames_empty = '还没有边框。请从 SteamGridDB 或自己的文件添加模板。'
+        frames_add_sgdb = '从 SteamGridDB…'
+        frames_add_file = '从文件…'
+        frames_props = '属性…'
+        frames_remove = '删除'
+        frames_close = '关闭'
+        frames_ok = '确定'
+        frames_cancel = '取消'
+        frames_name = '名称'
+        frames_platform = '平台'
+        frames_platform_any = '任意'
+        frames_props_title = '边框属性'
+        frames_file_filter = '图像 (*.png;*.jpg;*.jpeg)|*.png;*.jpg;*.jpeg|所有文件 (*.*)|*.*'
+        frames_file_title = '选择边框模板'
+        frames_rect_title = '封面区域'
+        frames_rect_hint = '所选区域将变为透明，封面会从中显示出来。拖动区域中部可移动，拖动控制点可调整大小。'
+        frames_rect_reset = '重置'
+        frames_rect_reset_tip = '恢复自动检测的区域'
+        frames_search_title = '模板搜索'
+        frames_search_prompt = '平台或商店名称（例如 PlayStation、GOG、Epic）：'
+        frames_pick_game = '选择 SteamGridDB 条目'
+        frames_no_key = '需要 SteamGridDB API 密钥（见设置中的对应字段）。'
+        frames_search_none = '在 SteamGridDB 上未找到任何内容。'
+        frames_no_grids = '此条目没有合适的模板。'
+        frames_sgdb_title = '边框模板'
+        frames_dl_fail = '无法下载模板。'
+        frames_bad_file = '无法读取该图像。'
+        frames_add_fail = '无法添加边框。'
+        frames_confirm_remove = '删除边框“{0}”？'
+        frames_tip = '{0} · {1}×{2}'
+        frames_coll_fail = '无法从 SteamGridDB 加载模板列表。请检查网络连接后重试。'
+        frames_pick_platform = '选择平台或商店'
+        frames_all_platforms = '全部合集模板'
+        frames_only_real = '仅显示带透明区域的模板'
+        frames_tab = '边框'
+        frames_no_transp = '无透明区域'
+        frames_kit_search = 'SteamGridDB'
+        frames_kit_name = '名称'
+        frames_kit_click = '点击选择封面'
+        frames_kit_sg_platforms = '平台'
+        frames_kit_sg_launchers = '启动器'
+        frames_kit_sg_emus = '你的模拟器'
+        frames_kit_clear = '移除'
+        frames_kit_pin = '固定此封面：再次搜索时保留'
+        frames_kit_apply_for = '应用于'
+        frames_kit_unbind_q = '该套装已与你取消勾选的模拟器、包装器和启动器解除关联。要从其已添加到 Steam 库的游戏封面上移除边框吗（{1}）？选择“否”，这些游戏将保留边框，套装仅解除关联。'
+        frames_kit_apply_existing_q = '将套装“{0}”应用到所选模拟器、包装器、启动器和分类中已添加到 Steam 库的游戏（{1}）吗？选择“否”，套装仅建立关联：新游戏会获得边框，已添加游戏的封面保持不变。'
+        frames_kit_apply_none = '未选择任何项'
+        frames_kit_apply_colls = '分类'
+        frames_kit_area = '区域…'
+        frames_kit_eye = '封面在边框中的位置：适配模板（缩放和偏移）'
+        frames_kit_fit = '适配'
+        frames_kit_nores = '未找到任何内容'
+        frames_kit_need_game = '请先在 SteamGridDB 上查找游戏并从列表中选择。'
+        frames_kit_need_one = '请至少选择一个封面：竖版或横版。'
+        frames_kit_col_name = '套装'
+        frames_kit_pair = '一对'
+        frames_kit_v = '竖版'
+        frames_kit_h = '横版'
+        frames_kit_none = '（无）'
+        frames_kit_add_tpl = '添加模板…'
+        frames_kit_create = '创建'
+        frames_kit_templates = '模板…'
+        frames_kit_title_new = '新建套装'
+        frames_kit_title_edit = '边框套装'
+        frames_kit_confirm_remove = '删除套装“{0}”？'
+        frames_kit_orient_v = '竖版'
+        frames_kit_orient_h = '横版'
+        frames_kit_orient_bad = '模板已添加到模板列表，但不适用于此处：需要{0}模板。'
+        frames_bind_btn = '绑定…'
+        frames_bind_title = '边框绑定'
+        frames_bind_hint = '保存通过所选模拟器、包装器或启动器运行的游戏时，边框会应用到竖版封面。选择“（无边框）”可关闭。'
+        frames_bind_none = '（无边框）'
+        frames_bind_emus = '模拟器'
+        frames_bind_wraps = '包装器'
+        frames_bind_launchers = '启动器'
+        card_frame_tip = '封面边框'
+        card_frame_none = '无边框'
+        launcher_frame_badge = '启动器图标'
+        card_frame_kits_group = '边框'
+        lib_launcher_frames_apply_q = '将所选选项“{0}”应用到此启动器中已添加到 Steam 库的游戏（{1}）吗？'
+        frames_use_chk = '使用边框'
+        emu_frames_apply_q = '将所选选项“{0}”应用到此模拟器中已添加到 Steam 库的游戏（{1}）吗？选择“否”，则只有新游戏会获得边框。'
+        wrap_frames_apply_q = '将所选选项“{0}”应用到此包装器中已添加到 Steam 库的游戏（{1}）吗？选择“否”，则只有新游戏会获得边框。'
+        emu_frames_remove_q = '你选择了“无边框”：保存后，将从此模拟器中所有已添加到 Steam 库的游戏封面上移除边框。继续吗？'
+        wrap_frames_remove_q = '你选择了“无边框”：保存后，将从此包装器中所有已添加到 Steam 库的游戏封面上移除边框。继续吗？'
+        emu_frame_badge = '模拟器图标'
+        wrap_frame_badge = '包装器图标'
+        frame_badge_any = '图标'
+        bulk_frames_tip = '所选游戏的封面边框'
+        bulk_frames_menu_hdr = '封面边框（{0}）'
+        bulk_frames_none = '没有已添加到 Steam 的勾选游戏'
+        bulk_frames_done = '已更新封面边框的游戏：{0}'
+        bulk_frames_same = '无需更改：所选选项已应用'
+        bulk_frames_fail = '无法更改封面：{0}'
+        bulk_frames_nocover = 'Steam 中没有封面'
+        bulk_frames_nolauncher = '不是启动器游戏，图标不可用'
+        card_frame_fit = '适配封面'
+        card_frame_adjust = '调整位置…'
+        card_frame_link = '关联面板'
+        card_frame_edit = '编辑边框…'
+        card_frame_manage = '边框管理器…'
+        frame_adjust_title = '使封面适配边框'
+        frame_adjust_reset = '重置'
+        frame_adjust_save = '保存'
+        frame_adjust_zoom = '缩放'
+        frame_adjust_hint = '滚轮 — 缩放，拖动 — 移动，Enter — 保存，Esc — 取消'
+        preview_eye_tip = '查看原图'
+        preview_title = '封面预览'
+        preview_loading = '正在加载原图…'
+        preview_failed = '无法加载原图，显示缩略图。'
+        preview_failed_nothumb = '无法加载图像。'
+        preview_unsupported = '此处无法显示该格式，显示缩略图。'
+        preview_hint = '按 Esc 或点击关闭'
+        preview_meta_author = '作者'
+        preview_meta_likes = '点赞'
+        preview_meta_views = '浏览'
+        preview_meta_date = '上传时间'
+        btn_remove_disk_tip = 'Shift：从磁盘上永久删除勾选的文件和文件夹（{0}）。库中的游戏会先从库中移除。不会进入回收站。'
+        disk_remove_confirm = '要从磁盘上永久删除勾选的文件和文件夹（{0}）吗？\n\n{1}\n\n此操作无法撤销：它们不会进入回收站。'
+        disk_remove_done = '已从磁盘删除：{0}。'
     }
     es = @{
         hint_main = 'Doble clic / Intro — ficha del juego. Marca juegos para añadir a la biblioteca o mover'
@@ -7831,6 +8300,7 @@ $script:I18n = @{
         col_emu = 'Emulador'
         emu_row_none = 'Sin emulador'
         col_dlss = 'DLSS'
+        col_libs = 'Bibliotecas'
         col_dlss_orig = 'Original'
         dlss_row_missing = 'Ausente'
         dlss_row_unavailable = 'No disponible'
@@ -7939,6 +8409,8 @@ $script:I18n = @{
         lib_ctx_restore_confirm1 = 'Restaurar las bibliotecas de escalado originales en «{0}».'
         lib_ctx_coll = 'Colecciones'
         lib_ctx_coll_sel = 'Colecciones ({0} juegos)'
+        lib_ctx_frames = 'Marcos'
+        lib_ctx_frames_sel = 'Marcos ({0} juegos)'
         coll_dlg_title_one = 'Colecciones de «{0}»'
         coll_dlg_title_many = 'Colecciones de los juegos seleccionados ({0})'
         coll_dlg_hint = 'Marca las colecciones en las que debe estar el juego. Un juego puede estar en varias colecciones a la vez.'
@@ -8422,6 +8894,8 @@ $script:I18n = @{
         emu_chk_extract_tip = 'Extrae el archivo comprimido de la ROM a una carpeta temporal antes de iniciar el emulador; los archivos se eliminan al cerrarlo.'
         emu_chk_multidisc = 'Multidisco (m3u)'
         emu_chk_multidisc_tip = 'Los juegos de varios discos («(Disc 1)», «(Disc 2)»…) se inician con una sola lista m3u y en la ficha aparece la casilla «Multidisco». Se activa sola en emuladores que leen m3u.'
+        emu_lbl_frames = 'Marcos:'
+        emu_lbl_frames_tip = 'Aplica un marco del conjunto elegido a la portada vertical de los juegos que se inician con este emulador. «Sin marco»: no se aplica ningún marco.'
         dlg_pick_folder_name = 'Seleccionar carpeta'
         dlg_pick_folder_btn = 'Seleccionar carpeta'
         emu_lbl_args = 'Argumentos:'
@@ -8555,9 +9029,12 @@ $script:I18n = @{
         rom_revert_not_exe = 'no es un inicio por exe, nada que restaurar'
         rom_revert_none = 'ningún acceso directo se inicia mediante un emulador'
         lib_cap_wraps = 'Wrapper'
+        lib_cap_frames = 'Marcos'
         lib_filter_wrappers = 'Wrappers'
         lib_all_note = 'No hay juegos seleccionados: la acción se aplicará a todos los juegos de la lista actual (respetando la búsqueda y el filtro).'
         lib_all_confirm = 'No hay juegos seleccionados. ¿Buscar partidas guardadas en todos los juegos de la lista actual: {0}?'
+        lib_upd_all_confirm = 'No hay juegos seleccionados. ¿Sustituir las bibliotecas de escalado por las últimas descargadas en todos los juegos de la lista actual: {0}?'
+        lib_restore_all_confirm = 'No hay juegos seleccionados. ¿Restaurar las bibliotecas de escalado originales en todos los juegos de la lista actual: {0}?'
         lib_ctx_save_scan = 'Buscar partidas guardadas'
         sdet_pick_hint_heur = 'Las partidas se encontraron mediante Steam Cloud / heurística. Marca las ubicaciones que deben contar como partidas guardadas del juego:'
         sdet_pick_hint_multi_all = 'Se encontraron varias ubicaciones de partidas para estos juegos. Marca las que deben contar como partidas guardadas (la casilla junto al nombre del juego marca todas sus ubicaciones):'
@@ -8566,6 +9043,7 @@ $script:I18n = @{
         sdet_btn_skip_all = 'Omitir todo'
         save_scan_pick_skipped = 'No guardado: selección omitida'
         btn_change_coll = 'Cambiar colecciones ({0})'
+        btn_change_frames = 'Cambiar marcos ({0})'
         btn_coll_tip = 'Cambiar las colecciones de los juegos seleccionados'
         btn_libs_tip = 'Bibliotecas de escalado de los juegos seleccionados'
         btn_libs_upd_tip = 'Actualizar las bibliotecas de escalado (DLSS / FSR / XeSS / XeLL)'
@@ -8578,6 +9056,7 @@ $script:I18n = @{
         btn_saves_backup_n = 'Copiar partidas ({0})'
         btn_saves_restore_n = 'Restaurar partidas ({0})'
         btn_coll_tip_new = 'Añadir a colecciones al agregar'
+        bulk_frames_tip_new = 'Marco de portada al agregar'
         src_tip_nokey = 'SteamGridDB no disponible: introduce y verifica la clave API en los ajustes'
         card_wrapper_chk = 'Wrapper'
         card_wrapper_empty = 'Añadir un wrapper'
@@ -8590,6 +9069,8 @@ $script:I18n = @{
         wrap_lbl_exe = 'Programa:'
         wrap_lbl_args = 'Argumentos:'
         wrap_args_hint = '{game} - ruta del juego, {args} - tus parámetros de la ficha. Ejemplo: "{game}" {args}'
+        wrap_lbl_frames_tip = 'Aplica un marco del conjunto elegido a la portada vertical de los juegos que se inician con este wrapper. «Sin marco»: no se aplica ningún marco.'
+        lib_launcher_frames_tip = 'Marco para las portadas de los juegos nuevos de este launcher (importación automática y ficha). «Sin marco»: no se aplica ningún marco. Los juegos ya añadidos no cambian.'
         wrap_ofd_title = 'Selecciona el programa wrapper (.exe)'
         wrap_confirm_remove = '¿Quitar este wrapper de la lista?'
         wrap_err_add = 'Error al añadir el wrapper:'
@@ -8655,6 +9136,130 @@ $script:I18n = @{
         lib_uninstall_unsure = 'El desinstalador de «{0}» ha terminado, pero el registro de la instalación sigue en el sistema. ¿Considerar el juego como eliminado y continuar (se borrarán los restos de la carpeta del juego)?'
         lib_uninstall_start_fail = 'No se pudo iniciar el desinstalador de «{0}»: {1}. El juego se dejó en la biblioteca.'
         lib_remove_fail = 'No se pudieron quitar los accesos directos: {0}. {1}'
+        frames_btn = 'Marcos…'
+        frames_title = 'Marcos de portadas'
+        frames_hint = 'El marco se aplica sobre la portada al guardar un juego. Añade plantillas de SteamGridDB o tus propios archivos.'
+        frames_empty = 'Aún no hay marcos. Añade una plantilla de SteamGridDB o tu propio archivo.'
+        frames_add_sgdb = 'Desde SteamGridDB…'
+        frames_add_file = 'Desde archivo…'
+        frames_props = 'Propiedades…'
+        frames_remove = 'Eliminar'
+        frames_close = 'Cerrar'
+        frames_ok = 'Aceptar'
+        frames_cancel = 'Cancelar'
+        frames_name = 'Nombre'
+        frames_platform = 'Plataforma'
+        frames_platform_any = 'Cualquiera'
+        frames_props_title = 'Propiedades del marco'
+        frames_file_filter = 'Imágenes (*.png;*.jpg;*.jpeg)|*.png;*.jpg;*.jpeg|Todos los archivos (*.*)|*.*'
+        frames_file_title = 'Elige una plantilla de marco'
+        frames_rect_title = 'Área de la portada'
+        frames_rect_hint = 'El área seleccionada se vuelve transparente y la portada se ve a través de ella. Arrastra el área por el centro y cambia su tamaño con los tiradores.'
+        frames_rect_reset = 'Restablecer'
+        frames_rect_reset_tip = 'Restaurar el área detectada automáticamente'
+        frames_search_title = 'Búsqueda de plantillas'
+        frames_search_prompt = 'Nombre de la plataforma o tienda (por ejemplo, PlayStation, GOG, Epic):'
+        frames_pick_game = 'Elige una entrada de SteamGridDB'
+        frames_no_key = 'Se necesita una clave de API de SteamGridDB (consulta el campo en Ajustes).'
+        frames_search_none = 'No se encontró nada en SteamGridDB.'
+        frames_no_grids = 'Esta entrada no tiene plantillas adecuadas.'
+        frames_sgdb_title = 'Plantillas de marcos'
+        frames_dl_fail = 'No se pudo descargar la plantilla.'
+        frames_bad_file = 'No se pudo leer la imagen.'
+        frames_add_fail = 'No se pudo añadir el marco.'
+        frames_confirm_remove = '¿Eliminar el marco «{0}»?'
+        frames_tip = '{0} · {1}×{2}'
+        frames_coll_fail = 'No se pudo cargar la lista de plantillas de SteamGridDB. Comprueba tu conexión a internet e inténtalo de nuevo.'
+        frames_pick_platform = 'Elige una plataforma o tienda'
+        frames_all_platforms = 'Todas las plantillas de la colección'
+        frames_only_real = 'Solo plantillas con área transparente'
+        frames_tab = 'Marcos'
+        frames_no_transp = 'Sin transparencia'
+        frames_kit_search = 'SteamGridDB'
+        frames_kit_name = 'Nombre'
+        frames_kit_click = 'Haz clic para elegir una portada'
+        frames_kit_sg_platforms = 'Plataformas'
+        frames_kit_sg_launchers = 'Launchers'
+        frames_kit_sg_emus = 'Tus emuladores'
+        frames_kit_clear = 'Quitar'
+        frames_kit_pin = 'Fijar esta portada: se mantiene al buscar de nuevo'
+        frames_kit_apply_for = 'Usar para'
+        frames_kit_unbind_q = 'El conjunto se desvinculó de los emuladores, wrappers y launchers que desmarcaste. ¿Quitar los marcos de las portadas de sus juegos ya añadidos a tu biblioteca de Steam ({1})? Si eliges «No», esos juegos conservarán sus marcos y el conjunto solo se desvinculará.'
+        frames_kit_apply_existing_q = '¿Aplicar el conjunto «{0}» a los juegos de los emuladores, wrappers, launchers y colecciones seleccionados ya añadidos a tu biblioteca de Steam ({1})? Si eliges «No», el conjunto solo se vincula: los juegos nuevos recibirán los marcos y las portadas de los ya añadidos no cambiarán.'
+        frames_kit_apply_none = 'No hay nada seleccionado'
+        frames_kit_apply_colls = 'Colecciones'
+        frames_kit_area = 'Área…'
+        frames_kit_eye = 'Posición de la portada en el marco: ajustar a la plantilla (zoom y desplazamiento)'
+        frames_kit_fit = 'Ajustar'
+        frames_kit_nores = 'No se encontró nada'
+        frames_kit_need_game = 'Primero busca un juego en SteamGridDB y elígelo de la lista.'
+        frames_kit_need_one = 'Elige al menos una portada: vertical u horizontal.'
+        frames_kit_col_name = 'Conjunto'
+        frames_kit_pair = 'Par'
+        frames_kit_v = 'Vertical'
+        frames_kit_h = 'Horizontal'
+        frames_kit_none = '(ninguno)'
+        frames_kit_add_tpl = 'Añadir plantilla…'
+        frames_kit_create = 'Crear'
+        frames_kit_templates = 'Plantillas…'
+        frames_kit_title_new = 'Nuevo conjunto'
+        frames_kit_title_edit = 'Conjunto de marcos'
+        frames_kit_confirm_remove = '¿Eliminar el conjunto «{0}»?'
+        frames_kit_orient_v = 'vertical'
+        frames_kit_orient_h = 'horizontal'
+        frames_kit_orient_bad = 'La plantilla se añadió a la lista de plantillas, pero no sirve aquí: se necesita una plantilla {0}.'
+        frames_bind_btn = 'Vínculos…'
+        frames_bind_title = 'Vínculos de marcos'
+        frames_bind_hint = 'El marco se aplica a la portada vertical al guardar un juego que se inicia mediante el emulador, wrapper o launcher elegido. «(sin marco)» lo desactiva.'
+        frames_bind_none = '(sin marco)'
+        frames_bind_emus = 'Emuladores'
+        frames_bind_wraps = 'Wrappers'
+        frames_bind_launchers = 'Launchers'
+        card_frame_tip = 'Marco de la portada'
+        card_frame_none = 'Sin marco'
+        launcher_frame_badge = 'Icono del launcher'
+        card_frame_kits_group = 'Marcos'
+        lib_launcher_frames_apply_q = '¿Aplicar la opción seleccionada «{0}» a los juegos de este launcher ya añadidos a tu biblioteca de Steam ({1})?'
+        frames_use_chk = 'Usar marcos'
+        emu_frames_apply_q = '¿Aplicar la opción seleccionada «{0}» a los juegos de este emulador ya añadidos a tu biblioteca de Steam ({1})? Si eliges «No», solo los juegos nuevos recibirán los marcos.'
+        wrap_frames_apply_q = '¿Aplicar la opción seleccionada «{0}» a los juegos de este wrapper ya añadidos a tu biblioteca de Steam ({1})? Si eliges «No», solo los juegos nuevos recibirán los marcos.'
+        emu_frames_remove_q = 'Has elegido «Sin marco»: al guardar, se quitarán los marcos de las portadas de todos los juegos de este emulador ya añadidos a tu biblioteca de Steam. ¿Continuar?'
+        wrap_frames_remove_q = 'Has elegido «Sin marco»: al guardar, se quitarán los marcos de las portadas de todos los juegos de este wrapper ya añadidos a tu biblioteca de Steam. ¿Continuar?'
+        emu_frame_badge = 'Icono del emulador'
+        wrap_frame_badge = 'Icono del wrapper'
+        frame_badge_any = 'Icono'
+        bulk_frames_tip = 'Marcos de portada de los juegos seleccionados'
+        bulk_frames_menu_hdr = 'Marcos de portada ({0})'
+        bulk_frames_none = 'Ningún juego marcado añadido a Steam'
+        bulk_frames_done = 'Marcos de portada actualizados en juegos: {0}'
+        bulk_frames_same = 'Nada que cambiar: la opción seleccionada ya está aplicada'
+        bulk_frames_fail = 'No se pudieron cambiar las portadas: {0}'
+        bulk_frames_nocover = 'sin portada en Steam'
+        bulk_frames_nolauncher = 'no es un juego de launcher, el icono no está disponible'
+        card_frame_fit = 'Ajustar portada'
+        card_frame_adjust = 'Ajustar posición…'
+        card_frame_link = 'Vincular paneles'
+        card_frame_edit = 'Editar marco…'
+        card_frame_manage = 'Gestor de marcos…'
+        frame_adjust_title = 'Ajustar la portada al marco'
+        frame_adjust_reset = 'Restablecer'
+        frame_adjust_save = 'Guardar'
+        frame_adjust_zoom = 'Zoom'
+        frame_adjust_hint = 'Rueda: zoom, arrastrar: mover, Enter: guardar, Esc: cancelar'
+        preview_eye_tip = 'Ver a tamaño completo'
+        preview_title = 'Vista previa de la portada'
+        preview_loading = 'Cargando la imagen a tamaño completo…'
+        preview_failed = 'No se pudo cargar la imagen a tamaño completo; se muestra la miniatura.'
+        preview_failed_nothumb = 'No se pudo cargar la imagen.'
+        preview_unsupported = 'Este formato no se puede mostrar aquí; se muestra la miniatura.'
+        preview_hint = 'Pulsa Esc o haz clic para cerrar'
+        preview_meta_author = 'Autor'
+        preview_meta_likes = 'Me gusta'
+        preview_meta_views = 'Vistas'
+        preview_meta_date = 'Subido'
+        btn_remove_disk_tip = 'Shift: ELIMINAR PERMANENTEMENTE del disco los archivos y carpetas marcados ({0}). Los juegos de la biblioteca se quitan primero de la biblioteca. Nada va a la Papelera de reciclaje.'
+        disk_remove_confirm = '¿ELIMINAR PERMANENTEMENTE del disco los archivos y carpetas marcados ({0})?\n\n{1}\n\nNo se puede deshacer: no van a la Papelera de reciclaje.'
+        disk_remove_done = 'Eliminado del disco: {0}.'
     }
     pt = @{
         hint_main = 'Clique duplo / Enter — ficha do jogo. Marque jogos para adicionar à biblioteca ou mover'
@@ -8680,6 +9285,7 @@ $script:I18n = @{
         col_emu = 'Emulador'
         emu_row_none = 'Sem emulador'
         col_dlss = 'DLSS'
+        col_libs = 'Bibliotecas'
         col_dlss_orig = 'Original'
         dlss_row_missing = 'Ausente'
         dlss_row_unavailable = 'Indisponível'
@@ -8788,6 +9394,8 @@ $script:I18n = @{
         lib_ctx_restore_confirm1 = 'Restaurar as bibliotecas de upscaler originais em “{0}”.'
         lib_ctx_coll = 'Coleções'
         lib_ctx_coll_sel = 'Coleções ({0} jogos)'
+        lib_ctx_frames = 'Molduras'
+        lib_ctx_frames_sel = 'Molduras ({0} jogos)'
         coll_dlg_title_one = 'Coleções de “{0}”'
         coll_dlg_title_many = 'Coleções dos jogos selecionados ({0})'
         coll_dlg_hint = 'Marque as coleções em que o jogo deve estar. Um jogo pode estar em várias coleções ao mesmo tempo.'
@@ -9271,6 +9879,8 @@ $script:I18n = @{
         emu_chk_extract_tip = 'Extrai o arquivo compactado da ROM para uma pasta temporária antes de iniciar o emulador; os arquivos são excluídos ao fechá-lo.'
         emu_chk_multidisc = 'Multidisco (m3u)'
         emu_chk_multidisc_tip = 'Jogos de vários discos («(Disc 1)», «(Disc 2)»…) são iniciados por uma única lista m3u e a ficha mostra a caixa «Multidisco». Ativa sozinha em emuladores que leem m3u.'
+        emu_lbl_frames = 'Molduras:'
+        emu_lbl_frames_tip = 'Aplica uma moldura do conjunto escolhido à capa vertical dos jogos iniciados por este emulador. «Sem moldura»: nenhuma moldura é aplicada.'
         dlg_pick_folder_name = 'Selecionar pasta'
         dlg_pick_folder_btn = 'Selecionar pasta'
         emu_lbl_args = 'Argumentos:'
@@ -9404,9 +10014,12 @@ $script:I18n = @{
         rom_revert_not_exe = 'não é uma inicialização por exe, nada a restaurar'
         rom_revert_none = 'nenhum atalho é iniciado por um emulador'
         lib_cap_wraps = 'Wrapper'
+        lib_cap_frames = 'Molduras'
         lib_filter_wrappers = 'Wrappers'
         lib_all_note = 'Nenhum jogo selecionado: a ação será aplicada a todos os jogos da lista atual (respeitando a busca e o filtro).'
         lib_all_confirm = 'Nenhum jogo selecionado. Procurar saves em todos os jogos da lista atual: {0}?'
+        lib_upd_all_confirm = 'Nenhum jogo selecionado. Substituir as bibliotecas de upscaler pelas últimas baixadas em todos os jogos da lista atual: {0}?'
+        lib_restore_all_confirm = 'Nenhum jogo selecionado. Restaurar as bibliotecas de upscaler originais em todos os jogos da lista atual: {0}?'
         lib_ctx_save_scan = 'Procurar saves'
         sdet_pick_hint_heur = 'Os saves foram encontrados via Steam Cloud / heurística. Marque os locais que devem contar como saves do jogo:'
         sdet_pick_hint_multi_all = 'Foram encontrados vários locais de saves para estes jogos. Marque os que devem contar como saves do jogo (a caixa ao lado do nome do jogo alterna todos os seus locais):'
@@ -9415,6 +10028,7 @@ $script:I18n = @{
         sdet_btn_skip_all = 'Ignorar tudo'
         save_scan_pick_skipped = 'Não salvo: seleção ignorada'
         btn_change_coll = 'Alterar coleções ({0})'
+        btn_change_frames = 'Alterar molduras ({0})'
         btn_coll_tip = 'Alterar as coleções dos jogos selecionados'
         btn_libs_tip = 'Bibliotecas de upscaling dos jogos selecionados'
         btn_libs_upd_tip = 'Atualizar as bibliotecas de upscaling (DLSS / FSR / XeSS / XeLL)'
@@ -9427,6 +10041,7 @@ $script:I18n = @{
         btn_saves_backup_n = 'Fazer backup dos saves ({0})'
         btn_saves_restore_n = 'Restaurar saves ({0})'
         btn_coll_tip_new = 'Colocar em coleções ao adicionar'
+        bulk_frames_tip_new = 'Moldura da capa ao adicionar'
         src_tip_nokey = 'SteamGridDB indisponível: informe e verifique a chave de API nas configurações'
         card_wrapper_chk = 'Wrapper'
         card_wrapper_empty = 'Adicionar um wrapper'
@@ -9439,6 +10054,8 @@ $script:I18n = @{
         wrap_lbl_exe = 'Programa:'
         wrap_lbl_args = 'Argumentos:'
         wrap_args_hint = '{game} - caminho do jogo, {args} - seus parâmetros da ficha. Exemplo: "{game}" {args}'
+        wrap_lbl_frames_tip = 'Aplica uma moldura do conjunto escolhido à capa vertical dos jogos iniciados por este wrapper. «Sem moldura»: nenhuma moldura é aplicada.'
+        lib_launcher_frames_tip = 'Moldura para as capas dos novos jogos deste launcher (importação automática e ficha). «Sem moldura»: nenhuma moldura é aplicada. Jogos já adicionados não mudam.'
         wrap_ofd_title = 'Selecione o programa wrapper (.exe)'
         wrap_confirm_remove = 'Remover este wrapper da lista?'
         wrap_err_add = 'Erro ao adicionar o wrapper:'
@@ -9504,6 +10121,130 @@ $script:I18n = @{
         lib_uninstall_unsure = 'O desinstalador de "{0}" terminou, mas o registro da instalação ainda está no sistema. Considerar o jogo como removido e continuar (os restos da pasta do jogo serão excluídos)?'
         lib_uninstall_start_fail = 'Não foi possível iniciar o desinstalador de "{0}": {1}. O jogo foi mantido na biblioteca.'
         lib_remove_fail = 'Não foi possível remover os atalhos: {0}. {1}'
+        frames_btn = 'Molduras…'
+        frames_title = 'Molduras de capas'
+        frames_hint = 'A moldura é aplicada sobre a capa ao salvar um jogo. Adicione modelos do SteamGridDB ou seus próprios arquivos.'
+        frames_empty = 'Ainda não há molduras. Adicione um modelo do SteamGridDB ou seu próprio arquivo.'
+        frames_add_sgdb = 'Do SteamGridDB…'
+        frames_add_file = 'De arquivo…'
+        frames_props = 'Propriedades…'
+        frames_remove = 'Excluir'
+        frames_close = 'Fechar'
+        frames_ok = 'OK'
+        frames_cancel = 'Cancelar'
+        frames_name = 'Nome'
+        frames_platform = 'Plataforma'
+        frames_platform_any = 'Qualquer'
+        frames_props_title = 'Propriedades da moldura'
+        frames_file_filter = 'Imagens (*.png;*.jpg;*.jpeg)|*.png;*.jpg;*.jpeg|Todos os arquivos (*.*)|*.*'
+        frames_file_title = 'Escolha um modelo de moldura'
+        frames_rect_title = 'Área da capa'
+        frames_rect_hint = 'A área selecionada fica transparente e a capa aparece através dela. Arraste a área pelo meio e redimensione com as alças.'
+        frames_rect_reset = 'Redefinir'
+        frames_rect_reset_tip = 'Restaurar a área detectada automaticamente'
+        frames_search_title = 'Pesquisa de modelos'
+        frames_search_prompt = 'Nome da plataforma ou loja (por exemplo, PlayStation, GOG, Epic):'
+        frames_pick_game = 'Escolha uma entrada do SteamGridDB'
+        frames_no_key = 'É necessária uma chave de API do SteamGridDB (veja o campo em Configurações).'
+        frames_search_none = 'Nada encontrado no SteamGridDB.'
+        frames_no_grids = 'Esta entrada não tem modelos adequados.'
+        frames_sgdb_title = 'Modelos de molduras'
+        frames_dl_fail = 'Não foi possível baixar o modelo.'
+        frames_bad_file = 'Não foi possível ler a imagem.'
+        frames_add_fail = 'Não foi possível adicionar a moldura.'
+        frames_confirm_remove = 'Excluir a moldura «{0}»?'
+        frames_tip = '{0} · {1}×{2}'
+        frames_coll_fail = 'Não foi possível carregar a lista de modelos do SteamGridDB. Verifique sua conexão com a internet e tente novamente.'
+        frames_pick_platform = 'Escolha uma plataforma ou loja'
+        frames_all_platforms = 'Todos os modelos da coleção'
+        frames_only_real = 'Somente modelos com área transparente'
+        frames_tab = 'Molduras'
+        frames_no_transp = 'Sem transparência'
+        frames_kit_search = 'SteamGridDB'
+        frames_kit_name = 'Nome'
+        frames_kit_click = 'Clique para escolher uma capa'
+        frames_kit_sg_platforms = 'Plataformas'
+        frames_kit_sg_launchers = 'Launchers'
+        frames_kit_sg_emus = 'Seus emuladores'
+        frames_kit_clear = 'Remover'
+        frames_kit_pin = 'Fixar esta capa: ela permanece ao pesquisar novamente'
+        frames_kit_apply_for = 'Usar para'
+        frames_kit_unbind_q = 'O conjunto foi desvinculado dos emuladores, wrappers e launchers que você desmarcou. Remover as molduras das capas dos jogos deles já adicionados à sua biblioteca da Steam ({1})? Se escolher «Não», esses jogos manterão as molduras e o conjunto será apenas desvinculado.'
+        frames_kit_apply_existing_q = 'Aplicar o conjunto «{0}» aos jogos dos emuladores, wrappers, launchers e coleções selecionados já adicionados à sua biblioteca da Steam ({1})? Se escolher «Não», o conjunto será apenas vinculado: os jogos novos receberão as molduras e as capas dos já adicionados não mudarão.'
+        frames_kit_apply_none = 'Nada selecionado'
+        frames_kit_apply_colls = 'Coleções'
+        frames_kit_area = 'Área…'
+        frames_kit_eye = 'Posição da capa na moldura: ajustar ao modelo (zoom e deslocamento)'
+        frames_kit_fit = 'Ajustar'
+        frames_kit_nores = 'Nada encontrado'
+        frames_kit_need_game = 'Primeiro encontre um jogo no SteamGridDB e escolha-o na lista.'
+        frames_kit_need_one = 'Escolha pelo menos uma capa: vertical ou horizontal.'
+        frames_kit_col_name = 'Conjunto'
+        frames_kit_pair = 'Par'
+        frames_kit_v = 'Vertical'
+        frames_kit_h = 'Horizontal'
+        frames_kit_none = '(nenhum)'
+        frames_kit_add_tpl = 'Adicionar modelo…'
+        frames_kit_create = 'Criar'
+        frames_kit_templates = 'Modelos…'
+        frames_kit_title_new = 'Novo conjunto'
+        frames_kit_title_edit = 'Conjunto de molduras'
+        frames_kit_confirm_remove = 'Excluir o conjunto «{0}»?'
+        frames_kit_orient_v = 'vertical'
+        frames_kit_orient_h = 'horizontal'
+        frames_kit_orient_bad = 'O modelo foi adicionado à lista de modelos, mas não serve aqui: é necessário um modelo {0}.'
+        frames_bind_btn = 'Vínculos…'
+        frames_bind_title = 'Vínculos de molduras'
+        frames_bind_hint = 'A moldura é aplicada à capa vertical ao salvar um jogo que é iniciado pelo emulador, wrapper ou launcher escolhido. «(sem moldura)» a desativa.'
+        frames_bind_none = '(sem moldura)'
+        frames_bind_emus = 'Emuladores'
+        frames_bind_wraps = 'Wrappers'
+        frames_bind_launchers = 'Launchers'
+        card_frame_tip = 'Moldura da capa'
+        card_frame_none = 'Sem moldura'
+        launcher_frame_badge = 'Ícone do launcher'
+        card_frame_kits_group = 'Molduras'
+        lib_launcher_frames_apply_q = 'Aplicar a opção selecionada «{0}» aos jogos deste launcher já adicionados à sua biblioteca da Steam ({1})?'
+        frames_use_chk = 'Usar molduras'
+        emu_frames_apply_q = 'Aplicar a opção selecionada «{0}» aos jogos deste emulador já adicionados à sua biblioteca da Steam ({1})? Se escolher «Não», somente os jogos novos receberão as molduras.'
+        wrap_frames_apply_q = 'Aplicar a opção selecionada «{0}» aos jogos deste wrapper já adicionados à sua biblioteca da Steam ({1})? Se escolher «Não», somente os jogos novos receberão as molduras.'
+        emu_frames_remove_q = 'Você escolheu «Sem moldura»: ao salvar, as molduras serão removidas das capas de todos os jogos deste emulador já adicionados à sua biblioteca da Steam. Continuar?'
+        wrap_frames_remove_q = 'Você escolheu «Sem moldura»: ao salvar, as molduras serão removidas das capas de todos os jogos deste wrapper já adicionados à sua biblioteca da Steam. Continuar?'
+        emu_frame_badge = 'Ícone do emulador'
+        wrap_frame_badge = 'Ícone do wrapper'
+        frame_badge_any = 'Ícone'
+        bulk_frames_tip = 'Molduras de capa dos jogos selecionados'
+        bulk_frames_menu_hdr = 'Molduras de capa ({0})'
+        bulk_frames_none = 'Nenhum jogo marcado adicionado à Steam'
+        bulk_frames_done = 'Molduras de capa atualizadas nos jogos: {0}'
+        bulk_frames_same = 'Nada a alterar: a opção selecionada já está aplicada'
+        bulk_frames_fail = 'Não foi possível alterar as capas: {0}'
+        bulk_frames_nocover = 'sem capa na Steam'
+        bulk_frames_nolauncher = 'não é um jogo de launcher, o ícone não está disponível'
+        card_frame_fit = 'Ajustar capa'
+        card_frame_adjust = 'Ajustar posição…'
+        card_frame_link = 'Vincular painéis'
+        card_frame_edit = 'Editar moldura…'
+        card_frame_manage = 'Gerenciador de molduras…'
+        frame_adjust_title = 'Ajustar a capa à moldura'
+        frame_adjust_reset = 'Redefinir'
+        frame_adjust_save = 'Salvar'
+        frame_adjust_zoom = 'Zoom'
+        frame_adjust_hint = 'Roda: zoom, arrastar: mover, Enter: salvar, Esc: cancelar'
+        preview_eye_tip = 'Ver em tamanho real'
+        preview_title = 'Pré-visualização da capa'
+        preview_loading = 'Carregando a imagem em tamanho real…'
+        preview_failed = 'Não foi possível carregar a imagem em tamanho real; exibindo a miniatura.'
+        preview_failed_nothumb = 'Não foi possível carregar a imagem.'
+        preview_unsupported = 'Este formato não pode ser exibido aqui; exibindo a miniatura.'
+        preview_hint = 'Pressione Esc ou clique para fechar'
+        preview_meta_author = 'Autor'
+        preview_meta_likes = 'Curtidas'
+        preview_meta_views = 'Visualizações'
+        preview_meta_date = 'Enviado'
+        btn_remove_disk_tip = 'Shift: EXCLUIR PERMANENTEMENTE do disco os arquivos e pastas marcados ({0}). Os jogos da biblioteca são removidos primeiro da biblioteca. Nada vai para a Lixeira.'
+        disk_remove_confirm = 'EXCLUIR PERMANENTEMENTE do disco os arquivos e pastas marcados ({0})?\n\n{1}\n\nIsso não pode ser desfeito: eles não vão para a Lixeira.'
+        disk_remove_done = 'Excluído do disco: {0}.'
     }
     de = @{
         hint_main = 'Doppelklick / Eingabe — Spielkarte. Spiele anhaken zum Hinzufügen oder Verschieben'
@@ -9529,6 +10270,7 @@ $script:I18n = @{
         col_emu = 'Emulator'
         emu_row_none = 'Kein Emulator'
         col_dlss = 'DLSS'
+        col_libs = 'Bibliotheken'
         col_dlss_orig = 'Original'
         dlss_row_missing = 'fehlt'
         dlss_row_unavailable = 'nicht verfügbar'
@@ -9637,6 +10379,8 @@ $script:I18n = @{
         lib_ctx_restore_confirm1 = 'Originale Upscaler-Bibliotheken in „{0}“ zurückspielen.'
         lib_ctx_coll = 'Sammlungen'
         lib_ctx_coll_sel = 'Sammlungen ({0} Spiele)'
+        lib_ctx_frames = 'Rahmen'
+        lib_ctx_frames_sel = 'Rahmen ({0} Spiele)'
         coll_dlg_title_one = 'Sammlungen von „{0}“'
         coll_dlg_title_many = 'Sammlungen für die ausgewählten Spiele ({0})'
         coll_dlg_hint = 'Wähle die Sammlungen aus, in denen das Spiel sein soll. Ein Spiel kann in mehreren Sammlungen gleichzeitig sein.'
@@ -10120,6 +10864,8 @@ $script:I18n = @{
         emu_chk_extract_tip = 'Entpackt das ROM-Archiv vor dem Start des Emulators in einen temporären Ordner; die Dateien werden nach dem Beenden gelöscht.'
         emu_chk_multidisc = 'Multi-Disc (m3u)'
         emu_chk_multidisc_tip = 'Multi-Disc-Spiele („(Disc 1)“, „(Disc 2)“ …) starten über eine m3u-Liste, die ROM-Karte zeigt „Multi-Disc“. Bei Emulatoren mit m3u-Unterstützung automatisch aktiv.'
+        emu_lbl_frames = 'Rahmen:'
+        emu_lbl_frames_tip = 'Legt einen Rahmen aus dem gewählten Set auf das Hochformat-Cover der Spiele, die über diesen Emulator starten. „Ohne Rahmen“: es wird kein Rahmen angewendet.'
         dlg_pick_folder_name = 'Ordner auswählen'
         dlg_pick_folder_btn = 'Ordner auswählen'
         emu_lbl_args = 'Argumente:'
@@ -10253,9 +10999,12 @@ $script:I18n = @{
         rom_revert_not_exe = 'kein EXE-Start, nichts wiederherzustellen'
         rom_revert_none = 'keine Verknüpfung startet über einen Emulator'
         lib_cap_wraps = 'Wrapper'
+        lib_cap_frames = 'Rahmen'
         lib_filter_wrappers = 'Wrapper'
         lib_all_note = 'Keine Spiele ausgewählt: Die Aktion gilt für alle Spiele der aktuellen Liste (unter Berücksichtigung von Suche und Filter).'
         lib_all_confirm = 'Keine Spiele ausgewählt. Spielstände in allen Spielen der aktuellen Liste suchen: {0}?'
+        lib_upd_all_confirm = 'Keine Spiele ausgewählt. Upscaler-Bibliotheken in allen Spielen der aktuellen Liste durch die neuesten heruntergeladenen ersetzen: {0}?'
+        lib_restore_all_confirm = 'Keine Spiele ausgewählt. Originale Upscaler-Bibliotheken in allen Spielen der aktuellen Liste wiederherstellen: {0}?'
         lib_ctx_save_scan = 'Spielstände suchen'
         sdet_pick_hint_heur = 'Die Spielstände wurden über Steam Cloud / Heuristik gefunden. Hake die Orte an, die als Spielstände gelten sollen:'
         sdet_pick_hint_multi_all = 'Für diese Spiele wurden mehrere Speicherorte gefunden. Hake die Orte an, die als Spielstände gelten sollen (das Kästchen neben dem Spielnamen schaltet alle seine Orte um):'
@@ -10264,6 +11013,7 @@ $script:I18n = @{
         sdet_btn_skip_all = 'Alle überspringen'
         save_scan_pick_skipped = 'Nicht gespeichert: Auswahl übersprungen'
         btn_change_coll = 'Sammlungen ändern ({0})'
+        btn_change_frames = 'Rahmen ändern ({0})'
         btn_coll_tip = 'Sammlungen der ausgewählten Spiele ändern'
         btn_libs_tip = 'Upscaler-Bibliotheken der ausgewählten Spiele'
         btn_libs_upd_tip = 'Upscaler-Bibliotheken aktualisieren (DLSS / FSR / XeSS / XeLL)'
@@ -10276,6 +11026,7 @@ $script:I18n = @{
         btn_saves_backup_n = 'Spielstände sichern ({0})'
         btn_saves_restore_n = 'Spielstände wiederherstellen ({0})'
         btn_coll_tip_new = 'Beim Hinzufügen in Sammlungen einordnen'
+        bulk_frames_tip_new = 'Cover-Rahmen beim Hinzufügen'
         src_tip_nokey = 'SteamGridDB nicht verfügbar: API-Schlüssel in den Einstellungen eingeben und prüfen'
         card_wrapper_chk = 'Wrapper'
         card_wrapper_empty = 'Wrapper hinzufügen'
@@ -10288,6 +11039,8 @@ $script:I18n = @{
         wrap_lbl_exe = 'Programm:'
         wrap_lbl_args = 'Argumente:'
         wrap_args_hint = '{game} - Spielpfad, {args} - deine Parameter aus der Karte. Beispiel: "{game}" {args}'
+        wrap_lbl_frames_tip = 'Legt einen Rahmen aus dem gewählten Set auf das Hochformat-Cover der Spiele, die über diesen Wrapper starten. „Ohne Rahmen“: es wird kein Rahmen angewendet.'
+        lib_launcher_frames_tip = 'Rahmen für die Cover neuer Spiele dieses Launchers (Auto-Import und Karte). „Ohne Rahmen“: es wird kein Rahmen angewendet. Bereits hinzugefügte Spiele ändern sich nicht.'
         wrap_ofd_title = 'Wrapper-Programm (.exe) auswählen'
         wrap_confirm_remove = 'Diesen Wrapper aus der Liste entfernen?'
         wrap_err_add = 'Fehler beim Hinzufügen des Wrappers:'
@@ -10352,6 +11105,131 @@ $script:I18n = @{
         lib_uninstall_unsure = 'Das Deinstallationsprogramm von „{0}“ ist beendet, aber der Installationseintrag ist noch im System vorhanden. Das Spiel als entfernt behandeln und fortfahren (Reste des Spielordners werden gelöscht)?'
         lib_uninstall_start_fail = 'Das Deinstallationsprogramm von „{0}“ konnte nicht gestartet werden: {1}. Das Spiel bleibt in der Bibliothek.'
         lib_remove_fail = 'Verknüpfungen konnten nicht entfernt werden: {0}. {1}'
+        frames_btn = 'Rahmen…'
+        frames_title = 'Cover-Rahmen'
+        frames_hint = 'Beim Speichern eines Spiels wird der Rahmen über das Cover gelegt. Füge Vorlagen von SteamGridDB oder eigene Dateien hinzu.'
+        frames_empty = 'Noch keine Rahmen vorhanden. Füge eine Vorlage von SteamGridDB oder eine eigene Datei hinzu.'
+        frames_add_sgdb = 'Von SteamGridDB…'
+        frames_add_file = 'Aus Datei…'
+        frames_props = 'Eigenschaften…'
+        frames_remove = 'Löschen'
+        frames_close = 'Schließen'
+        frames_ok = 'OK'
+        frames_cancel = 'Abbrechen'
+        frames_name = 'Name'
+        frames_platform = 'Plattform'
+        frames_platform_any = 'Beliebig'
+        frames_props_title = 'Rahmeneigenschaften'
+        frames_file_filter = 'Bilder (*.png;*.jpg;*.jpeg)|*.png;*.jpg;*.jpeg|Alle Dateien (*.*)|*.*'
+        frames_file_title = 'Rahmenvorlage auswählen'
+        frames_rect_title = 'Cover-Bereich'
+        frames_rect_hint = 'Der gewählte Bereich wird transparent, das Cover scheint hindurch. Ziehe den Bereich in der Mitte, um ihn zu verschieben, und ändere die Größe über die Ziehpunkte.'
+        frames_rect_reset = 'Zurücksetzen'
+        frames_rect_reset_tip = 'Automatisch erkannten Bereich wiederherstellen'
+        frames_search_title = 'Vorlagensuche'
+        frames_search_prompt = 'Name der Plattform oder des Stores (z. B. PlayStation, GOG, Epic):'
+        frames_pick_game = 'SteamGridDB-Eintrag auswählen'
+        frames_no_key = 'Ein SteamGridDB-API-Schlüssel ist erforderlich (siehe Feld in den Einstellungen).'
+        frames_search_none = 'Auf SteamGridDB wurde nichts gefunden.'
+        frames_no_grids = 'Dieser Eintrag hat keine passenden Vorlagen.'
+        frames_sgdb_title = 'Rahmenvorlagen'
+        frames_dl_fail = 'Die Vorlage konnte nicht heruntergeladen werden.'
+        frames_bad_file = 'Das Bild konnte nicht gelesen werden.'
+        frames_add_fail = 'Der Rahmen konnte nicht hinzugefügt werden.'
+        frames_confirm_remove = 'Rahmen „{0}“ löschen?'
+        frames_tip = '{0} · {1}×{2}'
+        frames_coll_fail = 'Die Vorlagenliste konnte nicht von SteamGridDB geladen werden. Prüfe deine Internetverbindung und versuche es erneut.'
+        frames_pick_platform = 'Plattform oder Store auswählen'
+        frames_all_platforms = 'Alle Sammlungsvorlagen'
+        frames_only_real = 'Nur Vorlagen mit transparentem Bereich'
+        frames_tab = 'Rahmen'
+        frames_no_transp = 'Keine Transparenz'
+        frames_kit_search = 'SteamGridDB'
+        frames_kit_name = 'Name'
+        frames_kit_click = 'Klicken, um ein Cover auszuwählen'
+        frames_kit_sg_platforms = 'Plattformen'
+        frames_kit_sg_launchers = 'Launcher'
+        frames_kit_sg_emus = 'Deine Emulatoren'
+        frames_kit_clear = 'Entfernen'
+        frames_kit_pin = 'Dieses Cover anheften: Es bleibt bei einer erneuten Suche erhalten'
+        frames_kit_apply_for = 'Verwenden für'
+        frames_kit_unbind_q = 'Das Set wurde von den Emulatoren, Wrappern und Launchern gelöst, die du abgewählt hast. Rahmen von den Covern ihrer bereits zur Steam-Bibliothek hinzugefügten Spiele entfernen ({1})? Wenn du „Nein“ wählst, behalten diese Spiele ihre Rahmen und das Set wird nur gelöst.'
+        frames_kit_apply_existing_q = 'Das Set „{0}“ auf Spiele der ausgewählten Emulatoren, Wrapper, Launcher und Sammlungen anwenden, die bereits zur Steam-Bibliothek hinzugefügt wurden ({1})? Wenn du „Nein“ wählst, wird das Set nur verknüpft: Neue Spiele erhalten die Rahmen, die Cover bereits hinzugefügter Spiele bleiben unverändert.'
+        frames_kit_apply_none = 'Nichts ausgewählt'
+        frames_kit_apply_colls = 'Sammlungen'
+        frames_kit_area = 'Bereich…'
+        frames_kit_eye = 'Position des Covers im Rahmen: an Vorlage anpassen (Zoom und Versatz)'
+        frames_kit_fit = 'Anpassen'
+        frames_kit_nores = 'Nichts gefunden'
+        frames_kit_need_game = 'Suche zuerst ein Spiel auf SteamGridDB und wähle es aus der Liste aus.'
+        frames_kit_need_one = 'Wähle mindestens ein Cover: Hochformat oder Querformat.'
+        frames_kit_col_name = 'Set'
+        frames_kit_pair = 'Paar'
+        frames_kit_v = 'Hochformat'
+        frames_kit_h = 'Querformat'
+        frames_kit_none = '(keine)'
+        frames_kit_add_tpl = 'Vorlage hinzufügen…'
+        frames_kit_create = 'Erstellen'
+        frames_kit_templates = 'Vorlagen…'
+        frames_kit_title_new = 'Neues Set'
+        frames_kit_title_edit = 'Rahmen-Set'
+        frames_kit_confirm_remove = 'Set „{0}“ löschen?'
+        frames_kit_orient_v = 'Hochformat'
+        frames_kit_orient_h = 'Querformat'
+        frames_kit_orient_bad = 'Die Vorlage wurde zur Vorlagenliste hinzugefügt, passt aber hier nicht: Es wird eine Vorlage im {0} benötigt.'
+        frames_bind_btn = 'Zuordnungen…'
+        frames_bind_title = 'Rahmenzuordnung'
+        frames_bind_hint = 'Der Rahmen wird auf das Hochformat-Cover angewendet, wenn ein Spiel gespeichert wird, das über den gewählten Emulator, Wrapper oder Launcher startet. „(kein Rahmen)“ schaltet ihn aus.'
+        frames_bind_none = '(kein Rahmen)'
+        frames_bind_emus = 'Emulatoren'
+        frames_bind_wraps = 'Wrapper'
+        frames_bind_launchers = 'Launcher'
+        card_frame_tip = 'Cover-Rahmen'
+        card_frame_none = 'Kein Rahmen'
+        launcher_frame_badge = 'Launcher-Symbol'
+        card_frame_kits_group = 'Rahmen'
+        lib_launcher_frames_apply_q = 'Die gewählte Option „{0}“ auf Spiele dieses Launchers anwenden, die bereits zur Steam-Bibliothek hinzugefügt wurden ({1})?'
+        frames_use_chk = 'Rahmen verwenden'
+        emu_frames_apply_q = 'Die gewählte Option „{0}“ auf Spiele dieses Emulators anwenden, die bereits zur Steam-Bibliothek hinzugefügt wurden ({1})? Wenn du „Nein“ wählst, erhalten nur neue Spiele die Rahmen.'
+        wrap_frames_apply_q = 'Die gewählte Option „{0}“ auf Spiele dieses Wrappers anwenden, die bereits zur Steam-Bibliothek hinzugefügt wurden ({1})? Wenn du „Nein“ wählst, erhalten nur neue Spiele die Rahmen.'
+        emu_frames_remove_q = 'Du hast „Kein Rahmen“ gewählt: Nach dem Speichern werden die Rahmen von den Covern aller Spiele dieses Emulators entfernt, die bereits zur Steam-Bibliothek hinzugefügt wurden. Fortfahren?'
+        wrap_frames_remove_q = 'Du hast „Kein Rahmen“ gewählt: Nach dem Speichern werden die Rahmen von den Covern aller Spiele dieses Wrappers entfernt, die bereits zur Steam-Bibliothek hinzugefügt wurden. Fortfahren?'
+        emu_frame_badge = 'Emulator-Symbol'
+        wrap_frame_badge = 'Wrapper-Symbol'
+        frame_badge_any = 'Symbol'
+        bulk_frames_tip = 'Cover-Rahmen für die ausgewählten Spiele'
+        bulk_frames_menu_hdr = 'Cover-Rahmen ({0})'
+        bulk_frames_none = 'Keine markierten Spiele, die zu Steam hinzugefügt wurden'
+        bulk_frames_done = 'Cover-Rahmen aktualisiert bei Spielen: {0}'
+        bulk_frames_same = 'Nichts zu ändern: Die gewählte Option ist bereits angewendet'
+        bulk_frames_fail = 'Cover konnten nicht geändert werden: {0}'
+        bulk_frames_nocover = 'kein Cover in Steam'
+        bulk_frames_nolauncher = 'kein Launcher-Spiel, Symbol nicht verfügbar'
+        card_frame_fit = 'Cover anpassen'
+        card_frame_adjust = 'Position anpassen…'
+        card_frame_link = 'Bereiche verknüpfen'
+        card_frame_edit = 'Rahmen bearbeiten…'
+        card_frame_manage = 'Rahmenverwaltung…'
+        frame_adjust_title = 'Cover an Rahmen anpassen'
+        frame_adjust_reset = 'Zurücksetzen'
+        frame_adjust_save = 'Speichern'
+        frame_adjust_zoom = 'Zoom'
+        frame_adjust_hint = 'Mausrad: Zoom, Ziehen: verschieben, Enter: speichern, Esc: abbrechen'
+        preview_eye_tip = 'In voller Größe anzeigen'
+        preview_title = 'Cover-Vorschau'
+        preview_loading = 'Bild in voller Größe wird geladen …'
+        preview_failed = 'Das Bild in voller Größe konnte nicht geladen werden – die Miniaturansicht wird angezeigt.'
+        preview_failed_nothumb = 'Das Bild konnte nicht geladen werden.'
+        preview_unsupported = 'Dieses Format kann hier nicht angezeigt werden – die Miniaturansicht wird angezeigt.'
+        preview_hint = 'Zum Schließen Esc drücken oder klicken'
+        preview_meta_author = 'Autor'
+        preview_meta_likes = 'Likes'
+        preview_meta_views = 'Aufrufe'
+        preview_meta_date = 'Hochgeladen'
+        btn_remove_disk_tip = 'Shift: Markierte Dateien und Ordner DAUERHAFT von der Festplatte löschen ({0}). Spiele aus der Bibliothek werden zuerst aus der Bibliothek entfernt. Nichts landet im Papierkorb.'
+        disk_remove_confirm = 'Markierte Dateien und Ordner ({0}) DAUERHAFT von der Festplatte löschen?\n\n{1}\n\nDas lässt sich nicht rückgängig machen: Sie landen nicht im Papierkorb.'
+        disk_remove_done = 'Von der Festplatte gelöscht: {0}.'
+        lib_remove_files_progress = 'Ordner „{0}“ wird gelöscht: {1}%'
     }
 }
 
@@ -11238,7 +12116,7 @@ function Start-SizeCalc {
     try {
         if (-not ($script:moveInProgress -or $script:batchInProgress -or $script:smartBatchActive -or $script:libImportRunning)) {
             $script:sizeCalcBtnSwapped = $true
-            foreach ($bb in @($btnAddToSteam, $btnRestartSteam, $btnSwapEmuMain, $btnApplyColl, $btnApplyLibs, $btnApplySaves)) {
+            foreach ($bb in @($btnAddToSteam, $btnRestartSteam, $btnSwapEmuMain, $btnApplyColl, $btnApplyFrames, $btnApplyLibs, $btnApplySaves)) {
                 try { if ($null -ne $bb) { $bb.Visible = $false } } catch {}
             }
             $btnSteamLibrary.Tag = (T 'btn_cancel_sizes')
@@ -11757,7 +12635,7 @@ function Register-ListBoxDrawEvent ($listBox) {
         } else {
             $cbBorderColor = if ($isSelected) { [System.Drawing.Color]::White } else { $steamUi.Muted }
             # Выбрано действие, и эту игру отметить нельзя (нет апскейлеров / не в библиотеке): рамка приглушена.
-            try { if ((Test-MainCheckRestrictionActive) -and -not (Test-MainRowCheckAllowed $src $cleanName)) { $cbBorderColor = [System.Drawing.Color]::FromArgb(70, 80, 92) } } catch {}
+            try { if (Test-MainCheckRestrictionActive) { $raOk = Test-MainRowCheckAllowed $src $cleanName $true; if ($null -ne $raOk -and -not $raOk) { $cbBorderColor = [System.Drawing.Color]::FromArgb(70, 80, 92) } } } catch {}
             $cbPen = New-Object System.Drawing.Pen($cbBorderColor, 1.2)
             $e.Graphics.DrawRectangle($cbPen, $cbRect)
             $cbPen.Dispose()
@@ -11851,7 +12729,12 @@ function Register-ListBoxDrawEvent ($listBox) {
                 $e.Graphics.DrawString($altName, $smallFont, $altBrush, $altRect, $sf)
                 $altBrush.Dispose()
             } else {
-            $sfFlags = Get-MainSavesRowFlags $rowPath
+            $sfFlags = Get-MainSavesRowFlags $rowPath -CacheOnly
+            $sfPending = ($null -eq $sfFlags)
+            if ($sfPending) {
+                try { Add-MainSavesWarm $rowPath } catch {}
+                $sfFlags = [PSCustomObject]@{ Found = $false; Backup = $false; BackupDate = $null }
+            }
             $altName = ''
             $altOk = $false
             if ([string]$script:mainSavesMode -eq 'restore') {
@@ -11873,6 +12756,7 @@ function Register-ListBoxDrawEvent ($listBox) {
                     $altOk = $false
                 }
             }
+            if ($sfPending) { $altName = '…'; $altOk = $false }   # флаги этой строки ещё считаются в фоне
             $altColor = if ($altOk) {
                 if ($isSelected) { [System.Drawing.Color]::FromArgb(128, 214, 150) } else { $steamUi.Green }
             } else { $mutedColor }
@@ -12188,8 +13072,16 @@ function Get-SteamWriteState {
 }
 
 # Запуск Steam после записи: в ручном режиме Steam запускает пользователь, поэтому ничего не делаем.
+# Запускать Steam нужно только если программа его закрыла ($script:steamKilledByApp) или реально изменила файлы Steam
+# ($script:steamFilesDirty: shortcuts.vdf, коллекции). Если ничего не менялось - Steam не трогаем (не перезапускаем и не поднимаем окно).
+$script:steamKilledByApp = $false
+$script:steamFilesDirty = $false
 function Start-SteamIfAuto([string]$exePath) {
     if ((Get-SteamRestartMode) -eq 'manual') { return }
+    if (-not ($script:steamKilledByApp -or $script:steamFilesDirty)) { return }
+    $script:steamKilledByApp = $false
+    $script:steamFilesDirty = $false
+    if (Test-SteamRunning) { return }
     try { if (-not [string]::IsNullOrWhiteSpace($exePath) -and (Test-Path -LiteralPath $exePath)) { Start-Process -FilePath $exePath } } catch {}
 }
 
@@ -12260,6 +13152,7 @@ $script:pendingCollectionOps = New-Object System.Collections.ArrayList
 $script:pendingCollVer = 0
 function Write-SteamShortcutsFile([string]$path, [byte[]]$bytes) {
     [System.IO.File]::WriteAllBytes($path, $bytes)
+    $script:steamFilesDirty = $true
     try {
         if ((Get-SteamRestartMode) -eq 'manual' -and (Test-SteamRunning)) { $script:pendingShortcutWrites[$path] = $bytes }
         elseif ($script:pendingShortcutWrites.ContainsKey($path)) { [void]$script:pendingShortcutWrites.Remove($path) }
@@ -12323,6 +13216,8 @@ function Restart-SteamNow {
     }
     [void](Apply-PendingSteamShortcutWrites)
     try { Start-Process -FilePath $exe } catch {}
+    $script:steamKilledByApp = $false
+    $script:steamFilesDirty = $false
     $script:steamRestartNeeded = $false
     try { Update-SteamRestartButtons } catch {}
 }
@@ -12335,6 +13230,7 @@ $script:batchDeferSteamActive = $false
 function Begin-BatchSteamDefer {
     $script:batchDeferSteam = $false
     $script:batchDeferSteamActive = $false
+    $script:steamFilesDirty = $false
     try {
         if ((Get-SteamRestartMode) -eq 'auto' -and (Test-SteamRunning)) {
             $script:batchDeferSteam = $true
@@ -12347,7 +13243,11 @@ function End-BatchSteamDefer([string]$exePath) {
     $script:batchDeferSteam = $false
     $script:batchDeferSteamActive = $false
     if ($wasDeferred) {
-        try { Restart-SteamNow } catch {}
+        # Steam всё это время работал и не закрывался. Перезапуск нужен только если что-то записано (ярлыки или коллекции);
+        # при отмене импорта без изменений Steam остаётся как был.
+        $hasPending = $false
+        try { $hasPending = ([bool]$script:steamFilesDirty) -or ($script:pendingShortcutWrites.Count -gt 0) -or ($null -ne $script:pendingCollectionOps -and $script:pendingCollectionOps.Count -gt 0) } catch { $hasPending = $true }
+        if ($hasPending) { try { Restart-SteamNow } catch {} }
     } else {
         try { Start-SteamIfAuto $exePath } catch {}
     }
@@ -12360,6 +13260,7 @@ function Close-SteamForWrite([switch]$Responsive) {
     # Ручной режим: Steam не трогаем, запись идёт сразу, а закрепляется после его закрытия пользователем
     # (см. Write-SteamShortcutsFile / Apply-PendingSteamShortcutWrites).
     if ((Get-SteamRestartMode) -eq 'manual') { return $true }
+    $script:steamKilledByApp = $true
     if ($Responsive) { Stop-SteamProcessResponsive }
     else {
         Stop-SteamTreeExceptSelf
@@ -12551,6 +13452,8 @@ function Load-Configuration {
     $global:emulatorProfiles = @()
     # Врапперы запуска (Virtual Desktop и т.п.): Id, Name, ExePath (программа-обёртка), Args (шаблон: {game} - путь к игре, {args} - параметры пользователя).
     $global:launchWrappers = @()
+    # Набор рамок по лончерам: id лончера (epic, gog, ubisoft, ea, battlenet, xbox) -> id набора рамок ('' - без рамки).
+    $global:launcherFrameKits = @{}
     # Избранные папки (общие для обеих панелей): массив объектов @{ Name; Path }. В config.ini — строки favoriteDir=Название|Путь.
     $global:favoriteDirs = @()
     # Id эмулятора из списка выше, который сейчас активен в режиме ROMs.
@@ -12572,7 +13475,7 @@ function Load-Configuration {
                             $parsedEmu = $rawEmu | ConvertFrom-Json -ErrorAction Stop
                             if ($parsedEmu -isnot [array]) { $parsedEmu = @($parsedEmu) }
                             $global:emulatorProfiles = @($parsedEmu | ForEach-Object {
-                                @{ Id = [string]$_.Id; Name = [string]$_.Name; ExePath = [string]$_.ExePath; Args = [string]$_.Args; Extensions = [string]$_.Extensions; Core = [string]$_.Core; ExtractArchives = (([string]$_.ExtractArchives).Trim().ToLowerInvariant() -eq 'true'); MultiDisc = (Resolve-EmulatorMultiDisc $_.MultiDisc ([string]$_.Name) ([string]$_.ExePath)) }
+                                @{ Id = [string]$_.Id; Name = [string]$_.Name; ExePath = [string]$_.ExePath; Args = [string]$_.Args; Extensions = [string]$_.Extensions; Core = [string]$_.Core; ExtractArchives = (([string]$_.ExtractArchives).Trim().ToLowerInvariant() -eq 'true'); MultiDisc = (Resolve-EmulatorMultiDisc $_.MultiDisc ([string]$_.Name) ([string]$_.ExePath)); FrameKit = [string]$_.FrameKit }
                             })
                         }
                     } catch {}
@@ -12584,8 +13487,21 @@ function Load-Configuration {
                             $parsedWrap = $rawWrap | ConvertFrom-Json -ErrorAction Stop
                             if ($parsedWrap -isnot [array]) { $parsedWrap = @($parsedWrap) }
                             $global:launchWrappers = @($parsedWrap | ForEach-Object {
-                                @{ Id = [string]$_.Id; Name = [string]$_.Name; ExePath = [string]$_.ExePath; Args = [string]$_.Args }
+                                @{ Id = [string]$_.Id; Name = [string]$_.Name; ExePath = [string]$_.ExePath; Args = [string]$_.Args; FrameKit = [string]$_.FrameKit }
                             })
+                        }
+                    } catch {}
+                }
+                if ($line.StartsWith("launcherFrameKits=")) {
+                    try {
+                        $rawLfk = $line.Substring("launcherFrameKits=".Length).Trim()
+                        if (-not [string]::IsNullOrWhiteSpace($rawLfk)) {
+                            $parsedLfk = $rawLfk | ConvertFrom-Json -ErrorAction Stop
+                            $lfkMap = @{}
+                            foreach ($lp in $parsedLfk.PSObject.Properties) {
+                                if (-not [string]::IsNullOrWhiteSpace([string]$lp.Value)) { $lfkMap[[string]$lp.Name] = [string]$lp.Value }
+                            }
+                            $global:launcherFrameKits = $lfkMap
                         }
                     } catch {}
                 }
@@ -15033,11 +15949,20 @@ function Show-ThemedConfirm {
     $confirmMessage.ForeColor = $steamUi.Text
     $confirmMessage.Font = New-Object System.Drawing.Font('Segoe UI', 10)
     $confirmMessage.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
+    # Длинный текст не обрезается: высота подписи и окна растёт по тексту (короткие сообщения остаются прежнего размера).
+    $confirmExtra = 0
+    try {
+        $mFlags = [System.Windows.Forms.TextFormatFlags]::WordBreak -bor [System.Windows.Forms.TextFormatFlags]::NoPrefix
+        $mSize = [System.Windows.Forms.TextRenderer]::MeasureText($messageText, $confirmMessage.Font, (New-Object System.Drawing.Size(380, 2000)), $mFlags)
+        $confirmExtra = [Math]::Max(0, ([int]$mSize.Height + 6) - 66)
+    } catch {}
+    $confirmMessage.Size = New-Object System.Drawing.Size(380, (66 + $confirmExtra))
+    $confirm.ClientSize = New-Object System.Drawing.Size(420, (160 + $confirmExtra))
     $confirm.Controls.Add($confirmMessage)
 
     $btnConfirmYes = New-Object System.Windows.Forms.Button
     $btnConfirmYes.Text = $yesText
-    $btnConfirmYes.Location = New-Object System.Drawing.Point(175, 105)
+    $btnConfirmYes.Location = New-Object System.Drawing.Point(175, (105 + $confirmExtra))
     $btnConfirmYes.Size = New-Object System.Drawing.Size(110, 34)
     $btnConfirmYes.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $btnConfirmYes.FlatAppearance.BorderColor = $steamUi.Accent2
@@ -15050,7 +15975,7 @@ function Show-ThemedConfirm {
 
     $btnConfirmNo = New-Object System.Windows.Forms.Button
     $btnConfirmNo.Text = $noText
-    $btnConfirmNo.Location = New-Object System.Drawing.Point(290, 105)
+    $btnConfirmNo.Location = New-Object System.Drawing.Point(290, (105 + $confirmExtra))
     $btnConfirmNo.Size = New-Object System.Drawing.Size(110, 34)
     $btnConfirmNo.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $btnConfirmNo.FlatAppearance.BorderColor = $steamUi.Border
@@ -15593,6 +16518,37 @@ using System.Drawing;
 using System.Windows.Forms;
 public class ScPanelListBox : ListBox
 {
+    // Сброс выделения без обращения к SelectedItem/Text: при уничтожении хэндла WinForms
+    // читает Text → SelectedItem, а если индекс уже вне Items (после Clear/обновления) — IndexOutOfRangeException.
+    void SafeClearSelection()
+    {
+        try
+        {
+            if (Items.Count == 0 || SelectedIndex < 0 || SelectedIndex >= Items.Count)
+            {
+                try { SelectedIndex = -1; } catch { }
+                try { ClearSelected(); } catch { }
+            }
+        }
+        catch { }
+    }
+
+    protected override void OnHandleDestroyed(EventArgs e)
+    {
+        SafeClearSelection();
+        try { base.OnHandleDestroyed(e); }
+        catch (IndexOutOfRangeException) { }
+        catch (ArgumentOutOfRangeException) { }
+    }
+
+    protected override void DestroyHandle()
+    {
+        SafeClearSelection();
+        try { base.DestroyHandle(); }
+        catch (IndexOutOfRangeException) { }
+        catch (ArgumentOutOfRangeException) { }
+    }
+
     protected override void WndProc(ref Message m)
     {
         if (m.Msg == 0x0014) // WM_ERASEBKGND
@@ -15614,7 +16570,14 @@ public class ScPanelListBox : ListBox
             m.Result = (IntPtr)1;
             return;
         }
-        base.WndProc(ref m);
+        // WM_DESTROY: ещё раз сбросить выделение до базовой обработки (OnHandleDestroyed иногда вызывается уже с битым индексом).
+        if (m.Msg == 0x0002)
+        {
+            SafeClearSelection();
+        }
+        try { base.WndProc(ref m); }
+        catch (IndexOutOfRangeException) { }
+        catch (ArgumentOutOfRangeException) { }
     }
 }
 '@
@@ -16202,6 +17165,31 @@ function Get-RowDlssAbsentText ([string]$rowPath) {
     return (T 'dlss_row_missing')
 }
 
+# Приставка перед версией в панелях: «DLSS v310.9.16», «FSR v1.0.2.3802», «XeSS v1.3.1».
+# Запасной апскейлер приходит как «FSR DX12 v1.0.2.3802» / «XeSS DX11 v…» — оставляем только FSR или XeSS и версию.
+function Format-RowLibVersion ([string]$prefix, [string]$ver) {
+    try {
+        if ([string]::IsNullOrWhiteSpace($ver)) { return '' }
+        $ver = $ver.Trim()
+        if ([string]::IsNullOrWhiteSpace($prefix)) { return $ver }
+        return ($prefix + ' ' + $ver)
+    } catch { return $ver }
+}
+function Format-RowAltLibVersion ([string]$alt) {
+    try {
+        $a = $alt.Trim()
+        $short = ''
+        if ($a -match '^(?i)FSR') { $short = 'FSR' }
+        elseif ($a -match '^(?i)XeSS') { $short = 'XeSS' }
+        elseif ($a -match '^(?i)XeLL') { $short = 'XeLL' }
+        $ver = ''
+        $m = [regex]::Match($a, '(v?\d[\d\.]*)\s*$')
+        if ($m.Success) { $ver = $m.Groups[1].Value }
+        if ($short -ne '' -and $ver -ne '') { return ($short + ' ' + $ver) }
+        return $a
+    } catch { return $alt }
+}
+
 function Get-RowDlssVersion ([string]$rowPath) {
     try {
         if ([string]::IsNullOrWhiteSpace($rowPath)) { return (Get-RowDlssAbsentText $rowPath) }
@@ -16215,14 +17203,18 @@ function Get-RowDlssVersion ([string]$rowPath) {
             if ($null -ne $c.PSObject.Properties['DlssOrigVer'] -and $null -ne $c.DlssOrigVer) {
                 $vO = [string]$c.DlssOrigVer
                 if ([string]::IsNullOrWhiteSpace($vO) -or $vO -eq 'N/A') { return (Get-RowDlssAbsentText $rowPath) }
-                return $vO
+                return (Format-RowLibVersion 'DLSS' $vO)
             }
             return ''
         }
         if ($null -ne $c.PSObject.Properties['DlssVer'] -and $null -ne $c.DlssVer) {
             $v = [string]$c.DlssVer
-            if ([string]::IsNullOrWhiteSpace($v) -or $v -eq 'N/A') { return (Get-RowDlssAbsentText $rowPath) }
-            return $v
+            if ([string]::IsNullOrWhiteSpace($v) -or $v -eq 'N/A') {
+                # Нет DLSS, но есть другой апскейлер (FSR / XeSS): «FSR v1.0.2.3802».
+                if ($null -ne $c.PSObject.Properties['AltVer'] -and -not [string]::IsNullOrWhiteSpace([string]$c.AltVer)) { return (Format-RowAltLibVersion ([string]$c.AltVer)) }
+                return (Get-RowDlssAbsentText $rowPath)
+            }
+            return (Format-RowLibVersion 'DLSS' $v)
         }
         return ''
     } catch { return '' }
@@ -16335,7 +17327,7 @@ function Set-PanelAltColumnsModeCore ([string]$Mode) {
                 if ([string]$script:mainLibsMode -eq 'rst') {
                     $sizeCol.TextKey = 'col_dlss_orig'; $sizeCol.AscCode = 'DlssAsc'; $sizeCol.DescCode = 'DlssDesc'; $sizeCol.MinWidth = 80
                 } else {
-                    $sizeCol.TextKey = 'col_dlss'; $sizeCol.AscCode = 'DlssAsc'; $sizeCol.DescCode = 'DlssDesc'; $sizeCol.MinWidth = 80
+                    $sizeCol.TextKey = 'col_libs'; $sizeCol.AscCode = 'DlssAsc'; $sizeCol.DescCode = 'DlssDesc'; $sizeCol.MinWidth = 80
                 }
             } elseif ($mode -eq 'saves') {
                 # backup/scan → Наличие; restore → Бэкап
@@ -16439,7 +17431,9 @@ function Clear-MainCollectionSelection {
 
 # Пока выбрано такое действие, отмечать можно только игры, уже добавленные в библиотеку (с зелёной галочкой):
 # у не добавленных игр название определяется без участия пользователя и может быть неверным.
-function Test-MainRowCheckAllowed ([string]$source, [string]$cleanName) {
+# $Fast: для «Бэкап»/«Вернуть» берёт только уже посчитанные флаги (без обращений к диску) и возвращает $null, если строки в кэше ещё нет
+# (её тут же ставит в очередь фоновый подсчёт). Без $Fast поведение прежнее.
+function Test-MainRowCheckAllowed ([string]$source, [string]$cleanName, [bool]$Fast = $false) {
     try {
         if (-not (Test-MainCheckRestrictionActive)) { return $true }
         $root = if ($source -eq 'C') { $global:dirC } else { $global:dirD }
@@ -16452,8 +17446,16 @@ function Test-MainRowCheckAllowed ([string]$source, [string]$cleanName) {
         # Сохранения: «Поиск» - любые игры из библиотеки; «Бэкап» - только игры с найденными сохранениями;
         # «Вернуть» - только игры, у которых уже есть бэкап.
         $sm = [string]$script:mainSavesMode
-        if ($sm -eq 'backup') { return [bool](Get-MainSavesRowFlags $rowPath).Found }
-        if ($sm -eq 'restore') { return [bool](Get-MainSavesRowFlags $rowPath).Backup }
+        if ($sm -eq 'backup' -or $sm -eq 'restore') {
+            if ($Fast) {
+                $ff = Get-MainSavesRowFlags $rowPath -CacheOnly
+                if ($null -eq $ff) { try { Add-MainSavesWarm $rowPath } catch {}; return $null }
+            } else {
+                $ff = Get-MainSavesRowFlags $rowPath
+            }
+            if ($sm -eq 'backup') { return [bool]$ff.Found }
+            return [bool]$ff.Backup
+        }
         return $true
     } catch { return $false }
 }
@@ -16505,12 +17507,16 @@ function Update-SelectAllCheckbox ([string]$source) {
     $checkedSet = Get-CheckedSet $source
     $total = 0
     $marked = 0
+    $pending = $false
     for ($i = 0; $i -lt $listBox.Items.Count; $i++) {
         $rowName = Clean-GameName $listBox.Items[$i].ToString()
-        if (-not (Test-MainRowCheckAllowed $source $rowName)) { continue }
+        $rowOk = Test-MainRowCheckAllowed $source $rowName $true
+        if ($null -eq $rowOk) { $pending = $true; continue }   # флаги строки ещё считаются в фоне: галочка обновится по их окончании
+        if (-not $rowOk) { continue }
         $total++
         if ($checkedSet.ContainsKey($rowName)) { $marked++ }
     }
+    if ($pending) { return }
     $state = if ($total -eq 0 -or $marked -eq 0) { 0 } elseif ($marked -eq $total) { 1 } else { 2 }
     if ([int]$parts.Cb.Tag -ne $state) {
         $parts.Cb.Tag = $state
@@ -16601,7 +17607,7 @@ $btnMoveGame.Add_Paint({
         $alpha = if ($sender.Enabled -or $busyM) { 255 } else { 90 }
         $w = [double]$sender.ClientSize.Width
         $cy = [double]$sender.ClientSize.Height / 2.0
-        $aw = 8.0; $ah = 16.0; $m = 6.0
+        $aw = 7.0; $ah = 14.0; $m = 10.0
         $arrowCol = if ($busyM) { [System.Drawing.Color]::FromArgb(255, $steamUi.Accent2) } else { [System.Drawing.Color]::FromArgb($alpha, 142, 196, 28) }
         $br = New-Object System.Drawing.SolidBrush($arrowCol)
         $left = [System.Drawing.PointF[]]@(
@@ -16686,6 +17692,19 @@ $script:mainCollSnap = $null       # последний прочитанный �
 $script:mainCollMenu = $null       # состояние открытого списка
 $script:mainCollBusy = $false
 $script:mainCollClosedAt = 0
+# Отдельный режим редактора структуры коллекций, когда в главном окне не выбрана ни одна игра.
+$script:mainCollEditorMenuCtl = $null
+$script:mainCollEditorBusy = $false
+$script:mainCollEditorGlyphHit = $false
+$script:mainCollEditorAllowClose = $false
+$script:mainCollEditorGlyphHotItem = $null
+$script:mainCollEditorHotTimer = $null
+$script:bulkFrameMenuClosedAt = 0
+# Накопленные, ещё не записанные создания/удаления коллекций из редактора: { Op = 'create'|'delete'; Key = 'col:<id>'; Cid; Name }.
+# В Steam уходят только по нижней кнопке «Сменить коллекции (N)» (как и состав коллекций у добавленных игр).
+$script:mainCollStructPending = New-Object System.Collections.ArrayList
+$script:mainCollStructApplyOk = $false
+function Get-MainCollStructCount { try { return [int]$script:mainCollStructPending.Count } catch { return 0 } }
 
 $btnMainColl = New-Object System.Windows.Forms.Button
 $btnMainColl.Text = ''
@@ -16700,7 +17719,7 @@ $btnMainColl.ForeColor = $steamUi.Text
 $btnMainColl.Cursor = [System.Windows.Forms.Cursors]::Hand
 $btnMainColl.TabStop = $false
 $btnMainColl.Visible = $true
-$btnMainColl.Enabled = $false   # включается, когда отмечена хотя бы одна игра и не активен режим апскейлеров/сохранений (Update-MainLibraryButtonState)
+$btnMainColl.Enabled = $false   # включается при готовой библиотеке, в том числе без выбранных игр (редактор коллекций)
 $btnMainColl.Tag = ''
 # Четыре квадрата — тот же значок, что у кнопки коллекций в карточке игры; выбраны коллекции — цвет акцента.
 $btnMainColl.Add_Paint({
@@ -16720,6 +17739,199 @@ $btnMainColl.Add_Paint({
     } catch {} finally { if ($null -ne $br) { $br.Dispose() } }
 })
 $form.Controls.Add($btnMainColl)
+
+# Кнопка «Рамки обложек» (над «Сохранениями», y=80): меню выбора рамки / значка / «Без рамки» для отмеченных игр, уже добавленных в Steam.
+# Значок кнопок рамок: четыре трапеции вокруг окошка с диагональными просветами, на целочисленной сетке в пикселях: сторона $N px, толщина полосы $T px, просвет по диагонали $d px по X.
+# Центр - ($cx, $cy) в целых пикселях; внешний край и края окошка попадают на границы пикселей (как у значка коллекций 20x20).
+function Draw-FrameButtonGlyphPx ($g, [int]$cx, [int]$cy, $col, [int]$N = 20, [int]$T = 5, [single]$d = 0.9) {
+    $br = $null; $gState = $null
+    try {
+        $gState = $g.Save()
+        $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+        $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+        $g.TranslateTransform([single]($cx - [int]($N / 2)), [single]($cy - [int]($N / 2)))
+        $br = New-Object System.Drawing.SolidBrush($col)
+        $in = $N - $T
+        foreach ($c in @(
+            @($d,0, ($N-$d),0, ($in-$d),$T, ($T+$d),$T),
+            @(0,$d, $T,($T+$d), $T,($in-$d), 0,($N-$d)),
+            @($N,$d, $N,($N-$d), $in,($in-$d), $in,($T+$d)),
+            @($d,$N, ($T+$d),$in, ($in-$d),$in, ($N-$d),$N))) {
+            $pts = [System.Drawing.PointF[]]@(
+                [System.Drawing.PointF]::new([single]$c[0], [single]$c[1]), [System.Drawing.PointF]::new([single]$c[2], [single]$c[3]),
+                [System.Drawing.PointF]::new([single]$c[4], [single]$c[5]), [System.Drawing.PointF]::new([single]$c[6], [single]$c[7]))
+            $g.FillPolygon($br, $pts)
+        }
+    } catch {} finally {
+        if ($null -ne $br) { $br.Dispose() }
+        if ($null -ne $gState) { try { $g.Restore($gState) } catch {} }
+    }
+}
+
+$btnMainFrames = New-Object System.Windows.Forms.Button
+$btnMainFrames.Text = ''
+$btnMainFrames.Padding = New-Object System.Windows.Forms.Padding(0)
+$btnMainFrames.Location = New-Object System.Drawing.Point(519, 180)
+$btnMainFrames.Size = New-Object System.Drawing.Size(42, 42)
+$btnMainFrames.FlatStyle = "Flat"
+$btnMainFrames.FlatAppearance.BorderColor = $steamUi.Border
+$btnMainFrames.FlatAppearance.MouseOverBackColor = $steamUi.Selected
+$btnMainFrames.BackColor = $steamUi.Panel
+$btnMainFrames.ForeColor = $steamUi.Text
+$btnMainFrames.Cursor = [System.Windows.Forms.Cursors]::Hand
+$btnMainFrames.TabStop = $false
+$btnMainFrames.Visible = $true
+$btnMainFrames.Enabled = $false
+# Значок: рамка из четырёх трапеций (Draw-FrameButtonGlyphPx).
+$btnMainFrames.Add_Paint({
+    param($sender, $e)
+    try {
+        $col = if ([string]$sender.Tag -eq 'on') { $steamUi.Accent2 } elseif ($sender.Enabled) { $steamUi.Text } else { $steamUi.Muted }
+        Draw-FrameButtonGlyphPx $e.Graphics ([int]($sender.ClientSize.Width / 2)) ([int]($sender.ClientSize.Height / 2)) $col 20 5 0.9
+    } catch {}
+})
+# Выбранный в меню вариант рамки ('' - не выбран): ждёт нижней кнопки «Сменить рамки (N)». Значения: 'none' | 'badge' | id комплекта.
+$script:mainFramesPending = ''
+$script:bulkFrameMenuOpen = $false
+$script:bulkFrameMenuOnClosed = $null
+$script:framesButtonIcon = $null
+$script:framesApplyEnabledPrev = $false
+
+# Рамка для НОВЫХ игр - по принципу кнопки «Коллекции». Пока среди отмеченных игр есть не добавленные в Steam, меню кнопки
+# «Рамки обложек» выбирает рамку, которая накладывается на обложки этих игр при добавлении (кнопка «Добавить новые игры в библиотеку»
+# и карточка новой игры). Значения: 'none' | 'badge' | id комплекта; '' - не выбрано (рамка по привязке эмулятора / враппера, как раньше).
+# Выбор не сохраняется: живёт, пока не сняты все отметки. Уже добавленные игры при этом не меняются (приоритет у добавления).
+$script:mainFramesDefault = ''
+$script:mainFramesHasNew = $false      # есть ли среди отмеченных новые игры (выставляет Update-MainLibraryButtonState)
+$script:mainFramesTipSig = ''
+
+# Название выбранного для новых игр варианта (для подсказки кнопки).
+function Get-MainFramesChoiceName ([string]$Sel) {
+    if ($Sel -eq 'none') { return (Get-EditorFrameText 'card_frame_none' 'Без рамки') }
+    if ($Sel -eq 'badge') { return (Get-EditorFrameText 'frame_badge_any' 'Значок') }
+    try { $kN = Get-FrameKit $Sel; if ($null -ne $kN) { return [string]$kN.name } } catch {}
+    return ''
+}
+
+# Выбранный для новых игр вариант; комплект, который удалили в менеджере рамок, считается невыбранным.
+function Get-MainFramesDefaultValid {
+    $d = [string]$script:mainFramesDefault
+    if ($d -eq '' -or $d -eq 'none' -or $d -eq 'badge') { return $d }
+    try { if ($null -eq (Get-FrameKit $d)) { return '' } } catch { return '' }
+    return $d
+}
+
+# Владелец значка для новой игры, добавляемой без карточки: эмулятор ('emu:<id>') или враппер ('wrap:<id>') по exe и параметрам ярлыка.
+# В отличие от привязки рамки, не требует, чтобы у профиля был набор рамок.
+function Get-MainFramesBadgeOwner ([string]$Exe, [string]$LaunchOptions) {
+    try {
+        $exeN = ([string]$Exe).Trim().Trim('"'); $launchN = [string]$LaunchOptions
+        foreach ($ep in @($global:emulatorProfiles)) {
+            if ($null -eq $ep) { continue }
+            $epExe = ([string]$ep.ExePath).Trim().Trim('"')
+            if ($epExe -eq '') { continue }
+            if (($exeN -ne '' -and [string]::Equals($exeN, $epExe, [System.StringComparison]::OrdinalIgnoreCase)) -or ($launchN -ne '' -and $launchN.IndexOf($epExe, [System.StringComparison]::OrdinalIgnoreCase) -ge 0)) { return ('emu:' + [string]$ep.Id) }
+        }
+        if (@($global:launchWrappers).Count -gt 0) {
+            $lwB = Find-LaunchWrapperForShortcut $Exe $LaunchOptions
+            if ($null -ne $lwB -and -not [string]::IsNullOrWhiteSpace([string]$lwB.Wrapper.Id)) { return ('wrap:' + [string]$lwB.Wrapper.Id) }
+        }
+    } catch {}
+    return ''
+}
+
+# Есть ли среди отмеченных игр хотя бы одна, которой ещё нет в Steam (дёшево: без поиска ярлыков).
+function Test-MainFramesHasNewGames {
+    try {
+        foreach ($gN in @(Get-CheckedGames)) {
+            $kN = Get-NormalizedGamePathKey $gN.Path
+            if (-not ($kN -and $global:installedSteamGames.ContainsKey($kN))) { return $true }
+        }
+    } catch {}
+    return $false
+}
+
+# Клик по пункту меню рамок при новых играх: вариант запоминается (повторный выбор того же снимает его). Нижняя кнопка остаётся
+# «Добавить новые игры в библиотеку»; выбор коллекций для новых игр не сбрасывается (оба выбора применяются при добавлении).
+function Set-MainFramesDefault ([string]$Sel) {
+    if ([string]$script:mainFramesDefault -eq $Sel) { $script:mainFramesDefault = '' } else { $script:mainFramesDefault = $Sel }
+    $script:mainFramesPending = ''
+    Update-MainFramesButtonLook
+    try { Update-MainLibraryButtonState } catch {}
+}
+
+# Кнопка рамок рисуется активной, пока открыто её меню или есть выбранный вариант.
+function Update-MainFramesButtonLook {
+    $hasNewF = $false; $defOn = $false
+    try {
+        $hasNewF = [bool]$script:mainFramesHasNew
+        $defOn = ($hasNewF -and [string]$script:mainFramesDefault -ne '')
+        $on = ([string]$script:mainFramesPending -ne '' -or $defOn -or [bool]$script:bulkFrameMenuOpen)
+        $btnMainFrames.Tag = $(if ($on) { 'on' } else { '' })
+        $btnMainFrames.FlatAppearance.BorderColor = $(if ($on) { $steamUi.Accent2 } else { $steamUi.Border })
+        $btnMainFrames.Invalidate()
+    } catch {}
+    # Подсказка: при новых играх - «Рамка обложек при добавлении» и название выбранного варианта. Пересчитывается только при смене
+    # состояния (функция вызывается при каждой отметке игры, а имя комплекта читается из индекса рамок).
+    try {
+        $sigF = [string]$hasNewF + '|' + [string]$script:mainFramesDefault + '|' + [string]$global:language
+        if ($sigF -ne [string]$script:mainFramesTipSig) {
+            $script:mainFramesTipSig = $sigF
+            $tipF = $(if ($hasNewF) { (T 'bulk_frames_tip_new') } else { (T 'bulk_frames_tip') })
+            if ($defOn) {
+                $nmF = [string](Get-MainFramesChoiceName ([string]$script:mainFramesDefault))
+                if ($nmF -ne '') { $tipF = $tipF + ': ' + $nmF }
+            }
+            $mainToolTip.SetToolTip($btnMainFrames, $tipF)
+        }
+    } catch {}
+}
+
+# Строки Steam отмеченных игр, у которых можно менять рамки (только уже добавленные в Steam).
+function Get-MainFramesTargets {
+    $checkedF = @(Get-CheckedGames)
+    if ($checkedF.Count -eq 0) { return @() }
+    $entriesF = @()
+    try { $form.UseWaitCursor = $true; [System.Windows.Forms.Application]::DoEvents(); $entriesF = @(Get-SteamLibraryEntries) } finally { try { $form.UseWaitCursor = $false } catch {} }
+    $tgF = New-Object System.Collections.Generic.List[object]
+    foreach ($gameF in $checkedF) { foreach ($enF in @(Get-ShortcutEntriesForGamePath $entriesF ([string]$gameF.Path))) { [void]$tgF.Add($enF) } }
+    return @(Get-BulkFrameTargets $tgF.ToArray())
+}
+
+# Клик по пункту меню рамок: вариант запоминается, нижняя кнопка превращается в «Сменить рамки (N)». Повторный выбор того же варианта снимает выбор.
+function Set-MainFramesPending ([string]$Sel) {
+    if ([string]$script:mainFramesPending -eq $Sel) { $script:mainFramesPending = '' }
+    else {
+        $script:mainFramesPending = $Sel
+        # Нижняя кнопка одна: выбор рамки сбрасывает выбор коллекций.
+        try { Clear-MainCollectionSelection } catch {}
+    }
+    Update-MainFramesButtonLook
+    try { Update-MainLibraryButtonState } catch {}
+}
+
+$btnMainFrames.Add_Click({
+    try {
+        # Повторный клик по кнопке: меню уже закрылось само (клик вне меню) - заново не открываем.
+        if ($script:bulkFrameMenuClosedAt -and (([Environment]::TickCount - [int]$script:bulkFrameMenuClosedAt) -lt 400)) { $script:bulkFrameMenuClosedAt = 0; return }
+        if (@(Get-CheckedGames).Count -eq 0) { return }
+        $onClosedF = { try { Update-MainFramesButtonLook } catch {} }
+        # Среди отмеченных есть игры, которых ещё нет в Steam: меню выбирает рамку для их обложек при добавлении (как «Коллекции»).
+        # Добавленные игры в этом случае не меняются: приоритет у добавления.
+        if (Test-MainFramesHasNewGames) {
+            $script:mainFramesHasNew = $true
+            $onSelN = { param($selX) try { Set-MainFramesDefault ([string]$selX) } catch {} }
+            Show-BulkFrameMenu $btnMainFrames @() $form $null $false $onSelN ([string]$script:mainFramesDefault) $onClosedF $true
+            return
+        }
+        $tgF2 = @(Get-MainFramesTargets)
+        if ($tgF2.Count -eq 0) { try { $labelHeader.Text = (T 'bulk_frames_none') } catch {}; return }
+        # Клик по пункту только запоминает вариант; применяет нижняя кнопка «Сменить рамки (N)».
+        $onSelF = { param($selX) try { Set-MainFramesPending ([string]$selX) } catch {} }
+        Show-BulkFrameMenu $btnMainFrames $tgF2 $form $null $false $onSelF ([string]$script:mainFramesPending) $onClosedF
+    } catch {}
+})
+$form.Controls.Add($btnMainFrames)
 
 # ---------------------------------------------------------------------------
 # Кнопка «Библиотеки» главного окна (над «Коллекциями»): библиотеки апскейлеров (DLSS / FSR / XeSS / XeLL) отмеченных игр.
@@ -16887,7 +18099,7 @@ function New-MainLibsIconBitmap ([bool]$Undo) {
 $btnMainLibs = New-Object System.Windows.Forms.Button
 $btnMainLibs.Text = ''
 $btnMainLibs.Padding = New-Object System.Windows.Forms.Padding(0)
-$btnMainLibs.Location = New-Object System.Drawing.Point(519, 180)
+$btnMainLibs.Location = New-Object System.Drawing.Point(519, 130)
 $btnMainLibs.Size = New-Object System.Drawing.Size(42, 42)
 $btnMainLibs.FlatStyle = "Flat"
 $btnMainLibs.FlatAppearance.BorderColor = $steamUi.Border
@@ -16905,7 +18117,13 @@ $btnMainLibs.Add_Paint({
         $hot = $false
         try { $hot = ($sender.Enabled -and $sender.ClientRectangle.Contains($sender.PointToClient([System.Windows.Forms.Cursor]::Position))) } catch {}
         $col = if (-not $sender.Enabled) { $steamUi.Muted } elseif ($hot -or [string]$sender.Tag -eq 'on' -or [bool]$script:mainLibsFlyout) { $steamUi.Accent2 } else { $steamUi.Text }
-        Draw-LibsGlyph $e.Graphics ([single]($sender.ClientSize.Width / 2.0)) ([single]($sender.ClientSize.Height / 2.0)) $col ([single]24)
+        # Действие выбрано: вместо общего значка группы показывается значок выбранного действия (как на боковой кнопке).
+        $lcx = [single]($sender.ClientSize.Width / 2.0); $lcy = [single]($sender.ClientSize.Height / 2.0)
+        switch ([string]$script:mainLibsMode) {
+            'upd'   { Draw-LibsRefreshGlyph $e.Graphics $lcx $lcy $col $false ([single]1.15) }
+            'rst'   { Draw-LibsUndoGlyph $e.Graphics $lcx $lcy $col ([single]1.1) }
+            default { Draw-LibsGlyph $e.Graphics $lcx $lcy $col ([single]21) }
+        }
     } catch {}
 })
 $form.Controls.Add($btnMainLibs)
@@ -17139,16 +18357,32 @@ function Initialize-MainLibsScanner {
         $libNames = @()
         try { $libNames = @(Get-UpscalerDefs | ForEach-Object { [string]$_.File }) } catch { $libNames = @() }
         if ($libNames.Count -eq 0) { $libNames = @('nvngx_dlss.dll') }
+        $altUps = Get-AltUpscalerList
         $worker = {
-            param($state, $libNames)
+            param($state, $libNames, $altUps)
             try {
+                # Версия файла в виде vA.B.C (хвостовые нули не показываем, но минимум две цифры).
+                $fmtVerAlt = {
+                    param($path)
+                    try {
+                        $vi2 = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($path)
+                        $p2 = @([int]$vi2.FileMajorPart, [int]$vi2.FileMinorPart, [int]$vi2.FileBuildPart, [int]$vi2.FilePrivatePart)
+                        if ($p2[0] -gt 0) {
+                            $n2 = 4
+                            while ($n2 -gt 2 -and $p2[$n2 - 1] -eq 0) { $n2-- }
+                            return ('v' + ((@($p2[0..($n2 - 1)])) -join '.'))
+                        }
+                    } catch {}
+                    return ''
+                }
                 $idle = 0
                 while (-not $state['Cancel']) {
                     $d = $null
                     # Без работы поток сам завершается через ~30 с (Dead = $true), следующий запрос запустит его заново.
                     if (-not $state['Queue'].TryDequeue([ref]$d)) { $idle++; if ($idle -gt 250) { break }; Start-Sleep -Milliseconds 120; continue }
                     $idle = 0
-                    $libs = $false; $orig = $false; $dlssVer = ''; $dlssOrigVer = ''
+                    $libs = $false; $orig = $false; $dlssVer = ''; $dlssOrigVer = ''; $altVer = ''
+                    $altFound = @{}
                     try {
                         if ([System.IO.Directory]::Exists($d)) {
                             $q = New-Object System.Collections.Generic.Queue[object]
@@ -17169,6 +18403,14 @@ function Initialize-MainLibsScanner {
                                     $dlssOrigCand = [System.IO.Path]::Combine($dir, 'nvngx_dlss.dll.sc_orig')
                                     if (-not $dlssOrigFound -and [System.IO.File]::Exists($dlssOrigCand)) { $dlssOrigFound = $dlssOrigCand; $orig = $true }
                                 } catch {}
+                                # Запасные апскейлеры (FSR / XeSS): первый найденный файл каждого вида.
+                                foreach ($au in $altUps) {
+                                    if ($altFound.ContainsKey([string]$au[0])) { continue }
+                                    try {
+                                        $ac = [System.IO.Path]::Combine($dir, [string]$au[0])
+                                        if ([System.IO.File]::Exists($ac)) { $altFound[[string]$au[0]] = $ac }
+                                    } catch {}
+                                }
                                 foreach ($ln in $libNames) {
                                     try { if (-not $libs -and [System.IO.File]::Exists([System.IO.Path]::Combine($dir, [string]$ln))) { $libs = $true } } catch {}
                                     try { if (-not $orig -and [System.IO.File]::Exists([System.IO.Path]::Combine($dir, ([string]$ln + '.sc_orig')))) { $orig = $true } } catch {}
@@ -17206,13 +18448,21 @@ function Initialize-MainLibsScanner {
                                     }
                                 } catch { $dlssOrigVer = '' }
                             }
+                            # Нет DLSS: самый популярный из найденных других апскейлеров («FSR DX12 v1.0.2.3802»).
+                            if (-not $dlssVer) {
+                                foreach ($au in $altUps) {
+                                    if (-not $altFound.ContainsKey([string]$au[0])) { continue }
+                                    $av = [string](& $fmtVerAlt ([string]$altFound[[string]$au[0]]))
+                                    if (-not [string]::IsNullOrEmpty($av)) { $altVer = ([string]$au[1] + ' ' + $av); break }
+                                }
+                            }
                             if (-not $dlssVer) { $dlssVer = 'N/A' }
                             if (-not $dlssOrigVer) { $dlssOrigVer = 'N/A' }
                         }
                     } catch {}
                     if (-not $dlssVer) { $dlssVer = 'N/A' }
                     if (-not $dlssOrigVer) { $dlssOrigVer = 'N/A' }
-                    $state['Results'][([string]$d).TrimEnd('\').ToUpperInvariant()] = @($libs, $orig, $dlssVer, $dlssOrigVer)
+                    $state['Results'][([string]$d).TrimEnd('\').ToUpperInvariant()] = @($libs, $orig, $dlssVer, $dlssOrigVer, $altVer)
                 }
             } catch {}
             $state['Dead'] = $true
@@ -17224,6 +18474,7 @@ function Initialize-MainLibsScanner {
         [void]$ps.AddScript($worker.ToString())
         [void]$ps.AddArgument($state)
         [void]$ps.AddArgument($libNames)
+        [void]$ps.AddArgument($altUps)
         [void]$ps.BeginInvoke()
         $script:mainLibsState = $state
         $script:mainLibsPs = $ps
@@ -17256,7 +18507,8 @@ $script:mainLibsPollTimer.Add_Tick({
             $st['Results'].Remove($k)
             $dlssV = if ($v -is [System.Array] -and $v.Count -ge 3) { [string]$v[2] } else { 'N/A' }
             $dlssOV = if ($v -is [System.Array] -and $v.Count -ge 4) { [string]$v[3] } else { 'N/A' }
-            $script:mainLibsCache[[string]$k] = [PSCustomObject]@{ Libs = [bool]$v[0]; Orig = [bool]$v[1]; DlssVer = $dlssV; DlssOrigVer = $dlssOV; At = [DateTime]::UtcNow }
+            $altV = if ($v -is [System.Array] -and $v.Count -ge 5) { [string]$v[4] } else { '' }
+            $script:mainLibsCache[[string]$k] = [PSCustomObject]@{ Libs = [bool]$v[0]; Orig = [bool]$v[1]; DlssVer = $dlssV; DlssOrigVer = $dlssOV; AltVer = $altV; At = [DateTime]::UtcNow }
             $script:mainLibsQueued.Remove([string]$k)
             $got = $true
         }
@@ -17314,6 +18566,15 @@ function Request-MainLibsScan ($Games) {
 
 # Ставит на фоновый скан игры обеих панелей, которых ещё нет в кэше (чтобы в режиме апскейлеров знать, у каких игр они есть).
 function Request-MainLibsPanelScan {
+    # Функция обходит все строки обеих панелей и вызывается и при выборе значка, и из каждого обновления кнопок:
+    # повторный вызов для тех же списков в течение 2,5 с ничего нового не находит.
+    try {
+        $sigNow = [string]$global:dirC + '|' + [string]$global:dirD + '|' + [string]$listBoxC.Items.Count + '|' + [string]$listBoxD.Items.Count
+        $tkNow = [DateTime]::UtcNow.Ticks
+        if ($sigNow -eq [string]$script:mainLibsPanelScanSig -and $tkNow -ge [long]$script:mainLibsPanelScanTick -and ($tkNow - [long]$script:mainLibsPanelScanTick) -lt 25000000) { return }
+        $script:mainLibsPanelScanSig = $sigNow
+        $script:mainLibsPanelScanTick = $tkNow
+    } catch {}
     $todo = New-Object System.Collections.Generic.List[object]
     foreach ($src in @('C', 'D')) {
         $lb = if ($src -eq 'C') { $listBoxC } else { $listBoxD }
@@ -17609,6 +18870,52 @@ function Draw-MainSavesGlyph ($g, [single]$cx, [single]$cy, $col, [string]$Kind,
             $g.DrawLines($pen, [System.Drawing.PointF[]]@((& $q ($cx - 8 * $s) ($cy + 1 * $s)), (& $q ($cx - 8 * $s) ($cy + 8 * $s)), (& $q ($cx + 8 * $s) ($cy + 8 * $s)), (& $q ($cx + 8 * $s) ($cy + 1 * $s))))
             $g.DrawLine($pen, [single]$cx, [single]($cy - 8 * $s), [single]$cx, [single]($cy + 3 * $s))
             $g.DrawLines($pen, [System.Drawing.PointF[]]@((& $q ($cx - 4 * $s) ($cy - 1 * $s)), (& $q $cx ($cy + 3 * $s)), (& $q ($cx + 4 * $s) ($cy - 1 * $s))))
+        } elseif ($Kind -eq 'scan16') {
+            # Лупа для кнопок 30x30 (окно библиотеки): кольцо диаметром 12 и ручка, общий габарит ~16 px, линия 1.6 px без масштабирования (в ряду с дискетой и лотком).
+            $pen = New-Object System.Drawing.Pen($col, 1.6)
+            $pen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+            $pen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+            $g.TranslateTransform([single][Math]::Round($cx), [single][Math]::Round($cy))
+            $g.DrawEllipse($pen, [single]-7.5, [single]-7.5, [single]12, [single]12)
+            $g.DrawLine($pen, [single]2.8, [single]2.8, [single]7.3, [single]7.3)
+        } elseif ($Kind -eq 'backup16') {
+            # «Бэкап» для кнопок 30x30 (окно библиотеки): лоток и стрелка вниз, 15x15, линии 1 px по центрам пикселей, как у дискеты saves16 рядом.
+            $cxi = [single][Math]::Round($cx); $cyi = [single][Math]::Round($cy)
+            $pen = New-Object System.Drawing.Pen($col, 1)
+            $g.TranslateTransform($cxi, $cyi)
+            $g.DrawLines($pen, [System.Drawing.PointF[]]@((& $q -6.5 1.5), (& $q -6.5 7.5), (& $q 7.5 7.5), (& $q 7.5 1.5)))
+            $g.DrawLine($pen, [single]0.5, [single]-7.5, [single]0.5, [single]3.5)
+            $g.DrawLines($pen, [System.Drawing.PointF[]]@((& $q -3.5 -0.5), (& $q 0.5 3.5), (& $q 4.5 -0.5)))
+        } elseif ($Kind -eq 'saves20') {
+            # Дискета для главной кнопки на целочисленной сетке: центр - целый пиксель, линии 2 px идут по целым координатам и попадают ровно в пиксели
+            # (в масштабе 1.15 с линией 1.4 px они ложились между пикселями и размывались). Внешний размер 20x20, как у остальных значков колонки.
+            $cxi = [single][Math]::Round($cx); $cyi = [single][Math]::Round($cy)
+            $pen = New-Object System.Drawing.Pen($col, 2)
+            $pen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+            $pen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+            $pen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
+            $g.TranslateTransform($cxi, $cyi)
+            $gp = New-Object System.Drawing.Drawing2D.GraphicsPath
+            $gp.AddLines([System.Drawing.PointF[]]@((& $q -9 -9), (& $q 6 -9), (& $q 9 -6), (& $q 9 9), (& $q -9 9)))
+            $gp.CloseFigure()
+            $g.DrawPath($pen, $gp)
+            # Внутренние детали (шторка и этикетка) тоньше контура: линия 1 px по координатам x.5 (центры пикселей) - чёткая и не добавляет «белизны».
+            $pen2 = New-Object System.Drawing.Pen($col, 1)
+            try {
+                $g.DrawRectangle($pen2, [single]-4.5, [single]-9, [single]7, [single]4.5)
+                $g.DrawRectangle($pen2, [single]-4.5, [single]1.5, [single]9, [single]7.5)
+            } finally { $pen2.Dispose() }
+        } elseif ($Kind -eq 'saves16') {
+            # Дискета для кнопок 30x30 (окно библиотеки): внешний размер 16x16, линии 1 px по координатам x.5 (центры пикселей) - чёткие, без масштаба.
+            $cxi = [single][Math]::Round($cx); $cyi = [single][Math]::Round($cy)
+            $pen = New-Object System.Drawing.Pen($col, 1)
+            $g.TranslateTransform($cxi, $cyi)
+            $gp = New-Object System.Drawing.Drawing2D.GraphicsPath
+            $gp.AddLines([System.Drawing.PointF[]]@((& $q -7.5 -7.5), (& $q 4.5 -7.5), (& $q 7.5 -4.5), (& $q 7.5 7.5), (& $q -7.5 7.5)))
+            $gp.CloseFigure()
+            $g.DrawPath($pen, $gp)
+            $g.DrawRectangle($pen, [single]-3.5, [single]-7.5, [single]6, [single]4)
+            $g.DrawRectangle($pen, [single]-4.5, [single]0.5, [single]9, [single]7)
         } else {
             # Дискета - тот же значок, что у «Бэкап» в карточке игры и окне библиотеки.
             $pen = New-Object System.Drawing.Pen($col, 1.4)
@@ -17645,7 +18952,7 @@ function New-MainSavesIconBitmap ([string]$Kind) {
 $btnMainSaves = New-Object System.Windows.Forms.Button
 $btnMainSaves.Text = ''
 $btnMainSaves.Padding = New-Object System.Windows.Forms.Padding(0)
-$btnMainSaves.Location = New-Object System.Drawing.Point(519, 130)
+$btnMainSaves.Location = New-Object System.Drawing.Point(519, 80)
 $btnMainSaves.Size = New-Object System.Drawing.Size(42, 42)
 $btnMainSaves.FlatStyle = "Flat"
 $btnMainSaves.FlatAppearance.BorderColor = $steamUi.Border
@@ -17663,7 +18970,14 @@ $btnMainSaves.Add_Paint({
         $hot = $false
         try { $hot = ($sender.Enabled -and $sender.ClientRectangle.Contains($sender.PointToClient([System.Windows.Forms.Cursor]::Position))) } catch {}
         $col = if (-not $sender.Enabled) { $steamUi.Muted } elseif ($hot -or [string]$sender.Tag -eq 'on' -or [bool]$script:mainSavesFlyout) { $steamUi.Accent2 } else { $steamUi.Text }
-        Draw-MainSavesGlyph $e.Graphics ([single]($sender.ClientSize.Width / 2.0)) ([single]($sender.ClientSize.Height / 2.0)) $col 'saves' ([single]1.4)
+        # Действие выбрано: вместо общего значка группы показывается значок выбранного действия (как на боковой кнопке).
+        $scx = [single]($sender.ClientSize.Width / 2.0); $scy = [single]($sender.ClientSize.Height / 2.0)
+        switch ([string]$script:mainSavesMode) {
+            'scan'    { Draw-MainSavesGlyph $e.Graphics $scx $scy $col 'scan' ([single]1.1) }
+            'backup'  { Draw-MainSavesGlyph $e.Graphics $scx $scy $col 'backup' ([single]1.15) }
+            'restore' { Draw-LibsUndoGlyph $e.Graphics $scx $scy $col ([single]1.1) }
+            default   { Draw-MainSavesGlyph $e.Graphics $scx $scy $col 'saves20' ([single]1) }
+        }
     } catch {}
 })
 $form.Controls.Add($btnMainSaves)
@@ -17677,7 +18991,7 @@ $script:mainSavesSubPaint = {
         $cx = [single]($sender.ClientSize.Width / 2.0); $cy = [single]($sender.ClientSize.Height / 2.0)
         switch ([string]$sender.Name) {
             'restore' { Draw-LibsUndoGlyph $e.Graphics $cx $cy $col ([single]1.1) }
-            'scan'    { Draw-MainSavesGlyph $e.Graphics $cx $cy $col 'scan' ([single]1.25) }
+            'scan'    { Draw-MainSavesGlyph $e.Graphics $cx $cy $col 'scan' ([single]1.1) }
             default   { Draw-MainSavesGlyph $e.Graphics $cx $cy $col 'backup' ([single]1.15) }
         }
     } catch {}
@@ -17770,7 +19084,15 @@ function Update-MainSavesEntryFromShortcut ($Ent) {
     try {
         if ([string]$Ent.Kind -ne 'folder') { return $Ent }
         $rec = $null
-        try { $rec = Find-SteamShortcutRecord ([string]$Ent.Name) ([string]$Ent.Path) } catch { $rec = $null }
+        # shortcuts.vdf без кэша читался и разбирался заново для каждой игры (сотни раз подряд): держим разбор между вызовами.
+        # Ключ кэша содержит время изменения и размер файла, поэтому устаревшие данные не используются.
+        $ownScCache = $false
+        if (-not ($script:shortcutParseCache -is [hashtable])) {
+            if ($null -eq $script:mainSavesScCache -or @($script:mainSavesScCache.Keys).Count -gt 6) { $script:mainSavesScCache = @{} }
+            $script:shortcutParseCache = $script:mainSavesScCache
+            $ownScCache = $true
+        }
+        try { $rec = Find-SteamShortcutRecord ([string]$Ent.Name) ([string]$Ent.Path) } catch { $rec = $null } finally { if ($ownScCache) { $script:shortcutParseCache = $null } }
         if ($null -eq $rec) { return $Ent }
         $nm = [string]$rec.AppName
         if ([string]::IsNullOrWhiteSpace($nm)) { $nm = [string]$Ent.Name }
@@ -17783,14 +19105,21 @@ function Update-MainSavesEntryFromShortcut ($Ent) {
 # Для строки панели: найдены ли сохранения игры (определены вручную или найдены массовым поиском - как зелёная галочка в карточке)
 # и есть ли у неё бэкап. Результат кэшируется на 10 секунд (строки перерисовываются часто); кэш сбрасывается при выборе действия.
 $script:mainSavesRowFlags = @{}
-function Get-MainSavesRowFlags ([string]$Path) {
+# -CacheOnly: только то, что уже посчитано (без обращений к диску): $null, если строки в кэше ещё нет. Так перерисовка списков и
+# переключение значка в блоке не ждут тяжёлых проверок; недостающие строки досчитывает фоновый таймер (Add-MainSavesWarm).
+# Результат живёт 5 минут (флаги от выбранного режима не зависят), сбрасывается Reset-SaveBackupCache после операций.
+function Get-MainSavesRowFlags ([string]$Path, [switch]$CacheOnly) {
     $res = [PSCustomObject]@{ Found = $false; Backup = $false; BackupDate = $null }
+    $key = ''
     try {
         $path = ([string]$Path).Trim().TrimEnd('\')
-        if ([string]::IsNullOrWhiteSpace($path) -or -not [System.IO.Directory]::Exists($path)) { return $res }   # ROM-файлы и пропавшие папки
+        if ([string]::IsNullOrWhiteSpace($path)) { return $res }
         $key = Get-MainSavesKey $path
         $cf = $script:mainSavesRowFlags[$key]
-        if ($null -ne $cf -and (([DateTime]::UtcNow - $cf.At).TotalSeconds -lt 10)) { return $cf.Res }
+        if ($null -ne $cf -and ($CacheOnly -or (([DateTime]::UtcNow - $cf.At).TotalSeconds -lt 300))) { return $cf.Res }
+        if ($CacheOnly) { return $null }
+        # ROM-файлы и пропавшие папки: пустой результат тоже кэшируется, иначе строка считалась бы заново при каждой перерисовке.
+        if (-not [System.IO.Directory]::Exists($path)) { $script:mainSavesRowFlags[$key] = [PSCustomObject]@{ At = [DateTime]::UtcNow; Res = $res }; return $res }
         $c = $script:mainSavesCache[$key]
         if ($null -eq $c -or (([DateTime]::UtcNow - $c.At).TotalMinutes -ge 10)) {
             $nm = ''
@@ -17835,9 +19164,76 @@ function Get-MainSavesRowFlags ([string]$Path) {
             try { $script:saveHasBackupCache[$bkDir] = [bool]$res.Backup } catch {}
         } catch {}
         $script:mainSavesRowFlags[$key] = [PSCustomObject]@{ At = [DateTime]::UtcNow; Res = $res }
-    } catch {}
+    } catch {
+        # Сбой на одной игре не должен заставлять фоновый подсчёт бесконечно перечитывать её: кэшируем пустой результат.
+        try { if ($key -ne '' -and -not $CacheOnly) { $script:mainSavesRowFlags[$key] = [PSCustomObject]@{ At = [DateTime]::UtcNow; Res = $res } } } catch {}
+    }
     return $res
 }
+
+# Фоновый подсчёт флагов сохранений для строк обеих панелей: порциями по ~40 мс за тик таймера, интерфейс не замирает.
+# Сначала считаются видимые строки, потом остальные; по окончании списки и галочка «выбрать всё» обновляются один раз.
+$script:mainSavesWarmQueue = New-Object 'System.Collections.Generic.Queue[string]'
+$script:mainSavesWarmSet = New-Object 'System.Collections.Generic.HashSet[string]'
+$script:mainSavesWarmTicks = 0
+$script:mainSavesWarmTimer = New-Object System.Windows.Forms.Timer
+$script:mainSavesWarmTimer.Interval = 20
+function Add-MainSavesWarm ([string]$Path) {
+    try {
+        $k = Get-MainSavesKey ([string]$Path).Trim().TrimEnd('\')
+        if ([string]::IsNullOrEmpty($k)) { return }
+        $cf = $script:mainSavesRowFlags[$k]
+        if ($null -ne $cf -and (([DateTime]::UtcNow - $cf.At).TotalSeconds -lt 300)) { return }
+        if (-not $script:mainSavesWarmSet.Add($k)) { return }
+        $script:mainSavesWarmQueue.Enqueue([string]$Path)
+        if (-not [bool]$script:mainSavesWarmTimer.Enabled) { $script:mainSavesWarmTimer.Start() }
+    } catch {}
+}
+function Start-MainSavesWarm {
+    try {
+        if ([string]$script:mainSavesMode -eq '') { return }
+        foreach ($src in @('C', 'D')) {
+            $lb = if ($src -eq 'C') { $listBoxC } else { $listBoxD }
+            $root = if ($src -eq 'C') { $global:dirC } else { $global:dirD }
+            if ($null -eq $lb -or [string]::IsNullOrWhiteSpace($root)) { continue }
+            $cnt = [int]$lb.Items.Count
+            $top = [Math]::Max(0, [int]$lb.TopIndex)
+            $vis = [Math]::Min($cnt, $top + 40)
+            $order = New-Object System.Collections.Generic.List[int]
+            for ($i = $top; $i -lt $vis; $i++) { [void]$order.Add($i) }
+            for ($i = 0; $i -lt $cnt; $i++) { if ($i -lt $top -or $i -ge $vis) { [void]$order.Add($i) } }
+            foreach ($i in $order) {
+                try {
+                    $nm = Clean-GameName $lb.Items[$i].ToString()
+                    if ([string]::IsNullOrWhiteSpace($nm)) { continue }
+                    $rp = Join-Path $root $nm
+                    if (Test-PanelRowIsRom $rp) { continue }
+                    Add-MainSavesWarm $rp
+                } catch {}
+            }
+        }
+    } catch {}
+}
+$script:mainSavesWarmTimer.Add_Tick({
+    try {
+        $sw = [System.Diagnostics.Stopwatch]::StartNew()
+        while ($script:mainSavesWarmQueue.Count -gt 0 -and $sw.ElapsedMilliseconds -lt 40) {
+            $wp = $script:mainSavesWarmQueue.Dequeue()
+            try { if ([string]$script:mainSavesMode -ne '') { [void](Get-MainSavesRowFlags $wp) } } catch {}
+            try { [void]$script:mainSavesWarmSet.Remove((Get-MainSavesKey ([string]$wp).Trim().TrimEnd('\'))) } catch {}
+        }
+        $script:mainSavesWarmTicks = [int]$script:mainSavesWarmTicks + 1
+        if ($script:mainSavesWarmQueue.Count -eq 0) {
+            $script:mainSavesWarmTimer.Stop()
+            $script:mainSavesWarmTicks = 0
+            $script:mainSavesWarmSet.Clear()
+            try { $listBoxC.Invalidate(); $listBoxD.Invalidate() } catch {}
+            try { Update-SelectAllCheckbox 'C'; Update-SelectAllCheckbox 'D' } catch {}
+        } elseif (([int]$script:mainSavesWarmTicks % 5) -eq 0) {
+            try { $listBoxC.Invalidate(); $listBoxD.Invalidate() } catch {}
+        }
+    } catch {}
+})
 
 function Set-MainSavesMode ([string]$Mode) {
     try { if ([bool]$script:mainSavesFlyout) { Set-MainSavesFlyout $false } } catch {}
@@ -17846,8 +19242,8 @@ function Set-MainSavesMode ([string]$Mode) {
 }
 
 function Set-MainSavesModeCore ([string]$Mode) {
-    $script:mainSavesRowFlags = @{}
-    try { Reset-SaveBackupCache } catch {}
+    # Флаги сохранений от выбранного действия не зависят, поэтому при смене значка их не сбрасываем (сбрасывает Reset-SaveBackupCache
+    # после операций): раньше каждый выбор значка заново считал все строки обеих панелей.
     if ([string]$script:mainSavesMode -eq $Mode) { $Mode = '' }   # повторное нажатие на выбранный вариант снимает выбор
     $script:mainSavesMode = $Mode
     if ($Mode -ne '') { $script:mainLibsMode = '' }                # нижняя кнопка одна: выбор сохранений снимает выбор апскейлеров
@@ -17872,6 +19268,7 @@ function Set-MainSavesModeCore ([string]$Mode) {
             Set-PanelAltColumnsMode $alt
         }
     } catch {}
+    if ($Mode -ne '') { try { Start-MainSavesWarm } catch {} }
     if ($romsWas) { try { Refresh-Panels -KeepSteamMap } catch {} }
     try { Update-MainLibraryButtonState } catch {}
 }
@@ -18261,12 +19658,23 @@ function Invoke-MainSavesOperation ([string]$Mode, $OnlyGames = $null) {
 }
 
 # Вид квадратика пункта списка коллекций: 'empty' — пустой, 'solid' — выбрано сейчас (сплошная заливка и галочка),
-# 'prior' — было задано раньше и сохраняется (светлая прозрачная заливка, см. SCFilterRenderer). Пустой рисуется как Indeterminate.
+# 'prior' — было задано раньше и сохраняется (светлая прозрачная заливка); 'empty' — видимый пустой квадрат (см. SCFilterRenderer).
 function Set-CollItemVisual ($item, [string]$mode) {
     try {
         if ($mode -eq 'empty') { $item.AccessibleDescription = ''; $item.CheckState = [System.Windows.Forms.CheckState]::Indeterminate }
         elseif ($mode -eq 'prior') { $item.AccessibleDescription = 'prior'; $item.CheckState = [System.Windows.Forms.CheckState]::Checked }
         else { $item.AccessibleDescription = ''; $item.CheckState = [System.Windows.Forms.CheckState]::Checked }
+        $item.Invalidate()
+    } catch {}
+}
+
+# Для меню выбора (врапперы/эмуляторы/рамки): визуальная галочка не участвует в логике выбора,
+# поэтому CheckState можно держать Checked для гарантированного вызова кастомного рендерера.
+# Реальный выбор хранится в Tag / рабочих структурах меню, как и раньше.
+function Set-SCMenuCheckVisual ($item, [string]$mode) {
+    try {
+        $item.AccessibleDefaultActionDescription = $mode
+        $item.CheckState = [System.Windows.Forms.CheckState]::Checked
         $item.Invalidate()
     } catch {}
 }
@@ -18339,9 +19747,9 @@ function Update-MainCollBorder {
 function Update-MainCollButtonLook {
     try {
         $keys = @($script:mainCollDefault.Keys)
-        $collMenuOpen = ($null -ne $script:mainCollMenuCtl)
+        $collMenuOpen = ($null -ne $script:mainCollMenuCtl -or $null -ne $script:mainCollEditorMenuCtl)
         $collPending = $false
-        try { $collPending = (@($script:mainCollPending.Keys).Count -gt 0) } catch {}
+        try { $collPending = ((@($script:mainCollPending.Keys).Count -gt 0) -or ((Get-MainCollStructCount) -gt 0)) } catch {}
         $btnMainColl.Tag = $(if ($keys.Count -gt 0 -or $collMenuOpen -or $collPending) { 'on' } else { '' })
         Update-MainCollBorder
         # Среди отмеченных есть новые игры — приоритет у добавления, иначе подсказка про смену коллекций уже добавленных.
@@ -18352,7 +19760,9 @@ function Update-MainCollButtonLook {
                 if (-not ($gk -and $global:installedSteamGames.ContainsKey($gk))) { $hasNew = $true; break }
             }
         } catch {}
-        $tip = $(if ($hasNew) { (T 'btn_coll_tip_new') } else { (T 'btn_coll_tip') })
+        # Без отмеченных игр кнопка открывает редактор коллекций: подсказка просто «Изменить коллекции».
+        $noChecked = ((@($global:checkedC.Keys).Count + @($global:checkedD.Keys).Count) -eq 0)
+        $tip = $(if ($noChecked) { (T 'btn_coll_tip_editor') } elseif ($hasNew) { (T 'btn_coll_tip_new') } else { (T 'btn_coll_tip') })
         if ($hasNew -and $keys.Count -gt 0 -and $null -ne $script:mainCollSnap) {
             # К подсказке добавляются названия выбранных для новых игр коллекций.
             $full = [string](Get-CardCollTooltip $script:mainCollSnap $keys)
@@ -18452,7 +19862,7 @@ function Invoke-MainCollApplyExisting ($snap, $existing, $changes) {
             if ($steamWasRunning) {
                 try {
                     $steamExe = [string](Get-ConfiguredSteamExePath)
-                    if (-not [string]::IsNullOrWhiteSpace($steamExe) -and (Test-Path -LiteralPath $steamExe)) { Start-Process -FilePath $steamExe }
+                    if (-not [string]::IsNullOrWhiteSpace($steamExe) -and (Test-Path -LiteralPath $steamExe)) { Start-Process -FilePath $steamExe; $script:steamKilledByApp = $false; $script:steamFilesDirty = $false }
                 } catch {}
             }
             $steamWasRunning = $false
@@ -18528,9 +19938,365 @@ function Update-MainCollMenuStates ($m, $menu) {
     }
 }
 
+# Создание/удаление коллекций из главного окна, когда не выбрана игра.
+# Запись файлов и очередь перезапуска используют те же механизмы, что и редактор коллекций библиотеки.
+function Invoke-MainCollEditorStructureChange([string]$op, [string]$ckey) {
+    # Только копит изменение: создание — в очередь; крестик у обычной коллекции — помечает её на удаление (повторный крестик возвращает),
+    # у ещё не созданной — просто убирает из очереди. В Steam ничего не пишется: это делает нижняя кнопка «Сменить коллекции (N)».
+    if ($script:mainCollEditorBusy -or $script:mainCollBusy -or $script:mainLibsBusy -or $script:mainSavesBusy -or $script:libCtxSaveBusy) { return }
+    $script:mainCollEditorBusy = $true
+    try {
+        if ($op -eq 'create') {
+            $cname = Show-CollectionNameDialog $form
+            if ([string]::IsNullOrWhiteSpace($cname)) { return }
+            $cname = ([string]$cname).Trim()
+            $low = $cname.ToLowerInvariant()
+            $snap = Read-SteamCollectionsSnapshot
+            $taken = $false
+            foreach ($cl in @($snap.List)) {
+                if ($null -eq $cl -or ([string]$cl.Name).Trim().ToLowerInvariant() -ne $low) { continue }
+                # Коллекция с таким именем уже помечена на удаление — имя считается свободным.
+                $gone = $false
+                foreach ($so in @($script:mainCollStructPending.ToArray())) { if ([string]$so.Op -eq 'delete' -and [string]$so.Key -eq [string]$cl.Key) { $gone = $true; break } }
+                if (-not $gone) { $taken = $true; break }
+            }
+            if (-not $taken) {
+                foreach ($so in @($script:mainCollStructPending.ToArray())) { if ([string]$so.Op -eq 'create' -and ([string]$so.Name).Trim().ToLowerInvariant() -eq $low) { $taken = $true; break } }
+            }
+            if ($taken) {
+                Show-AppMessageBox($form, (T 'coll_new_exists' @($cname)), $global:appTitle, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
+                return
+            }
+            $cid = New-SteamCollectionId
+            [void]$script:mainCollStructPending.Add([PSCustomObject]@{ Op = 'create'; Key = ('col:' + $cid); Cid = $cid; Name = $cname })
+        } elseif ($op -eq 'delete') {
+            if (-not ([string]$ckey).StartsWith('col:')) { return }
+            $cid = ([string]$ckey).Substring(4)
+            if ($cid -eq 'favorite' -or $cid -eq 'hidden') { return }
+            # Ещё не созданная коллекция или уже помеченная на удаление: крестик отменяет запись в очереди.
+            $undone = $false
+            for ($i = $script:mainCollStructPending.Count - 1; $i -ge 0; $i--) {
+                if ([string]$script:mainCollStructPending[$i].Key -eq [string]$ckey) { $script:mainCollStructPending.RemoveAt($i); $undone = $true }
+            }
+            if (-not $undone) {
+                $cname = ''
+                $snap = Read-SteamCollectionsSnapshot
+                foreach ($cl in @($snap.List)) { if ($null -ne $cl -and [string]$cl.Key -eq [string]$ckey) { $cname = [string]$cl.Name; break } }
+                if ([string]::IsNullOrWhiteSpace($cname)) { return }
+                [void]$script:mainCollStructPending.Add([PSCustomObject]@{ Op = 'delete'; Key = [string]$ckey; Cid = $cid; Name = $cname })
+                # Удаляемую коллекцию нельзя выбирать для игр.
+                if ($script:mainCollDefault.ContainsKey([string]$ckey)) { $script:mainCollDefault.Remove([string]$ckey) }
+                if ($script:mainCollPending.ContainsKey([string]$ckey)) { $script:mainCollPending.Remove([string]$ckey) }
+                if ($script:mainCollTouched.ContainsKey([string]$ckey)) { $script:mainCollTouched.Remove([string]$ckey) }
+            }
+        }
+    } catch {
+        try { Write-LauncherLog ('mainCollEditor: ' + $_.Exception.Message + ' | ' + [string]$_.ScriptStackTrace) } catch {}
+        try { Show-AppMessageBox($form, (T 'coll_fail' @([string]$_.Exception.Message)), $global:appTitle, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null } catch {}
+    } finally {
+        $script:mainCollEditorBusy = $false
+        try { Update-MainCollButtonLook } catch {}
+        try { Update-MainLibraryButtonState } catch {}
+    }
+}
+
+# Записывает накопленные создания/удаления коллекций (кнопка «Сменить коллекции»). Steam на время записи закрывается один раз;
+# в ручном режиме перезапуска изменения ставятся в очередь и запишутся по кнопке «Перезапустить Steam».
+# $script:mainCollStructApplyOk = $true, если всё записано (или поставлено в очередь); при ошибке очередь остаётся для повтора.
+function Invoke-MainCollStructApply {
+    $script:mainCollStructApplyOk = $false
+    $ops = @($script:mainCollStructPending.ToArray())
+    if ($ops.Count -eq 0) { $script:mainCollStructApplyOk = $true; return }
+    if ($script:mainCollEditorBusy -or $script:mainCollBusy) { return }
+    $script:mainCollEditorBusy = $true
+    $steamWasRunning = $false
+    try {
+        # Как в библиотеке: при удалении убираем одноимённый тег у ярлыков Non-Steam, иначе Steam может восстановить коллекцию из тега.
+        $tagByApp = @{}
+        $delOps = @($ops | Where-Object { [string]$_.Op -eq 'delete' })
+        if ($delOps.Count -gt 0) {
+            $entriesForTags = @()
+            try { $entriesForTags = @(Get-SteamLibraryEntries) } catch { $entriesForTags = @() }
+            foreach ($dop in $delOps) {
+                $nmLow = ([string]$dop.Name).Trim().ToLowerInvariant()
+                foreach ($en in $entriesForTags) {
+                    if ($null -eq $en -or [string]$en.Kind -ne 'shortcut') { continue }
+                    $hasTag = $false
+                    try {
+                        foreach ($tg in @(Get-ShortcutRecordTags $en.ShortcutRecord)) {
+                            if (([string]$tg).Trim().ToLowerInvariant() -eq $nmLow) { $hasTag = $true; break }
+                        }
+                    } catch {}
+                    if (-not $hasTag) { continue }
+                    $ak = [string]$en.AppId
+                    if (-not $tagByApp.ContainsKey($ak)) { $tagByApp[$ak] = [PSCustomObject]@{ Entry = $en; NamesLower = (New-Object System.Collections.Generic.List[string]) } }
+                    if (-not $tagByApp[$ak].NamesLower.Contains($nmLow)) { [void]$tagByApp[$ak].NamesLower.Add($nmLow) }
+                }
+            }
+        }
+        $tagWork = @($tagByApp.Values | ForEach-Object { [PSCustomObject]@{ Entry = $_.Entry; NamesLower = @($_.NamesLower.ToArray()) } })
+
+        $running = $false
+        try { $running = [bool](Test-SteamRunning) } catch {}
+        $manual = ((Get-SteamRestartMode) -eq 'manual')
+        $queueOnly = $false
+        if ($running) {
+            if ($manual) {
+                $queueOnly = $true
+            } else {
+                # Без вопроса: нажатие «Сменить коллекции» уже означает согласие на перезапуск Steam.
+                if (-not (Close-SteamForWrite)) { $labelHeader.Text = (T 'steam_close_cancelled'); return }
+                $steamWasRunning = $true
+            }
+        }
+
+        $form.UseWaitCursor = $true
+        [System.Windows.Forms.Application]::DoEvents()
+        $errors = New-Object System.Collections.Generic.List[string]
+        $anyChanged = $false
+        $stamp = (Get-Date).ToString('yyyyMMdd-HHmmss')
+        try {
+            foreach ($o in $ops) {
+                if ($queueOnly) {
+                    Add-PendingCollStruct ([string]$o.Op) ([string]$o.Cid) ([string]$o.Name)
+                    $anyChanged = $true
+                } else {
+                    foreach ($pd in @(Get-ConfiguredSteamProfileDirectories)) {
+                        try {
+                            if (Edit-SteamCollectionList ([string]$pd.FullName) ([string]$o.Op) ([string]$o.Cid) ([string]$o.Name) $stamp) { $anyChanged = $true }
+                        } catch { [void]$errors.Add([string]$_.Exception.Message) }
+                    }
+                }
+            }
+            if ($tagWork.Count -gt 0) {
+                $tagRes = Remove-ShortcutTagsBatch @($tagWork)
+                if ($null -ne $tagRes -and [string]$tagRes.Error) { [void]$errors.Add([string]$tagRes.Error) }
+            }
+        } finally {
+            if ($steamWasRunning -and -not $manual) { try { Start-SteamIfAuto ([string](Get-ConfiguredSteamExePath)) } catch {} }
+            $steamWasRunning = $false
+            $form.UseWaitCursor = $false
+        }
+        if (-not $anyChanged -and $errors.Count -eq 0) { [void]$errors.Add((T 'coll_struct_fail')) }
+
+        $script:collSnapCache = $null
+        $script:collSnapSig = $null
+        try { $script:mainCollSnap = Read-SteamCollectionsSnapshot } catch { $script:mainCollSnap = $null }
+        try { Invalidate-PanelCtxLibraryCaches } catch {}
+        try { Update-PanelCollections } catch {}
+
+        if ($errors.Count -gt 0) {
+            Show-AppMessageBox($form, (T 'coll_fail' @((@($errors.ToArray() | Select-Object -Unique) -join "`n"))), $global:appTitle, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
+        } else {
+            $nCreated = @($ops | Where-Object { [string]$_.Op -eq 'create' }).Count
+            $nDeleted = @($ops | Where-Object { [string]$_.Op -eq 'delete' }).Count
+            $script:mainCollStructPending.Clear()
+            $script:mainCollStructApplyOk = $true
+            $labelHeader.Text = $(if ($queueOnly) { (T 'coll_queued') } else { (T 'coll_struct_done' @($nCreated, $nDeleted)) })
+        }
+    } catch {
+        try { Write-LauncherLog ('mainCollStructApply: ' + $_.Exception.Message + ' | ' + [string]$_.ScriptStackTrace) } catch {}
+        try { Show-AppMessageBox($form, (T 'coll_fail' @([string]$_.Exception.Message)), $global:appTitle, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null } catch {}
+    } finally {
+        try { $form.UseWaitCursor = $false } catch {}
+        $script:mainCollEditorBusy = $false
+        try { Update-MainCollButtonLook } catch {}
+    }
+}
+
+# Обновляет вид строки редактора по очереди изменений, не закрывая меню: помеченная на удаление приглушается (крестик серый),
+# убранная из очереди новая коллекция скрывается.
+function Set-MainCollEditorRowLook ($it) {
+    try {
+        $key = [string]$it.Tag
+        $isDel = $false; $isCreate = $false
+        foreach ($so in @($script:mainCollStructPending.ToArray())) {
+            if ([string]$so.Key -ne $key) { continue }
+            if ([string]$so.Op -eq 'delete') { $isDel = $true } elseif ([string]$so.Op -eq 'create') { $isCreate = $true }
+        }
+        if ([string]$it.AccessibleName -eq 'staged') {
+            if (-not $isCreate) { $it.Visible = $false }
+        } else {
+            $it.ForeColor = $(if ($isDel) { $steamUi.Muted } else { $steamUi.Text })
+            $it.AccessibleDefaultActionDescription = $(if ($isDel) { 'greyx' } else { '' })
+        }
+        if ($null -ne $it.Owner) { $it.Owner.Invalidate() }
+    } catch {}
+}
+
+# Редактор коллекций главного окна без выбранных игр: только названия, крестики удаления и «Создать коллекцию…».
+# Нажатие на название намеренно ничего не делает; список прокручивается так же, как в меню библиотеки.
+function Show-MainCollEditorMenu {
+    if ($script:mainCollEditorBusy -or $null -ne $script:mainCollEditorMenuCtl) { return }
+    try {
+        $script:collSnapCache = $null
+        $script:collSnapSig = $null
+        $snap = Read-SteamCollectionsSnapshot
+        $script:mainCollSnap = $snap
+        $allEntries = @()
+        try { $allEntries = @(Get-SteamLibraryEntries) } catch { $allEntries = @() }
+
+        $counts = @{}
+        foreach ($en in $allEntries) {
+            if ($null -eq $en) { continue }
+            foreach ($key in @(Get-CollKeysForEntry $snap ([string]$en.AppId) ([string]$en.Kind) $en.ShortcutRecord)) {
+                $ks = [string]$key
+                if ($ks -eq 'col:hidden') { continue }
+                if ($counts.ContainsKey($ks)) { $counts[$ks] = [int]$counts[$ks] + 1 } else { $counts[$ks] = 1 }
+            }
+        }
+        # Такой же набор строк, как у редактора библиотеки: «Скрыто» не показываем, «Избранное» нельзя удалить.
+        # Накопленные изменения видны сразу: новая коллекция — «+» акцентным цветом, помеченная на удаление — приглушена (повторный клик по значку возвращает её).
+        $rowsList = New-Object System.Collections.Generic.List[object]
+        foreach ($sr in @(@($snap.List) | Where-Object { $null -ne $_ -and [string]$_.Key -ne 'col:hidden' })) { [void]$rowsList.Add([PSCustomObject]@{ Key = [string]$sr.Key; Name = [string]$sr.Name; Staged = '' }) }
+        $delKeys = @{}
+        foreach ($so in @($script:mainCollStructPending.ToArray())) {
+            if ([string]$so.Op -eq 'create') { [void]$rowsList.Add([PSCustomObject]@{ Key = [string]$so.Key; Name = [string]$so.Name; Staged = 'create' }) }
+            elseif ([string]$so.Op -eq 'delete') { $delKeys[[string]$so.Key] = $true }
+        }
+        $rows = @($rowsList.ToArray() | Sort-Object -Property { [string]$_.Name } -CaseSensitive:$false)
+
+        Initialize-SCFilterRenderer
+        [SCFilterRenderer]::Accent = $steamUi.Accent
+        [SCFilterRenderer]::Muted = $steamUi.Muted
+        [SCFilterRenderer]::HotItem = $null
+        $menu = New-Object System.Windows.Forms.ContextMenuStrip
+        $menu.Name = 'maincoll_editor'
+        $menu.Renderer = New-Object SCFilterRenderer
+        $menu.BackColor = [System.Drawing.Color]::FromArgb(13, 20, 28)
+        $menu.ForeColor = $steamUi.Text
+        $menu.Font = New-Object System.Drawing.Font('Segoe UI', 9)
+        $menu.Padding = New-Object System.Windows.Forms.Padding(2, 3, 2, 3)
+        $menu.ShowCheckMargin = $false
+        $menu.ShowImageMargin = $false
+        $menu.MinimumSize = New-Object System.Drawing.Size(220, 0)
+        $script:mainCollEditorMenuCtl = $menu
+        $script:mainCollEditorGlyphHit = $false
+        $script:mainCollEditorAllowClose = $false
+        $script:mainCollEditorGlyphHotItem = $null
+
+        foreach ($cr in $rows) {
+            $key = [string]$cr.Key
+            $n = 0
+            if ($counts.ContainsKey($key)) { $n = [int]$counts[$key] }
+            $mi = New-Object System.Windows.Forms.ToolStripMenuItem
+            $stagedCreate = ([string]$cr.Staged -eq 'create')
+            $stagedDelete = $delKeys.ContainsKey($key)
+            if ($stagedCreate) { $mi.AccessibleName = 'staged' }
+            $mi.Text = $(if ($stagedCreate) { '(' + (T 'coll_new_tag') + ') ' + [string]$cr.Name } else { ([string]$cr.Name) + '  (' + [string]$n + ')' })
+            $mi.Tag = $key
+            $mi.BackColor = [System.Drawing.Color]::FromArgb(22, 28, 36)
+            $mi.ForeColor = $(if ($stagedDelete) { $steamUi.Muted } else { $steamUi.Text })
+            if ($key -ne 'col:favorite') {
+                $mi.AccessibleDescription = 'collrow'
+                $mi.ShowShortcutKeys = $true
+                $mi.ShortcutKeyDisplayString = [string][char]0x00D7
+                if ($stagedDelete) { $mi.AccessibleDefaultActionDescription = 'greyx' }   # помечена на удаление: серый крестик, остальные красные
+                # Крестик срабатывает сразу при нажатии (один клик — одно действие), меню остаётся открытым, строка тут же меняет вид.
+                $mi.Add_MouseDown({
+                    param($snd, $ea)
+                    try {
+                        $script:mainCollEditorGlyphHit = $false
+                        if ($ea.Button -ne [System.Windows.Forms.MouseButtons]::Left) { return }
+                        if ([string]$snd.AccessibleDescription -ne 'collrow') { return }
+                        if ($ea.X -lt ($snd.Width - [SCFilterRenderer]::GlyphZone)) { return }
+                        $script:mainCollEditorGlyphHit = $true
+                        Invoke-MainCollEditorStructureChange 'delete' ([string]$snd.Tag)
+                        Set-MainCollEditorRowLook $snd
+                    } catch { $script:mainCollEditorGlyphHit = $false }
+                })
+            }
+            $mi.Add_Click({
+                param($snd, $ea)
+                # Действие крестика уже выполнено при нажатии; клик по названию ничего не делает.
+                $script:mainCollEditorGlyphHit = $false
+            })
+            [void]$menu.Items.Add($mi)
+        }
+        $scrollRows = @()
+        foreach ($it in @($menu.Items)) { $scrollRows += $it }
+        [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
+        $newItem = New-Object System.Windows.Forms.ToolStripMenuItem
+        $newItem.Text = ((T 'coll_new') + [string][char]0x2026)
+        $newItem.Tag = '__new__'
+        $newItem.AccessibleDescription = 'collnew'
+        $newItem.BackColor = [System.Drawing.Color]::FromArgb(22, 28, 36)
+        $newItem.ForeColor = $steamUi.Text
+        $newItem.Add_Click({
+            param($snd, $ea)
+            try {
+                Invoke-MainCollEditorStructureChange 'create' ''
+                # Диалог забрал фокус и закрыл список: открываем его снова, чтобы он закрывался только вторым нажатием на кнопку или щелчком в окне.
+                $rt = New-Object System.Windows.Forms.Timer
+                $rt.Interval = 40
+                $rt.Add_Tick({
+                    param($ts, $te)
+                    try { $ts.Stop(); $ts.Dispose() } catch {}
+                    try { if ($null -eq $script:mainCollEditorMenuCtl) { Show-MainCollEditorMenu } } catch {}
+                })
+                $rt.Start()
+            } catch {}
+        })
+        [void]$menu.Items.Add($newItem)
+
+        # Названия строк не закрывают меню: остаёмся в редакторе. Крестик и создание закрывают его для диалога/подтверждения.
+        $menu.Add_Closing({
+            param($snd, $ea)
+            try {
+                if ($ea.CloseReason -eq [System.Windows.Forms.ToolStripDropDownCloseReason]::ItemClicked -and -not [bool]$script:mainCollEditorAllowClose) {
+                    $ea.Cancel = $true
+                } elseif ($ea.CloseReason -eq [System.Windows.Forms.ToolStripDropDownCloseReason]::AppClicked) {
+                    $scr = $btnMainColl.RectangleToScreen($btnMainColl.ClientRectangle)
+                    if ($scr.Contains([System.Windows.Forms.Control]::MousePosition)) { $script:mainCollClosedAt = [Environment]::TickCount }
+                }
+            } catch {}
+        })
+        $script:mainCollEditorHotTimer = New-Object System.Windows.Forms.Timer
+        $script:mainCollEditorHotTimer.Interval = 15
+        $script:mainCollEditorHotTimer.Add_Tick({
+            try {
+                $m = $script:mainCollEditorMenuCtl
+                if ($null -eq $m -or $m.IsDisposed -or -not $m.Visible) { return }
+                $pt = $m.PointToClient([System.Windows.Forms.Control]::MousePosition)
+                $hotItem = $null
+                $it = $m.GetItemAt($pt)
+                if ($null -ne $it -and [string]$it.AccessibleDescription -eq 'collrow') {
+                    if (($pt.X - $it.Bounds.X) -ge ($it.Width - [SCFilterRenderer]::GlyphZone)) { $hotItem = $it }
+                }
+                if (-not [object]::ReferenceEquals($hotItem, $script:mainCollEditorGlyphHotItem)) {
+                    $oldItem = $script:mainCollEditorGlyphHotItem
+                    $script:mainCollEditorGlyphHotItem = $hotItem
+                    [SCFilterRenderer]::HotItem = $hotItem
+                    $m.Cursor = $(if ($null -ne $hotItem) { [System.Windows.Forms.Cursors]::Hand } else { [System.Windows.Forms.Cursors]::Default })
+                    if ($null -ne $oldItem) { $m.Invalidate($oldItem.Bounds) }
+                    if ($null -ne $hotItem) { $m.Invalidate($hotItem.Bounds) }
+                }
+            } catch {}
+        })
+        $menu.Add_Closed({
+            try {
+                if ($null -ne $script:mainCollEditorHotTimer) { $script:mainCollEditorHotTimer.Stop(); $script:mainCollEditorHotTimer.Dispose(); $script:mainCollEditorHotTimer = $null }
+                $script:mainCollEditorGlyphHotItem = $null
+                $script:mainCollEditorGlyphHit = $false
+                $script:mainCollEditorAllowClose = $false
+                [SCFilterRenderer]::HotItem = $null
+                $script:mainCollEditorMenuCtl = $null
+                Update-MainCollButtonLook
+            } catch {}
+        })
+        if ($scrollRows.Count -gt 0) { Enable-MenuWheelScroll $menu 18 $scrollRows }
+        $script:mainCollEditorHotTimer.Start()
+        $menu.Show($btnMainColl, (New-Object System.Drawing.Point(($btnMainColl.Width + 2), 0)), [System.Windows.Forms.ToolStripDropDownDirection]::BelowRight)
+        Update-MainCollButtonLook
+    } catch {
+        $script:mainCollEditorMenuCtl = $null
+        try { Write-LauncherLog ('mainCollEditorMenu: ' + $_.Exception.Message + ' | ' + [string]$_.ScriptStackTrace) } catch {}
+    }
+}
+
 $btnMainColl.Add_Click({
     try {
-        if ($script:mainCollBusy -or $script:moveInProgress -or $script:batchInProgress -or $script:smartBatchActive) { return }
+        if ($script:mainCollBusy -or $script:mainCollEditorBusy -or $script:moveInProgress -or $script:batchInProgress -or $script:smartBatchActive) { return }
         # Идёт обновление/возврат апскейлеров или работа с сохранениями: список коллекций не открываем.
         if ($script:mainLibsBusy -or $script:mainSavesBusy) { return }
         # Выбрано действие с апскейлерами или сохранениями: оно сразу снимается (нижняя кнопка и подсветка обновляются),
@@ -18553,7 +20319,12 @@ $btnMainColl.Add_Click({
         # Есть новые игры: приоритет у добавления. Добавленные игры не учитываются, не меняются и в списке не считаются.
         if ($newGames.Count -gt 0) { $existing = @(); $script:mainCollPending = @{} }
         $total = $newGames.Count + $existing.Count
-        if ($total -eq 0) { $script:mainCollOnlyLibrary = $false; try { Update-MainLibraryButtonState } catch {}; return }
+        if ($total -eq 0) {
+            # Без выбранных игр кнопка открывает редактор структуры коллекций: строки не выбираются, только X и создание.
+            $script:mainCollOnlyLibrary = $false
+            Show-MainCollEditorMenu
+            return
+        }
 
         $snap = Read-SteamCollectionsSnapshot
         $script:mainCollSnap = $snap
@@ -18577,7 +20348,7 @@ $btnMainColl.Add_Click({
         $script:mainCollMenuCtl = $null
 
         Initialize-SCFilterRenderer
-        $cmenu = New-Object System.Windows.Forms.ContextMenuStrip
+        $cmenu = (New-PanelCtxMenu)
         $cmenu.Name = 'sccoll'
         try {
             [SCFilterRenderer]::Accent = $steamUi.Accent
@@ -18586,9 +20357,7 @@ $btnMainColl.Add_Click({
         } catch {}
         $cmenu.BackColor = [System.Drawing.Color]::FromArgb(22, 28, 36)
         $cmenu.ForeColor = $steamUi.Text
-        $cmenu.Font = New-Object System.Drawing.Font('Segoe UI', 9)
-        $cmenu.ShowCheckMargin = $true
-        $cmenu.ShowImageMargin = $false
+        Initialize-SCContextChecklist $cmenu $null $false 18 $null 0 $false
         $cmenu.Add_Closing({
             param($snd, $ea)
             try {
@@ -18648,6 +20417,8 @@ $btnMainColl.Add_Click({
                     }
                     # Выбор коллекций вытесняет выбранное действие с апскейлерами / сохранениями.
                     $script:mainLibsMode = ''; $script:mainSavesMode = ''
+                    $script:mainFramesPending = ''   # нижняя кнопка одна: выбор коллекций сбрасывает выбор рамки
+                    try { Update-MainFramesButtonLook } catch {}
                     Update-MainCollMenuStates $m $script:mainCollMenuCtl
                     Update-MainCollButtonLook
                 } catch {
@@ -18659,6 +20430,12 @@ $btnMainColl.Add_Click({
         $script:mainCollMenuCtl = $cmenu
         Update-MainCollMenuStates $menuState $cmenu
         $cmenu.MinimumSize = New-Object System.Drawing.Size(220, 0)
+        # Длинный список коллекций прокручивается колесом в окне из 18 пунктов, со стрелками сверху и снизу.
+        # Меню тянется от верха кнопки коллекций до верха нижней кнопки библиотеки.
+        try {
+            $mcH = [int]($btnSteamLibrary.PointToScreen([System.Drawing.Point]::Empty).Y - $btnMainColl.PointToScreen([System.Drawing.Point]::Empty).Y) - 4
+            Enable-MenuWheelScroll $cmenu 18 $null $mcH
+        } catch {}
         $script:mainCollMenuCtl = $cmenu
         $cmenu.Show($btnMainColl, (New-Object System.Drawing.Point(($btnMainColl.Width + 2), 0)), [System.Windows.Forms.ToolStripDropDownDirection]::BelowRight)
         try { Update-MainCollButtonLook } catch {}   # пока список открыт, кнопка подсвечена синим
@@ -18775,6 +20552,7 @@ $mainToolTip.SetToolTip($lblBatchAuto, $batchAutoTooltipText)
 $mainToolTip.SetToolTip($btnMoveGame, (T 'btn_move'))
 $mainToolTip.SetToolTip($btnRefreshLibrary, (T 'btn_refresh'))
 $mainToolTip.SetToolTip($btnMainColl, (T 'btn_coll_tip'))
+$mainToolTip.SetToolTip($btnMainFrames, (T 'bulk_frames_tip'))
 $mainToolTip.SetToolTip($btnMainLibs, (T 'btn_libs_tip'))
 $mainToolTip.SetToolTip($btnMainLibsUpd, (T 'btn_libs_upd_tip'))
 $mainToolTip.SetToolTip($btnMainLibsRst, (T 'btn_libs_rst_tip'))
@@ -18881,7 +20659,7 @@ function Paint-MainModeIcon {
         $cx = [single]($w / 2.0); $cy = [single]($h / 2.0)
         if ($kind -eq 'emu') {
             $done = $false
-            try { $done = [bool](Draw-EmuGlyphPixel $g $w $h $col 30) } catch { $done = $false }
+            try { $done = [bool](Draw-EmuGlyphPixel $g $w $h $col 22) } catch { $done = $false }
             if (-not $done) {
                 $pen = New-Object System.Drawing.Pen($col, 1.6)
                 $pen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
@@ -18894,7 +20672,7 @@ function Paint-MainModeIcon {
             }
         } elseif ($kind -eq 'wrap') {
             $side = [Math]::Min($w, $h)
-            $dia = [int][Math]::Floor($side * 0.42)
+            $dia = [int][Math]::Floor($side * 0.30)   # было 0.42: значок врапперов выбивался размером на фоне остальных (~20-22 px)
             # Чётность диаметра и рамки совпадает с чётностью кнопки: кружок и рамка встают на целые пиксели строго по центру.
             if (($dia % 2) -ne ($w % 2)) { $dia-- }
             if ($dia -lt 9) { $dia = 9 + ((9 + $w) % 2) }
@@ -19942,26 +21720,86 @@ try {
 $pnlBatchActions.Controls.Add($btnApplyColl)
 $btnApplyColl.Add_Click({
     try {
-        if ($script:mainCollBusy -or $script:moveInProgress -or $script:batchInProgress -or $script:smartBatchActive) { return }
+        if ($script:mainCollBusy -or $script:mainCollEditorBusy -or $script:moveInProgress -or $script:batchInProgress -or $script:smartBatchActive) { return }
         Move-FocusToSink $btnApplyColl
-        $existing = @((Get-MainCollTargets).Existing)
-        if ($existing.Count -eq 0) { return }
-        $snap = Read-SteamCollectionsSnapshot
-        $changes = @{}
-        foreach ($k in @($script:mainCollPending.Keys)) { $changes[[string]$k] = [string]$script:mainCollPending[$k] }
         $btnApplyColl.Enabled = $false
-        try { Invoke-MainCollApplyExisting $snap $existing $changes } finally { $btnApplyColl.Enabled = $true }
-        if ($script:mainCollApplyOk) {
-            $script:mainCollPending = @{}
-            $script:mainCollOnlyLibrary = $false
-            # Список коллекций закрываем, отметки с игр снимаем.
-            try { if ($null -ne $script:mainCollMenuCtl) { $script:mainCollMenuCtl.Close() } } catch {}
-            try { $global:checkedC.Clear(); $global:checkedD.Clear(); Refresh-Panels } catch {}
+        try {
+            # 1) Накопленные создания/удаления коллекций; не записались — остальное не трогаем, очередь остаётся для повтора.
+            $structOk = $true
+            if ((Get-MainCollStructCount) -gt 0) {
+                Invoke-MainCollStructApply
+                $structOk = [bool]$script:mainCollStructApplyOk
+            }
+            # 2) Накопленный состав коллекций у уже добавленных игр.
+            if ($structOk -and @($script:mainCollPending.Keys).Count -gt 0) {
+                $existing = @((Get-MainCollTargets).Existing)
+                if ($existing.Count -gt 0) {
+                    $snap = Read-SteamCollectionsSnapshot
+                    $changes = @{}
+                    foreach ($k in @($script:mainCollPending.Keys)) { $changes[[string]$k] = [string]$script:mainCollPending[$k] }
+                    Invoke-MainCollApplyExisting $snap $existing $changes
+                    if ($script:mainCollApplyOk) {
+                        $script:mainCollPending = @{}
+                        $script:mainCollOnlyLibrary = $false
+                        # Список коллекций закрываем, отметки с игр снимаем.
+                        try { if ($null -ne $script:mainCollMenuCtl) { $script:mainCollMenuCtl.Close() } } catch {}
+                        try { $global:checkedC.Clear(); $global:checkedD.Clear(); Refresh-Panels } catch {}
+                    }
+                }
+            }
             Update-MainCollButtonLook
-        }
+        } finally { $btnApplyColl.Enabled = $true }
     } catch {
         try { Write-LauncherLog ('mainCollections apply: ' + $_.Exception.Message + ' | ' + [string]$_.ScriptStackTrace) } catch {}
     }
+    try { Update-MainLibraryButtonState } catch {}
+})
+
+# «Сменить рамки (N)» — на том же месте. Появляется, когда в меню кнопки «Рамки обложек» выбран вариант (см. Set-MainFramesPending / Update-MainLibraryButtonState).
+$btnApplyFrames = New-Object System.Windows.Forms.Button
+$btnApplyFrames.Tag = ''
+$btnApplyFrames.Text = ''
+$btnApplyFrames.Location = New-Object System.Drawing.Point(260, 0)
+$btnApplyFrames.Size = New-Object System.Drawing.Size(520, 42)
+$btnApplyFrames.FlatStyle = "Flat"
+$btnApplyFrames.FlatAppearance.BorderColor = $steamUi.Accent2
+$btnApplyFrames.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(35,78,106)
+$btnApplyFrames.BackColor = [System.Drawing.Color]::FromArgb(25,55,75)
+$btnApplyFrames.ForeColor = $steamUi.Text
+$btnApplyFrames.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 10.5)
+$btnApplyFrames.Image = $null
+$btnApplyFrames.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
+$btnApplyFrames.Cursor = [System.Windows.Forms.Cursors]::Hand
+$btnApplyFrames.TabStop = $false
+$btnApplyFrames.Visible = $false
+# Значок рамок (рамка с картинкой внутри, как на кнопке «Рамки обложек»), 20x20.
+$script:framesButtonIcon = New-Object System.Drawing.Bitmap(20, 20)
+$framesIconG = [System.Drawing.Graphics]::FromImage($script:framesButtonIcon)
+try {
+    $framesIconPn = New-Object System.Drawing.Pen($steamUi.Text, 2)
+    try {
+        $framesIconG.DrawRectangle($framesIconPn, 2, 1, 15, 17)
+        $framesIconG.DrawRectangle($framesIconPn, 6, 5, 7, 9)
+    } finally { $framesIconPn.Dispose() }
+} finally { $framesIconG.Dispose() }
+$pnlBatchActions.Controls.Add($btnApplyFrames)
+$btnApplyFrames.Add_Click({
+    try {
+        if ($script:moveInProgress -or $script:batchInProgress -or $script:smartBatchActive) { return }
+        Move-FocusToSink $btnApplyFrames
+        $selA = [string]$script:mainFramesPending
+        if ($selA -eq '') { return }
+        $tgA = @(Get-MainFramesTargets)
+        if ($tgA.Count -eq 0) { try { $labelHeader.Text = (T 'bulk_frames_none') } catch {}; return }
+        # После применения выбор игр снимается (как после других массовых операций).
+        $doneA = { try { $global:checkedC.Clear(); $global:checkedD.Clear(); Refresh-Panels } catch {} }
+        $script:mainFramesPending = ''
+        Update-MainFramesButtonLook
+        Invoke-BulkCoverFrames $tgA $selA $form $doneA
+    } catch {
+        try { Write-LauncherLog ('mainFrames apply: ' + $_.Exception.Message + ' | ' + [string]$_.ScriptStackTrace) } catch {}
+    }
+    try { Update-MainFramesButtonLook } catch {}
     try { Update-MainLibraryButtonState } catch {}
 })
 
@@ -20112,6 +21950,7 @@ $pnlBatchActions.Add_Resize({
         $btnSteamLibrary.Left = [int](($pnlBatchActions.ClientSize.Width - $btnSteamLibrary.Width) / 2)
         $btnSwapEmuMain.Left = [int](($pnlBatchActions.ClientSize.Width - $btnSwapEmuMain.Width) / 2)
         $btnApplyColl.Left = [int](($pnlBatchActions.ClientSize.Width - $btnApplyColl.Width) / 2)
+        $btnApplyFrames.Left = [int](($pnlBatchActions.ClientSize.Width - $btnApplyFrames.Width) / 2)
         $btnApplyLibs.Left = [int](($pnlBatchActions.ClientSize.Width - $btnApplyLibs.Width) / 2)
         $btnApplySaves.Left = [int](($pnlBatchActions.ClientSize.Width - $btnApplySaves.Width) / 2)
         $btnSettings.Left = $pnlBatchActions.ClientSize.Width - $btnSettings.Width
@@ -20160,7 +21999,7 @@ function Save-Configuration {
         try {
             if ($global:emulatorProfiles -and @($global:emulatorProfiles).Count -gt 0) {
                 $profilesForJson = @($global:emulatorProfiles | ForEach-Object {
-                    @{ Id = [string]$_.Id; Name = [string]$_.Name; ExePath = [string]$_.ExePath; Args = [string]$_.Args; Extensions = [string]$_.Extensions; Core = [string]$_.Core; ExtractArchives = [bool]$_.ExtractArchives; MultiDisc = [bool](Test-EmulatorMultiDisc $_) }
+                    @{ Id = [string]$_.Id; Name = [string]$_.Name; ExePath = [string]$_.ExePath; Args = [string]$_.Args; Extensions = [string]$_.Extensions; Core = [string]$_.Core; ExtractArchives = [bool]$_.ExtractArchives; MultiDisc = [bool](Test-EmulatorMultiDisc $_); FrameKit = [string]$_.FrameKit }
                 })
                 $configData += "emulatorProfiles=$((ConvertTo-Json $profilesForJson -Compress -Depth 4))"
             }
@@ -20175,11 +22014,19 @@ function Save-Configuration {
         try {
             if ($global:launchWrappers -and @($global:launchWrappers).Count -gt 0) {
                 $wrapForJson = @($global:launchWrappers | ForEach-Object {
-                    @{ Id = [string]$_.Id; Name = [string]$_.Name; ExePath = [string]$_.ExePath; Args = [string]$_.Args }
+                    @{ Id = [string]$_.Id; Name = [string]$_.Name; ExePath = [string]$_.ExePath; Args = [string]$_.Args; FrameKit = [string]$_.FrameKit }
                 })
                 $configData += "launchWrappers=$((ConvertTo-Json $wrapForJson -Compress -Depth 4))"
             }
         } catch { Write-ConfigLog ("Не удалось сериализовать врапперы: " + $_.Exception.Message) }
+
+        try {
+            $lfkOut = [ordered]@{}
+            foreach ($lk in @($global:launcherFrameKits.Keys | Sort-Object)) {
+                if (-not [string]::IsNullOrWhiteSpace([string]$global:launcherFrameKits[$lk])) { $lfkOut[[string]$lk] = [string]$global:launcherFrameKits[$lk] }
+            }
+            if ($lfkOut.Count -gt 0) { $configData += "launcherFrameKits=$((ConvertTo-Json $lfkOut -Compress))" }
+        } catch { Write-ConfigLog ("Не удалось сериализовать рамки лончеров: " + $_.Exception.Message) }
 
         # Безопасная запись: сначала во временный файл рядом с config.ini, затем подмена основного.
         # Если запись прервётся (диск, права, antivirus), прежний config.ini остаётся целым.
@@ -21465,6 +23312,8 @@ function Refresh-PanelsCore {
     try { $prevWait = [bool]$form.UseWaitCursor; $form.UseWaitCursor = $true; [System.Windows.Forms.Cursor]::Current = [System.Windows.Forms.Cursors]::WaitCursor; [System.Windows.Forms.Application]::DoEvents() } catch {}
     try {
 
+    try { $listBoxC.SelectedIndex = -1; $listBoxD.SelectedIndex = -1 } catch {}
+    try { $listBoxC.ClearSelected(); $listBoxD.ClearSelected() } catch {}
     $listBoxC.Items.Clear(); $listBoxD.Items.Clear()
     # ГАЛОЧКИ (checkedC/checkedD) больше НЕ чистятся здесь безусловно.
     # Раньше Refresh-Panels вызывался в т.ч. просто при закрытии карточки игры
@@ -22696,7 +24545,7 @@ function Invoke-MainRomEmulatorSwap {
                         $steamExeSwap = [string](Get-ItemProperty -Path 'HKCU:\Software\Valve\Steam' -Name 'SteamExe' -ErrorAction SilentlyContinue).SteamExe
                     }
                     if ([string]::IsNullOrWhiteSpace($steamExeSwap) -or -not (Test-Path -LiteralPath $steamExeSwap)) { $steamExeSwap = 'C:\Program Files (x86)\Steam\steam.exe' }
-                    if (Test-Path -LiteralPath $steamExeSwap) { Start-Process -FilePath $steamExeSwap }
+                    if (Test-Path -LiteralPath $steamExeSwap) { Start-Process -FilePath $steamExeSwap; $script:steamKilledByApp = $false; $script:steamFilesDirty = $false }
                 } catch {}
             }
             try { $owner.UseWaitCursor = $false } catch {}
@@ -22841,7 +24690,7 @@ function Invoke-WrapperShortcutChanges ($plans, $skipped, [string]$doneKey, [str
                     $steamExeSwap = [string](Get-ItemProperty -Path 'HKCU:\Software\Valve\Steam' -Name 'SteamExe' -ErrorAction SilentlyContinue).SteamExe
                 }
                 if ([string]::IsNullOrWhiteSpace($steamExeSwap) -or -not (Test-Path -LiteralPath $steamExeSwap)) { $steamExeSwap = 'C:\Program Files (x86)\Steam\steam.exe' }
-                if (Test-Path -LiteralPath $steamExeSwap) { Start-Process -FilePath $steamExeSwap }
+                if (Test-Path -LiteralPath $steamExeSwap) { Start-Process -FilePath $steamExeSwap; $script:steamKilledByApp = $false; $script:steamFilesDirty = $false }
             } catch {}
         }
         try { $form.UseWaitCursor = $false } catch {}
@@ -23475,7 +25324,7 @@ function Invoke-MainRemoveFromLibrary ($Games = $null, [bool]$DeleteFiles = $fal
                         $steamExeRm = [string](Get-ItemProperty -Path 'HKCU:\Software\Valve\Steam' -Name 'SteamExe' -ErrorAction SilentlyContinue).SteamExe
                     }
                     if ([string]::IsNullOrWhiteSpace($steamExeRm) -or -not (Test-Path -LiteralPath $steamExeRm)) { $steamExeRm = 'C:\Program Files (x86)\Steam\steam.exe' }
-                    if (Test-Path -LiteralPath $steamExeRm) { Start-Process -FilePath $steamExeRm }
+                    if (Test-Path -LiteralPath $steamExeRm) { Start-Process -FilePath $steamExeRm; $script:steamKilledByApp = $false; $script:steamFilesDirty = $false }
                 } catch {}
             }
             try { $form.UseWaitCursor = $false } catch {}
@@ -23770,7 +25619,7 @@ function Invoke-MainRomRevertToExe {
                         $steamExeRv = [string](Get-ItemProperty -Path 'HKCU:\Software\Valve\Steam' -Name 'SteamExe' -ErrorAction SilentlyContinue).SteamExe
                     }
                     if ([string]::IsNullOrWhiteSpace($steamExeRv) -or -not (Test-Path -LiteralPath $steamExeRv)) { $steamExeRv = 'C:\Program Files (x86)\Steam\steam.exe' }
-                    if (Test-Path -LiteralPath $steamExeRv) { Start-Process -FilePath $steamExeRv }
+                    if (Test-Path -LiteralPath $steamExeRv) { Start-Process -FilePath $steamExeRv; $script:steamKilledByApp = $false; $script:steamFilesDirty = $false }
                 } catch {}
             }
             try { $form.UseWaitCursor = $false } catch {}
@@ -23863,7 +25712,7 @@ function Invoke-EmulatorShortcutUpdate ($Plans, $Skipped, $NewProfile, $Owner, $
                         $steamExeUpd = [string](Get-ItemProperty -Path 'HKCU:\Software\Valve\Steam' -Name 'SteamExe' -ErrorAction SilentlyContinue).SteamExe
                     }
                     if ([string]::IsNullOrWhiteSpace($steamExeUpd) -or -not (Test-Path -LiteralPath $steamExeUpd)) { $steamExeUpd = 'C:\Program Files (x86)\Steam\steam.exe' }
-                    if (Test-Path -LiteralPath $steamExeUpd) { Start-Process -FilePath $steamExeUpd }
+                    if (Test-Path -LiteralPath $steamExeUpd) { Start-Process -FilePath $steamExeUpd; $script:steamKilledByApp = $false; $script:steamFilesDirty = $false }
                 } catch {}
             }
             try { $Owner.UseWaitCursor = $false } catch {}
@@ -24173,6 +26022,4775 @@ function Copy-CoverToGridSlot([string]$SrcFile, [string]$GridDir, [string]$BaseN
         } catch {}
     }
     return $dst
+}
+
+# ===================== РАМКИ ОБЛОЖЕК: ХРАНИЛИЩЕ И НАЛОЖЕНИЕ (шаг 1) =====================
+# Рамка - PNG-шаблон (например, с SteamGridDB) с областью под обложку. В хранилище рамка лежит уже
+# "пробитой": область под обложку прозрачная, поэтому наложение одинаково для любых шаблонов:
+# обложка вписывается в область (с обрезкой по краям) и поверх неё рисуется рамка.
+# Хранилище: %AppData%\Steam Commander\Frames\index.json + <id>.png, готовые обложки - в Frames\cache.
+# На этом шаге функции только готовятся; в сохранение обложек они пока не подключены.
+
+function Get-FramesDir {
+    $dir = Join-Path $global:appDataDir 'Frames'
+    if (-not (Test-Path -LiteralPath $dir -PathType Container)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+    return $dir
+}
+
+function Get-FramesCacheDir {
+    $dir = Join-Path (Get-FramesDir) 'cache'
+    if (-not (Test-Path -LiteralPath $dir -PathType Container)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+    return $dir
+}
+
+# Список рамок (массив объектов: id, name, platform, file, width, height, x, y, w, h, auto, added).
+function Read-FramesIndex {
+    $p = Join-Path (Get-FramesDir) 'index.json'
+    $list = New-Object System.Collections.ArrayList
+    if (-not [System.IO.File]::Exists($p)) { return @() }
+    try {
+        $raw = [System.IO.File]::ReadAllText($p, [System.Text.Encoding]::UTF8)
+        if ([string]::IsNullOrWhiteSpace($raw)) { return @() }
+        $parsed = $raw | ConvertFrom-Json -ErrorAction Stop
+        foreach ($e in @($parsed)) {
+            if ($null -ne $e -and -not [string]::IsNullOrWhiteSpace([string]$e.id)) { [void]$list.Add($e) }
+        }
+    } catch {}
+    return @($list.ToArray())
+}
+
+function Save-FramesIndex($Items) {
+    $p = Join-Path (Get-FramesDir) 'index.json'
+    $tmp = $p + '.tmp'
+    $json = ConvertTo-Json -InputObject @($Items) -Depth 4
+    [System.IO.File]::WriteAllText($tmp, $json, (New-Object System.Text.UTF8Encoding($false)))
+    Move-Item -LiteralPath $tmp -Destination $p -Force
+}
+
+function Get-CoverFrame([string]$Id) {
+    if ([string]::IsNullOrWhiteSpace($Id)) { return $null }
+    foreach ($f in (Read-FramesIndex)) { if ([string]$f.id -eq $Id) { return $f } }
+    return $null
+}
+
+# Режим «Вписать» рамки: $true - обложка вписывается в область под обложку, $false - занимает весь холст.
+function Get-CoverFrameFit([string]$Id) {
+    try { $fr = Get-CoverFrame $Id; if ($null -ne $fr) { return [bool]$fr.fit } } catch {}
+    return $false
+}
+
+function Set-CoverFrameFit([string]$Id, [bool]$Fit) {
+    try {
+        $items = @(Read-FramesIndex)
+        foreach ($e in $items) {
+            if ([string]$e.id -eq $Id) {
+                if ($null -ne $e.PSObject.Properties['fit']) { $e.fit = $Fit } else { $e | Add-Member -NotePropertyName fit -NotePropertyValue $Fit }
+            }
+        }
+        Save-FramesIndex $items
+    } catch {}
+}
+
+# Шаблон подгонки обложки внутри рамки (масштаб и смещение, как в окне «Подгонка обложки под рамку» в карточке игры).
+# Хранится в записи рамки (поле adj), применяется ко всем обложкам с этой рамкой, пока в карточке игры не задана своя подгонка.
+function Get-CoverFrameAdj([string]$Id) {
+    try {
+        $fr = Get-CoverFrame $Id
+        if ($null -ne $fr -and $null -ne $fr.PSObject.Properties['adj']) { return (Read-FrameAdjust ([string]$fr.adj)) }
+    } catch {}
+    return $null
+}
+
+function Set-CoverFrameAdj([string]$Id, $Adj) {
+    try {
+        $txt = ''
+        try { $txt = [string](Format-FrameAdjust $Adj) } catch {}
+        $items = @(Read-FramesIndex)
+        foreach ($e in $items) {
+            if ([string]$e.id -eq $Id) {
+                if ($null -ne $e.PSObject.Properties['adj']) { $e.adj = $txt } else { $e | Add-Member -NotePropertyName adj -NotePropertyValue $txt }
+            }
+        }
+        Save-FramesIndex $items
+    } catch {}
+}
+
+# Меняет область под обложку у сохранённой рамки: новые x/y/w/h пишутся в индекс, а в самом PNG эта область
+# дополнительно делается прозрачной (уже прозрачное и нарисованное вокруг не трогается, поэтому уменьшенная область
+# оставляет прозрачный зазор). Кеш готовых превью рамки сбрасывается. Возвращает $true при успехе.
+function Set-CoverFrameRect([string]$Id, $Rect) {
+    $bmp = $null; $out = $null; $g = $null
+    try {
+        $fr = Get-CoverFrame $Id
+        if ($null -eq $fr -or $null -eq $Rect) { return $false }
+        $dir = Get-FramesDir
+        $path = Join-Path $dir ([string]$fr.file)
+        if (-not [System.IO.File]::Exists($path)) { return $false }
+        if ([int]$Rect.x -eq [int]$fr.x -and [int]$Rect.y -eq [int]$fr.y -and [int]$Rect.w -eq [int]$fr.w -and [int]$Rect.h -eq [int]$fr.h) { return $true }
+        $bmp = Open-FrameBitmapNoLock $path
+        $w = [int]$bmp.Width; $h = [int]$bmp.Height
+        $rx = [Math]::Max(0, [int]$Rect.x); $ry = [Math]::Max(0, [int]$Rect.y)
+        $rw = [Math]::Min([int]$Rect.w, $w - $rx); $rh = [Math]::Min([int]$Rect.h, $h - $ry)
+        if ($rw -lt 8 -or $rh -lt 8) { return $false }
+        $out = New-Object System.Drawing.Bitmap($bmp)
+        $g = [System.Drawing.Graphics]::FromImage($out)
+        $g.CompositingMode = [System.Drawing.Drawing2D.CompositingMode]::SourceCopy
+        $g.FillRectangle([System.Drawing.Brushes]::Transparent, $rx, $ry, $rw, $rh)
+        $g.Dispose(); $g = $null
+        $tmp = $path + '.tmp'
+        $out.Save($tmp, [System.Drawing.Imaging.ImageFormat]::Png)
+        $out.Dispose(); $out = $null
+        $bmp.Dispose(); $bmp = $null
+        Move-Item -LiteralPath $tmp -Destination $path -Force
+        $items = @(Read-FramesIndex)
+        foreach ($e in $items) {
+            if ([string]$e.id -eq $Id) {
+                $e.x = $rx; $e.y = $ry; $e.w = $rw; $e.h = $rh
+                if ($null -ne $e.PSObject.Properties['auto']) { $e.auto = $false } else { $e | Add-Member -NotePropertyName auto -NotePropertyValue $false }
+            }
+        }
+        Save-FramesIndex $items
+        try { Get-ChildItem -LiteralPath (Get-FramesCacheDir) -Filter ($Id + '_*.png') -File -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue } catch {}
+        return $true
+    } catch {
+        try { Write-ConfigLog ('Frames: не удалось изменить область рамки: ' + $_.Exception.Message) } catch {}
+        return $false
+    } finally {
+        if ($null -ne $g) { try { $g.Dispose() } catch {} }
+        if ($null -ne $out) { try { $out.Dispose() } catch {} }
+        if ($null -ne $bmp) { try { $bmp.Dispose() } catch {} }
+    }
+}
+
+# Загрузка картинки без блокировки файла; результат - 32-битный ARGB-битмап с сохранённой прозрачностью.
+function Open-FrameBitmapNoLock([string]$Path) {
+    $bytes = [System.IO.File]::ReadAllBytes($Path)
+    $ms = New-Object System.IO.MemoryStream(, $bytes)
+    try {
+        $tmp = [System.Drawing.Image]::FromStream($ms)
+        try { return (New-Object System.Drawing.Bitmap($tmp)) } finally { $tmp.Dispose() }
+    } finally { $ms.Dispose() }
+}
+
+# Ищет прозрачную область в центре шаблона: идёт от центра влево/вправо и вверх/вниз, пока пиксель прозрачный.
+# Возвращает @{x;y;w;h} или $null (центр непрозрачный или область меньше четверти шаблона).
+function Find-FrameHoleRect($Bmp) {
+    $w = [int]$Bmp.Width; $h = [int]$Bmp.Height
+    if ($w -lt 16 -or $h -lt 16) { return $null }
+    $rect = New-Object System.Drawing.Rectangle(0, 0, $w, $h)
+    $data = $Bmp.LockBits($rect, [System.Drawing.Imaging.ImageLockMode]::ReadOnly, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+    $stride = 0
+    $buf = $null
+    try {
+        $stride = [int]$data.Stride
+        $buf = New-Object byte[] ($stride * $h)
+        [System.Runtime.InteropServices.Marshal]::Copy($data.Scan0, $buf, 0, $buf.Length)
+    } finally { $Bmp.UnlockBits($data) }
+    $thr = 24
+    $cx = [int]($w / 2); $cy = [int]($h / 2)
+    if ($buf[$cy * $stride + $cx * 4 + 3] -gt $thr) { return $null }
+    $l = $cx; while ($l -gt 0 -and $buf[$cy * $stride + ($l - 1) * 4 + 3] -le $thr) { $l-- }
+    $r = $cx; while ($r -lt ($w - 1) -and $buf[$cy * $stride + ($r + 1) * 4 + 3] -le $thr) { $r++ }
+    $t = $cy; while ($t -gt 0 -and $buf[($t - 1) * $stride + $cx * 4 + 3] -le $thr) { $t-- }
+    $b = $cy; while ($b -lt ($h - 1) -and $buf[($b + 1) * $stride + $cx * 4 + 3] -le $thr) { $b++ }
+    $hw = $r - $l + 1; $hh = $b - $t + 1
+    if (($hw * $hh) -lt (($w * $h) / 4)) { return $null }
+    return @{ x = $l; y = $t; w = $hw; h = $hh }
+}
+
+# Запасной поиск области под обложку, когда прозрачной области нет: у многих шаблонов место обложки закрашено
+# однотонной заглушкой (например, серой у Nintendo Switch). Ищется однотонный прямоугольник вокруг нескольких точек
+# вблизи центра: сначала с малым допуском по цвету, затем с большим. Возвращает @{x;y;w;h} или $null (однотонной области
+# не меньше четверти шаблона нет). Область нужно «пробить» в копии шаблона: это делают Add-CoverFrame и превью.
+function Find-FramePlaceholderRect($Bmp) {
+    $w = [int]$Bmp.Width; $h = [int]$Bmp.Height
+    if ($w -lt 16 -or $h -lt 16) { return $null }
+    $rect = New-Object System.Drawing.Rectangle(0, 0, $w, $h)
+    $data = $Bmp.LockBits($rect, [System.Drawing.Imaging.ImageLockMode]::ReadOnly, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+    $stride = 0
+    $buf = $null
+    try {
+        $stride = [int]$data.Stride
+        $buf = New-Object byte[] ($stride * $h)
+        [System.Runtime.InteropServices.Marshal]::Copy($data.Scan0, $buf, 0, $buf.Length)
+    } finally { $Bmp.UnlockBits($data) }
+    $seeds = @(@(0.5, 0.5), @(0.5, 0.42), @(0.5, 0.58), @(0.42, 0.5), @(0.58, 0.5), @(0.35, 0.35), @(0.65, 0.65), @(0.35, 0.65), @(0.65, 0.35))
+    $minArea = ($w * $h) / 4
+    $cb = 0; $cg = 0; $cr = 0; $ca = 0; $tol = 0
+    # Пиксель «того же цвета»: цвет и прозрачность близки к цвету заглушки (она может быть полупрозрачной или с шумом).
+    $same = {
+        param([int]$p)
+        if ($buf[$p + 3] -lt 20) { return $false }
+        if ([Math]::Abs([int]$buf[$p + 3] - $ca) -gt ($tol * 2)) { return $false }
+        if ([Math]::Abs([int]$buf[$p] - $cb) -gt $tol) { return $false }
+        if ([Math]::Abs([int]$buf[$p + 1] - $cg) -gt $tol) { return $false }
+        if ([Math]::Abs([int]$buf[$p + 2] - $cr) -gt $tol) { return $false }
+        return $true
+    }
+    # Сколько шагов от точки в одну сторону пиксели совпадают; одиночные выбивающиеся точки (шум) пропускаются.
+    $run = {
+        param([int]$p0, [int]$step, [int]$maxSteps)
+        $last = 0; $miss = 0
+        for ($i = 1; $i -le $maxSteps; $i++) {
+            if (& $same ($p0 + $i * $step)) { $last = $i; $miss = 0 } else { $miss++; if ($miss -gt 3) { break } }
+        }
+        return $last
+    }
+    foreach ($tol in @(10, 26, 48)) {
+        $best = $null; $bestArea = 0
+        foreach ($sd in $seeds) {
+            $sx = [int]($w * $sd[0]); $sy = [int]($h * $sd[1])
+            $o = $sy * $stride + $sx * 4
+            if ($buf[$o + 3] -lt 20) { continue }
+            $cb = [int]$buf[$o]; $cg = [int]$buf[$o + 1]; $cr = [int]$buf[$o + 2]; $ca = [int]$buf[$o + 3]
+            $l = $sx - (& $run $o -4 $sx)
+            $r = $sx + (& $run $o 4 ($w - 1 - $sx))
+            $t = $sy - (& $run $o (-$stride) $sy)
+            $b = $sy + (& $run $o $stride ($h - 1 - $sy))
+            $rw = $r - $l + 1; $rh = $b - $t + 1
+            $area = $rw * $rh
+            if ($area -lt $minArea -or $area -le $bestArea) { continue }
+            # Проверка по сетке 24x24: внутри найденного прямоугольника однотонными должны быть не меньше 90% точек.
+            $ok = 0; $tot = 0
+            for ($gy = 0; $gy -lt 24; $gy++) {
+                $yy = $t + [int](($rh - 1) * $gy / 23)
+                for ($gx = 0; $gx -lt 24; $gx++) {
+                    $xx = $l + [int](($rw - 1) * $gx / 23)
+                    $tot++
+                    if (& $same ($yy * $stride + $xx * 4)) { $ok++ }
+                }
+            }
+            if ($ok -lt [int]($tot * 0.8)) { continue }
+            $best = @{ x = $l; y = $t; w = $rw; h = $rh }; $bestArea = $area
+        }
+        if ($null -ne $best) { return $best }
+    }
+    return $null
+}
+
+# Сведения о файле-шаблоне для окна выбора рамки: размер и найденная область (или $null - нужно указать вручную).
+function Get-CoverFrameFileInfo([string]$Path) {
+    $bmp = $null
+    try {
+        if ([string]::IsNullOrWhiteSpace($Path) -or -not [System.IO.File]::Exists($Path)) { return $null }
+        $bmp = Open-FrameBitmapNoLock $Path
+        $hole = Find-FrameHoleRect $bmp
+        $guess = $null
+        if ($null -eq $hole) { $guess = Find-FramePlaceholderRect $bmp }
+        return @{ Width = [int]$bmp.Width; Height = [int]$bmp.Height; Hole = $hole; Guess = $guess }
+    } catch { return $null } finally { if ($null -ne $bmp) { try { $bmp.Dispose() } catch {} } }
+}
+
+# Добавляет рамку в хранилище. $Rect (@{x;y;w;h}) - область под обложку; если не задана, ищется прозрачный центр.
+# Если центр шаблона непрозрачный и область не задана, возвращает $null (интерфейс запросит область у пользователя).
+# При заданной области она "пробивается" в копии шаблона, оригинал не меняется.
+function Add-CoverFrame([string]$SrcFile, [string]$Name, [string]$PlatformKey = '', $Rect = $null, [bool]$Fit = $false) {
+    $bmp = $null; $out = $null; $g = $null
+    try {
+        if ([string]::IsNullOrWhiteSpace($SrcFile) -or -not [System.IO.File]::Exists($SrcFile)) { return $null }
+        $fmt = 'unknown'
+        try { $fmt = [string](Get-ImageContainerInfo $SrcFile).Format } catch {}
+        if ($fmt -eq 'gif' -or $fmt -eq 'webp' -or $fmt -eq 'webm' -or $fmt -eq 'apng') { return $null }
+        $bmp = Open-FrameBitmapNoLock $SrcFile
+        $w = [int]$bmp.Width; $h = [int]$bmp.Height
+        $auto = $false
+        if ($null -eq $Rect) {
+            $Rect = Find-FrameHoleRect $bmp
+            $auto = $true
+            if ($null -eq $Rect) {
+                # Прозрачной области нет: пробуем однотонную заглушку на месте обложки (её придётся пробить в копии).
+                $Rect = Find-FramePlaceholderRect $bmp
+                if ($null -eq $Rect) { return $null }
+                $auto = $false
+                try { Write-ConfigLog ('Frames: область под обложку найдена по однотонной заливке ' + $Rect.x + ',' + $Rect.y + ' ' + $Rect.w + 'x' + $Rect.h + ' в шаблоне ' + $w + 'x' + $h) } catch {}
+            }
+        }
+        $rx = [Math]::Max(0, [int]$Rect.x); $ry = [Math]::Max(0, [int]$Rect.y)
+        $rw = [Math]::Min([int]$Rect.w, $w - $rx); $rh = [Math]::Min([int]$Rect.h, $h - $ry)
+        if ($rw -lt 8 -or $rh -lt 8) { return $null }
+        $id = [guid]::NewGuid().ToString('N').Substring(0, 12)
+        $dir = Get-FramesDir
+        $file = $id + '.png'
+        $dst = Join-Path $dir $file
+        if (-not $auto) {
+            # Пробиваем область под обложку: пиксели внутри делаем полностью прозрачными.
+            $out = New-Object System.Drawing.Bitmap($bmp)
+            $g = [System.Drawing.Graphics]::FromImage($out)
+            $g.CompositingMode = [System.Drawing.Drawing2D.CompositingMode]::SourceCopy
+            $g.FillRectangle([System.Drawing.Brushes]::Transparent, $rx, $ry, $rw, $rh)
+            $g.Dispose(); $g = $null
+            $out.Save($dst, [System.Drawing.Imaging.ImageFormat]::Png)
+        } else {
+            $bmp.Save($dst, [System.Drawing.Imaging.ImageFormat]::Png)
+        }
+        $title = [string]$Name
+        if ([string]::IsNullOrWhiteSpace($title)) { $title = [System.IO.Path]::GetFileNameWithoutExtension($SrcFile) }
+        $entry = [pscustomobject]@{
+            id = $id; name = $title; platform = ([string]$PlatformKey).Trim().ToLowerInvariant(); file = $file
+            width = $w; height = $h; x = $rx; y = $ry; w = $rw; h = $rh; auto = $auto; fit = $Fit
+            added = [datetime]::UtcNow.ToString('o')
+        }
+        $items = @(Read-FramesIndex) + @($entry)
+        Save-FramesIndex $items
+        return $entry
+    } catch {
+        try { Write-ConfigLog ('Frames: не удалось добавить рамку: ' + $_.Exception.Message) } catch {}
+        return $null
+    } finally {
+        if ($null -ne $g) { try { $g.Dispose() } catch {} }
+        if ($null -ne $out) { try { $out.Dispose() } catch {} }
+        if ($null -ne $bmp) { try { $bmp.Dispose() } catch {} }
+    }
+}
+
+function Remove-CoverFrame([string]$Id) {
+    try {
+        $fr = Get-CoverFrame $Id
+        if ($null -eq $fr) { return $false }
+        $dir = Get-FramesDir
+        try { Remove-Item -LiteralPath (Join-Path $dir ([string]$fr.file)) -Force -ErrorAction SilentlyContinue } catch {}
+        try { Get-ChildItem -LiteralPath (Get-FramesCacheDir) -Filter ($Id + '_*.png') -File -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue } catch {}
+        Save-FramesIndex @(Read-FramesIndex | Where-Object { [string]$_.id -ne $Id })
+        try {
+            $kits = @(Read-FrameKits); $kch = $false
+            foreach ($kk in $kits) {
+                if ([string]$kk.v -eq $Id) { $kk.v = ''; $kch = $true }
+                if ([string]$kk.h -eq $Id) { $kk.h = ''; $kch = $true }
+            }
+            if ($kch) { Save-FrameKits $kits }
+        } catch {}
+        return $true
+    } catch { return $false }
+}
+
+# Накладывает рамку на обложку и сохраняет PNG в $OutPath. Обложка растягивается на весь холст рамки с обрезкой
+# по краям (без искажения пропорций), рамка рисуется поверх неё целиком.
+# Анимированные обложки не обрабатываются (вернёт $false, остаётся исходный файл).
+# Подгонка обложки под рамку: @{ Zoom; X; Y; Sig }. Zoom - множитель к масштабу «обложка заполняет область» (1 = как раньше),
+# X / Y - смещение центра обложки в долях ширины / высоты области под обложку (0 = по центру), Sig - подпись файла обложки,
+# для которой подгонка сделана (при смене обложки подгонка сбрасывается).
+function Test-FrameAdjustIsDefault($Adj) {
+    try {
+        if ($null -eq $Adj) { return $true }
+        return (([Math]::Abs([double]$Adj.Zoom - 1.0) -lt 0.001) -and ([Math]::Abs([double]$Adj.X) -lt 0.0005) -and ([Math]::Abs([double]$Adj.Y) -lt 0.0005))
+    } catch { return $true }
+}
+
+# Строка вида «1.25;0.01;-0.03» (с точкой, независимо от языка системы) для записи в framed.json и ключа кеша. Пустая - подгонки нет.
+function Format-FrameAdjust($Adj) {
+    try {
+        if (Test-FrameAdjustIsDefault $Adj) { return '' }
+        return [string]::Format([System.Globalization.CultureInfo]::InvariantCulture, '{0:0.####};{1:0.####};{2:0.####}', [double]$Adj.Zoom, [double]$Adj.X, [double]$Adj.Y)
+    } catch { return '' }
+}
+
+function Read-FrameAdjust([string]$Text) {
+    try {
+        if ([string]::IsNullOrWhiteSpace($Text)) { return $null }
+        $p = $Text.Split(';')
+        if ($p.Count -lt 3) { return $null }
+        $ci = [System.Globalization.CultureInfo]::InvariantCulture
+        $a = @{ Zoom = [double]::Parse($p[0], $ci); X = [double]::Parse($p[1], $ci); Y = [double]::Parse($p[2], $ci); Sig = '' }
+        if (Test-FrameAdjustIsDefault $a) { return $null }
+        return $a
+    } catch { return $null }
+}
+
+function Get-FrameFileSig([string]$Path) {
+    try { $fi = New-Object System.IO.FileInfo($Path); return ([string]$fi.Length + '|' + [string]$fi.LastWriteTimeUtc.Ticks) } catch { return '' }
+}
+
+function New-FramedCover([string]$CoverPath, $Frame, [string]$OutPath, $Adj = $null) {
+    $cov = $null; $fr = $null; $canvas = $null; $g = $null; $ia = $null
+    try {
+        if ($null -eq $Frame -or -not [System.IO.File]::Exists($CoverPath)) { return $false }
+        # Своей подгонки нет - берём шаблон рамки (положение обложки, заданное в окне комплекта).
+        if (Test-FrameAdjustIsDefault $Adj) { try { if ($null -ne $Frame.PSObject.Properties['adj'] -and [string]$Frame.adj -ne '') { $Adj = Read-FrameAdjust ([string]$Frame.adj) } } catch {} }
+        $info = Get-ImageContainerInfo $CoverPath
+        if ([bool]$info.Animated -or [string]$info.Format -eq 'webm') { return $false }
+        $framePath = Join-Path (Get-FramesDir) ([string]$Frame.file)
+        if (-not [System.IO.File]::Exists($framePath)) { return $false }
+        $cov = Open-FrameBitmapNoLock $CoverPath
+        $fr = Open-FrameBitmapNoLock $framePath
+        $cw = [int]$fr.Width; $ch = [int]$fr.Height
+        $canvas = New-Object System.Drawing.Bitmap($cw, $ch, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+        $g = [System.Drawing.Graphics]::FromImage($canvas)
+        $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+        $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
+        $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+        $g.Clear([System.Drawing.Color]::Transparent)
+        if ([bool]$Frame.fit) {
+            # Режим «Вписать»: обложка вписывается в область под обложку с запасом 2 пикселя (в пределах холста).
+            $pad = 2
+            $dx = [Math]::Max(0, [int]$Frame.x - $pad); $dy = [Math]::Max(0, [int]$Frame.y - $pad)
+            $dr = [Math]::Min($cw, [int]$Frame.x + [int]$Frame.w + $pad); $db = [Math]::Min($ch, [int]$Frame.y + [int]$Frame.h + $pad)
+            $dw = $dr - $dx; $dh = $db - $dy
+            if ($dw -lt 8 -or $dh -lt 8) { return $false }
+        } else {
+            # Обычный режим: обложка занимает весь холст рамки, рамка накладывается поверх целиком.
+            $dx = 0; $dy = 0; $dw = $cw; $dh = $ch
+        }
+        if ($dw -lt 8 -or $dh -lt 8) { return $false }
+        # Вписываем с обрезкой: берём из обложки центральную часть нужных пропорций.
+        $sw = [double]$cov.Width; $sh = [double]$cov.Height
+        $scale = [Math]::Max($dw / $sw, $dh / $sh)
+        $srcW = $dw / $scale; $srcH = $dh / $scale
+        $srcX = ($sw - $srcW) / 2.0; $srcY = ($sh - $srcH) / 2.0
+        $ia = New-Object System.Drawing.Imaging.ImageAttributes
+        $ia.SetWrapMode([System.Drawing.Drawing2D.WrapMode]::TileFlipXY)
+        $dest = New-Object System.Drawing.Rectangle($dx, $dy, $dw, $dh)
+        if (Test-FrameAdjustIsDefault $Adj) {
+            $g.DrawImage($cov, $dest, [single]$srcX, [single]$srcY, [single]$srcW, [single]$srcH, [System.Drawing.GraphicsUnit]::Pixel, $ia)
+        } else {
+            # Ручная подгонка: вся обложка рисуется с масштабом $scale * Zoom вокруг центра, смещённого на X / Y долей области;
+            # за пределы области под обложку она не выходит (обрезается).
+            $zm = [Math]::Max(0.05, [double]$Adj.Zoom)
+            $wC = $sw * $scale * $zm; $hC = $sh * $scale * $zm
+            $ccx = $dx + $dw / 2.0 + [double]$Adj.X * $dw
+            $ccy = $dy + $dh / 2.0 + [double]$Adj.Y * $dh
+            $g.SetClip($dest)
+            $destC = New-Object System.Drawing.Rectangle([int][Math]::Round($ccx - $wC / 2.0), [int][Math]::Round($ccy - $hC / 2.0), [int][Math]::Max(1, [Math]::Round($wC)), [int][Math]::Max(1, [Math]::Round($hC)))
+            $g.DrawImage($cov, $destC, [single]0, [single]0, [single]$sw, [single]$sh, [System.Drawing.GraphicsUnit]::Pixel, $ia)
+            $g.ResetClip()
+        }
+        $g.DrawImage($fr, 0, 0, $cw, $ch)
+        $g.Dispose(); $g = $null
+        $tmp = $OutPath + '.tmp'
+        $canvas.Save($tmp, [System.Drawing.Imaging.ImageFormat]::Png)
+        Move-Item -LiteralPath $tmp -Destination $OutPath -Force
+        return $true
+    } catch {
+        try { Write-ConfigLog ('Frames: не удалось наложить рамку: ' + $_.Exception.Message) } catch {}
+        return $false
+    } finally {
+        if ($null -ne $ia) { try { $ia.Dispose() } catch {} }
+        if ($null -ne $g) { try { $g.Dispose() } catch {} }
+        if ($null -ne $canvas) { try { $canvas.Dispose() } catch {} }
+        if ($null -ne $fr) { try { $fr.Dispose() } catch {} }
+        if ($null -ne $cov) { try { $cov.Dispose() } catch {} }
+    }
+}
+
+# Путь к обложке с рамкой. Результат кешируется (ключ: рамка + путь, размер и время файла обложки);
+# при смене рамки или обложки собирается заново. Возвращает $null, если рамку наложить нельзя
+# (рамка не найдена, анимированная обложка и т.п.) - тогда вызывающий код использует исходный файл.
+function Get-FramedCoverFile([string]$CoverPath, [string]$FrameId, $Adj = $null) {
+    try {
+        $fr = Get-CoverFrame $FrameId
+        if ($null -eq $fr -or -not [System.IO.File]::Exists($CoverPath)) { return $null }
+        if (Test-FrameAdjustIsDefault $Adj) { try { if ($null -ne $fr.PSObject.Properties['adj'] -and [string]$fr.adj -ne '') { $Adj = Read-FrameAdjust ([string]$fr.adj) } } catch {} }
+        $ci = New-Object System.IO.FileInfo($CoverPath)
+        $fi = New-Object System.IO.FileInfo((Join-Path (Get-FramesDir) ([string]$fr.file)))
+        $key = ($CoverPath.ToLowerInvariant() + '|' + $ci.Length + '|' + $ci.LastWriteTimeUtc.Ticks + '|' + $fi.Length + '|' + $fi.LastWriteTimeUtc.Ticks + '|' + [string]$fr.x + ',' + [string]$fr.y + ',' + [string]$fr.w + ',' + [string]$fr.h + '|fit' + [string][bool]$fr.fit + '|adj' + (Format-FrameAdjust $Adj))
+        $sha = [System.Security.Cryptography.SHA1]::Create()
+        try { $hash = ([System.BitConverter]::ToString($sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($key))) -replace '-', '').Substring(0, 16).ToLowerInvariant() } finally { $sha.Dispose() }
+        $out = Join-Path (Get-FramesCacheDir) ($FrameId + '_' + $hash + '.png')
+        if ([System.IO.File]::Exists($out) -and (New-Object System.IO.FileInfo($out)).Length -gt 0) {
+            return $out
+        }
+        $okNew = [bool](New-FramedCover $CoverPath $fr $out $Adj)
+        if ($okNew) { return $out }
+        return $null
+    } catch { return $null }
+}
+
+# ===================== РАМКИ ОБЛОЖЕК: ПРИВЯЗКА И ПОДСТАНОВКА ПРИ СОХРАНЕНИИ (шаг 3) =====================
+# Привязка: ключ -> id рамки. Ключи: 'emu:<Id профиля>', 'wrap:<Id враппера>', 'launcher:<epic|gog|ubisoft|ea|battlenet|xbox>'.
+# Хранится в Frames\bindings.json. При сохранении вертикальной обложки ярлыка (config\grid\<id>p) рамка накладывается
+# автоматически. Исходная обложка остаётся в Frames\orig, а в Frames\framed.json запоминается размер записанного файла:
+# при открытии карточки вместо готового файла с рамкой загружается исходная обложка, иначе рамка наложилась бы второй раз.
+
+function Get-FramesOrigDir {
+    $dir = Join-Path (Get-FramesDir) 'orig'
+    if (-not (Test-Path -LiteralPath $dir -PathType Container)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+    return $dir
+}
+
+# Записи о картинках, записанных в grid уже с рамкой: id ярлыка -> @{ frame; len; orig }.
+function Read-FramedCoverRecords {
+    $map = @{}
+    try {
+        $p = Join-Path (Get-FramesDir) 'framed.json'
+        if (-not [System.IO.File]::Exists($p)) { return $map }
+        $raw = [System.IO.File]::ReadAllText($p, [System.Text.Encoding]::UTF8)
+        if ([string]::IsNullOrWhiteSpace($raw)) { return $map }
+        $obj = $raw | ConvertFrom-Json -ErrorAction Stop
+        foreach ($pr in $obj.PSObject.Properties) { $map[[string]$pr.Name] = $pr.Value }
+    } catch {}
+    return $map
+}
+
+function Save-FramedCoverRecords($Map) {
+    $p = Join-Path (Get-FramesDir) 'framed.json'
+    $tmp = $p + '.tmp'
+    $o = [ordered]@{}
+    foreach ($k in @($Map.Keys | Sort-Object)) {
+        $v = $Map[$k]
+        $o[[string]$k] = [ordered]@{ frame = [string]$v.frame; len = [int64]$v.len; hash = [string]$v.hash; orig = [string]$v.orig; adj = [string]$v.adj }
+    }
+    $json = ConvertTo-Json -InputObject $o -Depth 4
+    [System.IO.File]::WriteAllText($tmp, $json, (New-Object System.Text.UTF8Encoding($false)))
+    Move-Item -LiteralPath $tmp -Destination $p -Force
+}
+
+function Clear-FramedCoverRecord([string]$ShortcutId) {
+    try {
+        if ([string]::IsNullOrWhiteSpace($ShortcutId)) { return }
+        $m = Read-FramedCoverRecords
+        if (-not $m.ContainsKey($ShortcutId)) { return }
+        $r = $m[$ShortcutId]
+        try { Remove-Item -LiteralPath (Join-Path (Get-FramesOrigDir) ([string]$r.orig)) -Force -ErrorAction SilentlyContinue } catch {}
+        $m.Remove($ShortcutId)
+        Save-FramedCoverRecords $m
+    } catch {}
+}
+
+# Id рамки для ярлыка по назначениям (эмулятор, враппер, лончер, коллекция). Назначения подключаются на следующем этапе.
+function Get-CoverFrameIdForShortcut([string]$Exe, [string]$LaunchOptions, [string]$StartDir = '', [string]$Name = '', [string]$LauncherId = '', [bool]$NewGame = $false) {
+    # Лончер, значок которого нужно нарисовать на обложках этой игры (вариант «Значок»); сбрасывается при каждом вызове,
+    # забирает его Copy-TempCoversDirectlyToGrid.
+    $script:CoverBadgeLauncherId = ''
+    $script:CoverFrameHIdOverride = $null
+    # $NewGame: новая игра, добавляемая без карточки (кнопка «Добавить новые игры в библиотеку», тихое добавление ROM). Если в главном окне
+    # кнопкой «Рамки обложек» выбрана рамка для новых игр, она главнее привязок эмулятора / враппера. Игры лончеров (окно библиотеки)
+    # не затрагиваются: у них своя рамка на вкладке лончера. В карточке выбор подставляется прямо в панели рамок (см. карточку игры).
+    if ($NewGame -and [string]::IsNullOrWhiteSpace($LauncherId)) {
+        try {
+            $mfd = [string](Get-MainFramesDefaultValid)
+            if ($mfd -ne '') {
+                if ($mfd -eq 'none') { $script:CoverFrameHIdOverride = ''; return '' }
+                if ($mfd -eq 'badge') {
+                    # Значок эмулятора / враппера на обложках; у игры без владельца значка ничего не рисуется.
+                    $script:CoverFrameHIdOverride = ''
+                    $mbo = [string](Get-MainFramesBadgeOwner $Exe $LaunchOptions)
+                    if ($mbo -ne '') { $script:CoverBadgeLauncherId = $mbo }
+                    return ''
+                }
+                $script:CoverFrameHIdOverride = [string](Get-EditorFrameIdForSel $mfd 'h')
+                return [string](Get-EditorFrameIdForSel $mfd 'v')
+            }
+        } catch { $script:CoverFrameHIdOverride = $null }
+    }
+    # Рамка из профиля эмулятора («Рамки» в окне «Изменить эмулятор»): ярлык ROM запускает exe эмулятора напрямую
+    # (или через SCLauncher с путём к эмулятору в параметрах). Возвращает id вертикальной рамки набора или ''.
+    try {
+        $kitId = [string](Get-EmulatorFrameKitForShortcut $Exe $LaunchOptions)
+        # Не эмулятор - возможно, игра запущена через враппер (в Exe программа-враппер, игра в параметрах по шаблону враппера).
+        $ownerKit = [string]$script:frameKitOwnerId
+        if ([string]::IsNullOrWhiteSpace($kitId)) { $script:frameKitOwnerId = ''; $kitId = [string](Get-WrapperFrameKitForShortcut $Exe $LaunchOptions); $ownerKit = [string]$script:frameKitOwnerId }
+        # Вариант «Значок» у эмулятора/враппера: на обложки дорисовывается значок из его exe (как у лончеров).
+        if ($kitId -eq $script:LauncherBadgeKitId -and -not [string]::IsNullOrWhiteSpace($ownerKit)) { $script:CoverBadgeLauncherId = $ownerKit; return '' }
+        # Новая игра лончера (Epic, GOG и др.): набор из вкладки лончера в библиотеке. Лончер передаёт вызывающий код.
+        if ([string]::IsNullOrWhiteSpace($kitId) -and -not [string]::IsNullOrWhiteSpace($LauncherId)) {
+            $kitId = [string](Get-LauncherFrameKit $LauncherId)
+            # Вариант «Значок» вместо рамки: значок лончера рисуется на обложках при записи в grid (Copy-TempCoversDirectlyToGrid).
+            if ($kitId -eq $script:LauncherBadgeKitId) { $script:CoverBadgeLauncherId = $LauncherId; return '' }
+        }
+        if ([string]::IsNullOrWhiteSpace($kitId)) { return '' }
+        return [string](Get-EditorFrameIdForSel $kitId 'v')
+    } catch { return '' }
+}
+
+# Лончер игры по параметрам запуска ярлыка SCLauncher (--uri "..."): нужен, чтобы в карточке УЖЕ добавленной игры тоже был пункт «Значок».
+# Возвращает id лончера (epic, gog, ubisoft, ea, xbox, battlenet) или ''.
+function Get-LauncherIdFromLaunchOptions([string]$LaunchOptions) {
+    try {
+        $m = [regex]::Match([string]$LaunchOptions, '--uri\s+"([^"]+)"', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+        if (-not $m.Success) { return '' }
+        $u = $m.Groups[1].Value.Trim()
+        if ($u -match '^(?i)com\.epicgames\.launcher://') { return 'epic' }
+        if ($u -match '^(?i)uplay://') { return 'ubisoft' }
+        if ($u -match '^(?i)origin2://') { return 'ea' }
+        if ($u -match '^(?i)shell:AppsFolder\\') { return 'xbox' }
+        if ($u -match '^(?i)gog:') { return 'gog' }
+        if ($u -match '^(?i)bnet:') { return 'battlenet' }
+    } catch {}
+    return ''
+}
+
+# Особое значение набора рамок лончера: вместо рамки на обложки новых игр дорисовывается значок лончера
+# (вертикальная - справа сверху, как плитки в библиотеке; горизонтальная - слева сверху).
+$script:LauncherBadgeKitId = 'badge'
+$script:CoverBadgeLauncherId = ''
+# Горизонтальная рамка, выбранная в главном окне для новых игр: Get-CoverFrameIdForShortcut кладёт, Copy-TempCoversDirectlyToGrid забирает.
+$script:CoverFrameHIdOverride = $null
+
+# Рисует значок лончера на файле обложки и перезаписывает его (JPEG - качество 95, PNG - как есть).
+# $Kind: 'v' - вертикальная (значок справа сверху), 'h' - горизонтальная (слева сверху). Анимированные обложки не трогает.
+# Метка «на обложке значок лончера»: та же запись в framed.json, что и у рамок (frame = 'badge'), с исходником без значка в Frames\orig.
+# По ней карточка и массовая смена знают, что на обложке значок, и при смене на рамку берут исходник, а не обложку со значком.
+function Set-BadgeCoverRecord([string]$Key, [string]$OrigSrc, [string]$DstFile, [string]$OrigName) {
+    try {
+        if ([string]::IsNullOrWhiteSpace($Key) -or -not [System.IO.File]::Exists($OrigSrc) -or -not [System.IO.File]::Exists($DstFile)) { return }
+        $op = Join-Path (Get-FramesOrigDir) $OrigName
+        if (-not [string]::Equals($OrigSrc, $op, [System.StringComparison]::OrdinalIgnoreCase)) {
+            Copy-Item -LiteralPath $OrigSrc -Destination $op -Force -ErrorAction Stop
+        }
+        $hs = [string](Get-FileHash -LiteralPath $DstFile -Algorithm SHA1).Hash
+        $m = Read-FramedCoverRecords
+        $m[$Key] = @{ frame = 'badge'; len = [int64](New-Object System.IO.FileInfo($DstFile)).Length; hash = $hs; orig = $OrigName; adj = '' }
+        Save-FramedCoverRecords $m
+    } catch {
+        try { Write-ConfigLog ('Frames: не удалось запомнить значок: ' + $_.Exception.Message) } catch {}
+    }
+}
+
+# Значок для обложки: у лончера - встроенный, у эмулятора/враппера (ключ 'emu:<id>' / 'wrap:<id>') - иконка из их exe.
+# Возвращает новый Bitmap size x size (вызывающий освобождает) или $null.
+function Get-BadgeIconBitmap([string]$Id, [int]$Size) {
+    try {
+        if ($Id -match '^(emu|wrap):(.+)$') {
+            $bKind = $Matches[1]; $bProfId = $Matches[2]
+            $bList = $(if ($bKind -eq 'emu') { @($global:emulatorProfiles) } else { @($global:launchWrappers) })
+            $bExe = ''
+            foreach ($bp in $bList) { if ($null -ne $bp -and [string]$bp.Id -eq $bProfId) { $bExe = ([string]$bp.ExePath).Trim().Trim('"'); break } }
+            if ([string]::IsNullOrWhiteSpace($bExe)) { return $null }
+            $bPng = Get-ExeIconCachePng $bExe
+            if ($null -eq $bPng) { return $null }
+            $bBytes = [System.IO.File]::ReadAllBytes($bPng)
+            $bMs = New-Object System.IO.MemoryStream(, $bBytes)
+            try {
+                $bImg = [System.Drawing.Image]::FromStream($bMs)
+                try {
+                    $bSrc = New-Object System.Drawing.Bitmap($bImg)
+                    try { return (ConvertTo-LibUniformIcon $bSrc $Size) } finally { $bSrc.Dispose() }
+                } finally { $bImg.Dispose() }
+            } finally { $bMs.Dispose() }
+        }
+    } catch { return $null }
+    return (Get-EmbeddedLauncherIconBitmap $Id $Size 0)
+}
+
+function Add-LauncherBadgeToCoverFile([string]$Path, [string]$LauncherId, [string]$Kind) {
+    $src = $null; $canvas = $null; $g = $null; $icon = $null; $ep = $null
+    try {
+        if ([string]::IsNullOrWhiteSpace($Path) -or [string]::IsNullOrWhiteSpace($LauncherId) -or -not [System.IO.File]::Exists($Path)) { return $false }
+        $info = Get-ImageContainerInfo $Path
+        if ([bool]$info.Animated -or [string]$info.Format -eq 'webm') { return $false }
+        $src = Open-FrameBitmapNoLock $Path
+        $w = [int]$src.Width; $h = [int]$src.Height
+        $base = [Math]::Min($w, $h)
+        # Пропорции как у плитки библиотеки (значок 22 px и отступ 6 px на плитке шириной 150 px).
+        $size = [int][Math]::Max(24, [Math]::Round($base * 0.147))
+        $margin = [int][Math]::Max(6, [Math]::Round($base * 0.04))
+        $icon = Get-BadgeIconBitmap $LauncherId $size
+        if ($null -eq $icon) { return $false }
+        $canvas = New-Object System.Drawing.Bitmap($w, $h, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+        $g = [System.Drawing.Graphics]::FromImage($canvas)
+        $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+        $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
+        $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+        $g.Clear([System.Drawing.Color]::Transparent)
+        $g.DrawImage($src, 0, 0, $w, $h)
+        $bx = $margin
+        if ($Kind -eq 'v') { $bx = [Math]::Max(0, $w - $size - $margin) }
+        $g.DrawImage($icon, $bx, $margin, $size, $size)
+        $g.Dispose(); $g = $null
+        $tmp = $Path + '.tmp'
+        $ext = [System.IO.Path]::GetExtension($Path).ToLowerInvariant()
+        if ($ext -eq '.png') {
+            $canvas.Save($tmp, [System.Drawing.Imaging.ImageFormat]::Png)
+        } else {
+            $codec = $null
+            foreach ($c in [System.Drawing.Imaging.ImageCodecInfo]::GetImageEncoders()) { if ($c.MimeType -eq 'image/jpeg') { $codec = $c; break } }
+            if ($null -eq $codec) { $canvas.Save($tmp, [System.Drawing.Imaging.ImageFormat]::Jpeg) }
+            else {
+                $ep = New-Object System.Drawing.Imaging.EncoderParameters(1)
+                $ep.Param[0] = New-Object System.Drawing.Imaging.EncoderParameter([System.Drawing.Imaging.Encoder]::Quality, [long]95)
+                $canvas.Save($tmp, $codec, $ep)
+            }
+        }
+        Move-Item -LiteralPath $tmp -Destination $Path -Force
+        return $true
+    } catch {
+        try { Write-ConfigLog ('Frames: не удалось нарисовать значок лончера на обложке: ' + $_.Exception.Message) } catch {}
+        return $false
+    } finally {
+        if ($null -ne $ep) { try { $ep.Dispose() } catch {} }
+        if ($null -ne $g) { try { $g.Dispose() } catch {} }
+        if ($null -ne $canvas) { try { $canvas.Dispose() } catch {} }
+        if ($null -ne $icon) { try { $icon.Dispose() } catch {} }
+        if ($null -ne $src) { try { $src.Dispose() } catch {} }
+    }
+}
+
+# Набор рамок для лончера (epic, gog, ubisoft, ea, battlenet, xbox) из вкладки лончера в библиотеке; '' - без рамки.
+function Get-LauncherFrameKit([string]$LauncherId) {
+    try {
+        if ([string]::IsNullOrWhiteSpace($LauncherId) -or $null -eq $global:launcherFrameKits) { return '' }
+        if ($global:launcherFrameKits.ContainsKey($LauncherId)) { return [string]$global:launcherFrameKits[$LauncherId] }
+    } catch {}
+    return ''
+}
+
+function Set-LauncherFrameKit([string]$LauncherId, [string]$KitId) {
+    try {
+        if ([string]::IsNullOrWhiteSpace($LauncherId)) { return }
+        if ($null -eq $global:launcherFrameKits) { $global:launcherFrameKits = @{} }
+        if ([string]::IsNullOrWhiteSpace($KitId)) { [void]$global:launcherFrameKits.Remove($LauncherId) }
+        else { $global:launcherFrameKits[$LauncherId] = $KitId }
+        Save-Configuration
+    } catch {}
+}
+
+# Id набора рамок из профиля враппера, через который запускается ярлык (по exe враппера и шаблону аргументов), иначе ''.
+function Get-WrapperFrameKitForShortcut([string]$Exe, [string]$LaunchOptions) {
+    try {
+        if (@($global:launchWrappers).Count -eq 0) { return '' }
+        $lw = Find-LaunchWrapperForShortcut $Exe $LaunchOptions
+        if ($null -eq $lw) { return '' }
+        $script:frameKitOwnerId = 'wrap:' + [string]$lw.Wrapper.Id
+        return [string]$lw.Wrapper.FrameKit
+    } catch { return '' }
+}
+
+# Id набора рамок из профиля эмулятора, которому принадлежит ярлык (по exe или по пути эмулятора в параметрах запуска), иначе ''.
+function Get-EmulatorFrameKitForShortcut([string]$Exe, [string]$LaunchOptions) {
+    $script:frameKitOwnerId = ''
+    try {
+        $exeN = ([string]$Exe).Trim().Trim('"')
+        $launch = [string]$LaunchOptions
+        $byLaunch = ''; $byLaunchOwner = ''
+        foreach ($ep in @($global:emulatorProfiles)) {
+            if ($null -eq $ep) { continue }
+            $kit = ''
+            try { $kit = [string]$ep.FrameKit } catch {}
+            if ([string]::IsNullOrWhiteSpace($kit)) { continue }
+            $epExe = ([string]$ep.ExePath).Trim().Trim('"')
+            if ($epExe -eq '') { continue }
+            if ($exeN -ne '' -and [string]::Equals($exeN, $epExe, [System.StringComparison]::OrdinalIgnoreCase)) { $script:frameKitOwnerId = 'emu:' + [string]$ep.Id; return $kit }
+            if ($byLaunch -eq '' -and $launch -ne '' -and $launch.IndexOf($epExe, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) { $byLaunch = $kit; $byLaunchOwner = 'emu:' + [string]$ep.Id }
+        }
+        $script:frameKitOwnerId = $byLaunchOwner
+        return $byLaunch
+    } catch { return '' }
+}
+
+# Id горизонтальной рамки того же набора, что и вертикальная $VId ('' - вертикальной нет или в наборе нет горизонтальной).
+function Get-CoverFrameHIdForVId([string]$VId) {
+    try {
+        if ([string]::IsNullOrWhiteSpace($VId)) { return '' }
+        foreach ($k in @(Read-FrameKits)) { if ([string]$k.v -eq $VId) { return [string]$k.h } }
+    } catch {}
+    return ''
+}
+
+# Записывает вертикальную обложку ярлыка в grid (<id>p). Если задана рамка и её удалось наложить, пишется PNG с рамкой,
+# а исходник запоминается. Иначе пишется обложка как есть (и старая запись о рамке снимается).
+# Карточка показывает файл из grid (с рамкой). Если в слоте осталась именно наша обложка с рамкой (размер и хеш совпали
+# с записью), вместо неё берётся исходная: рамка не накладывается второй раз, а при снятой привязке пишется без рамки.
+function Copy-VerticalCoverToGridSlot([string]$SrcFile, [string]$GridDir, [string]$ShortcutId, [string]$FrameId = '') {
+    $base = $ShortcutId + 'p'
+    $src = $SrcFile
+    $unfr = Get-UnframedCoverForLoad $ShortcutId $SrcFile
+    # Id ярлыка мог смениться (переименование): запись о рамке лежит под старым ключом, поэтому ищем её по хешу файла.
+    if ($null -eq $unfr) { try { $recFb = Find-EditorFrameRecordForTemp $SrcFile; if ($null -ne $recFb) { $unfr = [string]$recFb.Orig } } catch {} }
+    if ($null -ne $unfr) { $src = $unfr }
+    $framed = $null
+    $adj = $null; try { $adj = Get-EditorFrameAdjustForSave 'v' } catch {}
+    if (-not [string]::IsNullOrWhiteSpace($FrameId)) {
+        try { $framed = Get-FramedCoverFile $src $FrameId $adj } catch { $framed = $null }
+    }
+    if ($null -eq $framed) {
+        $dst0 = Copy-CoverToGridSlot $src $GridDir $base '.jpg'
+        Clear-FramedCoverRecord $ShortcutId
+        return $dst0
+    }
+    # Исходник сохраняется ДО записи в grid: $src может быть самим файлом обложки в grid (массовая смена), и запись обложки с рамкой
+    # затёрла бы его (тот же .png) или удалила (смена расширения), а в Frames\orig попала бы уже готовая обложка с рамкой.
+    $oname = $ShortcutId + 'p.orig'
+    $op = Join-Path (Get-FramesOrigDir) $oname
+    $origSaved = $true
+    try {
+        if (-not [string]::Equals($src, $op, [System.StringComparison]::OrdinalIgnoreCase)) {
+            Copy-Item -LiteralPath $src -Destination $op -Force -ErrorAction Stop
+        }
+    } catch { $origSaved = $false }
+    $dst = Copy-CoverToGridSlot $framed $GridDir $base '.png'
+    try {
+        if (-not $origSaved) { throw 'исходная обложка не сохранена' }
+        $hs = [string](Get-FileHash -LiteralPath $dst -Algorithm SHA1).Hash
+        $m = Read-FramedCoverRecords
+        $m[$ShortcutId] = @{ frame = $FrameId; len = [int64](New-Object System.IO.FileInfo($dst)).Length; hash = $hs; orig = $oname; adj = (Format-FrameAdjust $adj) }
+        Save-FramedCoverRecords $m
+    } catch {
+        try { Write-ConfigLog ('Frames: не удалось запомнить исходную обложку: ' + $_.Exception.Message) } catch {}
+    }
+    return $dst
+}
+
+# Горизонтальная обложка (config\grid\<id>): то же, что Copy-VerticalCoverToGridSlot, запись о рамке хранится под ключом '<id>h'.
+function Copy-HorizontalCoverToGridSlot([string]$SrcFile, [string]$GridDir, [string]$ShortcutId, [string]$FrameId = '') {
+    $key = $ShortcutId + 'h'
+    $src = $SrcFile
+    $unfr = Get-UnframedCoverForLoad $key $SrcFile
+    if ($null -eq $unfr) { try { $recFb = Find-EditorFrameRecordForTemp $SrcFile; if ($null -ne $recFb) { $unfr = [string]$recFb.Orig } } catch {} }
+    if ($null -ne $unfr) { $src = $unfr }
+    $framed = $null
+    $adj = $null; try { $adj = Get-EditorFrameAdjustForSave 'h' } catch {}
+    if (-not [string]::IsNullOrWhiteSpace($FrameId)) {
+        try { $framed = Get-FramedCoverFile $src $FrameId $adj } catch { $framed = $null }
+    }
+    if ($null -eq $framed) {
+        $dst0 = Copy-CoverToGridSlot $src $GridDir $ShortcutId '.jpg'
+        Clear-FramedCoverRecord $key
+        return $dst0
+    }
+    # Исходник сохраняется ДО записи в grid (см. Copy-VerticalCoverToGridSlot).
+    $oname = $ShortcutId + '.orig'
+    $op = Join-Path (Get-FramesOrigDir) $oname
+    $origSaved = $true
+    try {
+        if (-not [string]::Equals($src, $op, [System.StringComparison]::OrdinalIgnoreCase)) {
+            Copy-Item -LiteralPath $src -Destination $op -Force -ErrorAction Stop
+        }
+    } catch { $origSaved = $false }
+    $dst = Copy-CoverToGridSlot $framed $GridDir $ShortcutId '.png'
+    try {
+        if (-not $origSaved) { throw 'исходная обложка не сохранена' }
+        $hs = [string](Get-FileHash -LiteralPath $dst -Algorithm SHA1).Hash
+        $m = Read-FramedCoverRecords
+        $m[$key] = @{ frame = $FrameId; len = [int64](New-Object System.IO.FileInfo($dst)).Length; hash = $hs; orig = $oname; adj = (Format-FrameAdjust $adj) }
+        Save-FramedCoverRecords $m
+    } catch {
+        try { Write-ConfigLog ('Frames: не удалось запомнить исходную горизонтальную обложку: ' + $_.Exception.Message) } catch {}
+    }
+    return $dst
+}
+
+# Если файл - это наша обложка с рамкой для ярлыка (размер совпал с записью), возвращает путь к исходной обложке,
+# иначе $null (файл другой, менялся или рамки нет).
+function Get-UnframedCoverForLoad([string]$ShortcutId, [string]$GridFile) {
+    try {
+        if ([string]::IsNullOrWhiteSpace($ShortcutId) -or [string]::IsNullOrWhiteSpace($GridFile)) { return $null }
+        $m = Read-FramedCoverRecords
+        if (-not $m.ContainsKey($ShortcutId)) { return $null }
+        $r = $m[$ShortcutId]
+        $op = Join-Path (Get-FramesOrigDir) ([string]$r.orig)
+        if (-not [System.IO.File]::Exists($op) -or -not [System.IO.File]::Exists($GridFile)) { return $null }
+        if ((New-Object System.IO.FileInfo($GridFile)).Length -ne [int64]$r.len) { return $null }
+        return $op
+    } catch { return $null }
+}
+
+# ===================== МАССОВАЯ СМЕНА РАМОК ОБЛОЖЕК У ВЫБРАННЫХ ИГР =====================
+# Кнопка «Рамки обложек» на главном окне и в окне библиотеки: выбранный комплект рамок, «Значок» лончера или «Без рамки»
+# применяется сразу ко всем выбранным играм, уже добавленным в Steam (вертикальная и горизонтальная обложки в config\grid).
+# Основой всегда служит исходная обложка без рамки и значка (Frames\orig), поэтому новая рамка заменяет прежнюю, а не ложится поверх.
+
+function Get-BulkFrameTargets($entries) {
+    $seen = @{}
+    $out = New-Object System.Collections.Generic.List[object]
+    foreach ($en in @($entries)) {
+        if ($null -eq $en) { continue }
+        if ([string]$en.Kind -ne 'shortcut') { continue }
+        $id = [string]$en.AppId
+        if ($id -notmatch '^\d+$') { continue }
+        if ($seen.ContainsKey($id)) { continue }
+        $seen[$id] = $true
+        [void]$out.Add($en)
+    }
+    return @($out.ToArray())
+}
+
+# Подпись пункта «Значок» по владельцу значка: 'emu:<id>' - эмулятор, 'wrap:<id>' - враппер, иначе лончер.
+function Get-BadgeMenuText([string]$OwnerId) {
+    if ($OwnerId -like 'emu:*') { return (Get-EditorFrameText 'emu_frame_badge' 'Значок эмулятора') }
+    if ($OwnerId -like 'wrap:*') { return (Get-EditorFrameText 'wrap_frame_badge' 'Значок враппера') }
+    return (Get-EditorFrameText 'launcher_frame_badge' 'Значок лончера')
+}
+
+function Get-BulkEntryLauncherId($Entry) {
+    $lid = ''
+    try { $lid = [string](Get-ShortcutLauncherId $Entry) } catch {}
+    if ([string]::IsNullOrWhiteSpace($lid)) { try { $lid = [string](Get-LauncherIdFromLaunchOptions ([string]$Entry.LaunchOptions)) } catch {} }
+    # Не лончер: ROM-ярлык эмулятора ('emu:<id>') или игра через враппер ('wrap:<id>') - значок берётся из их exe.
+    if ([string]::IsNullOrWhiteSpace($lid)) {
+        try { $ep0 = Get-EntryEmulatorProfile $Entry; if ($null -ne $ep0 -and -not [string]::IsNullOrWhiteSpace([string]$ep0.Id)) { $lid = 'emu:' + [string]$ep0.Id } } catch {}
+    }
+    if ([string]::IsNullOrWhiteSpace($lid)) {
+        try {
+            if (@($global:launchWrappers).Count -gt 0) {
+                $lw0 = Find-LaunchWrapperForShortcut ([string]$Entry.Exe) ([string]$Entry.LaunchOptions)
+                if ($null -ne $lw0 -and -not [string]::IsNullOrWhiteSpace([string]$lw0.Wrapper.Id)) { $lid = 'wrap:' + [string]$lw0.Wrapper.Id }
+            }
+        } catch {}
+    }
+    return $lid
+}
+
+# Меняет одну обложку в одной папке grid. $Kind: 'v' (<id>p) или 'h' (<id>). $Mode: 'none' | 'frame' | 'badge'.
+# Что стоит на обложке, известно по метке в framed.json (рамка или значок) и её исходнику без рамки.
+# Возвращает @{ R = 'done' | 'same' | 'nocover' | 'anim' | 'fail'; Path = записанный файл }.
+function Set-BulkGridCoverFrame([string]$GridDir, [string]$Id, [string]$Kind, [string]$Mode, [string]$FrameId, [string]$LauncherId) {
+    $res = @{ R = 'fail'; Path = '' }
+    $tmp = ''; $snap = ''
+    try {
+        $baseName = $Id; $key = $Id + 'h'; $origName = $Id + '.orig'
+        if ($Kind -eq 'v') { $baseName = $Id + 'p'; $key = $Id; $origName = $Id + 'p.orig' }
+        $file = Find-GridSlotFile $GridDir $baseName
+        if ($null -eq $file) { $res.R = 'nocover'; return $res }
+        $info = $null
+        try { $info = Get-ImageContainerInfo $file } catch {}
+        if ($null -ne $info -and ([bool]$info.Animated -or [string]$info.Format -eq 'webm')) { $res.R = 'anim'; return $res }
+
+        # Метка: исходник без рамки/значка и то, что на обложке сейчас.
+        $orig = Get-UnframedCoverForLoad $key $file
+        $curMark = ''
+        if ($null -ne $orig) { $m0 = Read-FramedCoverRecords; if ($m0.ContainsKey($key)) { $curMark = [string]$m0[$key].frame } }
+        $base = $file
+        if ($null -ne $orig) { $base = [string]$orig }
+
+        if ($Mode -eq 'none') {
+            if ($null -eq $orig) { $res.R = 'same'; return $res }
+            $dst0 = Copy-CoverToGridSlot $base $GridDir $baseName '.jpg'
+            [void](Clear-FramedCoverRecord $key)
+            $res.R = 'done'; $res.Path = [string]$dst0
+            return $res
+        }
+
+        if ($Mode -eq 'frame') {
+            if ($curMark -eq $FrameId) { $res.R = 'same'; return $res }
+            $dst = $null
+            if ($Kind -eq 'v') { $dst = @(Copy-VerticalCoverToGridSlot $file $GridDir $Id $FrameId) | Select-Object -Last 1 }
+            else { $dst = @(Copy-HorizontalCoverToGridSlot $file $GridDir $Id $FrameId) | Select-Object -Last 1 }
+            if ([string]::IsNullOrWhiteSpace([string]$dst)) { return $res }
+            $res.R = 'done'; $res.Path = [string]$dst
+            return $res
+        }
+
+        if ($Mode -eq 'badge') {
+            if ($curMark -eq 'badge') { $res.R = 'same'; return $res }
+            $tmpExt = '.jpg'
+            if ([System.IO.Path]::GetExtension($base).ToLowerInvariant() -eq '.png') { $tmpExt = '.png' }
+            $tmp = Join-Path (Get-FramesCacheDir) ('bulk_' + $key + $tmpExt)
+            Copy-Item -LiteralPath $base -Destination $tmp -Force -ErrorAction Stop
+            # Исходник без значка запоминается до записи в grid: $base может быть самим файлом обложки, который запись перезапишет.
+            $snap = Join-Path (Get-FramesCacheDir) ('bulkorig_' + $key + $tmpExt)
+            Copy-Item -LiteralPath $base -Destination $snap -Force -ErrorAction Stop
+            if (-not (Add-LauncherBadgeToCoverFile $tmp $LauncherId $Kind)) { return $res }
+            $dst2 = Copy-CoverToGridSlot $tmp $GridDir $baseName $tmpExt
+            # Метка «значок» заменяет запись о рамке (исходник - обложка без рамки).
+            Set-BadgeCoverRecord $key $snap ([string]$dst2) $origName
+            $res.R = 'done'; $res.Path = [string]$dst2
+            return $res
+        }
+    } catch {
+        try { Write-ConfigLog ('Frames: массовая смена рамки не удалась: ' + $_.Exception.Message) } catch {}
+    } finally {
+        if ($tmp -ne '') { try { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue } catch {} }
+        if ($snap -ne '') { try { Remove-Item -LiteralPath $snap -Force -ErrorAction SilentlyContinue } catch {} }
+    }
+    return $res
+}
+
+# $Sel: 'none' (без рамки), 'badge' (значок лончера) или id комплекта рамок. $Entries - записи ярлыков Steam (Kind = 'shortcut').
+function Invoke-BulkCoverFrames {
+    param($Entries, [string]$Sel, $Owner, $OnDone = $null, [string]$BadgeOwner = '')
+    $msgOk = [System.Windows.Forms.MessageBoxButtons]::OK
+    try {
+        $targets = @(Get-BulkFrameTargets $Entries)
+        if ($targets.Count -eq 0) { return }
+        $mode = 'frame'; $vId = ''; $hId = ''
+        if ($Sel -eq 'none') { $mode = 'none' }
+        elseif ($Sel -eq 'badge') { $mode = 'badge' }
+        else {
+            $vId = Get-EditorFrameIdForSel $Sel 'v'
+            $hId = Get-EditorFrameIdForSel $Sel 'h'
+            if ($vId -eq '' -and $hId -eq '') { return }
+        }
+        $profiles = @(Get-ConfiguredSteamProfileDirectories)
+        if ($profiles.Count -eq 0) { return }
+
+        try { if ($null -ne $Owner) { $Owner.UseWaitCursor = $true }; [System.Windows.Forms.Application]::DoEvents() } catch {}
+        # Диалоги подтверждения только что закрылись, а дальше UI-поток занят долгой работой с файлами и не обрабатывает WM_PAINT:
+        # без принудительной перерисовки на окне (в т.ч. на таблице) остаются белые пятна на месте закрытых диалогов.
+        try { if ($null -ne $Owner -and -not $Owner.IsDisposed) { $Owner.Refresh() } } catch {}
+        $cancelled = $false
+        $gamesDone = 0; $gamesSame = 0; $failed = 0
+        $skipped = New-Object System.Collections.Generic.List[string]
+        try {
+            # Только обложки в config\grid: Steam подхватывает их на лету, поэтому, как и в карточке игры, его не закрываем и не перезапускаем.
+            if (-not $cancelled) {
+                foreach ($en in $targets) {
+                    $id = [string]$en.AppId
+                    $lid = ''
+                    if ($mode -eq 'badge') {
+                        $lid = $(if (-not [string]::IsNullOrWhiteSpace($BadgeOwner)) { $BadgeOwner } else { Get-BulkEntryLauncherId $en })
+                        if ([string]::IsNullOrWhiteSpace($lid)) { [void]$skipped.Add(([string]$en.Name + ' - ' + (T 'bulk_frames_nolauncher'))); continue }
+                    }
+                    $anyDone = $false; $anySame = $false; $anyCover = $false
+                    foreach ($kind in @('v', 'h')) {
+                        $m = $mode; $fid = ''
+                        if ($mode -eq 'frame') {
+                            $fid = $hId; if ($kind -eq 'v') { $fid = $vId }
+                            # В комплекте нет рамки для этой обложки: рамка снимается, как в карточке игры.
+                            if ($fid -eq '') { $m = 'none' }
+                        }
+                        $bn = $id; if ($kind -eq 'v') { $bn = $id + 'p' }
+                        $primary = ''; $pres = ''
+                        foreach ($pd in $profiles) {
+                            $grid = Join-Path ([string]$pd.FullName) 'config\grid'
+                            if (-not (Test-Path -LiteralPath $grid -PathType Container)) { continue }
+                            if ($null -eq (Find-GridSlotFile $grid $bn)) { continue }
+                            $anyCover = $true
+                            if ($pres -eq '') {
+                                # Меняем в первой папке; остальные профили получают готовый файл, иначе рамка легла бы дважды.
+                                $r = @(Set-BulkGridCoverFrame $grid $id $kind $m $fid $lid) | Select-Object -Last 1
+                                $pres = [string]$r.R; $primary = [string]$r.Path
+                                if ($pres -eq 'done') { $anyDone = $true } elseif ($pres -eq 'same') { $anySame = $true } elseif ($pres -eq 'fail') { $failed++ }
+                            } elseif ($pres -eq 'done' -and $primary -ne '') {
+                                try { [void](Copy-CoverToGridSlot $primary $grid $bn ([System.IO.Path]::GetExtension($primary))) } catch {}
+                            }
+                        }
+                    }
+                    if ($anyDone) { $gamesDone++ }
+                    elseif ($anySame) { $gamesSame++ }
+                    elseif (-not $anyCover) { [void]$skipped.Add(([string]$en.Name + ' - ' + (T 'bulk_frames_nocover'))) }
+                }
+            }
+        } finally {
+            try { if ($null -ne $Owner) { $Owner.UseWaitCursor = $false } } catch {}
+            try { if ($null -ne $Owner -and -not $Owner.IsDisposed) { $Owner.Invalidate($true); $Owner.Update() } } catch {}
+        }
+
+        $lines = New-Object System.Collections.Generic.List[string]
+        if ($gamesDone -gt 0) { [void]$lines.Add((T 'bulk_frames_done' @([int]$gamesDone))) }
+        elseif ($gamesSame -gt 0 -and $failed -eq 0) { [void]$lines.Add((T 'bulk_frames_same')) }
+        if ($failed -gt 0) { [void]$lines.Add((T 'bulk_frames_fail' @([int]$failed))) }
+        if ($skipped.Count -gt 0) { [void]$lines.Add((T 'rom_swap_skipped' @((@($skipped | Select-Object -First 8)) -join "`n"))) }
+        if ($cancelled) { [void]$lines.Add((T 'steam_close_cancelled')) }
+        $clean = ($failed -eq 0 -and $skipped.Count -eq 0 -and -not $cancelled)
+        # Успешная смена рамок: в главном окне - строка в заголовке, в окне библиотеки уведомления нет (плитки обновляются сами).
+        if ($clean) { if ($Owner -eq $form) { try { $labelHeader.Text = ($lines.ToArray() -join '  |  ') } catch {} } }
+        elseif ($lines.Count -gt 0) {
+            $ic = [System.Windows.Forms.MessageBoxIcon]::Information
+            if (-not $clean) { $ic = [System.Windows.Forms.MessageBoxIcon]::Warning }
+            Show-AppMessageBox($Owner, ($lines.ToArray() -join "`n`n"), $global:appTitle, $msgOk, $ic) | Out-Null
+        }
+        if ($null -ne $OnDone -and $gamesDone -gt 0) { try { & $OnDone } catch {} }
+        try { $Owner.Activate() } catch {}
+    } catch {
+        try { if ($null -ne $Owner) { $Owner.UseWaitCursor = $false } } catch {}
+        try { Show-AppMessageBox($Owner, [string]$_.Exception.Message, $global:appTitle, $msgOk, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null } catch {}
+    }
+}
+
+# Что сейчас на обложке в grid: $null - обложки нет; 'badge' - значок лончера; id рамки; '' - без рамки.
+function Get-BulkCoverState([string]$Id, [string]$Kind, $Profiles, $Records) {
+    $bn = $Id; $key = $Id + 'h'
+    if ($Kind -eq 'v') { $bn = $Id + 'p'; $key = $Id }
+    foreach ($pd in @($Profiles)) {
+        $file = $null
+        try { $file = Find-GridSlotFile (Join-Path ([string]$pd.FullName) 'config\grid') $bn } catch {}
+        if ($null -eq $file) { continue }
+        # Та же проверка, что в Get-UnframedCoverForLoad (исходник без рамки на месте, размер файла в grid совпадает с записью), но по уже прочитанным записям:
+        # Get-UnframedCoverForLoad заново читала и разбирала framed.json на каждую игру и каждую обложку, из-за чего меню рамок открывалось очень долго.
+        try {
+            if ($Records.ContainsKey($key)) {
+                $rcB = $Records[$key]
+                $odB = [string]$script:bulkOrigDirCache
+                if ($odB -eq '') { $odB = [string](Get-FramesOrigDir) }
+                if ([System.IO.File]::Exists((Join-Path $odB ([string]$rcB.orig))) -and (New-Object System.IO.FileInfo($file)).Length -eq [int64]$rcB.len) { return [string]$rcB.frame }
+            }
+        } catch {}
+        return ''
+    }
+    return $null
+}
+
+# Совпадает ли вариант меню ($Sel: 'none' | 'badge' | id комплекта) с тем, что сейчас на обложках игры ($St = @{ v = ..; h = .. }).
+function Test-BulkOptionMatches([string]$Sel, $St) {
+    $any = $false
+    foreach ($kind in @('v', 'h')) {
+        $cur = $St[$kind]
+        if ($null -eq $cur) { continue }
+        $any = $true
+        $want = ''
+        if ($Sel -eq 'badge') { $want = 'badge' }
+        elseif ($Sel -ne 'none') {
+            if ($null -ne $script:bulkKitMap) { $kmB = $script:bulkKitMap[[string]$Sel]; if ($null -ne $kmB) { $want = [string]$kmB[$kind] } }
+            else { $want = [string](Get-EditorFrameIdForSel $Sel $kind) }
+        }
+        if ([string]$cur -ne $want) { return $false }
+    }
+    return $any
+}
+
+# Меню выбора рамки для выбранных игр (общее для главного окна и библиотеки).
+# Меню выбора одного варианта с кнопкой «Применить» внизу (как у коллекций): клик по пункту только отмечает вариант и меню остаётся открытым,
+# изменения применяются кнопкой «Применить». Пункты-варианты помечаются Tag.Pick = $true, кнопка - Tag.IsApply = $true (в Tag.Pending лежит Tag выбранного пункта).
+function Register-PickMenuHold($Menu) {
+    try {
+        $Menu.Add_Closing({
+            param($snd, $ea)
+            try {
+                if ($ea.CloseReason -ne [System.Windows.Forms.ToolStripDropDownCloseReason]::ItemClicked) { return }
+                $pt = $snd.PointToClient([System.Windows.Forms.Cursor]::Position)
+                foreach ($x in @($snd.Items)) {
+                    if ($x.Bounds.Contains($pt)) {
+                        $xt = $x.Tag
+                        if ($null -ne $xt -and $null -ne $xt.PSObject.Properties['Pick'] -and [bool]$xt.Pick) { $ea.Cancel = $true }
+                        break
+                    }
+                }
+            } catch {}
+        })
+    } catch {}
+}
+
+function Set-PickMenuChoice($Item) {
+    try {
+        $menu = $Item.Owner
+        foreach ($x in @($menu.Items)) {
+            $xt = $x.Tag
+            if ($null -eq $xt) { continue }
+            if ($null -ne $xt.PSObject.Properties['Pick'] -and [bool]$xt.Pick) {
+                $x.Text = [string]$xt.BaseText
+                $mode = 'empty'; if ([object]::ReferenceEquals($x, $Item)) { $mode = 'solid' }
+                Set-SCMenuCheckVisual $x $mode
+            } elseif ($null -ne $xt.PSObject.Properties['IsApply'] -and [bool]$xt.IsApply) {
+                $xt.Pending = $Item.Tag
+                $x.Enabled = $true
+                $x.Invalidate()
+            }
+        }
+    } catch {}
+}
+
+function Add-PickMenuApply($Menu, $OnApply) {
+    $bg = [System.Drawing.Color]::FromArgb(22, 28, 36)
+    [void]$Menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
+    $itOk = New-Object System.Windows.Forms.ToolStripMenuItem((T 'coll_dlg_ok'))
+    $itOk.BackColor = $bg
+    $itOk.ForeColor = $steamUi.Text
+    try { $itOk.Font = New-Object System.Drawing.Font($Menu.Font, [System.Drawing.FontStyle]::Bold) } catch {}
+    $itOk.Enabled = $false
+    $itOk.Tag = [PSCustomObject]@{ IsApply = $true; Pending = $null }
+    $itOk.Add_Click($OnApply)
+    [void]$Menu.Items.Add($itOk)
+    Register-PickMenuHold $Menu
+}
+
+# Повторный клик по кнопке закрывает её открытое меню (как у коллекций): меню закрывается само кликом вне себя,
+# а клик по кнопке в течение 400 мс после этого заново меню не открывает. Кнопка хранится в Tag меню (без замыкания).
+function Register-MenuButtonToggle($Menu, $Btn) {
+    try {
+        $Menu.Tag = $Btn
+        $Menu.Add_Closing({
+            param($snd, $ea)
+            try {
+                if ($ea.CloseReason -eq [System.Windows.Forms.ToolStripDropDownCloseReason]::AppClicked) {
+                    $ab = $snd.Tag
+                    $scr = $ab.RectangleToScreen($ab.ClientRectangle)
+                    if ($scr.Contains([System.Windows.Forms.Control]::MousePosition)) { $script:menuBtnClosedBtn = $ab; $script:menuBtnClosedAt = [Environment]::TickCount }
+                }
+            } catch {}
+        })
+    } catch {}
+}
+
+function Test-MenuButtonJustClosed($Btn) {
+    try {
+        if ($script:menuBtnClosedAt -and [object]::ReferenceEquals($script:menuBtnClosedBtn, $Btn) -and (([Environment]::TickCount - [int]$script:menuBtnClosedAt) -lt 400)) {
+            $script:menuBtnClosedAt = 0
+            return $true
+        }
+    } catch {}
+    return $false
+}
+
+function Show-BulkFrameMenu {
+    # $WithApply = $true (окно библиотеки): клик по пункту только отмечает вариант, применяет кнопка «Применить» внизу.
+    # $WithApply = $false (главное окно): клик по пункту вызывает $OnSelect (вариант запоминается, меню закрывается),
+    # а применяется вариант нижней кнопкой главного окна «Сменить рамки (N)». $Preselect - уже выбранный вариант (отмечается галочкой),
+    # $OnClosed - вызывается после закрытия меню. $NewGames = $true (главное окно, отмечены игры, которых ещё нет в Steam): меню выбирает
+    # рамку для обложек новых игр при добавлении; $Entries пуст, счётчики «n/всего» не показываются, пункт «Значок» - по активному
+    # эмулятору (режим ROMs) или враппера (режим Wrappers).
+    param($Anchor, $Entries, $Owner, $OnDone = $null, [bool]$WithApply = $true, $OnSelect = $null, [string]$Preselect = '', $OnClosed = $null, [bool]$NewGames = $false, $AtPoint = $null)
+    try {
+        $targets = @(Get-BulkFrameTargets $Entries)
+        if ($targets.Count -eq 0 -and -not $NewGames) { return }
+        Initialize-SCFilterRenderer
+        $menu = (New-PanelCtxMenu)
+        try { [SCFilterRenderer]::Accent = $steamUi.Accent; [SCFilterRenderer]::Muted = $steamUi.Muted; $menu.Renderer = (New-Object SCFilterRenderer) } catch {}
+        $bg = [System.Drawing.Color]::FromArgb(22, 28, 36)
+        $menu.BackColor = $bg; $menu.ForeColor = $steamUi.Text
+        $menu.Font = New-Object System.Drawing.Font('Segoe UI', 9)
+        $menu.ShowCheckMargin = $true; $menu.ShowImageMargin = $false
+        # Повторный клик по кнопке рамок при открытом меню закрывает его (как у коллекций): меню закрывается кликом вне себя,
+        # время запоминается, и обработчик кнопки заново меню не открывает.
+        # Кнопка хранится в Tag меню: обработчик без замыкания, чтобы $script: указывал на общую переменную скрипта.
+        $menu.Tag = $Anchor
+        $menu.Add_Closing({
+            param($snd, $ea)
+            try {
+                if ($ea.CloseReason -eq [System.Windows.Forms.ToolStripDropDownCloseReason]::AppClicked) {
+                    $ab = $snd.Tag
+                    $scr = $ab.RectangleToScreen($ab.ClientRectangle)
+                    if ($scr.Contains([System.Windows.Forms.Control]::MousePosition)) { $script:bulkFrameMenuClosedAt = [Environment]::TickCount }
+                }
+            } catch {}
+        })
+        # Пока меню открыто, кнопка рисуется включённой (значок и рамка цвета акцента), как у коллекций.
+        $menu.Add_Closed({
+            param($snd, $ea)
+            try {
+                $ab = $snd.Tag
+                $ab.Tag = ''
+                $ab.FlatAppearance.BorderColor = $steamUi.Border
+                $ab.Invalidate()
+            } catch {}
+            $script:bulkFrameMenuOpen = $false
+            try { if ($null -ne $script:bulkFrameMenuOnClosed) { & $script:bulkFrameMenuOnClosed } } catch {}
+        })
+        $script:bulkFrameMenuOnClosed = $OnClosed
+        $script:bulkFrameMenuOpen = $true
+
+        # Что сейчас стоит у выбранных игр: полная галочка - у всех, бледная «n/всего» - у части, пустой квадрат - ни у кого (как в коллекциях).
+        $profilesM = @(Get-ConfiguredSteamProfileDirectories)
+        $recsM = Read-FramedCoverRecords
+        # Кэши на время построения меню: папка исходников и комплекты рамок (раньше они читались с диска заново для каждой игры и пункта).
+        $script:bulkOrigDirCache = [string](Get-FramesOrigDir)
+        $script:bulkKitMap = @{}
+        try { foreach ($kk in @(Read-FrameKits)) { $kid = [string]$kk.id; if (-not $script:bulkKitMap.ContainsKey($kid)) { $script:bulkKitMap[$kid] = @{ v = [string]$kk.v; h = [string]$kk.h } } } } catch {}
+        $statesM = New-Object System.Collections.Generic.List[object]
+        foreach ($t1 in $targets) {
+            [void]$statesM.Add(@{ v = (Get-BulkCoverState ([string]$t1.AppId) 'v' $profilesM $recsM); h = (Get-BulkCoverState ([string]$t1.AppId) 'h' $profilesM $recsM) })
+        }
+        $totalM = $targets.Count
+
+        $addItem = {
+            param([string]$text, [string]$sel)
+            $mi = New-Object System.Windows.Forms.ToolStripMenuItem
+            $mi.AccessibleName = $text
+            $mi.BackColor = $bg; $mi.ForeColor = $steamUi.Text
+            $mi.Tag = [PSCustomObject]@{ Pick = $WithApply; BaseText = $text.Replace('&', '&&'); Sel = $sel; Targets = $targets; Owner = $Owner; Done = $OnDone; OnSelect = $OnSelect }
+            $nM = 0
+            foreach ($stM in $statesM) { if (Test-BulkOptionMatches $sel $stM) { $nM++ } }
+            $shown = $text.Replace('&', '&&')
+            if ($nM -gt 0 -and $nM -lt $totalM) { $shown = $shown + '  (' + [string]$nM + '/' + [string]$totalM + ')' }
+            $mi.Text = $shown
+            $mode = 'empty'
+            if ($nM -ge $totalM -and $totalM -gt 0) { $mode = 'solid' } elseif ($nM -gt 0) { $mode = 'prior' }
+            # Вариант уже выбран (ждёт нижней кнопки): отмечен только он, счётчики текущего состояния не показываются.
+            if ($Preselect -ne '') {
+                $shown = $text.Replace('&', '&&')
+                $mi.Text = $shown
+                $mode = $(if ($sel -eq $Preselect) { 'solid' } else { 'empty' })
+            }
+            Set-SCMenuCheckVisual $mi $mode
+            if ($WithApply) {
+                $mi.Add_Click({
+                    param($s2, $e2)
+                    try { Set-PickMenuChoice $s2 } catch {}
+                })
+            } else {
+                $mi.Add_Click({
+                    param($s2, $e2)
+                    try { $t2 = $s2.Tag; if ($null -ne $t2.OnSelect) { & $t2.OnSelect ([string]$t2.Sel) } } catch {}
+                })
+            }
+            [void]$menu.Items.Add($mi)
+        }
+        & $addItem (Get-EditorFrameText 'card_frame_none' 'Без рамки') 'none'
+        # «Значок» - только если среди выбранных есть игры из лончеров.
+        # Подпись по типу выбранных игр: лончер / эмулятор / враппер; при смеси - просто «Значок».
+        $hasLauncher = $false; $badgeKinds = @{}
+        foreach ($t0 in $targets) {
+            $bl0 = [string](Get-BulkEntryLauncherId $t0)
+            if ($bl0 -eq '') { continue }
+            $hasLauncher = $true
+            $bk0 = 'l'; if ($bl0 -like 'emu:*') { $bk0 = 'e' } elseif ($bl0 -like 'wrap:*') { $bk0 = 'w' }
+            $badgeKinds[$bk0] = $true
+        }
+        if ($NewGames) {
+            try {
+                if ([bool]$script:romsModeEnabled -and $null -ne (Get-ActiveEmulatorProfile)) { $hasLauncher = $true; $badgeKinds['e'] = $true }
+                elseif ([bool]$script:wrappersModeEnabled -and $null -ne (Get-ActiveWrapperProfile)) { $hasLauncher = $true; $badgeKinds['w'] = $true }
+            } catch {}
+        }
+        if ($hasLauncher) {
+            $badgeText = (Get-EditorFrameText 'frame_badge_any' 'Значок')
+            if ($badgeKinds.Count -eq 1) {
+                $bk1 = @($badgeKinds.Keys)[0]
+                $bid1 = 'launcher'; if ($bk1 -eq 'e') { $bid1 = 'emu:x' } elseif ($bk1 -eq 'w') { $bid1 = 'wrap:x' }
+                $badgeText = Get-BadgeMenuText $bid1
+            }
+            & $addItem $badgeText 'badge'
+        }
+        # Прокручивается весь список целиком, включая «Без рамки» и «Значок»: иначе стрелка прокрутки оставляет пустое место между «Значком» и наборами.
+        $kitFrom = 0
+        foreach ($k in @(Get-FrameKitsSorted)) {
+            $kmI = $script:bulkKitMap[[string]$k.id]
+            if ($null -eq $kmI -or ([string]$kmI.v -eq '' -and [string]$kmI.h -eq '')) { continue }
+            & $addItem ([string]$k.name) ([string]$k.id)
+        }
+        # Одинаковая высота списка рамок в главном окне и библиотеке: до 18 наборов в видимой области,
+        # остальные доступны колесом мыши и стрелками. Меняется только представление списка.
+        try {
+            $kitItems = @()
+            for ($ki = $kitFrom; $ki -lt $menu.Items.Count; $ki++) { $kitItems += $menu.Items[$ki] }
+            if ($kitItems.Count -gt 0) { Enable-MenuWheelScroll $menu 18 $kitItems 520 }
+        } catch {}
+        $script:bulkKitMap = $null; $script:bulkOrigDirCache = ''
+        [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
+        $miMng = New-Object System.Windows.Forms.ToolStripMenuItem
+        $miMng.Text = (Get-EditorFrameText 'card_frame_manage' 'Менеджер рамок…')
+        $miMng.BackColor = $bg; $miMng.ForeColor = $steamUi.Text
+        $miMng.Tag = $Owner
+        $miMng.Add_Click({ param($s2, $e2) try { Show-EditorFrameManagerDialog $s2.Tag } catch {} })
+        [void]$menu.Items.Add($miMng)
+        if ($WithApply) {
+            Add-PickMenuApply $menu ({
+                param($s2, $e2)
+                try { $p = $s2.Tag.Pending; if ($null -ne $p) { Invoke-BulkCoverFrames $p.Targets $p.Sel $p.Owner $p.Done } } catch {}
+            })
+        }
+        try { if ($null -ne $Anchor) { $Anchor.Tag = 'on'; $Anchor.FlatAppearance.BorderColor = $steamUi.Accent2; $Anchor.Invalidate() } } catch {}
+        # Контекстное меню: точка курсора. Главное окно ($WithApply = $false): справа от кнопки. Библиотека: под кнопкой.
+        if ($null -ne $AtPoint) {
+            $menu.Show([System.Drawing.Point]$AtPoint)
+        } elseif ($null -eq $Anchor) {
+            $menu.Show([System.Windows.Forms.Cursor]::Position)
+        } elseif (-not $WithApply) {
+            $menu.Show($Anchor, (New-Object System.Drawing.Point(([int]$Anchor.Width + 2), 0)), [System.Windows.Forms.ToolStripDropDownDirection]::BelowRight)
+        } else {
+            $menu.Show($Anchor, (New-Object System.Drawing.Point(0, [int]$Anchor.Height)))
+        }
+    } catch {}
+}
+
+# Объекты, к которым можно привязать рамку: эмуляторы, врапперы и лончеры.
+function Get-FrameBindingTargets {
+    $list = New-Object System.Collections.ArrayList
+    foreach ($ep in @(@($global:emulatorProfiles) | Where-Object { $null -ne $_ } | Sort-Object -Property { [string]$_.Name } -CaseSensitive:$false)) {
+        [void]$list.Add([PSCustomObject]@{ Key = ('emu:' + [string]$ep.Id); Group = (T 'frames_bind_emus'); Name = [string]$ep.Name })
+    }
+    foreach ($wp in @(@($global:launchWrappers) | Where-Object { $null -ne $_ } | Sort-Object -Property { [string]$_.Name } -CaseSensitive:$false)) {
+        [void]$list.Add([PSCustomObject]@{ Key = ('wrap:' + [string]$wp.Id); Group = (T 'frames_bind_wraps'); Name = [string]$wp.Name })
+    }
+    foreach ($ln in @(@('epic', 'Epic Games'), @('gog', 'GOG'), @('ubisoft', 'Ubisoft Connect'), @('ea', 'EA App'), @('battlenet', 'Battle.net'), @('xbox', 'Xbox'))) {
+        [void]$list.Add([PSCustomObject]@{ Key = ('launcher:' + [string]$ln[0]); Group = (T 'frames_bind_launchers'); Name = [string]$ln[1] })
+    }
+    return @($list.ToArray())
+}
+
+# ===================== РАМКИ ОБЛОЖЕК: ОКНО «РАМКИ» (шаг 2) =====================
+# Окно открывается кнопкой «Рамки…» в настройках. Рамку можно добавить с SteamGridDB (поиск записи платформы или
+# магазина, затем обычное окно выбора обложек) или из своего файла. Если у шаблона нет прозрачной области,
+# её выделяют мышью. У каждой рамки есть название и платформа (по платформе рамка потом привязывается к играм).
+
+function Update-CoverFrameMeta([string]$Id, [string]$Name, [string]$PlatformKey) {
+    try {
+        $items = @(Read-FramesIndex)
+        $found = $false
+        foreach ($f in $items) {
+            if ([string]$f.id -eq $Id) {
+                $f.name = [string]$Name
+                $f.platform = ([string]$PlatformKey).Trim().ToLowerInvariant()
+                $found = $true
+            }
+        }
+        if ($found) { Save-FramesIndex $items }
+        return $found
+    } catch { return $false }
+}
+
+# Подпись платформы по ключу из Get-SgdbPlatformDefs; пустой или неизвестный ключ - «Любая».
+function Get-CoverFramePlatformLabel([string]$Key) {
+    $k = ([string]$Key).Trim().ToLowerInvariant()
+    if ($k -ne '') {
+        foreach ($d in @(Get-SgdbPlatformDefs)) { if ([string]$d.Key -eq $k) { return [string]$d.Label } }
+        return $k
+    }
+    return (T 'frames_platform_any')
+}
+
+# Ключ платформы по тексту (название записи SteamGridDB или запрос), '' если не удалось определить.
+function Find-CoverFramePlatformKey([string]$Text) {
+    if ([string]::IsNullOrWhiteSpace($Text)) { return '' }
+    foreach ($d in @(Get-SgdbPlatformDefs)) {
+        try { if ($Text -match [string]$d.Rx) { return [string]$d.Key } } catch {}
+    }
+    return ''
+}
+
+function New-FramesDlgForm([string]$Title, [int]$W, [int]$H) {
+    $f = New-SCForm
+    $f.Text = $Title
+    $f.StartPosition = 'CenterParent'
+    $f.FormBorderStyle = 'FixedDialog'
+    $f.MaximizeBox = $false
+    $f.MinimizeBox = $false
+    $f.ShowInTaskbar = $false
+    $f.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::Font
+    $f.BackColor = [System.Drawing.Color]::FromArgb(23, 29, 37)
+    $f.ForeColor = [System.Drawing.Color]::FromArgb(220, 223, 228)
+    $f.Font = New-Object System.Drawing.Font('Segoe UI', 9)
+    $f.ClientSize = New-Object System.Drawing.Size($W, $H)
+    return $f
+}
+
+function New-FramesDlgButton([string]$Text, [bool]$Primary = $false) {
+    $b = New-Object System.Windows.Forms.Button
+    $b.Text = $Text
+    $w = [System.Windows.Forms.TextRenderer]::MeasureText($Text, (New-Object System.Drawing.Font('Segoe UI', 9))).Width + 32
+    $b.Size = New-Object System.Drawing.Size([Math]::Max(90, $w), 28)
+    $b.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    $b.UseVisualStyleBackColor = $false
+    if ($Primary) {
+        $b.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(51, 125, 168)
+        $b.BackColor = [System.Drawing.Color]::FromArgb(25, 55, 75)
+    } else {
+        $b.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(61, 68, 80)
+        $b.BackColor = [System.Drawing.Color]::FromArgb(30, 38, 48)
+    }
+    $b.ForeColor = [System.Drawing.Color]::FromArgb(220, 223, 228)
+    $b.Cursor = [System.Windows.Forms.Cursors]::Hand
+    return $b
+}
+
+# Ставит «OK» и «Отмена» в правый нижний угол формы.
+function Add-FramesDlgOkCancel($Form, $BtnOk, $BtnCancel) {
+    $y = $Form.ClientSize.Height - 28 - 14
+    $BtnCancel.Location = New-Object System.Drawing.Point(($Form.ClientSize.Width - 15 - $BtnCancel.Width), $y)
+    $BtnOk.Location = New-Object System.Drawing.Point(($BtnCancel.Left - 8 - $BtnOk.Width), $y)
+    $BtnOk.DialogResult = [System.Windows.Forms.DialogResult]::OK
+    $BtnCancel.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+    $Form.Controls.Add($BtnOk)
+    $Form.Controls.Add($BtnCancel)
+    $Form.AcceptButton = $BtnOk
+    $Form.CancelButton = $BtnCancel
+}
+
+# Однострочный запрос текста. Возвращает строку или $null (отмена).
+function Show-FramesInputDialog($owner, [string]$Title, [string]$Prompt, [string]$Default = '') {
+    $f = $null
+    try {
+        $f = New-FramesDlgForm $Title 470 150
+        $lbl = New-Object System.Windows.Forms.Label
+        $lbl.Location = New-Object System.Drawing.Point(15, 12)
+        $lbl.Size = New-Object System.Drawing.Size(440, 36)
+        $lbl.AutoSize = $false
+        $lbl.Text = $Prompt
+        $f.Controls.Add($lbl)
+        $tb = New-Object System.Windows.Forms.TextBox
+        $tb.Location = New-Object System.Drawing.Point(15, 52)
+        $tb.Size = New-Object System.Drawing.Size(440, 24)
+        $tb.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+        $tb.BackColor = [System.Drawing.Color]::FromArgb(30, 38, 48)
+        $tb.ForeColor = [System.Drawing.Color]::FromArgb(220, 223, 228)
+        $tb.Text = $Default
+        $f.Controls.Add($tb)
+        Add-FramesDlgOkCancel $f (New-FramesDlgButton (T 'frames_ok') $true) (New-FramesDlgButton (T 'frames_cancel'))
+        if ($f.ShowDialog($owner) -eq [System.Windows.Forms.DialogResult]::OK) {
+            $v = ([string]$tb.Text).Trim()
+            if ($v -ne '') { return $v }
+        }
+        return $null
+    } catch { return $null } finally { if ($null -ne $f) { try { $f.Dispose() } catch {} } }
+}
+
+# Выбор строки из списка. Возвращает индекс или -1.
+function Show-FramesListPicker($owner, [string]$Title, [string[]]$Items) {
+    $f = $null
+    try {
+        $f = New-FramesDlgForm $Title 470 330
+        $lb = New-Object System.Windows.Forms.ListBox
+        $lb.Location = New-Object System.Drawing.Point(15, 15)
+        $lb.Size = New-Object System.Drawing.Size(440, 250)
+        $lb.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+        $lb.BackColor = [System.Drawing.Color]::FromArgb(30, 38, 48)
+        $lb.ForeColor = [System.Drawing.Color]::FromArgb(220, 223, 228)
+        foreach ($it in @($Items)) { [void]$lb.Items.Add([string]$it) }
+        if ($lb.Items.Count -gt 0) { $lb.SelectedIndex = 0 }
+        $f.Controls.Add($lb)
+        Add-FramesDlgOkCancel $f (New-FramesDlgButton (T 'frames_ok') $true) (New-FramesDlgButton (T 'frames_cancel'))
+        $lb.Add_DoubleClick({ if ($lb.SelectedIndex -ge 0) { $f.DialogResult = [System.Windows.Forms.DialogResult]::OK } }.GetNewClosure())
+        if ($f.ShowDialog($owner) -eq [System.Windows.Forms.DialogResult]::OK) { return [int]$lb.SelectedIndex }
+        return -1
+    } catch { return -1 } finally { if ($null -ne $f) { try { $f.Dispose() } catch {} } }
+}
+
+# Название и платформа рамки. Возвращает @{ Name; Platform } или $null.
+function Show-FramePropsDialog($owner, [string]$Name, [string]$PlatformKey) {
+    $f = $null
+    try {
+        $f = New-FramesDlgForm (T 'frames_props_title') 470 200
+        $l1 = New-Object System.Windows.Forms.Label
+        $l1.Text = (T 'frames_name'); $l1.Location = New-Object System.Drawing.Point(15, 14); $l1.AutoSize = $true
+        $f.Controls.Add($l1)
+        $tb = New-Object System.Windows.Forms.TextBox
+        $tb.Location = New-Object System.Drawing.Point(15, 36)
+        $tb.Size = New-Object System.Drawing.Size(440, 24)
+        $tb.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+        $tb.BackColor = [System.Drawing.Color]::FromArgb(30, 38, 48)
+        $tb.ForeColor = [System.Drawing.Color]::FromArgb(220, 223, 228)
+        $tb.Text = $Name
+        $f.Controls.Add($tb)
+        $l2 = New-Object System.Windows.Forms.Label
+        $l2.Text = (T 'frames_platform'); $l2.Location = New-Object System.Drawing.Point(15, 72); $l2.AutoSize = $true
+        $f.Controls.Add($l2)
+        # Как остальные выпадающие списки программы: SmartExeComboBox со своим списком и отрисовкой в буфере, рамку даёт панель.
+        $cbPnl = New-Object System.Windows.Forms.Panel
+        $cbPnl.Location = New-Object System.Drawing.Point(15, 94)
+        $cbPnl.Size = New-Object System.Drawing.Size(440, 26)
+        $cbPnl.BackColor = [System.Drawing.Color]::FromArgb(30, 38, 48)
+        $cbPnl.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+        $cb = New-Object SmartExeComboBox
+        $cb.Dock = [System.Windows.Forms.DockStyle]::Fill
+        $cb.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
+        $cb.DrawMode = [System.Windows.Forms.DrawMode]::OwnerDrawFixed
+        $cb.CustomDropDown = $true
+        $cb.ItemHeight = 18
+        $cb.IntegralHeight = $false
+        $cb.MaxDropDownItems = 12
+        $cb.DropDownHeight = 216
+        $cb.DropDownWidth = 440
+        $cb.Font = New-Object System.Drawing.Font('Segoe UI', 9)
+        $cb.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+        $cb.BackColor = [System.Drawing.Color]::FromArgb(30, 38, 48)
+        $cb.ForeColor = [System.Drawing.Color]::FromArgb(220, 223, 228)
+        try { $cb.BorderColor = $cb.BackColor } catch {}
+        $cb.Add_DrawItem({
+            param($sender, $e)
+            if ($e.Index -lt 0) { return }
+            $inEdit = (($e.State -band [System.Windows.Forms.DrawItemState]::ComboBoxEdit) -ne 0)
+            $isSel = ((($e.State -band [System.Windows.Forms.DrawItemState]::Selected) -ne 0) -and -not $inEdit)
+            $bg = if ($isSel) { $steamUi.Selected } else { $sender.BackColor }
+            $bgBrush = New-Object System.Drawing.SolidBrush($bg)
+            try {
+                $e.Graphics.FillRectangle($bgBrush, $e.Bounds)
+                $rc = New-Object System.Drawing.Rectangle(($e.Bounds.X + 6), $e.Bounds.Y, [Math]::Max(10, ($e.Bounds.Width - 8)), $e.Bounds.Height)
+                $fl = [System.Windows.Forms.TextFormatFlags]::Left -bor [System.Windows.Forms.TextFormatFlags]::VerticalCenter -bor [System.Windows.Forms.TextFormatFlags]::NoPrefix -bor [System.Windows.Forms.TextFormatFlags]::EndEllipsis
+                [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, [string]$sender.Items[$e.Index], $sender.Font, $rc, $sender.ForeColor, $fl)
+            } finally { $bgBrush.Dispose() }
+        }.GetNewClosure())
+        $keys = New-Object System.Collections.ArrayList
+        [void]$keys.Add('')
+        [void]$cb.Items.Add((T 'frames_platform_any'))
+        foreach ($d in @(Get-SgdbPlatformDefs)) { [void]$keys.Add([string]$d.Key); [void]$cb.Items.Add([string]$d.Label) }
+        $sel = $keys.IndexOf(([string]$PlatformKey).Trim().ToLowerInvariant())
+        if ($sel -lt 0) { $sel = 0 }
+        $cb.SelectedIndex = $sel
+        $cbPnl.Controls.Add($cb)
+        $f.Controls.Add($cbPnl)
+        Add-FramesDlgOkCancel $f (New-FramesDlgButton (T 'frames_ok') $true) (New-FramesDlgButton (T 'frames_cancel'))
+        if ($f.ShowDialog($owner) -eq [System.Windows.Forms.DialogResult]::OK) {
+            $nm = ([string]$tb.Text).Trim()
+            if ($nm -eq '') { $nm = [string]$Name }
+            return @{ Name = $nm; Platform = [string]$keys[[Math]::Max(0, $cb.SelectedIndex)] }
+        }
+        return $null
+    } catch { return $null } finally { if ($null -ne $f) { try { $f.Dispose() } catch {} } }
+}
+
+# Выбор области под обложку, как рамка обрезки в графических редакторах: область можно создать мышью, перетащить за середину,
+# менять размер за маркеры по углам и сторонам; вне области затемнено, внутри сетка из третей и размер в пикселях шаблона.
+# Возвращает @{ x; y; w; h } в пикселях шаблона или $null (отмена). $Initial - область, выделенная сразу.
+function Show-FrameRectPicker($owner, [string]$Path, $Initial = $null) {
+    $bmp = $null; $f = $null
+    try {
+        $bmp = Open-FrameBitmapNoLock $Path
+        # Единый размер области показа для окон «Область под обложку» и «Подгонка обложки под рамку»: не больше 760 x 560 px, масштаб до 2x.
+        $scale = [Math]::Min([Math]::Min(760.0 / $bmp.Width, 560.0 / $bmp.Height), 2.0)
+        $pw = [int][Math]::Round($bmp.Width * $scale); $ph = [int][Math]::Round($bmp.Height * $scale)
+        $fw = [Math]::Max($pw + 30, 420)
+        $f = New-FramesDlgForm (T 'frames_rect_title') $fw ($ph + 122)
+        $lbl = New-Object System.Windows.Forms.Label
+        $lbl.Location = New-Object System.Drawing.Point(15, 10)
+        $lbl.Size = New-Object System.Drawing.Size(($fw - 30), 46)
+        $lbl.AutoSize = $false
+        $lbl.Text = (T 'frames_rect_hint')
+        $f.Controls.Add($lbl)
+        $pb = New-Object System.Windows.Forms.PictureBox
+        $pb.Location = New-Object System.Drawing.Point([int](($fw - $pw) / 2), 60)
+        $pb.Size = New-Object System.Drawing.Size($pw, $ph)
+        $pb.SizeMode = [System.Windows.Forms.PictureBoxSizeMode]::StretchImage
+        $pb.BackColor = [System.Drawing.Color]::FromArgb(70, 76, 86)
+        $pb.Image = $bmp
+        $pb.Cursor = [System.Windows.Forms.Cursors]::Cross
+        try { $pb.GetType().GetProperty('DoubleBuffered', [System.Reflection.BindingFlags]'Instance,NonPublic').SetValue($pb, $true, $null) } catch {}
+        $f.Controls.Add($pb)
+        $state = @{ Rect = [System.Drawing.Rectangle]::Empty; Mode = ''; Anchor = [System.Drawing.Point]::Empty; Orig = [System.Drawing.Rectangle]::Empty; Result = $null }
+        # Найденная автоматически (или уже заданная) область сразу выделена: её можно принять или поправить.
+        if ($null -ne $Initial) {
+            try { $state.Rect = New-Object System.Drawing.Rectangle([int][Math]::Round([int]$Initial.x * $scale), [int][Math]::Round([int]$Initial.y * $scale), [int][Math]::Round([int]$Initial.w * $scale), [int][Math]::Round([int]$Initial.h * $scale)) } catch {}
+        }
+        $initScreen = $state.Rect
+        $minSz = 8
+        $clamp = { param([int]$v, [int]$lo, [int]$hi) if ($hi -lt $lo) { return $lo }; return [Math]::Max($lo, [Math]::Min($hi, $v)) }.GetNewClosure()
+        # Что под курсором: nw/n/ne/e/se/s/sw/w - маркер или сторона, move - внутри области, пусто - снаружи.
+        $state.Hit = {
+            param($pt)
+            $r = $state.Rect
+            if ($r.Width -le 0 -or $r.Height -le 0) { return '' }
+            $tol = 7
+            $nL = ([Math]::Abs($pt.X - $r.Left) -le $tol); $nR = ([Math]::Abs($pt.X - $r.Right) -le $tol)
+            $nT = ([Math]::Abs($pt.Y - $r.Top) -le $tol); $nB = ([Math]::Abs($pt.Y - $r.Bottom) -le $tol)
+            $inX = ($pt.X -ge ($r.Left - $tol) -and $pt.X -le ($r.Right + $tol))
+            $inY = ($pt.Y -ge ($r.Top - $tol) -and $pt.Y -le ($r.Bottom + $tol))
+            if ($nL -and $nT) { return 'nw' }
+            if ($nR -and $nT) { return 'ne' }
+            if ($nL -and $nB) { return 'sw' }
+            if ($nR -and $nB) { return 'se' }
+            if ($nT -and $inX) { return 'n' }
+            if ($nB -and $inX) { return 's' }
+            if ($nL -and $inY) { return 'w' }
+            if ($nR -and $inY) { return 'e' }
+            if ($r.Contains($pt)) { return 'move' }
+            return ''
+        }.GetNewClosure()
+        $state.CursorFor = {
+            param([string]$h)
+            switch ($h) {
+                'nw' { return [System.Windows.Forms.Cursors]::SizeNWSE }
+                'se' { return [System.Windows.Forms.Cursors]::SizeNWSE }
+                'ne' { return [System.Windows.Forms.Cursors]::SizeNESW }
+                'sw' { return [System.Windows.Forms.Cursors]::SizeNESW }
+                'n' { return [System.Windows.Forms.Cursors]::SizeNS }
+                's' { return [System.Windows.Forms.Cursors]::SizeNS }
+                'e' { return [System.Windows.Forms.Cursors]::SizeWE }
+                'w' { return [System.Windows.Forms.Cursors]::SizeWE }
+                'move' { return [System.Windows.Forms.Cursors]::SizeAll }
+                default { return [System.Windows.Forms.Cursors]::Cross }
+            }
+        }.GetNewClosure()
+        $pb.Add_MouseDown({
+            param($s, $e)
+            if ($e.Button -ne [System.Windows.Forms.MouseButtons]::Left) { return }
+            $h = [string](& $state.Hit $e.Location)
+            if ($h -eq '') {
+                # Новая область: тянется от точки нажатия.
+                $state.Mode = 'create'
+                $state.Anchor = New-Object System.Drawing.Point((& $clamp $e.X 0 $pw), (& $clamp $e.Y 0 $ph))
+                $state.Rect = [System.Drawing.Rectangle]::Empty
+            } else {
+                $state.Mode = $h
+                $state.Anchor = $e.Location
+                $state.Orig = $state.Rect
+            }
+            $s.Invalidate()
+        }.GetNewClosure())
+        $pb.Add_MouseMove({
+            param($s, $e)
+            $m = [string]$state.Mode
+            if ($m -eq '') { $s.Cursor = (& $state.CursorFor ([string](& $state.Hit $e.Location))); return }
+            if ($m -eq 'create') {
+                $x2 = & $clamp $e.X 0 $pw; $y2 = & $clamp $e.Y 0 $ph
+                $x1 = [int]$state.Anchor.X; $y1 = [int]$state.Anchor.Y
+                $state.Rect = New-Object System.Drawing.Rectangle([Math]::Min($x1, $x2), [Math]::Min($y1, $y2), [Math]::Abs($x2 - $x1), [Math]::Abs($y2 - $y1))
+            } elseif ($m -eq 'move') {
+                $o = $state.Orig
+                $nx = & $clamp ($o.X + $e.X - $state.Anchor.X) 0 ($pw - $o.Width)
+                $ny = & $clamp ($o.Y + $e.Y - $state.Anchor.Y) 0 ($ph - $o.Height)
+                $state.Rect = New-Object System.Drawing.Rectangle($nx, $ny, $o.Width, $o.Height)
+            } else {
+                $o = $state.Orig
+                $l = $o.Left; $t = $o.Top; $r = $o.Right; $b = $o.Bottom
+                if ($m.EndsWith('w')) { $l = & $clamp $e.X 0 ($r - $minSz) }
+                if ($m.EndsWith('e')) { $r = & $clamp $e.X ($l + $minSz) $pw }
+                if ($m.StartsWith('n')) { $t = & $clamp $e.Y 0 ($b - $minSz) }
+                if ($m.StartsWith('s')) { $b = & $clamp $e.Y ($t + $minSz) $ph }
+                $state.Rect = New-Object System.Drawing.Rectangle($l, $t, ($r - $l), ($b - $t))
+            }
+            $s.Invalidate()
+        }.GetNewClosure())
+        $pb.Add_MouseUp({
+            param($s, $e)
+            if ([string]$state.Mode -eq '') { return }
+            $state.Mode = ''
+            $s.Cursor = (& $state.CursorFor ([string](& $state.Hit $e.Location)))
+            $s.Invalidate()
+        }.GetNewClosure())
+        $pb.Add_Paint({
+            param($s, $e)
+            $r = $state.Rect
+            if ($r.Width -le 0 -or $r.Height -le 0) { return }
+            $g = $e.Graphics
+            $dim = $null; $reg = $null; $penD = $null; $penW = $null; $penG = $null; $hbr = $null; $hpen = $null; $fnt = $null; $sb = $null
+            try {
+                # Вне области затемнено.
+                $dim = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(130, 0, 0, 0))
+                $reg = New-Object System.Drawing.Region((New-Object System.Drawing.Rectangle(0, 0, $pw, $ph)))
+                $reg.Exclude($r)
+                $g.FillRegion($dim, $reg)
+                # Рамка (тёмная подложка и белая линия, чтобы была видна на любом фоне) и сетка из третей.
+                $penD = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(150, 0, 0, 0), 3)
+                $penW = New-Object System.Drawing.Pen([System.Drawing.Color]::White, 1)
+                $penG = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(90, 255, 255, 255), 1)
+                $rr = New-Object System.Drawing.Rectangle($r.X, $r.Y, ($r.Width - 1), ($r.Height - 1))
+                $g.DrawRectangle($penD, $rr)
+                for ($i = 1; $i -le 2; $i++) {
+                    $gx = $r.X + [int]($r.Width * $i / 3); $gy = $r.Y + [int]($r.Height * $i / 3)
+                    $g.DrawLine($penG, $gx, $r.Y, $gx, ($r.Bottom - 1))
+                    $g.DrawLine($penG, $r.X, $gy, ($r.Right - 1), $gy)
+                }
+                $g.DrawRectangle($penW, $rr)
+                # Маркеры: 4 угловых и 4 на серединах сторон.
+                $hbr = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White)
+                $hpen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(200, 30, 38, 48), 1)
+                $mx = $r.X + [int]($r.Width / 2); $my = $r.Y + [int]($r.Height / 2)
+                $xs = @($r.X, $mx, ($r.Right - 1)); $ys = @($r.Y, $my, ($r.Bottom - 1))
+                foreach ($hx in $xs) {
+                    foreach ($hy in $ys) {
+                        if ($hx -eq $mx -and $hy -eq $my) { continue }
+                        $hrc = New-Object System.Drawing.Rectangle(($hx - 4), ($hy - 4), 9, 9)
+                        $g.FillRectangle($hbr, $hrc); $g.DrawRectangle($hpen, $hrc)
+                    }
+                }
+                # Размер области в пикселях шаблона.
+                if ($r.Width -gt 90 -and $r.Height -gt 40) {
+                    $txt = ([string][int][Math]::Round($r.Width / $scale)) + ' x ' + ([string][int][Math]::Round($r.Height / $scale))
+                    $fnt = New-Object System.Drawing.Font('Segoe UI', 8)
+                    $sb = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(160, 0, 0, 0))
+                    $g.DrawString($txt, $fnt, $sb, ($r.X + 8), ($r.Y + 7))
+                    $g.DrawString($txt, $fnt, $hbr, ($r.X + 7), ($r.Y + 6))
+                }
+            } finally {
+                foreach ($d in @($dim, $reg, $penD, $penW, $penG, $hbr, $hpen, $fnt, $sb)) { if ($null -ne $d) { try { $d.Dispose() } catch {} } }
+            }
+        }.GetNewClosure())
+        $btnOk = New-FramesDlgButton (T 'frames_ok') $true
+        $btnCancel = New-FramesDlgButton (T 'frames_cancel')
+        Add-FramesDlgOkCancel $f $btnOk $btnCancel
+        # «OK» без области не закрывает окно; с областью переводит её в пиксели шаблона.
+        $btnOk.DialogResult = [System.Windows.Forms.DialogResult]::None
+        # «Сбросить»: возвращает область, найденную автоматически (прозрачный центр шаблона или однотонная заглушка);
+        # если автоматически найти не удалось, возвращается область, с которой окно было открыто.
+        $btnReset = New-FramesDlgButton (T 'frames_rect_reset')
+        $btnReset.Location = New-Object System.Drawing.Point(15, $btnOk.Top)
+        $f.Controls.Add($btnReset)
+        $initCopy = $null
+        if ($null -ne $Initial) { try { $initCopy = @{ x = [int]$Initial.x; y = [int]$Initial.y; w = [int]$Initial.w; h = [int]$Initial.h } } catch {} }
+        $btnReset.Add_Click({
+            try {
+                $def = $null
+                try { $def = Find-FrameHoleRect $bmp } catch {}
+                if ($null -eq $def) { try { $def = Find-FramePlaceholderRect $bmp } catch {} }
+                if ($null -eq $def) { $def = $initCopy }
+                if ($null -eq $def) { $state.Rect = [System.Drawing.Rectangle]::Empty }
+                else {
+                    $state.Rect = New-Object System.Drawing.Rectangle([int][Math]::Round([int]$def.x * $scale), [int][Math]::Round([int]$def.y * $scale), [int][Math]::Round([int]$def.w * $scale), [int][Math]::Round([int]$def.h * $scale))
+                }
+                $pb.Invalidate()
+            } catch {}
+        }.GetNewClosure())
+        try { $tipR = New-Object System.Windows.Forms.ToolTip; $tipR.SetToolTip($btnReset, (T 'frames_rect_reset_tip')) } catch {}
+        $btnOk.Add_Click({
+            $r = $state.Rect
+            if ($r.Width -lt 4 -or $r.Height -lt 4) { return }
+            # Выделение не трогали: возвращаются исходные пиксели без округления через масштаб превью (иначе область «плывёт» на 1-2 px).
+            if ($null -ne $initCopy -and $r.Equals($initScreen)) {
+                $state.Result = @{ x = [int]$initCopy.x; y = [int]$initCopy.y; w = [int]$initCopy.w; h = [int]$initCopy.h }
+                $f.DialogResult = [System.Windows.Forms.DialogResult]::OK
+                return
+            }
+            $state.Result = @{ x = [int][Math]::Round($r.X / $scale); y = [int][Math]::Round($r.Y / $scale); w = [int][Math]::Round($r.Width / $scale); h = [int][Math]::Round($r.Height / $scale) }
+            $f.DialogResult = [System.Windows.Forms.DialogResult]::OK
+        }.GetNewClosure())
+        if ($f.ShowDialog($owner) -eq [System.Windows.Forms.DialogResult]::OK) { return $state.Result }
+        return $null
+    } catch { return $null } finally {
+        if ($null -ne $f) { try { $f.Dispose() } catch {} }
+        if ($null -ne $bmp) { try { $bmp.Dispose() } catch {} }
+    }
+}
+
+# Миниатюра рамки для списка (рамка вписана в $W x $H на тёмном фоне).
+function New-FrameThumbBitmap([string]$Path, [int]$W = 100, [int]$H = 150) {
+    $bmp = New-Object System.Drawing.Bitmap($W, $H, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+    $g = [System.Drawing.Graphics]::FromImage($bmp)
+    $src = $null
+    try {
+        $g.Clear([System.Drawing.Color]::FromArgb(45, 52, 64))
+        $src = Open-FrameBitmapNoLock $Path
+        $s = [Math]::Min($W / [double]$src.Width, $H / [double]$src.Height)
+        $dw = [int][Math]::Round($src.Width * $s); $dh = [int][Math]::Round($src.Height * $s)
+        $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+        $g.DrawImage($src, [int](($W - $dw) / 2), [int](($H - $dh) / 2), $dw, $dh)
+    } catch {} finally {
+        $g.Dispose()
+        if ($null -ne $src) { try { $src.Dispose() } catch {} }
+    }
+    return $bmp
+}
+
+# Образцы обложек для превью в окне комплекта (JPEG в base64): вертикальный 600x900 и горизонтальный 920x430.
+$script:FrameSampleVB64 = @'
+/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgICAgMCAgIDAwMDBAYEBAQEBAgGBgUGCQgKCgkICQkKDA8MCgsOCwkJDRENDg8QEBEQCgwSExIQEw8QEBD/2wBDAQMDAwQDBAgEBAgQCwkLEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQ
+EBAQEBAQEBAQEBAQEBAQEBAQEBAQEBD/wAARCAOEAlgDAREAAhEBAxEB/8QAHQABAAEEAwEAAAAAAAAAAAAAAAECBAYIAwUHCf/EAG0QAAECBAMEBAUIEwgOCAYDAQEAAgMEERIFBmEHITFRCBNBcRQVIoGRFjJCVmKh0dIJGCMzN0NScnR1
+gpWisbKztMHCJSc1U1VzktMXGSQ0NkVUY2RlZ4OElCZEV3aTpuTwOEaWpeLxo6TD1P/EAB0BAQABBQEBAQAAAAAAAAAAAAABAgMEBQYHCAn/xABOEQEAAQMCAQcHBgoJAwQDAQEAAQIDEQQhBQYSMTJBUXEHExQiYYGxUpGhwdHwFTQ2QmJy
+c5Ky4RYXIyQzU4Kz0iY18UNUk6IIY8KDo//aAAwDAQACEQMRAD8A8nJJNSd69LedCAgAkGoNCEAkk1JqSgICACQag0IQCSTUmpKAgIAJBqDQhAJJNSakoCAgAkGoNCEAkk1JqSgICACQag0IQCSTUmpKAgIAJBqDQhAJJNSakoCAgAkGoNCE
+Akk1JqSgICACQag0IQCSTUmpKAgIAJBqDQhAJJNSakoCAgAkGoNCEAkk1JqSgICACQag0IQCSTUmpKAgIAJBqDQhAJJNSakoCAgAkGoNCEAkk1JqSgICACQag0IQCSTUmpKAgIAJBqDQhAJJNSakoCAgAkGoNCEAkk1JqSgICACQag0IQCST
+UmpKAgIAJBqDQhAJJNSakoCAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgInAhgQwIYEMCGBDAhgQwIYEMCGBDAhgQwIYEMCGBDAhgQwIYEMCGBDA
+hgQwIYEMCGBDAhgQwIYEMCGBDAhgQwIYEMCGBDAhgQwIYEMCGBDAhgQwIYEMCGBDAhgQwIYEMCGBDAhgQwIYEMCGBDAhgQwIYEMCGBDAhgQwEEGhG9EiAgAEmgFSUAgg0IoQgICAASaAVJQCCDQihCAgIABJoBUlAIINCKEICAgAEmgFSUAg
+g0IoQgICAASaAVJQCCDQihCAgIABJoBUlAIINCKEICAgAEmgFSUAgg0IoQgICAASaAVJQCCDQihCAgIABJoBUlAIINCKEICAgAEmgFSUAgg0IoQgICAASaAVJQCCDQihCAgIABJoBUlAIINCKEICAgAEmgFSUAgg0IoQgICAASaAVJQCCDQi
+hCAgIABJoBUlAIINCKEICAgAEmgFSUAgg0IoQgICAASaAVJQCCDQihCAgIABJoBUlAIINCKEICAgEkmpO9AQEAEg1BoQgEkmpNSUBAQASDUGhCASSak1JQEBABINQaEIBJJqTUlAQEAEg1BoQgEkmpNSUBAQASDUGhCASSak1JQEBABINQaE
+IBJJqTUlAQEAEg1BoQgEkmpNSUBAQASDUGhCASSak1JQEBABINQaEIBJJqTUlAQEAEg1BoQgEkmpNSUBAQASDUGhCASSak1JQEBABINQaEIBJJqTUlAQEAEg1BoQgEkmpNSUBAQASDUGhCASSak1JQEBABINQaEIBJJqTUlAQEAEg1BoQgEk
+mpNSUBAQASDUGhCASSak1JQEBABINQaEIBJJqTUlAQEFNTzQKnmgVPNAqeaBU80Cp5oFTzQKnmgVPNAqeaBU80Cp5oFTzQKnmgVPNAqeaBU80Cp5oFTzQKnmgVPNAqeaBU80Cp5oFTzQKnmgVPNAqeaBU80Cp5oFTzQKnmgVPNAqeaBU80Cp
+5oFTzQKnmgVPNAqeaBU80Cp5oFTzQKnmgVPNAqeaBU80Cp5oFTzQKnmgVPNAqeaBU80Cp5oFTzQKnmgVPNAqeaBU80Cp5oFTzQKnmgVPNAqeaBU80Cp5oFTzQKnmgVPNAqeaBU80Cp5oFTzQKnmgVPNBCAgICAgICAgICAgICAgICAgICAgI
+CAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIJIINCN6CEBBIBJoBUlAIINCKEIIQEEgEmgFSUAgg0IoQghAQSASaAVJQCCDQihCCEBBIBJoBUlAIINCKEIIQEEgEmgFSUAgg0IoQghAQSASa
+AVJQCCDQihCCEBBIBJoBUlAIINCKEIIQEEgEmgFSUAgg0IoQghAQSASaAVJQCCDQihCCEBBIBJoBUlAIINCKEIIQEEgEmgFSUAgg0IoQghAQSASaAVJQCCDQihCCEBBIBJoBUlAIINCKEIIQEEgEmgFSUAgg0IoQghAQSASaAVJQCCDQihCC
+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
+COBQCSSSTUniUBAQf//Z
+'@
+$script:FrameSampleHB64 = @'
+/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgICAgMCAgIDAwMDBAYEBAQEBAgGBgUGCQgKCgkICQkKDA8MCgsOCwkJDRENDg8QEBEQCgwSExIQEw8QEBD/2wBDAQMDAwQDBAgEBAgQCwkLEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQ
+EBAQEBAQEBAQEBAQEBAQEBAQEBAQEBD/wAARCAGuA5gDAREAAhEBAxEB/8QAHQABAAIBBQEAAAAAAAAAAAAAAAECBwMEBQYICf/EAG0QAAECBAMFAwMKEAYNBwsFAQEAAgMEERIFBiEHMUFRYQgTcRQigRUWMkJidYKRobMJFyM3UlNVVnKS
+k7GywdHSGEN0laK0JiczNTZUV2Nlg4WU0yVEZKPDxPAZJDQ4RUZHc3akwihmhKXU8f/EAB0BAQEAAgMBAQEAAAAAAAAAAAABAgMEBQYHCAn/xABPEQACAgECAwQFBwcICQQCAwEAAQIRAwQhBRIxBkFRcQcTFDJhIoGRobHB0TM0QlJyc7IV
+FjU2YpLh8BcjJENTVIKTwiUmY/EI0kSDorP/2gAMAwEAAhEDEQA/AMTkkmpOq+lnzoIAgCAEkmpJJPEoAgCAICSS41cSTzKAhAEKghSSS7UknxQEIAgCAOJI1JNBRAUQBAEBJJIAJJpu6ICFiwFAEBJJIAJNBuHJAUO9ZIzQUYCgFTS2poOC
+Aq5AQp3gKgOJttqaVrRRgosQDuQqKoZC51Lamh4IAowFEAjAJIaQCaHeOaBGmdyGRVAFgCKkVAJAOhQyRCFKu3oCFGVAuIBtJFdDRYmRRAQ7egIRggkt1aSPBYlRR25ClViwVO9GZoAlpq0kHmFAURgHcjCKLAzJBLSC0kEbiFGCiMyKHeow
+EKipJDqg0IWLMgSSak1JUBVyAqdyjL3FVAg4l1S4kk7yVDIogIduWKKiEKC5zjVxJPMoCp3oZIhYsoUBJJdq4k8NUBpoZhRgg8UQILnOpUk0FBXkowFCsg7igRHtUKWLnEAEk00HRYgICrkBCGZJc4gAk0G4ckBCAIAgJudQNuNBrSqx7wQo
+AgCAm51Lamla06oCEAQBCom5waW1NDqQhkQgCAICQ5wBAJod45oCEAQFhuQEhzgCASK6HqgCAIAgAc5taEiooackAQGRV6s8jQQUEFBBQQUEFBBQQUEFBBQQUEAQFXDipQISgEoBKAVAQBADoowRd0WIFyAipWTRRUrEBC2EFlSTVCipQEVq
+gIJ4ICKlRgVJWIKk0VKkRUqFoICCaIFuRd0Sii7osQQTVAnQQtlSdaKFIO5O8FalRopDid6ItkVKhSK1QEXdFKLZVQqIu6KFIrVKBBNFEVFDuUHeVJNFClalRopBPFQqZF3RCkICp5LFmSIUKVqUoFSTVStjIgmmqhSpNVGrFlSaKMyFygIQ
+FSd6lGSIOixC2K1KFKk0SioipKxKRXf0QEE1QqZCjLZBNOClFIJKhRUqUCpJCpVuRUqUUVWIIJohaIuKFoVKxYoip3KpFFaqMBAEBW5Cp2KlCipQCpUoCpUoCpUKKlAKlAKlAKlAKlAKlALkKibuiFF3RALuiAXdEAu6IBd0QC7ogLB2m5KA
+u6IBd0UoC7olAXdEoC7oqBd0QGRrui9WeRF3RALuiAXdEAu6IBd0QC7ogF3RALuiAgmqgFTzSgKnmlAVPNKASgQqBULFgHxUBWp5qgVPNWgKnmlAVPNKAWICAIAgK3dFaLQu6KCiEKEKQTRAQdVHYIU3AJRqi0VJqoVbBARUICpNUC2CxKFa
+AqFAVJKF2IJWPeUgmvBKKip0TqVkE1U6BIqTRCi7opQKkhTctEE8ihUQoUgkIwVceilUVFSaqFKk8EBUmixqykE14KFohCkE8ioyorVQpF3RSi0VLtdylFoqTxUKVJqgIJooy0VJ4rEqIqOaFIJQtFSaLEpBNeChSpKFogmqhURVQFaoVEE0
+UC3Irqo+hkCaqAgnihSLuilFogmqBIrd0SiklyxFFSUMhUc1KAqOajQIJCIpBKrQoVPNQUKnmgoio5qFWwqFSkXdEAu6KAXdFiBd0QtC7ogoXdEFC7ogoXdEFC7ogoXdEFAGqFSJqOaFFRzQCo5oBUc0AqOaAVHNAKjmgJaRzUBao5pQFRzS
+gKjmlAVHNKAqOaoFRzQGRV6s8iEAQBAN2hQBAEAQDdvCAIAgCAE03goCLlARd1U3LRFwUBBcAlChe1KFEXq0WhejFE3KCiC9BRHeDmVKFDvBzKUKF46oKIvVFEF45oKI7wcypQoXDfqlIUReOCj2FUDEohaIMQEKFoi7SvBBRF6UKF/RSi0R
+cEoouG+hUYogvHBQqRF3iqUqX8FCURWutChRcFARcOKhaBcCN6m5aI6qlKk1QFbgowQTVAQa00UMkiqhQdFKYIJBCUypFa1NKFQpVxG9RlKk1UZCtQoWiDqdAoZIg7kBVYmZBICMFTqdBvUMkQSCp0BVC0VOpQVZWtdAFgVIhGUhylMVZVTo
+ZJEXBQpU6aEIxRBIWLKkQhSDuQqINdxqoZELEEXBC0CRRQJFSabwVWZC4KUwVUFEE0ULQJ6FAkVUplCUAoATTeCr1LRWp5qChU80FBRihQ76IWiCaKlFwQCoWLLQrpWhUFC4IKFwQULggoV0rQoKFwQUAaoVKiUAoaVpohQgCAIBQ76IAgCA
+lqjBah5JTBCUwEpgJTBNCdwRAhUGRi5xJJJJOpXqqPIWxU80oWxU80oWxUjUFKFslz3PcXOcSTqSlC2RU80oWxU80oWxU80oWyXPe9xc9xJPEpQtkVPNKFsV6qC2QXdUG5D4rnmrnEmlERbKF/NLLZUxBzSwVMULGykOmC6lz60FBXkpZSvf
+9U5gR33VLA77qnMCTMOcAC4kNFBruSwR33VLG5XvR9kpZR3w+yQEmYJaGl5o3cOSlgjvh9klgh0Yc0bFEd8P/BSy8pPlBLQwuNoNQKpYpkd8P/BSxykGKK71LKkQYwHFLFMnyk2WXG2taV4pYKmP1SxRHf8AUo2Wh35WNih5S60suNpNSKpZ
+UivfdVCgxuqliivfDmjYonyghpaHmjqVFd6WWivejmllJ73TelkAiBClxFc0ENdQOFCOaIIi5UEJYoLFlRAe9hNriKih8FC2UJIKAgklTvKQoW2Q17mG5ri00pUKNWVFDSijKRUc1AVO8oZINc5jg5jiCOIQFCeqxKVJKhSCeJQtgPcwhzHU
+cDUEcFiZJsoTU1J3oCCdd6hbKOUZUQHFpDgaEagqBhzi6riak6koUoSoioi4qC2RWhrXcoZERHl7i9zqk6klQWVqOam5bZBKFIqeaFsh8R73Fz3FxPEqUZEVKxBVC2wSKKMWyHxHPNXuJNKa8lTIio5rHcFSddCoLIrzKFtkuiOfS95NooKn
+cEoWytxUZRcVNwRU80BLnucAHOJDRQV4BC2UJQtsXFBbFxUFssYr3NaxziWt3DkoxbKk1QEJuUKF3JL3FghlxtBqByKC2RUc0FsVHNBbFRzQWye8dZ3d5trWldKoLZFQgtgHkhUTcUKSIjw0sDvNJqR1QEXFALigFxQEiK9rSwOIa7eOaAi4
+oCRqFHYAJqjBYPe0ENcQHCh6hTcWRU803Fip5puLFTzTcWWbEeytriKih6hVAi4qgyOvVnkQgCAIAgCAIAgCAqTyWN2CpKAqXAbypZTTdFUbLRovjgcVi5FSNJ0x1U5jJRNF8y0bypzGSiV757vYNcfBpKxc6MlAXx/tMX8Q/sU5xyMjvJj7
+TF/EP7E5/iXkHeTH2mL+If2Jz/Ecg7yY+0xfxD+xOf4jkHeTH2mL+IU50OQi+Y+0xfxCpzochHeR/tMX8Q/sTnHKx3kf7TF/EP7E5xysd5H+0xfxD+xOccrHeR/tMX8Q/sU5viOVkF8f7TF/EP7FecyUSO8jfaYv4h/Ypzl5B3kb7TF/EP7E
+5xyDvI32mL+If2KOY5WQYkcj+4xfxD+xTnHKyL4/2mL+IVXNE5WL432mL+IVOdDkfgQXxvtMX8Qpzl5X4EXx/tMX8mf2KcxeVi+P9oi/kz+xOb4k5WVL4/2iJ+TKc3xLyi+P9oifkz+xOb4jlIuj/aIv4hU5jLlYuj/aIv4hTmHKyHR3tPnh
+zfEEJzEoNma8VeYlF2x+qvMKNQRgeKqZKNQRQeKtgsH80thFruqgsgnSqDvKoUKMEOUKip3KFKqUwVO9QysitELZBPIqMqKOUL1IUKQSCneEVWLMrKoCDuUZUVJ5qFsqTUqFBQvcUO9TvCCjKUO9QoO5TcFFDKwgKk9UMtiKhYuyioUBBNSh
+UyFGWyp3qlIWIB3KAqhlYU3FkVogFQoCCeRQEVKFQrRC2RUILFQgslYsoUBWp5oZWKnmgshBYQWEFhBYQWTwKAA0QpNQgFQgFQgFQgFQgFQgFQgJryKxZVQQiFTzQuwqeaDYkHXUog6BPIqsiAPMogyahUGRqnmvVnkRU80AqeaAVPNAKnmg
+FTzQCp5oBU80AJWPUtFC/qrZaNJ0SnFYtlo0HxqcVg2VI20SYpxWLkZqJqskpqLD8ojOZLQPtkY2j0DeVpnljHqzdDDKXRGjEncCldAZifeOX1OH+0riT1iXunNhoW/eNB2ZYzNJLDpOXHA93e74yuNLVTfQ5UdJjiaTsy427dPOb0Y1o/Ut
+bzZH3m1YMa7inrhxz7qR/jCnrZ+JfU4/AeuDG/upH+MJ62fiPVY/AeuDG/unH+NPWz8R6rH4D1wY3904/wAaetn4j1WPwHrgxv7px/jT1s/Eeqx+A9cGN/dOP8aetn4j1WPwHrgxv7px/jT1s/Eeqx+A9cGN/dOP8aetn4j1WPwHrgxv7px/
+jT1s/Eeqx+A9cGN/dOP8aetn4j1WPwHq/jf3Tj/GE9bPxHqsfgR6v41904/xhPWz8R6rH4D1fxr7px/jCetn4j1WPwHq/jX3Tj/GE9bPxHqsfgPV/GvunH+MJ62fiPVY/Aer+NfdOP8AGE9bPxHqsfgPV/GvunH+MKesn4j1WPwHq/jX3Tj/
+ABhPWT8R6rH4D1fxr7px/jCesn4j1WPwHq9jX3Tj/jK+tn4j1WPwHq9jP3Sj/Gp62fiPVY/Aer2M/dKN8aetn4j1WPwHq9jP3SjfGnrJ+I9Vj8B6vYz90o3xp6yfiPVY/Au3MeMD2U3eOT2Nd+pVZZrvI8MH3FvVxkXSdwqUjcy1vdu+MLYt
+RJdTXLSwfQsBgk3/AHGZjSUQ+1jC9nxjULdHUp9Tjz0jXQpMyM9JtEV7BEgndFhG5h9I3LkrIn0OLLG49TSZHrxWaka6NZsXqrZKNZr68VlZC1xQpINUYKnep3FIJNFClUBB3LFsFHKFRCGRBRgrWqxMiHblCoqo2CpJrvUMipJqgIJNN6jK
+itSViZEICDuQqIUZSlSowiHKFIqeajYKneoVEVKFIJohUVWLZkFAQ5Coip5oUq5RFIqeaMCp5rEFSTVCoip5qWUKWAgIO5ARUoBUoZIhChATU81gBU80BCAipoEMiKnmgFTzQCp5oBU80AqeaAlqAlChAEAQBAEAUYCJgmpUZUhUoWhUoKFS
+goAmqIjRZZEHFAEBkapXqbPIipSwKlLAqUsCpSwKlLAqUsCp5qWCpchbNF8SijZUbWNHpxWDZmkaUCHMz0UwpdtaaucdGtHMngtU5pdTbGDk6RSPikhhZskGtnJkb47x9TYfcjj4rr8urfSJ2mHR1vM4eanpueimNNx3xXc3Hd4DguDKTk7Z
+z4xjFUjRuKhdhcUGwuKDYXFBsLig2FxQbC4oNhcUGwuKDYXFBsLig2FxQbC4oNiankg2IuQuwuJ3INiankhNiLig2FxQbC4oNhcUGwuKDYXFBsLig2FxQbC4oNhcUGwuKDYXFBsLig2NxJ4jOSD7pWMWV3t3td4jcsoycehjKEZ7M37XYdi5
+o0MkZw7h/FRD/wDiVy8eovZnCy6at4m0iCYk4xl5qGWPbwP6uYXKUjhyhRqw41eKzTNbNdkSvFUhcOIV6gkmoqoUrUoUgkgqMFXONFiVFSTRAVuKGQqUBQkrEyFSVClSSoy0VJNVClSeKAqSSoCpJBWJkiKlCgk03qArUqdxkipNEKQTVYvY
+FbijLRBPFQpW4oCCShUVuKjRkKlYggkoVEXFCkEkrHoCtxVZRcViCCTvQqK3FRlFxUAqUAqUBUkqAipVLYqVDIm4qd4FxUAuKAXFAQgsrU0QyFxQC4oUXFASDVATWiAVKAVKAVKAVKAVKAVKxbAqVWCbioBcUKhcVCi4oBcUADjVVEZapWRB
+UoBUoDJBJcS47yalepo8iQlAJQJBoajglAOc57i9xqSalKBCUBUJQKueFCmnGjl7i55qTvU6FRso0cUWDZmomlLwXTj3udEEKBCF0WK7cwft6LRkyKKtnIx4nN0jZYnjIjw/IMPYYMm3h7aKebj+pdTmzvI/gd1g08cSvvOLuK0HIpC4oKQu
+KCkLigpC4oKQuKCkLigpC4oKQuKCkLigpC4oKRyWCZbzFmWN3GXsDnsSfWh8mgOeB4uHmj0lbsOny6h1ii35I0Z9Rg0yvNNR82ZGwPs07ScUDYmJNw7B4Z3+UzHeRB8CGD8pC7XDwDV5PfqPm/uR02btJosXuXLyVL6WdvkuzLlSRAdmTaDG
+iOHsocrChwh8bi4/Iu1w9lub35N+Sr7Tps/bBx2xwivN39lHOSux/YZhwAiyuJYi4cYs1FIPobaF2WLstp49Yt+cvwOpy9r9VLpNLyj+JyMHKWxWT0l9ncrFpuMWGX/pvK5kOzemj/u4/WzhT7T6yX+9l9SN0zD9lkIUh7M8Ip1lIP7FuXAN
+Mv0I/QaH2i1b/wB5L+8Q/DdlUbSLszwmnSUhfqAR8A0z/Qj9BV2i1a/3kv7xtY2TdiU5pH2fQINeMFrmH+g8LRPs3ppf7uP1o3w7UayP+9l89M4ya2L7D8Sr5OcUw1x3GHNRKD0PDguFl7LYH7sWvKX4nPxdr9TH3pJ+cfwo4Ke7L+CTgL8s
+bQauPsYc3AY/5WOB/orrM3Zdx9ybXmvwO2wdr1LbJjT8n9zOmY72ctp+Dh0SUw+UxeGNayUwLyPwH2n4qrqs3AtZi91KXk/udHc4O0WhzbSbi/ivvVmO8VwjGMCmDKY3hU3h8YGndzUF0I+i4CvoXV5MU8L5ckWn8VR3OLLizrmxSUl8HZs7
+itZspC4oKQuKCkLigpC4oKQuKCkLigpC4oKQuKCkLigpC4oKRycriMGagtw/FyXQxpCj73wT+tq34szjszj5sCnvHqaEzAj4dMGXjgHix7fYvbzC5qlZ1soVsasCYc2tppUUPgtlmvoazYizRjRqB6AEhCgPcwlzTQ0osdylCdKUUBQnghaI
+QobEdDcHsNHDdoo0VbFCeahSLuihSpKhkiA8scHt0INQoCpNa9UKVJooxRUlYlQa+1wcDqDUIUq57nEucakmpUopW4KFRBNVClbqHwUoEPe57y95qXGpKdTLqVJFFAQgKk1UMqJfEdFeXvdVx3lYlKk0QEXdFClSeFFSkviuiG5xqaALGilC
+aJ1BF3RQEF2iblQdFL6XOraLRpwUopFQoCCeSAipQtEviOcGhx0aKDoFAVQUCaKMyIu6KAsYrnNawnRtaDlVClbuiDYXdFBsLuiDYkvcWNhk+a0kgdSqWytaILIqEAqFClhFdZ3Qd5ta0pxTcIVKbl2FSm42FSm42JER4YWA+aSCR1U3GxFS
+ruNhUqbjYXITYlsR7WuYDo6lRzQuxF3RQUTUIVCoQFmxC0Oa11A8UOm8ICtQqACOBQE1Ku5NizYr2VtdS4WnTgm42K1KbjYyRUr1VnkBUpYFSlgVKWBUpYFSlgglQGm91EbKbSPFpVa3IzSs2sKFFnplstBpV2pJ3NHElaZzo3QhzOkbPGMT
+hxQ3DpAkScA7+MV/F5/Uunz5vWOu473T4Fijv1OLu6LRZyKF3RLFC7olihd0SxQu6JYoXdEsULuiWKF3RLFC7olii8JkWPFZAgQnxIkQ2sYxpc5x5ADUnwVXynSI6irb2Mp5P7OeesxNZOY2IWXpIgOLpsXRy3pCB0+EWrutLwLU6ink+Qvj
+1+j8ToNZ2i0mmtY/lv4dPp/CzKWCbKtj+TbXx5OJmOeZviTZERgd0YKQx6bl6nR9msOOnKNvxl+B5DXdqtRmuMZcq8I/idni5zmocESmEyUtIS7BRjIbBRo6AANHoC9Fj0GPGqf4I81l1+TI77/HqziJrFcQnT/51PRog5F5p8Q0XKhjhD3U
+cSWSc/ebNrUDcszXRNw5oKIqEFCoQUKhBQqEFE3dUFEVFa8UFG9lcbxSS0lp+M0D2pdc34jULXPDCfvI2wzZIe62co7NrMQljI5hwiTxKWcKOZEhtII/BcC38y4ebh2PLGu7we6OZh4jlwy5ls/FbM6hjexXZNm+6JgcaNluefubCP1En/5b
+zT8VwXm9Z2Ywy3guV/DdfQep0PazPCo5Gpr+1s/p/wDsxPnPYJtAyiIk1CkW4zIMBcZjDwXua3m6EfPHoqOq8vquDarS3JLmj4r8Op6/R8d0erqLfJLwf3Pp9hjitCQRuND0K6izuqIu6JYoXdEsULuiWKF3RLFC7olihd0SxQu6JYoXdEsU
+LuiWKOUw+ZhT0AYROvtBNZaKf4t/LwK34ctfJZxs+HmXMjaOEWVjPl47S2JDNrhyK50ZHXOJuYcQEb1sTNbVGu12m9Z2RlwUBBIoowVqFiWiDvQqIO5RFKJuCtaqGRCjKQ4hTcqKkim9QpVC0VJqsCoq5AQoykE8k3FFVOhUKhQyKkiqjBUm
+qhkiEBWpQypELFsqIrQqAgmpQEVCm5aINN6blRWoU3KQSCgIqFBRFRzRiiFNzIKAIUrXXUoVAmqBoVGix3AJBUspWoQtCoQUKhBQqFNy0KhNxQqE3FAkFFYogqghTcpNeKm4YqUsyoVKWKFSlihUpYoEngUslAnkgokHmgoVCgSJQrCBBAEA
+QBATUq2KFSlihUpYoyUvVHjwgCAIAgCAo48UBtoz6ArBsySOPmYtAdVqkzdFFcQjnCsNbKN0mp5t8U8WQuDfTxXW6rN+ijttFg/TZwN3RcCzsaF3RLFC7olihd0SxQu6JYoXdEsULuiWKF3RLFC4DU6BLFGUtn2wHNWb4cPFcbccBwhwv76Y
+Z9Xis5shmlB7p9ByBXdaHgmfV1KfyY/W/JfidBxHj+n0Vwx/Ll8Oi83+BmvL+FbP9m0LuMm4OyYnrbYmIRzfFceP1Q606MDQvcaDgeHSq4qn49X/AIHgOJcfz6x/Lla8FtFfN3mniOOYlijiZyac5ldIbfNYPQP1ru8eGGL3UdBkzTy+8zZX
+dVtNYv6oBf1QC/qgF/VAL+qAX9UAv6oBf1QC/qgF/VAL+qAX9UAu56oDksMzJiuFECXmi6GP4qJVzfRxHoWnJghl3a38Tdj1E8WyextcyZO2a7TQ52MyHqRjDx5s9LUY5zvdH2MTweK9V57iPAMOpuTW/iuvzrvPS8M7R59JUU9vB7r5n3GC
+9oexXOGz/vJ2LBGJ4Q01E/KtJDBw71m+H46t6rxGt4Tn0XymuaPivvXd9h7/AIfxnTcQ+Snyz8H9z7/t+Bj+5dXZ29C7olihd0SxQu6JYoXdEsULuiWKF3RLFC7olihd0SxRyky71Uw4YgNZmTAhx+b2e1f6NxXMw5OZUcDUYuV2jaQIvVcp
+M4bRvGOqs0zCjVDllZj3lkKUWJQdyBFanmo2ZFSSlloqTQKFK1KjKDuWNgohkQ5QpU7lGCqhkQdyMFVL2MkVJJUsxsIZlXLFugQoVFanmhSCaKFRWpUbMgoAo3QKHelmXcDuUspRLAUBU70ZUEW4ZB3LGykVKAVKAhROzJBUoWNgJYKneoCE
+AQBRlQUstBLFBLFA7lbFEEnRLKLipZaBJBSwhcUstAkgpZECaIFuSoQIAgCFRNShRUoBU80AqeaAVKoFTzUAuKtihcUsULilijJlwXq7PHi4JYFwSwLglgXBLBDnCillNGI6iNlRsY8SlVqbNkTQkITJqeHfH6hBBjRT7luvyrj5Z8qs5OKP
+PJJHCT89ExCcizkTfFdUDkOA+JdJOXPJtnfwhyRUUaFxWJkLigFxQC4oBcUAuKAXFAcrlrLGPZwxWHguXcOiTk1E1Ibo2G3i97jo1o5n5St2n0+XVTWPFG3/AJ6nH1OpxaTG8uaVL/PTxZ6PyZslybsvhwcVzG6FjmYQA9jbawZd3+bYf03a
+8gF7nhPZ+GKpz+VLx7l5Lv8AP7D59xjtLkz3jx/Jj4d7833L4facvjGY8Rxl58oilsKtRCYfNHj9kepXrsWGGLp18Tx2XNPL16eBxl5W40i8oBeUAvKAXlALygF5QC8oBeUAvKAXlALygF5QC8oBeUAvKAXlALigOZwfNM/hQEB58plSKOgx
+DWgO+h4eG5cbNpoZd+jORh1M8W3VHUc87DMt52l42P7OokHDcTFXxsOf5kCK7oP4px5jzD03rxfFezqbc8C5ZeHc/wAH9R7rhHaeUUseofNHx/SXn4r6/M874thWKYFiEfCcYkI0nOSzrYsGM21zT+w8CNDwXjMmOeGThkVNHusWWGeCyY3a
+fejaXFYGwXFALigFxQC4oBcUAuKA3mEzrZSda6KKwYo7qKOBYdCs8cuWRryQ540UmZd2HzsaTca906jTzbwPxUXYxZ1UlTNeE+oWxMwZuWFZpmDLp8CEHcoVFULZBKncUqSoZJkE1UKVO5L3CKrG7MiHICFG6BRRmVkXBQpBNUL3FSd4U67B
+EKNmRU71AVduU3CKqGV2QSgIJ4qMyTIuCjKQSCFAiEZlZDlLF2VUspBNCoE6IVBB0UKupBNVLKRWuigB0CXZSLuaBMXBYtlsqruUKMBQEO3IVEIWwgsILCxsoSwEsBLASwQTRQqY6oWxWiAdUFhCWSgsILCCwDQoWybgm4FwTcC4JuBcEAuC
+AXBALggFwQC4IDJpJcS40qddF6s8eQgCADQ1QEucXuLzSpNdBRAabyhlRt4rzzWMmVI46aiEVWqTNsUaceOZfAo8c0ESeiiAKCnmN1d8q63VzqNI7PRQuXMcBd0XWnai7ogF3RALuiAXdEAu6IBd0QHc9mmy/H9pWJmBINMth0u4Cbn4jash
+e5aPbvI3NHiaBdhoOHZdfOo7RXV+H4v4HW8S4pi4bC57yfReP4L4/Qej8PZlrZzhPrZyNKsa/wD5zOPo98V43uc727v6LdwC+kcO4Ti0mNRiqX1v4s+X8T4xm1uRyk7f1L4I4aJHiRYjosWI573mrnOJJJ5krukklSOjdt2yt6pKF6ChegoX
+oKF6ChegoXoKF6ChegoXoKF6ChegoXoKF6ChegoXoKF6ChegoXoKF6CjVlpyYk47JmVjOhRWGrXNOv8A/wA6LGUVNVIyjKUHcTkMw5fyptdw1uFZihNksZgtLZOfhNF7TyFfZNPGGdORBXnuK8Gx6qG/d0fevxR6ThHHM2in8nv6ruf4M8y5
+4yLmHZ/jLsGx+VtLqul5iHUwpmH9kw/nB1B0K+dazR5dFk9XlXk+5+R9N0Ouw6/F6zE/Nd6fx/zuddu6LiHMF3RALuiAXdEAu6IBd0QC7ogOSxZxmZOQxPe5zDLxD7pm75Fz8MriddnhyyNCA8kDVclM4zRvWOPNZmujXhxHNNRTUEaiqEK1
+KEKklDKiFCkNiOY8OaBUcxVRmSKqMpUngp8SoqSQVChry1weKVBqKiqAoXEmqjBQkqXZlRChRcWkOFKjXVQIq5xc4uNKk10CPYyoqSarEpBPFAVqVjYIfEc97nmlSa6CgQyKlClalRlohSykxHuiOL3UqeQoFAUqUMqFarGwUqUKTEiOiG51
+KgAaCigRSpRmVEVJWNiggJfEc8ioHmigoKIChJKGSRCCgoxRL4jnBrTSjRQUCllKVKXYFSoBUlAHRHFjWGlGk0oNVDKitSqKFSgoVKhSTEcWCHpQEndqoCKlALihUhcUFEmI4s7ugpWu7WvioWiKlBRFUAqUFFhEcGGGKUJB3a/GgoipQUKl
+BQqUFFmxHBrmClHb6jVBQUsBVAKWCWvLQ5oA84UNQqCEAQBASx7mVtA84UNRVAQgMmr1Z48IAgCAIDSehkbWM7etbMkcTOPoCtMmb4mnj7+6l8Nkvtcv3rvwnmq6jVSuVHdaONQs4e4LinLFwQC4IBcEAuCAXBAd/wBk2yjEtpOJuiRHxJPB
+JNw8snANSd/dQ66F5G87mjU8Ae04ZwyevnvtBdX9y+P2HU8V4rj4bjpbzfRfe/h9p6DnsWwvBcLhZTydLMk8LlW93WFpfzod5qd7jq49F9N0Ogx6aCSVJdF/nvPlWv1+TVZHKTtvq/8APccBeuyOtF6AXoBegF6AXoBegF6AXoBegF6AXoBe
+gF6AXoBegF6AXoBegF6AXoBegF6AkRCDUEghAc7G9QtoOCuyfnaEIrYn/o01oIkOJua5rvavHPc7cV0vEuGYtVjcZLb7PijuuGcUy6PKpwdP6n8GeaNouzzG9nGOuwnFW97Lxavk5xjaMmIYO/3Lhuc3gehBXzPXaHJocnJPp3Px/wA96Pqn
+D+IYuI4vWQ2a6rwf4eDOq3BcI54uCAXBALggFwQC4IDkYR77L85D4y8aHHHQHzSuTgfVHE1S6M2ks/cuZFnAaN/CdotqMGjXa4qmNElxqhaIQpBNFHsVIoSaqCiqhkDoFjYRUnihkVuKAqTRYtlSKuKWKKk1UMiCaKMFSaqMqRBJBUKQSaJZ
+StxUexaKk8VCkE1QFSSoZUQTVSykKAgkgoVIXFYstFLijKCSVAVJIKFSIuKxsUQhQTRARcUKiELQUYogqWUi4pYFxUAuKAiqjKiCSqWiLigoXFBQuKwKLig7hcUKkLigoXFBQuKChcUFC4oKFxQULigoXFBRINUZaolRMBGwFUAgCAIAgCAI
+AgMn3dF6s8eLuiAXdEAu6ICC7TchUaT3KMqNlMPFCtbM4nETjwahaJs3xRXNLh6sOh8IcKEwehoXTZ3czvtOqxo4moWk3CoQCoQCoQCoQHcdl+zfE9pWYG4bLOdAkJa2JPzYbUQYZOjW8C91CGjxJ0C7Dh+gnr8vItorq/D/ABfcddxPiMOH
+Yed7yfReL/Bd56OxWfwvA8Lg5MylAZK4ZJM7p3dn2Z4ivGp1c72x6L6foNFj02NKKpLovv8AM+T6/XZNVklKTtvq/u8jr9y7I60XdEAu6IBd0QC7ogF3RALuiAXdEAu6IBd0QC7ogF3RALuiAXdEAu6IBd0QC7ogF3RALuiAXdEAu6IBd0QC
+7ogF3RALuiAXIKOwOgYLtFwCJkjN7S4xBWTmtO8hxAPNc0n24/pCoK6XinDceqxOMlt9j8Ud1wrieXR5VOD3X1rwZ5dztk3GMh5gj5exqGO8hefCjNB7uYhH2MRnQ8t4IIO5fMtXpMmjyvFk/wDteJ9X0Wsx67Cs2Lo+7vT8GcFULinKFQgF
+QgFQgFQgORwoh8pikI7nSjnfEarfg6mjUe6bCVeCAVzYnXNHJQnaarajUzXa4UWRC1eKCyLuiFIJ4qMqKnVQpBNFClS7TcsQipIQyKk0QFXELFmSKk1UCIJohSCdFGCt3RQqKk8VDIgkKMFSQEZl1IJqoCtQoWipOvihURcFiUXdEBBPFQqZ
+W7ooylSaIUXBQFSeKFTIuCxKLkBBOiAi4KFIu6IZC7ogF3RYgqTRALggFwQC4I9wtipUszBICAA1VAJAWIqyLgoWhcEKLggFwQC4IBcEAuCAXBALggFwQEtcgLXdFO8C7ojQF3RVAXdEAu6IBd0QC7ogF3RALuiAXdEBk6o5r1Z5AVHNAKjm
+gFRzQEOKBGi86KNmSNjMHQrVJmyJw844VXHmzfBEZoI9XJjXgz9ELp83vs73Av8AVo4qoWo3CoQCoQCoQHJ5ay9imbMclMvYLA72bnYljAfYtG9z3Hg1oqSeQW7BgnqcixY1uzRqdRDS4pZsrpL/ADXmz1UyQwnZpliBkbLTqxrb56apR8R7
+h5zjyc7gPatoF9P4Tw2GkxKK6L634nyfi/EsmtzOcur+peBwF3Vd2dHQu6oKF3VBQu6oKF3VBQu6oKF3VBQu6oKF3VBQu6oKF3VBQu6oKF3VBQu6oKF3VBQu6oKF3VBQu6oKF3VBQu6oKF3VBQu6oKF3VBQu6oKF3VBQu6oKF3VBQEQtIc1x
+BBqCN4KFpnL5py3IbY8pPwiafDhZgwxpiyMy7Sp5H3DqAOHA0cvNca4THVY6XXufg/DyZ6bgXF56LLb6P3l4rx80eUZ6Sm8MnY+HYhLvl5qViOgxoTxR0N7TQtPpXzacJY5OElTR9RhOOSKnB2nujQqFiZioQCoQCoQHI4OfMxGn+IxVtw+8
+aM/uHHyhFAudE65nJQiFtTNcjcs3LMwZf2qCtyFLKQTwRsqRVYmRB3KAqSKKFRVClXKAq5R7mSIUKVJUsFSeCMFVOhUQSKKGRWoUYIO9QyIUBU70sy7itRUKMIhQpFQgIO5Syoio5qMyKuUBFRzQEHcpZUQoUg6KAi7oqUhSwEMhUc1LAqOa
+gKuQEVHNC0KjmpYoVHNLFAkc1DIqd6JgA0VsLcHVRlQUKEAQBAEAQBAEAQBAS1LBNRzUKKjmlgVHNLAqOaWBUc0sCo5pYFRzSwKjmlgVHNLAqOaWDJxNSTQCvJesPHBAEAQCI64l1AKmtBuCFNCJvUZUcfMHRapG2Jw83vK48zfEnNJBx2ZO
+g0Z+iF0+b32d7g/Jo4qo5rUbhUc0AqOaAgkAVJAA3oKPT2yHJ8LZjkx2bsXl2+r+OQwIEJ486BAPnMZ0J0e/4LeC952e4X6qHrJr5UvqXh5s+edo+Leun6rG/kx+t+Pkui/xEaYizEV8eNEc+JEcXOcd5J3lezSSVI8U93bKXeKpBd4oBd4o
+Bd4oBd4oBd4oBd4oBd4oBd4oBd4oBd4oBd4oBd4oBd4oBd4oBd4oBd4oBd4oBd4oBd4oBd4oBd4oBd4oBd4oBd4oBd4oBd4oBd4oDcSGIzGGzkKdlX2xYTqiu48wehGixnFTi4syhJwlzI4Lb/keVzHgsLarl2BSLCY2Hi0Jo1LBoIp90w0a
+48Wlp4LwPaLhrjepgt11+K7n+P8AgfQuzPFU60s3s/d+D718/d8fM89VC8ee1FRzQCo5oBUc0ByGD+wxH+QxfzLbh9405/cOOlDoFzonWyOUgrajWzdw3Wa2tOhFCKrJbmJI3Ksx7yDvUsyIJopZUrIY6x11rXU4EVChkQo2Cij3Mirt6AgO
+sc11oNDWhGhQFViwUUMyCaKWCLrXB1AaGtCll7iHOuLnUAqa0G4KBFUMip3rFsFSaa9VC0HuvcXWgVNaAaBQppkoZIKN2UKMERHXvLrWtrwaKBTuBU6KN2VlEsqB3KFIe681ta3QCgFEBClgooZBAS+JdTzQKCmgpXqgNNRugETsqClmRZzr
+g0WtFopUDf4oCp3KAqgCllokuq1rbWi2uoGp8UsUQoykHchSoNFbC3LF9WBlo0JNaaqWWiqhQgCAtf8AU+7tbvrdTXw8EBVAEAQFg6jCy1upBrTUICqAs3cjdAlSwSHUa5trTdTUjUeCWCEsBLASwS11ocLWm4UqRu8EsEJYCWAlglrra+a0
+1FNRu6pYISwZQXrDx4QBAEBVxUsqNGJqo2VGwmP1LVJm6Jws5vK482bodSc1Eersz4M/RC6fN77O+wX6tHE1HNa7Nu4qOaWNxUc0sbmTNg2z5mdc3DEMTgh2D4JbNTV3sYsStYcI9CQXH3LTzXb8G0Xtmfmkvkx3fxfcjpOO8Qei0/LF/Kls
+vgu9mZM1Y87HsVfHY8+Twqw4A9zXV3iTr8S+pYMXqo13nyjNP1sr7jh6jmtxqoVHNBQqOaChUc0FCo5oKFRzQUKjmgoVHNBQqOaChUc0FCo5oKFRzVFEXN5qWKFzeaWKFzeaWOUXN5pY5Rc3mlihc3mliiajmgoVHNBQqOaChUc0FCo5oKFR
+zQUKjmgoVHNBQqOaChUc0FCo5oKFRzQUdiybjECVm4mD4i1kSQxJpgxYcTVlzhbqORBtPiOS4mrwrLB2r/DvOVpczwzVOvuZ502qZEi7Pc4zeBgPMlE/84kIjvby7iaAnm0gtPVteK+U8R0b0Od4+7qvL/DofXeGa72/TrL+l0fn/j1OoVHN
+cGzsNxUc0sbio5pY3OSwY+ZiP8hirZi9405/cONleHgudE61nKwTotqNbNywkrOzEvUqggmigKk1ULZW4qGRFTzUsWVJNVDJEOJQFVG6BSpUZbIJIKhkiCVAVJqpZbIQpUk1WNlKncoOhCGRUkoCpNFDJMi4rEpFTzQtkHcpYXUipUspVyFI
+qeagKnegIqeajFkElQyIuKAgmihSLkYsXFSxZFTzR7GQqeagFSgKkmqFRFTzUZRU81LAqeaFFSoCKqlQu6IUi5ALioBcUAuKAXFALigFxQC4oCamiAkEqMoqeaWLFTzSxYqeaWLFTzSxYqeaWLFTzSxYqeaWLFTzSxYqeaWLFTzSxYqeaWUy
+jUr1h4/YVKDYVKDYVKDYq49VBsaMQngViyo2MydDRa5G2Jws4dSuPM3wGav7/TPgz9ALp8zqbO9wOsaOJWqzdYSxYa1z3BjGOc5xAa1oqSTuA6pd9Cc1HrHCMDZsx2ayGVGWtxTEgZjEHN33uAvFeQFsMdAV9O4Hw9aXCovr1fm/wPlfHuIP
+WZ5TXTovJficHevRHnRegF6AXoBegF6AXoBegF6AXoBegIdEoN6hUjTbEiRYrIECG+LFiODGMY0uc9x0AAGpJ5Ba55FBXJ0kbIY3N1FW2ZEwrs/7UsVlmzUTDZLDg8VbDnZsMiU6taHFvgaFedz9qeH4pcqk5eS2+nY9Dh7La/LHmcVHze/0
+Kzd/wa9p32/Av99d+4tP87tD4S+j/E3fzS1vjH6f8B/Br2nfb8C/3137in87tD4S+j/EfzS1vjH6f8B/Br2nfb8C/wB9d+4n87tD4S+j/EfzS1vjH6f8CR2bNp32/Av99d+4r/O7Q+Evo/xH80tb4x+n/A47G9hG0/ApR86cJl8RhwwXPGHz
+AixGgcbCA4+gFcnTdp9BqJKHM4v+0qX07o4+o7M6/Tx5+VSXwdv6Opj5kxUlp0INCCNQV6GMk+h5+UKNYRKrIwaJvVIL0AvQC9AL0AvQC9AL0AvQC9AL/FAbvargI2kbL/VmBD7zGstXRTQedEhAfVW+lgDx1Yea8f2j4f63C5wW8d15d6PY
+dmuI+ozqEntLZ+fc/u+c8vb9Qvn9n0eyUsWEsWclgvsMS/kMX9S24XcjRqN4HHSp0HgudE65nKwStqNTNww6aLPYxNRWwQTVQFCeShlRFQoUqSVNi7EE8VClSTxQpUu5LFldFSSCjCRUnmoUgkKWCtRzU2MtiCeRUKVJNVNiqiCTRQUUqUKQ
+ShSpKxKhUc1CkE8ihVRFSsdi7FSTVNikVqoCtShdiCTSqXREVqVizKkQgIqEBBKhURUc0ZdhUc1NhsQTyKMoqVAKlAQTxUsqRUkoyipU2KKlNgKlQuwqhdiKhAKjmgFRzSwKjmlgVHNLAqOaWBUc0sCo5pYFRzSwKqWUmpCWgqFSmxdhUpsN
+hUpsNhUpsNhUpsNhUpsNhUpsNhUpsNhUpsNhUpsNhUpsUykvWHjAgCAICruKhUaL1iyo2Ex+pa5G6Jw03vP/AI4rjzN8CM1/3/mfBn6AXT5n8tne4HWNHELVZusJYsyb2fMnNzTtAgTs3CDpHA2ifjXDzTEBpCafhed4MK7jgmm9p1SlJbR3
++fu+v7DpOPaz2bSOMX8qe3zd/wBX2mWs0YycaxqYnA4mEHd3B/AboPj1PpX1LDD1cEj5TlnzzbOKu8VtNYu8UAu8UAu8UAu8UAu8UAu8UAu8UAu8UAu8UAv8UFGhMRwxpJKwlKkbIxszv2WsnyUzLz+0CegtizEOYdIYeXCvdWtBixB7o3Bo
+PAB3NeA7V8Qm5R0kHtVv4+C8u8972V4fBRlq5re6Xw8X9x6EqvFnshcUAuKAXFALigFxQHmXtQZPksDxjDs54bBbBbjL4kvOsYKNMwxocIlObm1rzLa7yV73srxGeSEtLkd8u68vD5u48J2p4fDHOOqxqubZ+fj866mH4Ea5oNV7aLs8VKNG
+td4rMwoXeKAXeKAXeKAXeKAXeKAXeKAXeKAXeKAXeKAXeKA7JkPGG4fjbZWOQZefHcPa7dcfY19OnwlxtVj54X4HI08+SdeJ512p5P8AWPnrE8ChsLZURPKJMnjLxPOYPRq34K+TcR03sepliXTqvJ/5o+vcM1ntuljlfXo/NdfxOprhWc+w
+lizk8E9hiX8gi/qW3C7kaNR7hx8oVzos66RycE0K2o1NG6aaBZIxL10or3ggkBQtFVDIqd6EIJosSrcqXabkLRW7ohSpNFiypWQTVQq2KEpdAglRopVQtEE0UKtipPFRlIu6KGS2Kk0QFSeKhSC5RloqoUJYIu6LFloqTxQpF3RQpW7ol0Wi
+Ca8FG7FEKMqIuQFSdUK9gTop8QVTqEgsS0ECVEXdEK9hd0QpBNeCxKQr1KRcFC0LggoXdFBQu6IKIOqFCAIApYCWAlgJYCWAlgkGnBQtC7ohaF3RBQu6IKF3RBQu6IKF3RBQu6IKF3RBQu6IKF3RBQu6IKJQplIuqSQAByXrTxhFxQC4oCQ4
+13BAREeHOLg0NrwG4LEpoPcoyo2MwRqtcjbE4abOpXHmb4FM2kHME0QKaM0+AF02Z/LZ3+n/ACaOHWqzcEtiz01skwsZL2NxMZe2yfzNFMRpO8QjVkP+gHu+EvoHZnR8mBTfWW/zLp/n4nzrtPrPWah410jt876/5+BtLuQXsDyFC7ogoXdE
+FC7ogoXdEFEXgKWKHet5hLLyjvAlkom5UULuiChd0QUC5RhI43Eo1sM6rj5nSORijbPVHZSimJskhurX/ladH9Ji+X9oneub+CPpvZ6NaFL4szFcV0Z3lC4oKFxQULigoXFBQuKCjAvbBjGHknL5rvxoj/7eIvS9l3Wqn+z96PN9po3po/tf
+czznIRrmAr6Rido+c5VTN9ct5oaF3RUULuiChcgojvGhSxQ7xvMJZeUXhLJRN3RUULuiChd0QULuiCiWxHMcHMJa5pqCOB4FQI23aMwlmYsnYBtCloY76WPkU4R9hE3V8IjXD4a8F2n0nLGOZfoun5Pp9f2nveyus+VLA/0la811+r7DzwvG
+2e3CWDlMD9jiX8gi/qW7C/lGjUe6bCUO5c2J1sjk4W4Fbkazdw3NGpYHaEUKyRj0LAjijIVJG8nRCpnp/YJ2FM77VsJlc35zxU5Ty/ONEWUaZfvZ6chHdEbDcQ2Gwjc5+pGobShXX6jXxxPlgrf1HOwaOWVc0tkelMN+h3dnuTgNhzz81YjF
+A1ixcWEKp52w2ABcGXEMz6UvmOZHQ4l1v6TrWdPoa+zbEZOI/IedcewWdAJhsxCyelyeAdQMiAdQT4LOHEZr30n9RjLQQ/RdHiPa9sbz3sRzQ7KuesNbBixGmLKTcBxfLTsIGneQn0FRXQtIDmnQgaV7PDmhnjzQOvyYp4pcsjNfY87LWQO0
+FlvMuMZyxfH5ONg2JQJOA3DY8KG1zHwbyXB8N9TXkRouLq9VPBJRj3o5Gl08c0W5dx6Db9DZ2GBwJzRnd1OBnZah/wCoXE/lDJ4I5XsONd7Kn6GvsMJr66s8D/8Amyv/AAE/lDJ4IvsWPxZH/k1dhn31Z4/32V/4Ce35PBD2LH4sxB2quxns
+w2H7I5jP2VMdzNN4hCxKSk2w8QmYD4NkZ5a40ZCaa0Gmvxrdp9XPNk5JJGnPpoYoc0TrPY37LGz7tCZbzLjWc8Wx+UjYLiUCUgNw2PChsex8G83h8N5JryI0WWq1MsMko95NNgjmi3LuPQjvoaewtxJ9dOeB0E7K0H/ULje3ZPBHI9jh4sg/
+Q0dhZ/8AevPH++yv/AU9uyeCHscPFnQ9uvYK2Q7Mdj+bdoGA5jzdHxDAcMfOS8Obm5d0Fzw5oAeGwQSPOO4hZ49ZOc1FpbmOTTRhByT6HglxAdzAK7E4RER7XOLgAwVrQbgFOg6H0B2C/Q/tmOcdkeWs3bSI+ZIWO43KDEIsGTnmwIcKFFJd
+BbaWE17uwk13uXXZdXOM2o9Ec7Hp4ygnLqd0xX6GxsJi4XOQ8ExHNcLEXy8RsnEjYox8NsctPdlze7FW3W1Fd1Vr9syd9Gb0sK2PmbPyM7hU9M4ViUAwZuSjRJaYhOFCyKxxa9p8HAhdlae5wOhoRHtc4uawNHIbgozLc9Mdi7sy5D7Rnrv9
+e2LY7Jet/wAh8m9S48KHf33fXX95DfWndNpSm871xtRlliqjfhxrJdnpr/yZOwj7689f79K//wCdcf2ufgjf7NE8H9orZFE2HbXsd2etizEeRlXsmcMmI9C+PJRW3QnOIABcPOa4gAXMOgXLxT9bBSONki4SaMbve1xqGBugFAs9jDcvKys3
+iE3Aw/D4Do81NRWQIEJoq6JEe4NY0dS4gelCpH0mwT6GLsfGDSAzHm3OJxbyWF5f5LNyzYPlFg7wQwYJIaHVAqSaU1XA9qk+hy1p495j3tL9hTZJsb2J5i2kZZzDmyZxPCPJe4hT01LvgO72ZhwnXBkFrj5ryRQjWizxZ5TkosxyYVGNo8KP
+eHUAY1tBTTj1XKZo3KpZURUKAVCAOe0hoDA2goSOPVQtWVqEFCoWJkQXclkmA57S1rbACK1I3lQtsrUKDcVCDcVCDckvbYGhgqDW7ieiF3K3FALigFxWOwLd4LLLG1rW7j4JsCtxTYC4psBcU2BYPbYWlgqTW7iOiFoioQu4qEG4qEG5YPaG
+uaWAk0o47wg3K1CDcVCDcVCDcs17WhwLA64UBPDqg3K1CDcVCDcVCDcsx7W1qwOqKCvDqg3AcKKDcyivXHjQgCAICruKhUaMTcfBYsqNjMcfBa5dDdE4ec4+K48zfA0s2/4QTXgz9ALps/vs77T/AJNHELUbjd4RhkxjeKyWDSgJjT8xDlod
+PsnuDa+itfQtmLG801jj1br6TXmyLDjlkl0Sb+g9Y7Qokth7sMyxIC2WwuVYxrRw0DW/0Wj419c0GKOLHUei2Xkj47rcssuS5dXu/NnUL1zrOEL0sC9LAvSy0ab44bxWLlRkom/y3l3G83ThlcIlqw2ECNMP0hQR1PE+5GpXiO2fb/gvYbSe
+0cTyfLkvkY47zn5LuXjJ1FeN7HZ8P4VqOIz5cK272+i/z4dTJ8vsUwFssGTWL4jFj01iMLGNB6NodPEr8wav/wDJXtFPUuel0uGOLujLnk6+MlKO/lFI9jDsjpFCpzk347L6qf2mPs65PxDJU3CbGjeUyUySIEwG21I3scODqa8iN3FfoX0a
++k/Q+kLSz5Ieq1GOufHd7PZSi9ri3tuk4vZ9U35bi/BcnC5re4Po/ufx+04OHFuFV9STOjaL3q2Yi9LBBfojZUcRir6Q3LiZ+hysPU9V9kl39qBh/wBLz36TF8y4+/8AbX5I+lcB/Ml5szNd0XSWdyLuiWBd0SwLuiWBd0SwLuiWDAHbKcRk
+fLp/02f6vEXouzX5zL9n70ef7R/m0fP7meccMfWGF9Iw9D53mW5yYfouTZxmTelkF6WDTiRg0VUbM0jsuRciz2dHRJuJMGUw6C/u3Rg250R+8tYDpppUnQV4r456T/S5pPR+oaTDj9dq5rmULqMY9FKbW+7vlit3Tdpbv0PB+Az4nc5Plgu/
+vb8F+J3ee2K4M+WLcNxeegzAHmujWxGE9QACB4FfEOGf/krx7FqVLiWlxTxXuoc0JJfBuUk3+0t/FHoc3ZHTOFYptS+NNfYjFuOYPjGV5/1PxqUdBeamG8aw4rebHbiPlHEBfqjsr2y4P2y0S1vCcqnH9KPScH4Tj1T8O59zZ4zW8Oz6DJ6v
+NGvsfkzbMjBw0Xqk/A4DiXvVsxF6WQXpYF6WDtGFSDc45AzLkmLq+NLPiS9eDyKtI8IjG/Gun4xplqMEoeKa+dbo7fhGpem1Ecn6rX0dGeSiHA0e0tdxB4HiF8p3PrgQHKYF7HEv5BF/Ut2H3jRqPdNjK8FzYnWyOUgnQLcjW3ublm5ZIxZZ
+L2IZL7NeR8O2jbdcm5QxmC2Nh81iHfzcJ26LBgMdGcw9Hd3Q9CVo1OR48MpR6m/TQWTLGLPsIKNaKNDQBoGigA5Acl5s9CeLe0P28c3bM9qeK7Pcj5QwWYl8vxmy05NYoYz3zEaxrnhjYbmhjRcACakkE6aLstPoY5canJ9Trs+sljm4RXQz
+vsE7RWVttOzyXzjNxcPwCfZMRJKekJjEIY7uOwNJdDLy0uhua5pBIrqQdQuJqMEsE+XqcrBnWWHN0OjduLDMj557P2NzrcbweYxTLT4WLYcYU7BfFDg9rIrGhriSHQ3OBA3lreQWzRSlDMlTp7GvVqM8TfgeLuzz2rsx9nTCMawXA8n4VjUP
+GpyHORHzk1FhGG5kPuw1oYNRTXVdjqNLHUNSbqjgYNS8CaSuzPOz36IpnjOefstZPmtmOXpWDjmLymHRI8KfmXPhNjRWsLmgihIDqgHRcWegjCLlzPbyOTDXSlJR5Vv5nu12hI5ErrTsTxp2gu3bnDY1tdx7Zvhez3AsTlcI8m7uamZ2PDiR
+O9l4cU1a0UFC8jTgFzsOjjlgpuTVnCy6t45uKR5327dtnNm3fZ/G2fYxkPBcJlos5LzhmZScjxIgdBcXBtrxShquVh0kcM+dOzjZdU8seVoz/wDQwP8AAPPvv5Kf1VcXiHvx8mcnQ+5LzX2Hp7bXn+d2WbJ80bRMOw2XxCZy/h7pyFKzD3Mh
+xXBzW2uc3UDzuHJcTHD1k1DxOVklyQcvA8Rn6KBtBBI+lLljT/SU1+xc72CP6z+o4ftr/VX1nVNqX0QPOm1PZ5j+zvENm+AYfLZgknSUWZl56YfEhNJBua1woTpxWWPRRxzU+Z7GM9U5xca6nlN5rrzK5lnGR3bYjs5j7WdrGV9n0JjjCxfE
+IbJtwHsJVnnx3eiG1/pIWvLPkg5GyEfWSUT7YQIECWgw5WUgthQYTGw4UNooGMAo1oHIAAehdGdsUk5yUxGUgz0hNQ5iWmGCJCjQnhzHtO5zSNCOqvQJ2fKjt97Mxs/7QGIY1Jy/d4bnKA3G4Fo80RybJlo/1jb/APWLstNPnx14HXaiPLO/
+E82Fck1We+PoV5r9Mz/ZH/elwdZ3HL0vee+FwjlniP6Jtsp9Vsn4Btgw2WrM4BH9ScTc0amUjurBeejI1W/61crSzpuD7zjaiO3MfOZc44tnpXsAbKvpi7e5PH5+W7zCskwfVqPcKtdM1slWHr3hL/8AVLj6mfLCl1ZuwR5pX4H1gXXnNMA9
+vL/1Us7/AOzv69AW7B+URry+4z5Ckiq7CzhWQSKKFKoAgIcsVsZEK2UKAg6IgQTVGVEKFsILCWLCliwliyKhUCoWNAVCAVCAVCAmvFAEMkwgsILCCwgsILCCwgsILCCwgsILCCywIUsWZRXrjyAQBAEBDtyWDQi8fBYsqNlM7lqkbYHDTa48
+zfA0s3f4QTPhD/QC6bP77O9wfk0cPU81qNxk3s6YJ6s7UsPjvbdDwuDGnjXcHNbYz+k8H0Lt+B4fW6yLf6Nv8PtOl4/m9ToZJdZNL739hlDM+IeqWYJ+bBq10dzWa+1b5o+QL6lijyQSPlmR802zi7ui2GAu6IAXgb0FM0I001g3ha5TUUbI
+wbO+ZL2TYljZh4nmjvZGRNHMlh5seMOv2tv9I9N6/N/pG9POj4M58O7NuObPunk644P+z/xJL+4u9y6HreFdm55qy6v5MfDvf4L6/IzLh8hJYVJw8Pw2VhS0tBFGQobaNH7T1OpX4/4nxTW8Z1c9dxDLLJlnu5Sdt/gl3JUl3JHuMWHHggse
+JUl3I3FSuAbDoO3B0NuQI0aI2roc5LFh+xJcR+YkelfZ/QHmyYu2uKMHSljyp/Fcqf2pP5jpO0UFPQSvuaMHyUxewElfvbHK0fM8kaZu+9aN5W2zVRHfM5hOZF5WQZho3EKcyHKziMWjtMNy4ueSo5WGO56v7I7gdj7HD7rz36TF8z48/wDb
+X5I+j8C/M0vizNN3RdNZ3Au6JYF3RLAu6JYF3RLAu6JYPPvbNeG5Gy6T93D/AFeIvQ9nPzmXl96Og7Q76aPn9zPNuGR2iGN25fRsMlR89zRdnJiOw8QuTzI4/Kye+ZzCWhysnvG0qlko2M9M2NJBWjLOkbsUbZ6E2TWDZ3gj4bQO9gviO6uM
+R1Sv53emDPPUduOIvI7qaivglCKS+Y+p8FgoaDEl4fezttSvmp2ZssXwfDMekX4bi8nDmZd+9rx7E/ZNO9p6jVdvwPj3EuzetjxDhWZ4sse9d68JLpKL74tNGnUafFqsbxZo2n/n5jCudNl+L5Y7zEsG73EcMbVzqCsaAPdAeyb7oekDev2d
+6OfThw7tRycP4xWn1b2W9Y8j/st+7J/qSf7Mn0PB8V7O5NJeXB8qH1rz8V8V8506DNNiNBBBqvvalZ5dxo1g4HcszCmLuiAXdEB2XZ5iJkc0yza0bMtdAPiRVvytC0amN42/A24HU/M897VMDGXNomYMJhtthMnXxYI/zcT6o35H09C+TcRw
++o1eTGvH7dz65wzN7Ro8eR9a+zY6rU81wjnnK4D7HEv5BF/Ut2D3jRqPdNjKbvQudFnWyOUgrajWzcM3LIxZqVCyslHfdgm0GV2WbY8qZ9xAOMjhc+DO2CrhLRGuhRSBxIY8upxouPqMby4pQXVm7Dk9VkjJn2Mw/EJDFpCWxTC52DOSc5BZ
+Hl5iC8PhxoThVr2uGhBGtV5ppp0z0KaatGBNv/Yv2ebccVj5ugYlN5bzRHY1saelmCLAmi1trTGguIq4AAXtc11AK1ouXg1k8C5eqOLn0kMz5ujPGG0zsH7d8hNjYhh2ByecMOhAuMfBSYkdrebpd4ET8W5djj12LJs3T+JwcmjyQ3W/keeo
+8m6TjxJeYkzAjwHlkSHEhWPhuG8OBALSOR1XLs4tUaTtyWDvGwn69uz/AP8AqjC/6zDWrP8Ak5eTNmL8pHzR9pX+yd4ledO/Pkt25jTtSZ18cP8A6jAXd6N/6lHT6r8qzAp3rkGhH0N+hf8A+Aefff2U/qq6riHvx8mdlovdl5np/bXkCd2p
+7J807O8OxKXw+ZzBh7pOFNTDHPhwnFzXXOa3UjzeHNcTHP1c1PwOVkjzwcfE8RO+hfbQXOJ+m1ljX/Rs1+1c72+P6r+o4XsT/WX1mJ+0T2QMz9nXK+GZoxzOuEY1BxSfOHshSUpGhOY7u3RLiXmhFG0p1W3DqVmk4pUa8uB4lbdnn9ck0Hub
+6GNsy8qxjNO12fl6skITcCw1zm/xsQCJMOHgwQm/DK4Gun0h85ztLHdyPXnaO2kDZNsTzbneFFEOclZB8vh+tCZyP9Sg08HPu+CVw8UPWTUTk5ZckGzFP0PLaQc6bBIOV5yaMXEMlTj8LfcaudKvrFl3H0Oez4C2aqHLktd5r00uaFeBs/oj
+GzP147EIedpKXvn8kzrZ1xA1MlGpCjjwB7p/wCrpZ8s+XxGphzQvwPlw7euyRwUe+foV3/xN/wBkf96XB1nccvS957ozFj2HZWwDEcy4xFMORwuWiTcy8CtkJgq53oFT6FwkrdI5TdKzjdo2SMJ2m5Cx7IOL2OkswYfFknP3hhe3zIg/BfY8
+H3KsZOLUl3CSUlR8Osw4DimVsexLLOOQDAxHCZuNIzcNwpbGhPLH+ioJ8KLtk01aOuap0z6nfQ+9lX0vNgsrmOflu7xXO0b1YjFzaObK0slWHpYC/wD1q6/UT5p0u45mCPLG/E9E4bj2G4tiGLYZIx+8j4JMw5OcA3MjPgsjBviGRWE+K0VR
+tTswj28//VSzx4Yf/XoC24PyiNeb3GfIQ712VnEIUYKneoApZaIKneVFVbKFAFAQdyoRVQyCAIAlgJYCWAo2AoAgCAIZdwQIIUIAgCAIAgCAIAgCAn2qhCFSlxuUsGUqhets8bYqEsWKhLFioSxZVxUCZpRNx8FGZI2Mwd61yNsThpzeVx5G
++Bo5vJ9cM14Q/wBALps/vs77T/k0cPU81qNxnzsvSokpHN2aXj/0aXhSzHeAfEd+Zi9V2Yw80pz8l955HtVlqOPH5v7jd3k6uOp1PivoZ8+oX9UFFXRw0b1i2ZKJqYVhuL5jn24Zgkm+ZjnU00axv2T3bmjqV5ztJ2p4V2U0T1/FsyxwXTvl
+J/qxit5S+C+eluc7R6HNrMnq8Mbf2efgZpyRsuwnLBh4jiTmYhig1EVzfqcA/wCbaePujryovxV6RPTLxXtm5aHRXp9G9uVP5c1/8kl3f2I/J8XI9/wvgWHQVkn8qfj3Ly/H7Du9w5r4yd6KhAKhAY72+Pt2bzLh/jsp84vr/oL27aYX/wDH
+l/hOo44r0UvNfaYEw6O94hwoTXPiPIa1jRVznE0AA4knh1X7xx5FGNs+czxuUqR6f2f9mXDvU+DiO0OZmYs3FaHHDpaL3bIFfavePOc7mGkAbtd68dxDtVlc3DRpKPi1d+S7ket0HZjGoKesbb8Fsl5vvZ3b+D1sjP8A7rxP9/j/AL66r+cX
+Ev8AifUvwO1/m/w7/h/W/wASP4POyP714n+/zH76fzi4l/xPqX4D+QOHf8P63+JpRezhscjAiJlSIQf9ITH76wlx/iEus/qX4Ga4HoI9IfW/xO45OyZlvIOCjL2VMPMnICNEmBCMZ8X6o+lxueSdaDSq67PqMmpn6zK7Z2GDBj00PV4lSOcu
+K0m4XFALigFxQC4oBcUB1zO+z/KW0aQlsMzhhZnpaUj+UwWCPEhWxLS2tWEE6Eih0W/T6rLpJOeF0zRqNNi1UeTKrR1aH2cdjsIUh5UiAD/SEx++uxXH+IR6T+pfgde+BaCXWH1v8TU/g87I/vXif7/MfvrL+cXEv+J9S/Ax/kDh3/D+t/iT
+/B62SUoMsRB4T8f99P5xcS/4n1L8A+z/AA5/7v63+Jjrab2bYOG4ZHxzZ7MTUV0swxIuGTD+8c9gFSYT9CXAa2urXga6Hu+GdqJzmsWsS3/SW30r70dLxLszGEHl0je36L3+h/czzXPzl8OoOi9VnlcTzGGFM9J7IHXbM8vE8ZQ/OPX88vSv
+v204j+8/8In03hSrRY/L7zuFQvnpzxUICbgNQU6gx5nbZLh+NmJimXTCw/EXVc+HSkCOeoHsHHmNOY4r716OvTjxHszycP43zajSrZS65Ma+DfvxX6sna/Rl3HnOKdn8WsvJg+TP6n+D+KMOzstiOCzsTDMXk4krMwvZQ4g1pwIO4jkRov2X
+wTj3D+0Ojhr+GZllxS6Sj4+DXVNd8Wk14HgtTpMulyPHljTQbGDuK7pM4jiWv6qko3GHzjpLEJacadYEZkT4nArGS5otFj8l2dT7UmGCUz/J4pDFGYlhsN1RxdDe5n6Ni+ZdosfJqlPxX2bH0zs1l5tK4fqy+3cw5U810J6I5XAN2JfyCL+p
+bsPvGjUe6bKU4LmxOukcnCJC3Loa2blu5ZI12XrxQu5FTXQoUzJsU7V+1zYdBZhGAYjAxXAA8v8AUbE2uiQGEmrjCcCHwSd/mm2upaVxM+lxZ95bPxOTh1OTDsungevdn30RvZJmEwpPPuBYvlOadQOjtb5dJg874YERo8WHxXXZOH5I+47+
+o5+PX45e8qPUOXMy5ezhg0rmPKuNyWLYZONvl5uTjCJCiDjRw4jcQdQd4C4MouD5ZKmcyMlNXFnnftr9nLLu0nZ/i20bBcNhS2cMuSb57ymCwNdiEtCF0SDGp7NwYHOY46gtpWhouXo87xTUH7r+o42qwKcXNdUfLytRUGoOoXds6c7vsJP9
+u7Z/r/70YX/WYa05vycvJm7H78fM+07/AGTvErzx3p8lO3QadqXOv+z/AOowF3ek/Io6fVflWYFJ5LkM49n0O+he/wCAefff2U/qq6riHvx8mdnovdl5nrLaRnzCNmGRcb2g4/LzcfDsBlDOTMKUY10Z7A4CjA4tBNXDeQuHCLnJQXecuclC
+Lk+482O+iY7CWmhypnn/AHKV/wCOuV7Dk8Ucf2uHgzAPbG7W2zntB5GwPLOTMFzFJTWGYuZ+M/EpeDDY6H3L2UaWRHkuq4bwBTit+n08sMnKTNGfPHKkkeRyTvoXdBvPRcw4x9m+zFsy+lJsNyrk+PAEPEBJifxLShM5MfVYoP4NwZ8ALpM0
+/WZHI7bDDkgkYa+iC5U2xbSMu5XyFsyyBjePSHlUXFcVjyMNhhtfDb3cCE4ucNfPiPp0atulnjg3Kbo1aiM5pRirMb9g7Znt+2P7WJ6XzpsszFhOW8x4Y+WmpqYhMEGBMQT3kB7qPJFfqjK09uFs1OTFkj8mStGGCE4S+Utj3dmPAMMzXl7E
+8r41CEXD8Yk40jNMPGFFYWO+R1fQuEm4u0ctpNUz4cZ4yjieQc443kjGWls7gM/Hw+NUUuMN5aHeDhRw6OC7mMlNKSOsa5XR7e+hWf8AxN/2R/3pcPWdxydL3nrntDAO2B7SGuFQcqYoD4eTPXFxe+vM5GT3GdT7G21A7V+z5lnF5yY77FMI
+g+oeJkmrjHlgGtefw4RhO9JWWeHJkaMcMueCPL/a57MM7m3tbZPbgcq6Hhu1GKzy+LDbpAjSwHlrzyJl2tf41W/DlUcTvuNWXHeRV3nvmfncByTliYxGYEOSwXAMPdGeBo2DKwIVaDwYyi4dN+Zydkjzp2BM7YltIyJtAz9i7j5XmDPk9Pva
+T7APl5csZ4NZa34K36iKi1FeBqwvmTbOwdvT/wBVHPH+zv6/AUwflEXN7jPkCSa712GxxBU80YIO5QFanmpsXcVPNR0VWQSQiopFTzRgVPNQBBZUk1QyRFSgFSgFSpsBUpsBUpsBU802KKnmjAqeagFTzQCp5oZCp5oBU80AqeaAVPNAKnmg
+FTzQCp5oBU80AqeaAVPNAKnmgLDcpsAdyWACab02BlQkEkgUFdByXraPHUQlCglCgN+qUKEQguJa20E6CtaKCjRiHRYsqNjMHetbNsThps7yuPI3xRo5xd/ZFNUFBSH+gF0+f32d9p/yaOFqVqNx6Q2NQfU3YXi89udiOIRW15gGHDH5nL3f
+ZfHWBS8ZP6keA7U5ObU8vhFfXubMxOJXsLR5KjRizIYCSaelYuVGSjZ2vJezTGs3Fk/PGJh2FO1EVzfqkYf5tp4e6OnKq+JekT0z8L7H8+h0FajWLblT+RB//JJd/wDYj8rxcT0fC+AZdbWTL8mH1vy/H7TOGB4DhGW5BuHYNJMl4I1dTV0R
+32T3b3HqV+Lu0PaTinarWvX8WzPJkfTuUV+rGK2jH4L57e57zTaXDo8fq8MaX2+fichd0XRUcgXdEoC7olAXdEoGOO0C+mzOaP8A02U+cX170G7ds8P7vL/CdVxr8zl5r7TGnZzlZbFtruX5ebaHslzHnGtIqC+FCc5nxOofQv2jxrO8egny
+99L6WeW4PhWTWwcu639CPdjD5o1Xz894Wr1QCvVAK9UAr1QCvVAK9UAr1QCvVAK9UAr1QCvVAK9UAr1QCvVAViOo2oOo1CdQfPnbJKSuC7Tc04TJNDIEDEohhsGgaH0fQdAXFfReH55ZtFjlLrX+B891+COLWZIx6X9pnrY46uy/Ln8kPzj1
++DPSqr7Z8R/ef+ET2vC/zPH5fedyu6L59Rzxd0SgLuiUBd0SgcTmTK+CZskvIsZlO8tqYUVptiwTzY7h4bjxC9R2U7YcY7Gaz2zhOXlb96L3hNeEo9/waqS7mjiazQ4NdD1eZX4PvXkzBmccgY7kp7pl1Z3C60bNw20s5CI32h67jz4L9s+j
+30t8I7cRjpn/AKnV1vjk/e8Xjl+mvh7y701ueA4nwPNoG5r5UPH8fD7Dr0OZDxvX1pSTOicaNS+oI5hZpowaKdpiF5bljJePDVzmRYDj+FChv/O1y8B2ox1yS8G1957zspkt5IfBP7jz/UryR7E5bL50xP8AkEX9S24feNGo902co7cudE66
+RycI1FVtiambuE5oNXsuFDpWizRi1QrpRBe5kTs84VkfMG2rKWXto0iycy/is/5DNQnxnwml0VjmwiXsIcKRTD3FaNS5xxSlDqjdgUZZEp9GfR09iDswcdmDAffWd0/61dL7bn/W+w7f2PD4faeOO0t2Pc95G2iTs9su2d4rjGTcQLIuHswt
+kSbfJksAfAiCrogo4EhxqCCNaghdjptXCcEskqkcDPpZQncFsekewDsm2m7McmZlmNoOFzeDQccnZePh+FzRpFh2Mc2JHdDr9TL7mChoSIdSNy4WuywySXJvXeczRYp44vm2szvtpzHh2UtkWc8xYrEayWk8CnS64+yc+C5jG+Lnva0dSuJi
+i55IxXijk5ZKMG34HxSYDDhshne1oafQKL0b3OhO87CSBtu2fVFf7KML/rLFqzfk5eTNuLea80fah/sneJXnjvT5J9uk/wD6pc6j3v8A6jAXd6T8ijp9V+VZgSoXI2NGx9D/AKF7rkPP3v7Kf1VdVxD34+TOy0Xuy8z0T2nMt49m/YBnvLGV
+8JmMTxbEsIfAlJOXAMSNE7xhtaCQK0B48FxcMlDLGUuiZycycsbS6ny/f2Se0yST9JHNG/7TC/fXa+04f1kdd7Pl/VZxeZOzZt8yfgU7mbNGybMGGYTh0Ix5ucmIUMQ4MMb3OIeTTXkrHUYpuoyVklhyRVtHK9krZiNq233K+XpqX73DZCY9
+WMTBFW+TS1Hlp/Cf3bPhKajJ6vG2i4Ic80j7HVLjU7ya+ldKdqdCi7ethcKI+FG2yZHbEhuLHNdj0qC1wNCD5+8FbPVT8GYesh4or9P7YONfpz5FH+35X99PVT8GPWQ8Ud1w7EcPxjD5bFsJnpedkZyE2PLzMvEESFGhuFWvY5tQ5pGoI0WD
+VOmZp3uj5qfRK9mXrZ2s4XtIkZe2TzjI93MuA0E9LAMdXq6EYR+C5dhpJ3Fx8DhamNS5vE7z9Cs/+Jv+x/8AvSw1ncZaXvPXXaG+sJtH/wDpTFP6s9cXF768zkZPdZ4X+hkbUfULaJjuyqfmLZXNEmJ+Ra46Cdlh5wHV8FzvyQXL1cLSku44
+2nlT5T6RRpGSmJmWnI8pBiTEmXmXiuYC+EXttfad4q3Q03hcE5h5e+iMbUPWPsIOT5KYsxHPE2MNABo4ScOkSYPgaQ2f6wrfp4c078DTnlUa8Th/oYJrsJzCf/3ZMf1WWWWq95eRNP7pkDt6adlHPH+zv6/AWGD8ojLN7jPkFEe0kWMtoKHW
+tTzXPOIVuKAEkoCpJU2MkS57SGhrKEChNa1PNQFSaqFK3BXYC4qDYs57SxoDKOFamu9BsUJ4oVMi4IUXBASXssDQzzgSS6u8cqKNAi4KAXBALggJvZ3doZ51a3V4cqIUrVAkLihaFxQpYPbYWllXEgh1dw5UQFbigFxQC4oCzXtDHAsq40oa
+7kBW4oBcUAuKAs17QHBzKkigNaUPNAVuQC4oCwcaLF0CzXtF17Lqgga0oeabAipTYGU7gvXWePFwSwLglgXBLBDnCijBpRCKLFlSNjMkUWtm2Jw02d648jfHqbfOJPrimvCH+gF0+f32d7p/yaOGqea1G49NZRpJdnvBGUoZqZfEPWseIf8A
+8QvovZuPLpYfO/rPm/aJ82syfN9iODlYM9ik5Dw7C5SLNTMY0ZChNucf2DqdAuy4rxfRcF0s9bxDLHHih1lJ0l+LfclbfcjpcGmyaiahjVt9xl/JGx+Twww8VzWIU7OijmSo86BBPuvtjv6I671+PvSJ6ddbxzn4d2ccsOndp5OmSa+H/Di/
+h8t97j0Pc8L7PY9PWXU/Kl4dy/F/UZLu6L88nphd0QC7ogF3RALuiAXdEBjbtCu/tYTf8tlPnF9c9B/9csP7vL/CdVxn80fmvtMadlyITtqwdv8A0Sd+Ycv2Pxx3o5ea+06DgqrVryf2Hu5jhReJPZE3BALggFwQC4IBcEAuCAXBALggFwQC
+4IBcEAuCAXBALggKxXeYfBCHz429xT9OfODf9I/9kxe74W/9igvh97PE8Tj/ALZN/Ez3sZd/aty3/JD849fhf0qf1z4j+8/8Ynq+GfmmPyO53dF8/OcLuiAXdEAu6IBd0QEPDIjHQ4jGvY8FrmuFQ4HeCOIWUJyxyU4Npp2mtmmujTW6a8UG
+k1TMVZ22NsimJiuTGtgxdXPw9zqMf/8AKJ9ifcnTkRuX6Z9Hfp7zaPk4d2rbnDosyVyX7xL3l/bXyl3qXU8nxTs5HJeXSbP9Xu+bw8uhilxjykw+UnYESBHgutiQ4jS1zTyIO5frPRa/T8QwQ1OkyKeOStSi0014prY8VlwTxScZqmjfbbR5
+XsSy5N7zLT8NleQLIrf1BeY7UxvDfhJfWmep7LSrUNeMX9qPOtSvEHuzl8vGoxP3vi/qW3D7xo1HumzlTu8FzkddI5SDuW1Gpm4YaBZEaLVCpKDHvhxGxIb3Mexwc1zTQtINQQRuIPFQqPf3Z5+iB5dmMHlMqbdY0eQxKVY2CzMMOC6LAm2g
+UDphrAXQ4nN4Ba7ebTVdPqNBJPmxdPA7XBrVXLl+k9VYJtg2T5jlmzmA7TMrTsJwqHQsXgAjxBcCPAhcCWLJHrF/Qc2OWEujX0nFZw7Q2w/Iko+bzLtSy7AsBPcQJ1k1Hf0bCglzifQsoYMs/diySz44dWfP3tadsOb26hmSsmyU1heTJWOI
+7/KKNmcTit9g+K0EhkNu9sOpNfOcagAdrpdJ6n5Uve+w6zU6n13yY9DzI4jeuYcU7hsYxCRwzbBkbE8TnIMpJymY8OjzExHiBkOFDbMMLnucdGtABJJ0AWrMrxyS8DZi2mm/E+urtvmwwlx+nLkjef8A29LfvrovU5P1X9B3Xrsf6yPl/wBs
+zMGA5n7SWb8cy1jUji2HTPkPczklMNjwYlsnBa617SQaOBBod4IXb6WLjiSex1WpallbRhJcg00e7/ocm0bZ9kjJWdpXOeecAwGNN4zKxYEPE8RhSzorBLULmh7gXAHSo4rrNdCU5x5Vex2GjnGMWpPvPXh2+7Cjods2R/5/lf31w/U5P1Wc
+v1sPFEfT82Ef5Zcjfz9K/vp6nJ+qx6yHijFfam2y7Hsf7O20DBcB2o5RxLEZzBYkKWlJTGZeLGjPL2UaxjXEuOh0AWzDimssW0+phlnB45JPuMA/Q9cy7HNmmE5pzvn/AGj5bwXGsXjw8MlJaenWw4zJOF5732nUB8RwpzEJb9WpzajFWjRp
+nCFyk9z0Vtv7XGx7AdkmasRyNtSy5i+YfU2LL4ZKSM82JGdMRR3bHBo4MvLyeAauPjwTlNKUWkb8maKi6e58kbQAB7KnEjU9V2x1wo0a2j4li9wfSTsPdp3ZrhOwuSyXtJ2gYLgOI5Zm40jKsxKaEF0aSce8gubXeG3vZ0tC67U4Zes5oq7O
+fgyJQqT6G57au0PYDtg2EYphmAbW8oz+P4JHhYxhUCDiLHRYsSHVsSEwcS+E94A4kNUwRyY524ui5pRnGkzFn0NbaDkLIp2ievbOuBZf8t9SvJvVTEIUr39nlN1neOF1Lm1puqOa3aqMpVSNenko3bPUW3bbjsWxfYnn/CsK2u5MnZ2cy1iU
+CXlpfHJaJFjRXS7w1jGh9XOJIAA1JXGx45qabRvnOLi9z5P7OM8Yls0z7l7P+El3lWX8QgTzWj+Maxwvh+DmFzfhLsJxU04vvOFF8rTPsnJ9o3YFOycCehbZclQmTEJkZsOLjssyIwOaHBrml9WuFaEHUEELq/Vz8Dn+sj4nzW7eu2PDdrO3
+GJLZbxiXxLL+VpKHhkhMysURIEeK76rMRWOaSHAvcGVG8Q1ztPDkhb6s4uaXNLY9C/Q59qWzPJOxfHcLzntCy3gM5GzNHmIcviWKQZaK+EZaXAeGvcCW1a4V3VBWnURlKSpGzBJRjuzvPbX2xbJM1dmbOOA5Y2oZTxfE5ryDuJORxiXjx4ts
+7Bc61jHFxo0Emg0AJWGGElNWjPLJODSZ8rzvXOOIiLghRcFLLRUkVRlRFwUKLgoCtQFRQuChaFwQUQSCECRCWUJYCjAUAQBAEAKGSIrxQoqEAuCAXBALggFwQC4IBcEAuCAXBALggANVGCTolgkOFFGCbgoBcEBlNev2PHhNgE2ATYEO3KMG
+lE3FYsqNjMblrZticPN7z4rjyN8Tb5yNMxzXhD/QC6fP+UZ3un/Jo4UONQtRuPSsrGEHYNlBgOjmtcfS6Kf1r6LwJ8ukx/s/efN+OLm1uTz+4yxsewCTwrJ8pizYbTOYszyiNFp51hJsYDyAFacyV+LfTZ2o1fHe1GbQTk/UaV8kI93Mkued
+frNur7opJd56vgOjhptJHIl8qW7f2I7zXqvjx3Qr1QCvVAK9UAr1QCvVAK9UBjbtDH+1hN6/89lPnF9b9CG3bLD+7y/wnV8Y/NH5r7TGPZadXbbg4/6JPfMOX7E43+aPzX2nRcG21S8n9h7yY7TcvFnrybuiAXdEAu6IBd0QC7ogF3RALuiA
+XdEAu6IBd0QC7ogF3RALuiAXdEBWK7zD4IQ+em3x39unOPvj/wBkxe54X+Zw8jxfE/zufmZ+2Mn+1ZlvX/mZ+cevw16U/wCuXEf3n/jE9Tw381h5fedzr1XgDnCvVAK9UAr1QCvVAK9UAr1QGN9t+Ayczlv1ythtbOYdEhsMQDV8F7g0tPOh
+II5a81989APanV8O4/8AyG5N4NQpPl7o5IrmUl4Wk1Lx2b3R53tHo4ZtP6+vlRr6GYo2mxRG7P8AJEnWHicGn5SIP1r9V9pXzaZv4xOo7NLl1a8med7ivDHvDmMuGoxP3vi/qW3D7xo1Huo2krw8FzonWyOTgnQarYjWzcMOi2GLLIUqTrvU
+CFTzTYpR8OE81iQ4bj7poP51iCA1jKhjWtHuQAhkQ5QFTuUKVqFBuUoOQ+JRmRU0roowQ5QrKkA7wD4oERRvJvxKMyK0byb8ShkipDQdw+JCkHcse8qKqBlSTXehRXmVGCCdNCsS7lajmhkVdQjWhQFaN5N+JRjcgnqoZFSG8h8SgI0CoIdT
+iAsUCug3AfEjLuTU81CohCio5psNyp3qMqIqOaxMhUc0BDt6Aio5oNxUc0G4qOaMblSdd6iMkKnmrsBU81NgKnmoBU80AqeaAV0GqAmum9Cog7ghUQoUKgVHNAKjmgFRzQCoQCo5oAgFRzQBQCvIoyMmpURFZIIojMiajmoBUc0BlS4L1p46
+xcEFi4ILFwQWCRRBZoxNWlYsyTNlMblrkbIs4ab9kuPI5ETa5zP9kk14Q/0Auoz/AJRne6f8mjhQ41Wk3HomFEMTYLlSI3+Lo34nRQvoPBHekx+X3nzzjMa1uTz+473sP2oYNHwuXyNjU7DlMRlHGHJGK61szCJJaxrjpe2pFvEUpXUL8qem
+r0f67T8Uy9o9DBzwZalkpW4SSSba68sqTvudp0qZ6LguthLCsE3TXT4ozGvz4d7YQWEFhBYQWEFhBZjTtDmmy+b/AJbKfOL636Ef644f3eX+E6zi++kfmvtMZdll1dt2DfySe+Ycv2Jxv80fmvtOi4P+dLyf2HvJpNF4s9cTUoUVKAVKAVKA
+VKAVKAVKAVKAVKAVKAVKAVKAVKAVKArFJsPghGfPPb47+3VnH3y/7KGvc8L/ADOHkeM4l+dz8zP+xk12W5b/AJGfnHr8NelP+uXEf3n/AIxPUcOdaWHkd0XgDm2EFhBYQWEFhBY6ILMFbcNqODYlLDJGXZ2HOv79sTEI8F10Nlhq2EHDRzrq
+E00FAN50/T3oP9H+u0et/nJxPG8aUWsUWqk+ZU5tdUuXaN7u2+iV+b45rYTx+zwd+Pzdx0raPEMPYDh7D/G4lBp+PFP6l+he0T/2Z+aOv7Ox/wBr/wCl/cYCuK8Se4OYy2a+qfvfF/Ut2H3jRqPdRtJXcPBc6J10jk4J0C2o1Nm5bpRZoxbL
+V0qoWyCguitwUaKQdSoVMqd6FKncsWVFUYZVQyKu5LEFSaKFTogmqFuyDogKrHoZIqd6FKuUKnRVRlsgmqhSEBUmqxKiKjmoWypQpB3J1CKrGi2QShbsqoCp3ogDqVGXqQTRGWxXSqhSpNUBCjKmQdyhbIUKEAO5AUQthBYQWDosS2RcEoC4
+JQJrpVAKhQCoQCo5oUVHNCpio5oLFQoxZUnSiLqLCpQgCADQowEArpRTvAVBJIIURLDd6MpKgCAIAgMrOpU2ig4L1+x48JsAmwA36psBELSSWAhtdATqoDRiLFlRsZg6HVa5GyJw83x8Vx5HIgbXOpHrlm6DSkP9ALps/wCUZ3un/Jo4O7ot
+VG49FZVpiHZ5w5w1MlORIZ6Uju/U8L33Z58+lgvNfWeA4+uTWT+Z/UY3xnDjEDqDquw1OGzhafNRkHZr2icbym6FgWevKMVwptGQ5wefNSzeFftrByPnDgTuX537e+hjS8Vc9dwJLFm6uHTHN/D9ST+HyX3pdT0+j4o0lHLuvHv/AMT0vguO
+YTmLDIGMYHiMCekpkVhR4Lrmu5joRxBoRxC/LfEOG6vhOplo9djePJHrGSpr8U+5q0+5nfRlGa5ou0b6pXCoyFSlAVKUBUpQFSlAxp2iHf2sJuv+Oynzi+tehHbtjh/d5f4TreLfmr80Yw7LJrtuwb+ST3zDl+w+Nfmj819p0fCPzpeT+w95
+sJpvXjD1uxNTzUGwqeaDYVPNBsKnmg2FTzQbCp5oNhU80GwqeaDYVPNBsKnmg2FTzQbCp5oNhU80GwqeaDYrFPmHXgqD55bfXf26s4++X/ZQ17jhn5nDyPG8S/Op+Z6A2LuP0rMt/wAjPzj1+HPSmr7ZcQ/ef+ET03D/AM1h5HdaleAo5oqU
+oCpSgKlKAqUoHFZlzTgOUMKiY3mPFIMjJwtL4h1e7gxjRq9x4NAJXacH4Jr+P6uOi4bieTI+5dy8ZPpFLvb2MMmSOKPNN0jzBtJ29Zkz+6LguXGx8HwJ1WOAdSZm2/5xw9g0/YNPiTuX6v7A+iDQ9nXDXcSrNqVutvkQf9lP3mv1pf8ASl1P
+P63icppxhsvrZ1LBsO7oNo2gHRfeNPhrdnmM+Wzu22g+Q7GsqSO50zOMiEcwIUR3/wCYXQ9pXWJR8ZfYjvOzUebPKXhH7WjAV3ReNo9mczlo19U/e+L+pbcPvGjUe6bWV4eC56OvkclCW1Gpm7gln8YCRTgaarIwYQpDkBUkDUqPcp3nKuxf
+aLmyFDnJHLkWDJxBVseciCWY4c23ecR4BeG436RuzfAZvDqdSpZF1jBObXnWy+dm6GCc90js7uyztG7u8YjgJdT2HlUSvx93ReVXpu7Oc3K8eavHlj/+9m32WfwOm5s2QbRMmQHzeNZeiulGaumpV4jwmjm4t1aPEBev4H2+7PdoZrDotQvW
+PpGScJPyT2fzNmuWGcOqOlV6r2BiGlgcC8EtrqAaEhQFCRqdw6p1YO4ZT2P7Rc6QWTeCZcjeSP8AYzU04QILhzDn6u+CCvHcc7edn+z03i1uoXrF+jG5yXml0+do2RxSl0R3NvZT2kmHecRwAOp7DyqJX4+7ovHv02dnVKljy148sf8A97Nv
+s8jqWadie0rJ8F07i2W4sxJw9YkxIxBMMaOZt85viRReo4N6Q+znHsixabUKM30jNODflez+ZmMsUo9x0N5aTVmjTu1rovaswRRyhTJ2EdnHahjmEyWNSEphRlZ+XhzMEvxFrXGG9oc2opoaEaL5vrvSt2b4dqsmjzyyc+OTi6xtq4unTvff
+vNqxSatG2zL2fNpeVMDnMxYtISDpKQh97H8nnmxXhlQCQ0DWlankKlbuFek7s7xrW49BpZz9ZkdR5oOKuul3393xK8coq2Y3fbebAQ2ugJqQvoBgVO5Y94OYydk7Hs949Cy5lyXhxp2Mx8QCLEENjWMFXOc47h+shdRx3jmi7O6OWv18msaa
+Wyttt0kl3/gVJydIyB/BY2vf4lg386M/YvC/6YOy/wCvk/7b/E2erkdFz/kHMOzrGYWCZjgy8KYjy7ZpjYEwIw7suc0VcANatOi9l2d7SaDtRpZazhzbhGTi+aPK7ST6P4NbklFxdM5XImxbPm0fCI2N5Yl5CJKwJh0q8zE62C7vA1rjoRuo
+4arq+0Pbzg3ZfVR0fEZSU5RUlywclTbXVPxTKoOStHY/4Ku2AmgkcHJO4DFGfsXQf6X+y36+T/tv8TLkZiOal48nMxpSahuhxoER0KIx29r2kgg+BBX0vFlhnxxy43cZJNPxTVp/QYmnELC76mHAUG811WYJl4EabmIUrLw3RI0Z7YcNjRUu
+c4gADxJC15MkMMZZJuopNt+CStlRlv8Agp7YRoZDBgeIOKM0+RfM/wDS92XfSeT/ALb/ABM+VnWs+7E8+bN8Ig45miWw+HKx5hsqwy862M7vC1zhUAbqNOq73s9274N2n1UtJw+UnOMXJ80HFUml1b+KDi1udFeWGljXDTWprUr2JChIAJJp
+RAZbwTsubUMeweRxuW9R4MGfl2TMOHHnCyI1jxVtzbDQ0INK8V8y1/pX7P8AD9Vk0mT1jlCTi3GKatOnT5t1Zkomhmjs0bSspZen8y4j6kxpTDYJjx2y02XxLARUhtorStTruBW3hPpQ4DxjW49Bg51PI6XNFJX3Ju316L4lqjFLyyjQwEED
+zqneei+igrU80B33IWxLP+0nB42OZWlsPiSkCZdKvMxOtgu7wNa4+aRuo4arx3aDt1wbsxqY6TiEpKbipLlg5Km2ut+KYqzlMf7NG1nLuCzuPT2F4fFlpCC6PGbKz7YsWxvsi1gFXUFSacAV1/D/AEn9nOJarHo8WSSlN0uaDirfS3e19PMt
+GLS5hY20G7ia1B5UX0EpeUlo07NQJOBQxZiKyCypoLnODRU8NSFrzZYYMcss+kU2/JK2DL7uybtka4tMjgtQaH/lVn7F80/0u9mHup5P+2/xBjnPGSMf2eY+/LOZYUvDnocGHHcIEYRWWRAS3zhx03L2vAuO6PtHo1r9A28bbW65XceuwOz5
+I2DbQdoeXYeZcsyeHPk3x4sC+Yn2wnFzCA4Wkczv4rouO9v+CdnNY9Br5TWRJPaDkql03spzv8E7bJ/iOC/zqz9i6f8A0udmP18n/bf4gpF7KO2WGwvbheERKe1ZikMk/GAso+lrsxJ08k1543/iEdKzXsr2iZIhmYzPlHEJOXbvmQwRYH5R
+hLR6SF6nhPazgnHHyaDUxnL9W6l/dlT+gqOrVh93S031rWulF6EpVzg1pcdzQSVUrdIGXpTsr7Xp6UgTsvI4MYUzCZGhl2KMBte0OFRTTQhfNc3pX7NYMksU5ZLi2n/q31Tp95NjV/gnbZP8RwX+dWfsWv8A0udmP18n/bf4iyw7J22Gwg4f
+g11RQ+qzKAeFqn+lvsz+vk/7b/EWjo20HZlmzZhOyWH5sgykONPwXR4IlpkRgWNdaakAUNeC9X2d7UcO7UYsmbhzk1BpPmjy7tWvPYpy+R9gu0XaHl9mZctS2GvkYkaJAa6PPthPvhkB3mkbtV1vHe3/AATs7rHoddKayJJ7QclUum9g58dk
+3bIP+Y4L/OrP2Lpv9LfZn9fJ/wBt/iSyT2T9sTGOJw3CHu9rbizPzEarJelvsw9ufIv/AOt/iLR0vOGyTaNkSAZvM+VJyVlQaGah2xoA8YjCQ300Xp+Ddr+Ccen6vQaiMp/qu4y/uypv5rKdQG5ekYJUBLSwB1zSSR5tDuKAhAKnmgFTzQFm
+FgreHHTShpQoCtTzQGVqletPHipQCpQCpQEOJogRpPJUZkjYzBOoWuRticPNk6+K48zdE2mdT/ZLN+EP9ALps/5Rne6f8mjhLui1Ubj0NsSijFdi2ZsK3vkJx8Zo5BzGRB8rHL2vZjJeJx8JfajxHafHWdT8Y/YzgJqWbEB0XrZ4+Y8zCdHX
+8SwlrwfNXXZtNZz8WeimUs5Zu2aYo7EcszpbDiOBmZOLV0vMAfZt58nCjhz4LwPa3sRwvtZpvUcQx/KXuzW04eT8PGLuL8O87nSa6WF3FnqTZltmyttJgiVl3+p+MsbWNhsd4vNN7oTt0Rvh5w4gb1+Qe2no74r2NyPJmXrNO3tkitvgpr9C
+Xns+5s9Np9Xj1K22fgd9uC8AcoXBALggFwQGNe0Oa7MJv+Wynzi+tehL+uOH93l/hOt4t+avzRhTYbmuQyVtXy9juKxWwZHvnykzFdoIUOMww7z0Bc0noCv2RxPA8+mlGPXr9G557h2aOHURlLp0+k+iDCab/lXhqPY7E1PNKFoVPNKFoVPN
+KFoVPNKFoVPNKFoVPNKFoVPNKFoVPNKFoVPNKFoVPNKFoVPNKFoVPNKFoVPNKFoVPNKFo0pqNBl5eJHmYzIUGExz4kR7qNYwAlzieAABJPRVJvZBtLc+be0bM0vnPaBmLNcnXybEsQixpckb4QIaw+lrQfSve6PC8GnjjfVI8Tq8qzZ5ZF0b
+PTOxg02W5br/AImfnHr8LelL+uPEP3n/AIxPV8P/ADWHkd0uC8Cc0XBALggFwQGNNqO3XLez7vMJkQ3FsfpQScN/mQDwMd49j+APOPTevpvYf0YcT7XuOpy3h0v67W8v3afX9p/JXx6HC1Otx6dV1fh+J5izDmDNG0HFzjWacRiTUbUQoYFs
+KA0+1hs3NHyniSv152Z7JcN7M6VaThuJRj3vrKT8ZS6t/Uu5I8zqtbLK7kze4dhLWAeb8i9ph06R0+XPZz0CWDG0aNaLnwx0cGc7OR7T0cSMjk7LrdDLysWO4eDYcMfmcvC9psnNLHDzf3HtOzGOo5J+S+1mBrui8vR6o5nLJqcU974v6ltw
+r5Ro1Hum2lTSi58TrpHJQtwW1Gpm5YTRZmL6k1KhaBPElUp6Z2E7EpDDcPlc6ZukWzGIzLRGkpWM2rJWGdWvc06GIRqK+xBHHd+YfSf6SM+s1GTgnCMnLhg3Gc4vebXWKa6QXR17zvu68/T4Elzy6mc3ua1rokRwDWirnONABzJPBfDYxbaj
+Fbs5Zw8LOuTo815DBzZgz5mtO6bPwi6vKly7ifZ3jGPF6+ekyqHj6udfYY88elnMkVqCN4oeoXTGR5w7QWxSRw+Sj5+yfJtl4cI34nJQm0YGk/3eG0exoT5zRprUU1X6J9FnpFz6rNDgPF58ze2Kb62v0JPvte63v+i72OJnwpfKiedieZ3L
+9BdTi0ekdguwqRdIS2ec7SLZiJMARsOkIzasYze2LEafZOO9rToBQmpIp+c/Sb6Sc6zz4JwWfKo7ZMie7ffCL7kukmt29lst+XhwquaR6Djx5eUgPmJmNDgwYLauiRHBrGNHMnQBfBMeOeaax405Sb2STbb8lu2crodUdtg2WsmfJHZ/wQRa
+0p5SCK/hUt+VenXYXtNLH61aDLy/s/d1+ow9ZDxO1Sk5Kz0vDnJCahTECKLocaDED2PHMOaaFeZz4MmnyPDni4yXVNNNeae5mnZg3bxsHkMaw+azlkyQZLYtLNdGm5SCyjJxgFXOa0aCKBrp7LXjQr7N6N/STn4fnhwji+TmwSpQm3bxvuTf
+fB9N/d8rRpyYk/lR6nlQmorXgv03W5xT39s0+t1lf3mk/mWr8M9rP6f1377J/GznQ91HOz0lK4lJTGHT0IRJaahPgRmHc5jgWuHxErpdPqMmlzQ1GF1ODUk/Bp2vrMqs+e+cstTWTs04plecqYmGzL4AcfbsGrHelpafSv3PwLi2PjvDcHEs
+XTJFPyfevmdo4bXK6OGXash6i7IuTfJcIxTPU3C+qT8TyCTJH8TDNYjh4voPgL84+mvjvrtVg4Nie2Nc8/2pbRXzRt/9RyMUa3PQy+Fm08hdrz65GG+8sL56Mv1B6FP6Ay/vpfwQNGXqZL7IX1tsS9+43zMFfP8A01/0/h/cx/jmZ4uhnJfH
+zYeLO1Dkz1r7SIuLy0GySzFD8uZQaCODbGb+NR3w1+rvRNx3+VuAx0uR3k075H+z1g/ouP8A0mmapmHiaL6eYmXOzDkw5q2lwMUmYV8ll6H5fEqNDGrbBb+NV3wF8y9K/HP5I4BLT43WTO+Rfs9Zv6NvnM4K2e2F+TzaYK7YX1tcN9+4PzMZ
+fXvQt/T+b9zL+OBjLoePalfp0wOy7NMpRM9Z8wXK4aTCnZpvlBHtYDPOin8VpHpC8/2p4wuAcI1HEH1hF8vxk9o/W0ZJWfRBjIcNjYcJgYxgDWtG5rRoB6AvxK25Pmk7b6+Zmac7JyuIyUxh87DESWmoT4EZh3OY9pa4fEStmDPk02WOfE6l
+Fpp/FO19YPnDnHLc1k7NOK5Xm697hc3Elqn2zQfMd6Wlp9K/cPBuJ4+NcPw8QxdMkVLyb6r5naMThqldkD2L2OfraYn7+RvmYK/Mnpn/AKfxfuo/xzKjO5AcCCAQdCCKgr5H0KeF+0Rspds2zg6bwuXLcBxpz48lQebAfWsSB8Emrfckciv1
+n6Oe1q7TcM9XqH/tGKlP+0v0Z/P0f9pfElIx1l0/2Q4T74S3zzF7biS/2LP+xP8AhZT6YRf7rE/Dd+dfhOHuryB4h7WX145r3rkf0HL9V+iP+rEP3mT7UF1M8dkv6zcr76T36bV8j9Ln9Z5/u8f2MGVMczBgeWZA4rmHFpXDZNr2wzHmYgYw
+Od7FtTxK+faHh+r4nm9n0WOWSdN1FW6XV18AcNI7VNmmJR2y0jn/AC/GivNGsGIQwSelSF2efspx3TRc8ujypLv5JfcinZyIcWGWkNfDit1Gha9p+Qg/EuhTcZWtmvpT+5kPM/aG7OmGw8Nm8+7PsPbKxZVro+I4ZAbSHEhjV0WC32rhvcwa
+EVIoRQ/dPR36R88s8OEcZnzKW0Mj6p90ZPvT6KT3T2drpTytFP1GIQfaO/Mv0FBfKXmWj6Y5Z/wbwj3ulfmWL8LcT/Ps/wC3P+JmJwedtq+Qdnc3KyOcMe8gjzsJ0eAzyaLFvY11pNWNIGumq7XgnZPjHaLHPLwzDzxg0n8qKptX+k13FOuf
+wmtiX36f/wBfM/8ADXdf6Me1X/K//wC8f/7Cjzx2ntoeT9omP4DO5Oxfy+DJSEaDHd3ESFY90W4Cj2gnTkvs/ov7O8S7O6PU4uJ4+SU5xa3i7SjT91vvKkZz7Jf1m5X30nv02r5P6W/6zT/d4/sZGZRzHmfL+UMMOM5nxeWwyRbEZCMxMOIY
+Hu9i3QHU0K8Fw3hms4vn9l0GN5MlN0utLq/mIdck9t2yGfmWSkrtGwJ8WIQ1jTMFlTyq4AfKu7zdiO0eng8mTRZEl/Zv7G2U7o+HCjwnQojGRIUVtr2uAc17SNxB0II9C8vGUoSUoumvmaf3Mh4o7TWyeQ2d5mlcZy7LCBguOh7mS7fYy0wy
+hfDbyaQQ5o4ajcAv1H6Me1ubtHoZ6bWy5s2GrffKL6N/FNU337PqzJbmGV9OFBBQrRC0TUoBUoBUoBUoDK69fR48JQCUAlAh25SgaT1GVM2MxxWqRtizh5vj4rRI3wNnnY0zNN6cIf6AXS5/yjO90/5NHB3dFpo3GdOyxiDI2J5lyvGd5uIy
+DIzWniWOLHfJFHxL0vZrLyZZ4/FJ/Q/8TzPabFzYseTwbX0//QjQ3QYj4EUUfCcWOHUGh/MvofXc8GtjbRoTXilFhKCZsjKjiJ7DWxAfNXDy4LOVizUdcm8Njykdk3KRIkGNBeIkOJDcWvY4bnNI1B6hdPrNBDPCWLLFSjJU01aa8Gns18Ds
+8Gpa7zNOzHtKxpV0LANpzi5ujIWMMZqOXlDRv/8AmNHiOK/M/br0Ktc2u7Nr4vC3/wD82/4JP9l9x6PScTUvk5fp/E9Dys3KzstCnJOZhR4EdgiQosJ4ex7Tuc1w0I6hfnTNhyafJLDmi4yi6aapp+DT3TO4TTVo1ahayioQGNu0Lrsxm6f4
+7KfOL6z6Ev644f2Mv8J1nF/zV+aPL8SW7yDS2tRqv208dxPGxnTMt7Ne1jn3ZxhsHLuN4XBzNhUq0Q5fv47oM1AhjcwRaOD2jcA8EgaVpovOa3hEMknODp/Ueg0nFZ44qEt19Z3x3b5wpuh2U4n/ADvC/wCGutfB8i/S+o5/8qw/V+sj+H3h
+P+SjE/53hf8ADT+SJ/rfUX+VI/q/WUd9EAwhu/ZRif8AO8L/AIaxfCpr9L6iricX+iZ32L7VZfbJkhmdZXBI2Ew3zkxJ+TRphsZwMItBdc0Aa3bqcF1+fC8E+Rs52HMs0OZI73U81qo2WxU80oWxU80oWxU80oWxU80oWxU80oWzGu3XbVK7
+D8u4dmGby5MYy3EZ/wAhEGDMtgFh7tz7iXNNR5tKdVv0+neok4p0ac+dYIqTRhhvb/wh2o2UYn/O8L/hrnLhM3+l9Rw3xOK/R+st/D7wn/JTif8AO8L/AIay/kif631E/lSH6v1kjt84W4G3ZTiVeFcXhU+bRcHm/wBL6iPisF+j9ZjXaj2m
+s+7WJGJl6BIwMvYFGoI8rLRXRI0y3fbFikCrfcNAB41XbaHhUMEud7s6zW8TnmjyLZGMxAMOFuXfuHLE6TnuR602MkDZdlwf9DPzj1+CfSj/AFx4h+8/8Ynt+HfmsPI7pULwRzRUIDbYniuG4NIR8UxafgScnLNvjR47wxjB1J/NvPBcnR6P
+UcQzx0ukg55JOlGKtt/Bf5S7zGUlFc0uh5s2m9o/E8fdFwHZyY0hIGrIuJuaWTEYce6H8U0/ZHzz7lfpjsJ6F8Ojcdd2iSyZOqxLeEf23+m/h7q/tHS6vif6OLb4mJ8PwgudfEBc5xucSakk7yTxK/Ren0iikktkedzamzsslhzYYHmrtcWB
+ROsyZmzlYUJrBQCi5cYpHGcrOWy5JeqOPYdIAVEeZhtP4N1T8gKTfLFsxSuSR1TtM4y3Etp0WTY6rMMkoEtQbg51Yjh/THxL5nx/J6zWcv6qS+/7z6N2fxer0fN+s2/u+4xRd0XS0d2c1lg1OKe90X9S3YF8o0aj3Tbyp0C50TrpHJQTULal
+RrZuGFbEYstXSqgs7Xsqy5CzbtCwTA5ll8tEmRFmG8DChgvcPTbT0ryfbnjE+A9ntVrsTqajUf2pNRT+a7+Y24Y880j3H4CnQL8NnbHk7tCbUMTzDmacydhs5Eg4NhUQy8VkNxAmo7fZufTe1p80DdoTvK/V3oo7FabhPDMfGNTBPUZlzJte
+5B+6o+Da3b67pdEdfqMjlLlXRGGyGbrG08F9gt+JxzMWyXtCTWRsOjYFmiBPYvIMDTImHEaYsufbMq86s4gcDu0K+O9u/RVi7S6mOu4XKGHK757T5ZeDqPSXi+9dd0cnFqORVLc71N9qzI87KxpKcyhjMWBMQ3QYrC+CQ5jgQ4b+IJXhsPoR
+43pssc2LV4lKLTTqezTtPp4m72qL2owZs0yxJ5y2jYRl4MeZCPOGJEa/2RlodXkGnEtbQ+K+2dsOM5uAdntRr7XrYwpV055VFNeTdryONjjzTSPdbWhrQ1jA0AUDQKADgAvxC23u2dkePe0NtMxLNebpzK8pNvZgmDRjLtgsdRsxHbo+I8e2
+o6oaDoAK7yv1n6LOyGn4JwrHxPLG9RmXNb6xi/divC1vLvbddEcLNNylS6GJCaL6pRqMk7C9p2I5DzbJ4dGmnnA8Ujsl5uXc6rIbnm1sZo4OBIrTeK14L5z6SOx+n7ScKyaiEV7Tii5Ql3tJW4PxTV1fR013m3FNxlXce1dWmm4g/Kvx7s0c
+08L7c8rQMobTcZwyThCHKTDmz0uwbmsjC60dA64ehfs/0d8Znx3s7ptTmdzinCT8XB1fzqmcPJHlk0ew9mn1usr+80n8y1flDtZ/T+u/fZP42cqHuo7Jc262orStK60XQU6syPMHa6yb5NiWFZ8lIPmTjPU6cIH8YwF0Jx8W3N+AF+ivQnx3
+1unz8FyveD9ZDye0l8zp/OzRmjvZ59kJKbxSelsMkIRiTM5GZAgsHtnvcGtHxkL7hqc+LR4Z6jM6hBOTfwSt/UaVufQrKOW5TJ2VsMyzJkdzhkqyAXfZOAq9/pcXH0r8Mca4rl45xHNxHL72WTfkn0XzKkcxKlRzAIIqOK6sp5B7Xp/tkYaP
+9CQvnoy/T/oU/oDL++l/BA0Zepkzsg/W2xL37jfMwV8/9NX9P4f3Mf45mePoZxLmtpcQKmgqeK+QpN9DYYn7TGS/XZszmp+Wg3z2X3+qMGgqTDApGaPged8AL6R6LOO/yPx+GHI6x51yPz6wf97b5zGatHiImi/WjRpPbHZgyX61tmkDFZmD
+ZO5iieXxKjUQaWwW/i1d8Nfk70rcc/lbj8tNjd49OuRftdZv6dvmN0VSMugg1oQaGhpzXzSqMjBfbCNNmmG+/cH5mMvrvoW/p/N+6l/HAxl0PHd3RfpyjGz0v2OMn97NY3nyZg+bBaMLk3Ee2dR8Zw9FjfSV8G9NXGeXHp+D431/1kvJbQX0
+2/mRlEzftizi/IezfG8xS8UQ5xkDyeSP/SYpshn0El3wV8m7GcFXaDjun0M1cG+af7Ed5fTVfOZM5TIGaIOdMlYLmiAQRiMnDixAPaxQLYjfQ8OXA7Q8KlwTiuo4fP8A3cml5dYv54tA8zdsTJ3qdmnC86y0KkHGIHksyQNPKII80nqYZH4i
++7+hnjXtPD83Csj3xS5o/sz6/RJfWRnni7ovtAo9j9jn62mJ+/kb5mCvzJ6Z/wCnsP7mP8cwjOkeZl5VrXzEZkJr4jITS91AXuNGt8SSAOpXyWGOeVtQVtJvbwW7fkluynWtpmQcM2lZOncrYiWw3Rm95KTBFTLzDfYRB0roebSQu97MdoM/
+ZniePiGDdLaUf1ovqvvXg0mDwNAwbE8u55lcBxmVdLT2H4tAl48J3tXtjNr4g7weIIK/X+TW4OJcJnrNLLmxzxyafwcX9fc/B7A+kkX+6xPw3fnX4eh7q8geIe1n9eSZH+i5H9By/Vfoj/qzD95k+1Azv2S/rNyvvpPfptXyP0uf1nn+7x/Y
+wR2tvrNzHvrI/pOV9EX9Zo/u8n2IqPEZo4Uc0EdV+qPIyM6dmXbFjGW82SGRMXn4sxgWMRRLQGRXl3kcw72BYTua40aW7tQRqNfkvpO7G6biXD8nF9NBRz4lzNpVzxXVPxaW6fXZpkaPZrgHNIcwOBFC0jQ9CvzInW6MT52bZcqwckbRMyZb
+lYdkrLzD4kq3lAiN7xg9AdT0L9odjOLS45wXS67I/lySUv2ovlf0tX85kj6BZZ/wbwj3ulfmWL8ecT/Ps/7c/wCJmJ5x7XWUc2ZjzPlyYy7lnFcUhQMNjQ4r5OUiRmscY1QHFoNDTWi+1+iHi/DuG6DVQ1ueGNucWlKSja5eqtoqMC/Sv2m/
+5O8y/wA1xv3V9c/nTwL/AJ3F/wByP4lOAxHD8Rwedi4bi0hMSU3ANsWBMQzDiQzStHNOo0IPpXcafUYdZijn081OEuji00/JrZlPanZK12Nyx/0pPfptX5e9Lf8AWaf7vH9jMWR2tq/SbmKfdWR/Scnok/rNH93k+xBHiRztDePN413L9TL4
+GR9AdgXqv9J3K3q33vlPkXm97W/ub3d1Wuv9ztp0ovx72/8AZv5y6z2WuXm7unNS5v8A/V/OYsx52z48qzImBQHkeURMYLoQ42tgPv8AztXs/QvDI+L6ia91Y9/NyVfYwjyDd0X6QMhd0QC7ogF3RALuiAXdEAu6K0DLFQvWnjxUIBUIBUIC
+HEUQGlEI5rFlRsZgii1yNsTiJojVceZvgbLO5AzNN+EP9ALpc/5Rne6f8mjgrgtJuO97Dsfbl/ajgcxEiWQpuK6Qik7qRm2j+lYuy4Rm9RrIN9Ht9J1vGMPr9FNLqt/o/wADK20HDzhmb8QghlrIzxMs8Hip+W5fU8EubGj5nNVJnXbitpiU
+e0OGoWLVlTNjNSbYgOg+JcfJiTN8MjR17EcIDqkN+Rddn0yZz8Ooo5XIG1HN2y2a7vDn+W4Q990fDY7j3ZrvdDO+G/qNDxBXy/tt6OOF9r4OeaPq86XyckVv8FJfpx+D3Xc0d3pOISxbdV4HqnIO0zKu0bDzOYBOUmITQZmSjUbMS5903i3k
+4Vaem5fkXtT2N4r2R1PqOIQ+S/dmt4S8n3Pxi6a8tz0WHUQzq4s7Vd0XlqN5i7tFYpKS2QW4bFePKMQnoDYDK6kQze93gBQfCC+zegvh+fU9qfaoL5GLHNyf7S5Yrzbt+SZ1PGZqOm5X1bR5+lYF8MVHBftjHC0eHnKmaczhbYmto+JYz06Z
+lDO0bF+CNqTZ8i470qN61JpnAxxaPiU9kRfaTZzmDBrT5q0ZNNSN2PUWz272MYfcbEoUMcMZnz/SYvF8Wjy6lr4I9bw2Tlp0/izOdSuuOfuKlBuKlBuKlBuKlBuKlBueb+3NB8o2e5bYdaY8T/8AbRF2/Boc+eS+H3nV8Wk4Yk/j9x5ClcGa
+5o80fEvYY9LaPKz1FM3IwMfYj4lt9kRr9pNSHgjQa2/IslpUYvUs5CXw1sMDzfkXIhgo0SzOQnYIZDNAmWFRGKVs9LbDMVlMQ2Z4TBl4gdEw8RJOO2urIjXuOvi1zSOhX4O9L/Ds2h7YaueVUsrjOL8YuKX1NNP4o97wuanpY13bHfrui+Z0
+dgdJ2j7Xcq7NZWmJxjNYnFZdL4bLuBjROTncIbPdO9AK9p2Q7BcV7Y5v9kjy4U6lkkvkr4L9aXwXztHG1Gphp1cuvgeWM65+zftQxBszj813cnCddLYfAqIEDrT2zvdu15UGi/XvY7sFwvsjg5NFC8jXyskt5y+fuj/ZW3jb3POavXSyv5T2
+8DQw7CQ0CrfkX0PDpkjpcuds56WlGwwNKehdjDEkcGeRyN8wBo0C3pGlstcVkQ7tskkBN5odOxaCFIS74hcdwc7zQfiLj6Fx9VLlhXibMSuWx50zrjxzNm/GcfJJbPz0aMz8C6jP6Iavkurze0Z55fFs+qaTD7Pghi8Ev8ThbguOcg5vK5BO
+Ke90b9S34PeNGo9028sRT4lzkdc+pyUAhbaNbNwCKLJELV0oqTvMo9mt0Nu1eTESlXSM2Gfhd3+yq+W+mOMn2Uy8v6+O/LmOTpfyh7Ah07xld1w/Ovx/P3X5HZnz9zQIzMz4w2Zr3oxCZvrvr3rl+/eCuEuGaZ4/d9XCvLkR1EveZxRK7MxK
+E8VO4EEiixMkZS7Mr4TdrUkIhFXSM41n4Xd/sBXy70wxk+ymXl7p478ub/6N+n989ksoIjCdwcPzr8hz91nPPnpmuFHl8041AmgRGZiM014O+veuqv3vwScMvDNNPH7rxwry5UddLZs4lxC7IhqScOLHnZaDLgmLEjQ2QwN9xcAPlotGonHH
+hnOfRJt+STv6irqfRsAtAa7eND4r+f8Aae6OxPIPayfCdtMlmMIvbg8AP8S+IR8lF+qPQrGS7Ozb6PLKvoj95xc3vHpnZp9brK/vNJ/MtX537Wf0/rv32T+NnIh7qOAzxm8ZV2o5FlpiLZKY5DnsNjVOge4wTCcfB4A+EV3fZ7gn8sdnOJ5I
+K54HiyLyXOpr+7b+YknUkcztSyczPmQsXy1YDMR4BiShI9jMQ/Ohn4xTwcV1HZDjj7O8a0/EL+TF1L4wltL6nfzGUo8yo8zdlrJT8e2hxMfnZciXy3CMYhw3TT6shtPVvnu+CF+hPS/x5cO4EtFhl8rUuv8AoVOT8nsvnZoxRt2egtvGcPWX
+szxScgRu7nJ8Nw2UIOoiRdHOH4LLz6Avh3o84J/LvaDDimrhjvJLyjul88qRum6R3+AAIEMAaBjQPiC8XPebb8X9pkeQ+18QNpOG+8kL56Mv056FP6AzfvpfwQNOTqZM7IH1tsS9+43zMFfP/TV/T+H9zH+OZnj6HdtuWPTmVtm89mSQcRMY
+ZNyM0ynG2ahkt9IqPSvJdgeHYuLcex6DN7uSOSL+fHLf5nv8xlJ0juEhPYdmHB5fEZYNjyGJyzYzAdQ+DEZWh9DqFeX1Gnz8N1U8GT5OTHJp/CUX1+lWU8OTWyKcbts+lUxr+6fiIYyJT/mJ+qd56IVfSF+ucXbLE+yf8431ULa/+RfJ5f7/
+ANRp5flUe45yawzLeCxp2MGy+H4XKuiOG4Q4MJlaehraL8j4cOo4nqo4o/KyZZV5yk/xdm46fsNx+czVs3kcyz5JmMTm5+aeD7W6aiEN9AoPQvTdveHYuEcdyaDD7uOOOK+bHHf53b+ckd0dG7Yn1tMN9+4PzMZet9C/9PZv3Uv4oEl0PHRO
+ugJPADeei/TjIj6FbIcnDImznBMuvYGzMOXEeb6zEXz4lfAm34K/FnbHjX8v8c1GuT+S5VH9mO0fpq/nM10MH9szN4L8ByLLxh5odik20HnWHBB/6w/Evq/oU4PtqeLzXhjj/FL/AMURnL9jjN4nst4xkqYjAxcKmBOyzSde5jaPA8Ija/DX
+Wemjg3s+vwcVgtskeSX7UOn0xf1BGRe0Bk0512WYxJQIXeTsgwYlKACp7yDVxaPwmXj0rxXo941/IfaDBlm6hN+rl5S2T+aVMrPAlQdQdDqF+wgeyOxwa7M8S9/I3zEFfmP0z/09h/dR/jmRHau0pHjS2xnHZmXjPhRoMSTiQ4jDRzHiahkO
+B4EEArz/AKM8ccvajT45q01kTT6NPHK0/gym62G7UoO1LJcLEJmIwYxIFstikIafVaebFA+xeBXobhwXH7ddlZ9leKSwwX+pn8rG/h3x84vbyp94Oi9pHZP6qYhhG07A5as3h85KQsVYwaxZcRmBsbqWbj7kj7Fes9Gva32XDn4Dq5fInGbx
+t90uV3Hyl1X9rzKegIv91ifhu/OvjsPdXkQ8P9rX68kyP9FyP6Dl+qvRJ/ViH7zJ9qKZ57JWuxuV99J79Nq+Selz+s0/3eP7GQr2tz/abmPfWR/Scnoj/rNH93k+xFR4jqF+qTI5jJjI8bOOAwpSvfvxSUEOm+7vmUXVcacIcN1MsnurHO/L
+lYPpbEp3j6brjT41+HY+6jA8K9rR8F22LFhDIq3DpRr6fZdz+whfq/0SxkuzWHm/XnXlzf8A2ZI9rZZ/wbwj3ulfmWL8vcS/Pc/7c/4mQ3E5i2FYc9sPEMVkpRzxc1seZZCLhzAcRULTh0mfUpvDjlJLwi39iZDbnM2W6H+yTCf5wg/vLd/J
+et/4E/7kvwKeEO0HMy83tlzRMSszCjwnzUMtiQnh7XDuWbnCoK/Wno9xTxdmdHDJFpqL2ap+9Lue5Uem+yR9ZmV99J/9Nq+Felv+s0/3eP7GRmUsx5Xy/m/DDg2Z8HlsTkXRGRTLzDSWF7fYuoCNRVeC4dxTWcHz+1aHK8c6atdafVfOQ65J
+7ENkGHzLJuU2cYEyLDIc1xly+h50cSPkXdZu2/aPUQePJrcjT/tV9iTLZ2LMWaMt5Pwx+K5lxmTwyThD2ceIG1pwa3e48g0ErpuHcL1vGM60+hxSyTfclfzt9Evi2iHhrbttcdtYzWybkoUWBguGMdAw6FEFHuBNXxXjg5xA04AAc1+q+wfZ
+Fdk+HvHlaebI7m1026RXwjvv3tt+BklRjaoXuCioQCoQCoQCoQCoQCoQGWTSptrSulV608eQgCAeKARLamyttdK76IDRiKMqNjMblrZtj0OImt/pXGmboGyzyW+uicpWlIf6DV02f8ozvtOv9WjgbgtJvovAmIstGhzMu8siwntiQ3Dg9pq0
+/GAqm4u11I4qSp9D1Pn+ag5oyzlzP8m0WYhKtbFpwc4XUPg7vG+hfVuG6hajEpr9JJ/ifLNbp3p80sb/AEW0dCvK7KziULyliiHaqA28aAHjctcoJmyM2jh57DGvBo1cLLgTOXizNHCy4xXAMTg4xgc9HkZ2WddCjwXWvaf1g8QdDxC8/wAU
+4NpeKaeek1mNZMctnFq0/wDHwa3Xczs8GqcHae5lKS7UO0CBJCWnMv4LNzLRTykiJDqeZY11tfCgXxXUegPgmXUesw6jLCH6vyZfMpNX9Ns7dcXmo7pHTMazPmXPGMerWZp4zEcNshsa2yHBZWtrGjRo+U8SV9f7K9lOG9ldItHwzHyxu23v
+KT8ZPvf1JbJI6XW6ueolzTZv5RlrACF7bGqR0uR2zdFoO9baRrsr3Y5KcqLbIMIclOVDmZx2Iw22HRcbNFUcjDJ2ev8Asg0bsahD/TE/+kxfPONfnb8ke64TvpV5szXULqTshUIBUIBUIBUIBUIDz121aOyFl0f6cP8AV4i7zgH5xLy+9HT8
+a2wR8/uPLshDFg0Xv8MVR4rLJ2b4Qm8lyOVGjmZIhgcE5ULZa0DgrRLNnOsuYQtGWNo245UzbZczrmrZ9icTEctzjWCMAJiXjNvgxwN1zdNRrRwIIrvXgO1/YvhXbDTrBxKFuPuyTqUb60/B96aafhZ3mi1s9O7gztmLdpzaHPyTpTDcHwnD
+IzxaZqGHxXt6ta82g+IK+XaD0DcD02oWXU5smWK/RfLFP4NxVteTR20uLzcdkkYuZJzmIzkXEMSmI01NTDzEjRozy98Rx3lzjqSvt2h4bh0eKODBBRhFUklSS8El0Onz6lydtnPSOGtYB5q7rFgSOtyZmzl4MEMFAFzIwSOJKTZrg0WwwJvK
+tiheUsUdzdiJyTsXzBma7u5vFQZSUPGr/qTSPjiO9C6Hjuq9Rp5yXWqXmztuDab2jVQi+l2/Jbnl+rQKDcNAvmh9JFwQUc5lYgnFPe6N+pbsHvHH1HuG3leC58TrZHJQVuXQwZuodlfql1KcOapCVQdi2eZnbk7O+DZkiV7mTmmmPT7S4FkT
++i4n0Lzfa3gz7Q8E1PDY+9OL5f2l8qP1pIzxz5JqR7shRIUaEyNBitiQ4jQ9j2moc0ioIPIihX4VnCWOThNU1s0+5rqvmO3PL3aC2RYrh2YprPOCSEebwrEXGPOMl2XPlY5HnOLRrY4614EkHgv096Ke3uk1XD8fA9fkUM2JcsHJ0px7km/0
+o9K71TXecHUYmpc66GDB57hDZ5zyaBo1Pxb19sfyVzPp49xxTOeyTs5OzNhsbG8/wsQw6XjBokZaG4QozhvMR4cCWtOgAIBOp5L4d269LS4PqY6LgLhklG+eTXNFeEY01b727aXTrZy8Wn5lcju+I9mXZRhOHzOKYhiOOQpWTgvjxnmcYA1j
+QS4+w5BeK0vph7U67PDS4MeJzm1FLke7bpfpG16fGt2ecsi5pg5Oz5heaZeHEErJTveOYTV/k7qtc08zY4+kL9B9peCy4/wPPwzI1zzhV93OqaflzL6DiQlyyUj3pLTMvOS0KblIzY0COxsSFEaah7HCrXA8iCCvw1lxZMGSWLKuWUW00+qa
+2a+ZnZ9TzZ2g9h+OTOOTOe8nYfEnoU79UxCTgNrFhxQKGKxo1c11KkDUGppQ6fof0X+kXRYdFDgnF8ixyhtjnLaLj3Rb7muib2a2u1vxc2Jt80Tz6+RnmRvJXSMy2NWndmC4PrytpVfdvacEoesU48vjar6bo49MzlsD2F47N4/J50zhhkWQ
+w7D3iYlJaYYWxZqMNWOLDq1jTR2u8gU0qV8V9JfpG0WHQ5OD8JyLJlyJxlKLuMIvqrWzk1tt0V3vSORixO7Z6ne9rGuiRHta1oLnOcaAAbyTyX5pjFyajFW/A5R4I2u5vh552hYzmGWeXSkSL3EoTxgQ22MPpoXfCX7a7EcDl2d4Fp9BkXy0
+uaX7UnbXzXXzHCnLmk2e09mf1ucre80l8y1fkTtZ/T+u/fZP42cuHuowh2w40WXmcnTECI6HFhGciMe3e1wdBII8CAvsHoOhHLj4hCauL9WmvFNTTX0GvN3GdchZqgZ1ydhGaZd3/p8s2JEHFkUebEb4h4cvjXaTg8uAcW1HDZ/7uTS+MXvF
+/PFo2xfMrJyrkzBcnvxiJg8HuzjWJRcTj6AUe8AWj3IoafhFY8X47q+NrTrVu/U41jj5K938Xtfkgkl0PNfa4zh6pZuwzJstFrBwaCJiYAOhmI1KA9Www38cr776F+Cey8MzcVyL5WZ8sf2IfjK/oNWWW9Hq+D/cYf4DfzBfmufvPzZuPIXa
+/wDrlYb7yQvnoy/TvoU/oDN++l/BA05epkzsf/W1xH37jfMwV8/9NX9P4f3Mf45mWLodl7S+mxfMHjK/1iGuh9Fv9a9L/wBf8EjKfunB9lDOPq/s7flyYi3TWXJgy4BOplolXwj4A3t9AXbel/gn8nccWugvkaiN/wDXHaX07P5yQdoyY7Je
+CuzyzP5g/wDKcPDXYYHUFO7MS678KlW+BXgFxzVrhD4Lf+qeT1nz1VeXf5mdb2Yz7V+cfW/s4bl6Xi2zWY5gSxAOol2UfFPgTY34RXvfRDwX+UeOvWzXyNPHm/65bR+jd/MYzexzXZm+srl/8Kb/AKzEXVelH+teq/6P4Ilj0Os9sX62eG+/
+kH5iMu99C/8AT2b91L+KBJdDz7sIybDzvtTwTDokF0STkneqM6HDTu4NHU8HPsb6V9p9IPGnwLs/nzwdTmuSPnPa/mjb+Yxjuz3ySSSTvOpX45SrY2HBYtkfJGPTrsRxzKeC4hNOa1jo81JQosQtboBc4E0HBdtpOOcV0GJYNJqcmOC3qM5J
+W+uydbgvg2TcnZdmXTuAZXwfDZh7DDdFlJOHBeWEglpLQDSoBp0Cx1vGeJ8SxrFrNRPJFO6lKUlfjTb3BzRAIo5ocDvB3Ecl1e/cD52bXcnHIe0XG8tNYWy8GZMaU03y8Tz4fxB1vwV+0+yHGVx/gmn1zfynGpftR2l9av5wj012NvrZ4n7+
+RvmIK+Eemf8Ap7D+5j/HMiOz9pz6yWYfGU/rMNdF6L/61aX/AK/4JFZ5I2QbS5nZbnKUx+F3sSSjf+bYpLt3RZcne0fZN9kOopxK/RvbHszi7VcLno3tkXysb8JL7pdH8N+4H0BkpyRxaQgYhIx4c1JzkJsaDFbqyLDcKtcOhBX45z4cukzS
+w5U4zi2mu9NbNfMwbhaQeIO1t9eWa96pD9By/VHok/qxD95k+1Azz2SfrMyvvpP/AKbV8k9Ln9Z5/u8f2MFe1z9ZqY99ZH9Jyvoj/rNH93k+xFR4lgwI8zEbBloESNEcaNZDYXuJ6AalfqWeSGKPNNpJd7dL6zI9J9mzYBmGDmKU2h52wyLh
+0th577DpOYbbGjRqUbFcw6sY2tRXUmmlBr8P9JXpA0c9HPg3C8inKe05R3jGPfFPvb6Otkr3tmLZ6qmZmXk5aLNzkdsGBAhuixYrzRrGNFXOJ5AAlfn/AB455prHjVybSS8W9kvnZD5w7Uc2+vvO2Yc2NBELEZiI+ADvbAaLYY/Ea1ftbsvw
+j+QuFabhz6wik/2m7l9bZmfRHLP+DeEe90r8yxfjTif59n/bn/EzA8rdtlkN2bsrF7GH/kqY9kAf49fffQm5Lh2rp/7yP8BUecxClbDWEy+op5raU4r7XzT8X9ZkS0NAo0AAcAsXfeD3B2R/rMSvvpP/AKbV+V/S3/Waf7vH9jMWbvtRY1jO
+AbJ4+I4Fi05hs2MSk4Yjykd0KIGuc64XNINCuP6L9Fptf2hjh1eOOSHJN1JJq0lWz8Ajldg20tu03IMriE3Ga7F8OpJYm3iYrR5sSnJ7aO8bhwXX9vOzT7M8Xnhxr/Uz+Vj8m94/9L28q8QzrXaj2WHPGTRmbCZbvMZy4x8ZrWiro8qdYsMc
+yKXjwcOK7v0Xdqf5D4n7DqJVhztL4Rn+i/J+6/NPuCPElQRUGoK/UhkSgJbZR111aebTn1QEIAgCAlnd+d3l242059eiAhAZaXrTx4QBAEBDtyA0oijKjYzG5a2bY9DiJrf6Vxpm6Bx+eSPXRODpD/Qaum1H5Rnfadf6tHBVC0m+hUc0FHoj
+YPibc47N8c2exnh03hjjNSQO+x5ubTwigj/WL2nZnV/IeF/ou/mf+J4ztJpOXLHOv0lXzr/A4ElwJDm0INCDwPJe0PKURcUFC4oKFShaZR7A4bli1ZU2jYzEm2JwC0SxJm6ORo2nqYytbR8S0ezqzb65m7l5RsPgFvhi5TVPI2b9gtGi5CVG
+l7lriqY0LigoFxQUcdiJrDPguLn6HIxdT152QYjTscY0EEtxieBpw1YV8745+dvyR7rhP5qvNma7ui6g7MXdEAu6IBd0QC7ogF3RAeeu2pEb6xcuMqA444SBXU0l4lfzrvez6/2iXl96On43+Qj5/ceYJB31Mar6Bh6HicnU31xXINFC4oKF
+xQUUiNuGqxasyWxsJiTa+ug1XHni5jfHI0bUYYy6tFqWnRseZm8gSbWcFvhiSNMsjZvWNDQtyVGptl7isjGmLigoXFBRryMrMYjOQJCVbdGmYjYUMe6caBRtRVstN7Gp2mcel5EYDs4w6J9QwuXE3MAcXltkIHraHu+GF8/7SarnyRwLzfz9
+PqPbdm9LywlqH37L5upguoXmD09CoQUc5lUguxT3tjfqW7B7xx9QvkGhK+18AucjrmclCW6JrbNw06LIxbLXFKKCaqMGfNhm3iTwSTgZLzxNGFKQfMkMQfUtgt4QovENHtXcNx0oV8E9JfowzcRzT41wSN5Jb5Ma6yf60P7T/Sj39VvaOZp9
+QkuSZ6Sl5iBNQGTcrHhxoMVtzIsN4cxwPEOGhC/N+XFPDN4ssWpLqmqa8090c7r0NFmGYXDj+VQ8Nk2R6171suwPr+EBVbpazUzh6qWSTj4c0q+i6FI1JyclJCViz8/NQpeXhAuiRo0QMY0cy46Ba8GDLqcscGCLlN7KKVt+SW4brdnlvb1t
+2ls3QH5MydGc7CLwZycoW+VlpqGMB17sEVJPsiBwGv6Z9Gno2ycCmuMcXj/r6+RDryX1b/ttbJL3Vff04WbNzfJj0MFuPFfajjmc9hW32BlKXhZNzrGf6ktNJKdoXGUqfYPA1MOuoI1bXlu+Kekj0Zz45klxfg6Xr378OnPX6UX0U/FPaXn1
+5OHNy/Jl0PUkjPyOKSkLEcNnIM1KxgHQ48CIHscOYcNF+adTps2jyy0+pg4TXWMk015pnMTT3RraF1xpdz4/GtHdQKTMzLykvEnJyYhwYEIF0SLFeGsaOZcdB6VsxYp58iw4ouUnsklbfkluDzJt47QspjMjMZJyDNGLKxwYc/iTagRWcYUH
+jafbP4jQaVK/RHo49GGXQZocY43Gpx3hje9PulPutfox7nu96Rx8mW9onnR3HwX3lGg+gmzNzfpc5WqR/eaS+Zavw32sT/l/Xfvsn8bObD3UYN7ZRF+UiDXSd/PBX2L0FrbX/wD9f/mas3cbzsg5xEfDsYyNNRfPlHjEZQE/xb6NitHg4NPw
+iuJ6beB+r1Gn4zjW016uXmt4v51a+YuGXceg8QxGTwuQmcTnorWS0nBfMRnE7mMaXOPxAr4dptNl1eaGnwq5zaivNul9Zu6HzszRmKbzbmfEcyzpPfYnOPmXA+1Dnea30NoPQv3PwnhmLg3D8XD8Pu44qPnS3fzu385xHK3Z9GILm9zDqR7B
+v5gvwpNPmfmzlnkHtgEHaVhtD/7EhfPRl+nPQqv/AEDN++l/BA05HuZN7Hzh9LXEqkD/AJbjfMwV4D01L/1/D+5j/HMzx9DsnaXIOxbMFCPZSv8AWIa6D0Wp/wA69L/1/wAEiz6HnHsy5y9au1KTkpiNZJ4+w4bFqdBEJugu/HAHw19z9KfB
+P5X7PZMsFc8D9YvJbTX93f5jCDpnt65vMeC/JlG08Qdp/Ofrp2pTWHy8W+Ty/DGGwqHQxQbozvxzb8BfrH0VcF/kns9DPNVPO+d+XSC/u7/Oa5Pc9HdmUgbFMv1I9lN/1mIvh3pRT/nXqv8Ao/giZx6HWe2MQdmeG0I/v5B+YjLvfQuv/Xs3
+7qX8UCS6HH9jnJ3kGWcVzvMwqRcWjiTliRr3EE1cR4xDT4C5npn417Rr8PCcb2xLml+1Lp9Ef4ix8TKO2jOkTIOzXGswysfup0QRLSLhvExFNrCOral3wV8/7E8Ej2g47p9FkVwvmn+zHdr59l85WeMvp87Zhp9MrGz/AK1n7q/T/wDMDsu/
+/wCDj+h/iY2yDt72z627SsaB4fVGfup/MDsv/wAjj+h/iLZ7j2d5rhZ3yPgmaoRFcQk2RIoHtYwFsRvoe1y/KHaPhMuB8W1HD5foSaXxj1i/7rRkYC7Z+TboWB5+lYWrCcKnHAcDV8Fx9PeN9IX1/wBC3GalqOD5H1/1kfsmv4X9IOydjUgb
+MsTqR/fyN8xBXR+mdf8Ar2H91H+OYR2ftOkHYlmGhG+U/rMNdD6MF/7q0v8A1/wSDPB5JX63CPUXZH2tVDtlWPTO6+Pgz3nhq6JL/ne0fhDkvgfpd7JV/wC4NJHwWVL6Iz/8ZfM/Ep6hub9kPjXwamQ8QdrY12zTVPuVIfoOX6o9Ef8AVmH7
+zJ9qLZnnskEDYzK1I/vpP/ptXyP0tr/3NP8Ad4/sYMxxYcvHZ3ceHCiNrW17Q4fEV81jKcHcW0/hsQrBlpOXddLS8CE7nDhtafjAVnkyZFU5Nr4tv7QaOMYzhGXpCJimPYnK4dKQwXPjzUUQ2D0u3noNVt0ej1HEMq0+kxuc30UU2/qB5H7Q
+PaShZ1k42SchviswWIbZ6fc0sfOgH+5sadWwq6knV3IDf+iPR/6N5cFyR4pxZJ5l7kOqh8W+jl4VtHxb6ZJHniN/cYn4DvzL7JD3l5op9OMsub62sH84f3ulOP8AmWL8McST9tz/ALc/4mYs0sbyjlHMsWFMZiy1hOKRYDDDhPnJSHGcxpNS
+GlwNBXWi2aLi3EeGxcNFnnjT3ajJxt+LpoHG/Ss2X/5Pcs/zXA/dXM/nRx7/AJ3L/wByX4g8vdr7LeXMtZmy1L5cwHDsLhR8NjxIrJKWZBbEcIwALg0CpppVfePRDxLW8S0Oqlrc0sjU4pOUnKly9FZUZj7I5A2MStSP76T/AOm1fNfS2v8A
+3NP93j+xkZHa6cDsamKEf31kf0nK+iRf+5o/u8n2II829nzaadmmf5eYno5Zg2LWyOJAnRjSfMjeLHGv4JcvtvpB7M/zl4PKGJXmx/Lh8WlvH/qW3mkVnvq5hHsmkeIIP7QvyNTMTwb2jNlw2b56iRsMgWYHjZfNyFvsYTq/VYHwSaj3LhyX
+6z9HXaj+cnCVHO7z4ajP4r9GXzrr/aTMluYqXvyhSi2EoWEoWFRYQWEFmW6nmvWnjhU80AqeaAVPNAQ4mm9AjSiE81iZI2UwfNK1yNqo4eaPVceRvicfnoj10TnhD/Qaumz/AJRne6e/Vo4GoWk3bioQbncdkmdPWLnvDcaixS2Te/yWdp9o
+iUDj8E2u+Cudw3Vex6mOR9Oj8n+HU4HEtJ7ZppY116rzX+aMzbUMBGCZmiTMBo8kxIGZhFvsQ4+zA9Ovg4L6ngnzw8j5rONM6hd4reYC7xQC7xQC7xQEEgqbAigUopIICqohN3iqBd4oBd4oAXabyowbCeBcwrj5VaN2LZmV+y7tpwnZ/i07
+knN04yTwjGY7ZiVnIppDlpqgaREPtWPaG+duDmiuhqPG8b0UstZYLdfYeq4Rq44k8c+j+09nMeIkNkaGQ+HEAcx7TVrgdxBGhHULyp6Mmp5IBU8kAqeSAVPJAac1NQJGViz07HhS8tAaXxY0Z4ZDhtG8ucaADqSiTbpBut2eHu0ftiw/anm2
+TwvLMcx8BwARGQJgAhs3MPp3kVoPtAGhrSd4qeIXseC6J6eLnPq/qR5fi2qWaSjHojoMnVrAvW4lSPM5N2by7xW6zULvFUC7xQC7xQEGhU2BFAFKKSCArsQm7xVAu8UAu8UAu8UB3zZbIykrGxDOmLv7rD8EgPeYjtwdaS4/BZX0uC4eszRx
+Y25Pbq/JG/Billmox6vZebPOWbcyzWb8y4lmWdqImITDowZ9rZuYz4LQ0ehfKtTnlqc0s0urZ9O02nWlwxwx6Jf/AGcRULQb9xUINzncpkX4r72xv1Ldg940aj3DRluHgudHqddI5KCtyNTNwOCyRC1RzTuAqOagK1KGWxzGXs7Zvyof7G8y
+YhhzSamHAjEQz4sNW/Iul4t2c4Tx3+ktNDI/GUVf97Z/WZRnKHus7M7tBbXyzu/XlFA3XCVgB3x2VXmP9FnZJS5vY1/enX0cxs9oyeJ1LMOcc15riB+ZMxYhiVDVrZiOXMaejfYj0Ben4XwDhfBI8vDtPDF+zFJ/O+r+kxc3L3mcKT1XbEKE
+6b1iCKlAcrl/N2aMqRTGy1mGfwxzjVwlo5Y1x6t9ifSF1fFOB8N41Hk4jghlX9qKbXk+q+ZmxScejO2jtDbY2w+6GdIpG64ysAu+Oyq8m/Rf2Tcub2Nf3p19HMZ+un4nU8yZ3zhm5wOZsy4jiTQahkeOTDB6MFGj4l6XhXZ7hXA1XDtPDH8Y
+pX/e6/WRycurOCcTzXckKncse8qO4SO2XaphkjL4bh+fcXl5WVhNgwITIjbYcNoo1o83cAAF5PU9hezerzT1GfRY5Tm222nbbdtvfvZmpyW1nEZmzzm/OZljmvMc7ivkl/ceUuB7u6l1KAb7R8S7LhXZ7hfAef8AkzBHFz1zct71dXbfS2HJ
+y6m0wDMuP5UxJuMZaxeZw2dbDdDEeXcA+x3sm610K5HEuFaLjGnel4hiWTHadS6Wuj+YsXW6OcxXa/tQxvDZnB8Xz3i03JTkMwo8CJEbbEYd7TRoNF0uj7FdneH54arS6PHHJB3FpO0/FbmXM33nTq619K9QY0d2G3TbE0Brdo+NAAUH1Rn7
+q8e/R92Wbv2DH9D/ABM+eXidbzNmzMucZ1mJ5pxuaxSbhQhAZGmHAubDBJDdANKuJ9K7zhfB9BwTC9Pw7DHHBu2o9LpK+/uSJbb3N7lraVn7J0i/DMrZtxHC5SLFMd8GXe0NdEIALjUHWjQPQuHxTsvwbjeZajiOmhkmlSck7rd11Xe2ZKVb
+I1sd2s7SszYXGwTMGdsUn5CYt72XjRGlj7XBwqA0biAfQtPD+x/AeFaiOr0WkhDJG6kk7Vqn396dDmbOqwZiPKx4c1LxXQ40F7YkN7TRzXNNQQeYIBXf5McMsXjmri0014pqmgd3G3nbLdd9MrG61rXvWb/xV5F+j7st09gx/Q/xMlJnRpiY
+jzcxFm5qM+LGjvdFiRHmrnvcalxPMkkr1uPHDDCOPGqikkku5LZL5kQ7RgW1raXljC4OCZfzvimHyEvd3UvBiNDGXOLnUq07ySfSvPcQ7H8B4rqJavW6SE8kquTTt0qXf3LYyujbZl2mbQM5SMPDM1ZvxHFJSFFEdkGYe0tbEAIDhQDWjiPS
+t3DOy/BuC5XqOHaaGObVNxTurTrq+9IXfUnCtp+0bAsPgYTg2d8ZkZKWbbBl4EyWQ4YqTQAbtST6Vhq+yvBNfmlqdVpMc5y6ycbb82U2uYNoGeM1SjMPzJm3FMTlYcQRmQZqYL2B4BAcAeNCfjW7h/Z7hPCcrzaDTQxyaq4xp14eWxTgKnmu
+4BUoVHY8D2k7QMtYe3Ccv5yxfDpJjnPbLy8yWQ2ucauIHUrpNd2a4PxPM9RrdLDJN0rlFN0um/wBON7S9oOZMOiYRj+c8XxCSilrny8zMl8NxaatJB4g6rHRdmeDcMzLU6PSwxzV1KMae+z+kE5Z2nbQcmSMTC8qZwxHCpSLFMd8GWe0NdEI
+ALjUHWjQPQseJ9mOD8azLUcR00ck0qTkndbuuq72ymvj21zabmjCo2B5izziuIYfMW97LR4jSx9rg5taNG4gH0LToOyHAuF6iOr0WkhDJG6kk7Vqn3+GwOo1HNejBrSM/O4XPQMSw6aiy01KxWxoEaE618N7TVrmngQVpz4MWqxSwZoqUJJp
+p9Gn1TMlR3b6fu2n/KZjn5Vn7q8t/MDsx/yOP6H+I2OqZjzPmHN2KOxrM+MTOJz74bITpiYcC8saKNboBoKr0HDeF6Pg+BaXQY1jxpt0ulvq/nGxy+Xdq20jKGGNwXLGdcTwyQbEfFbLy72hge41c7Vp1NF1nEuynBOL6j2rX6WGTI0lbTul
+0XXuGxyf0/dtH+U3HPyrP3VwP5g9mP8Akcf0P8RsacbbvtljsMOJtMx0tO+kdrT8YaCs8fYTszB80dDj+hv7WDqWL49jmPzHleO4zPYlGBqIk3MPjOHhcTT0L0ek0Gl4fD1ekxRxx8IxUfsSKbGp5rkAg+cC06gihCJ1uDvkDbvtklYEKWl9
+pGNw4UFjYcNjYrKNY0ANA83cAAF5PJ2F7NZZvJPRY22226e7e77wX+n9tq/ymY5+VZ+6sf5g9mP+Rx/Q/wAQPp/bav8AKZjn5Vn7qfzB7Mf8jj+h/iDrmac75vzvMS83m/MU5i0aUhuhQHzLgTDYTUtFANCdV3XC+CcO4JCWPh2GOKMnbUe9
+pVfV9wN/lzavtJyhhbcFyvnXE8MkGRHxWy8u9oYHuNXO1B1NFw+I9leCcXz+1a/SwyZKStp3S6LqugGZNq20jN+GHBc0Z0xPE5B0RkUy8w9pYXt9i7QDUVKcN7K8E4Rn9q0GlhjyU1aTun1XV9QdUOoIOoK9ADvMnty2wYfKQJCS2jY3Bl5a
+G2DChiK0hjGijWira0AAC8rm7D9m9Rklmy6LG5SbbdPdvdvqDjcz7TtoGdJGHhubM3Yhi0rBiiNDhTLmuDIlCLhRoINCQubwvszwfguV5+H6eOOTVNxvdda6lSR1mp5rvWXYVPNBsKnmohsKnmqNhU80Q2FTzQbCp5oNjLdxXrTxouKAXFAL
+igIc40QGlEJWLMkbKYJtK1yNiRw80ePVcaRyIKzj89H+ymc8If6DV02f8ozvdPfq0cDUc1qN24qOaDcacaINz0ts8xf6auyh2AxoneY9li1sOpq6LDAPdn4TAWH3TBzXvez/ABD12FQk947Py7n9x4Tjuh9nz88V8mW68+9fedNLqaEUPIr1
+R0FC8IKF4QULwgoXhBQvCCheEFC8IKF4QULwgoXhBRoRmhwK1zVmUXTOCxKQEUHRddnw8xz8OWiuF5u2g5Xl/IstZ3x/C5YboMpiEWHDHg0OoPQF0+bQQm7lFP5jtMWslBUpG5O1bbP/AJVM2fzrF/auM+HY/wBVfQb/AG6f6zI+mtto/wAq
+mbP51i/tU/k7F+qvoL7dP9Zj6a22j/Kpmz+dYv7U/k7F+qvoHt0/1mSNqu2fjtUzZ/OsX9qq4dj/AFV9BHrp/rM2mLZlzzmuG2BmnN+N4vCaQRDnZ+LGYDztcbfkXKwaGGN3GNHHzauU18pmvh0l3dNF3ODDynVZslnOQRaF2EVRwn1NW8LM
+xoXhBQvCCheEFC8IKF4QULwgoXhBQvCCheEFGpLQY85MwpSVhGJGjvbDhsG9ziaAKN0rYo53bxj8vkrJWG7LMKjgzU8wTWJPadTDDq0P4bx+KzqvFdo9f8n1EXvLd+XcvnPVdndFzTepl0jsvP8Aw+889VHNeOPYbio5oNxUc0G5zuUz52K+
+9sb9S3YPeNGo9w0pY7gudHpZ1supyUErcjBm4G5VGJKyAWLBUk1UKkVJIKUUoXGqha2Kk8VAipNVDIqSoCFDKip3oKIJosWUoSUMqKkmihUVJJUexCpJ3IzJIhQpBNAsSoqoWiLihSpNEBUk0UewK3FQtFSTVQpBJKhQjLRBNFClTqgIJogI
+qeaxMqIJooCLihSCUBW4pRaFxUoUQoUIAgIO5Coip5qUWhU80oUQo0KCgoFCkXFZUBcVGgLioBcUAuKAXFALigFxQC4oBcUCFxQrQuKBIXFC0LigoXFBQuKChcUFC4oKFxQUZdNKm0kjhVetPGkIAgA36oBEDQ4hhJbXQkUKFNGJxWJUbKP7
+ErXLqbUcRNfrXHkb4HHZ9tGap2h0pD/Qaulz/lGd7p/yaOv1HNaaN9io5pQsVHNKFna9mOe5nZ5m+UzBDL3yv9wnoTTrEl3EXU90KBw6t6rm8P1b0OdZe7o/L/O5weIaRa7A8T69V5/52M3bTsvS0pOQc1YK5kbCcaAjsiQvYCI4XadHDzh8
+IcF9R0uZZYJp34fFHzfLjeOTjJU0dHvC5RrF4QC8IBeEAvCAXhALwgF4QC8IBeEBBcCowaUSE1/Ja5Rs2KVG0iSLHH2IWmWFM2LLRpHDofILD1CM/XMep0Pl8ieoQ9cx6nQ+XyJ6hD1zAw6HyRYEPXGtDkmNO5ZxwpGDyWbqHDawLdGNGpu+
+prBwC2IwF4VAvCAXhALwgF4QC8IBeEAvCAXhALggMg7P5PDcsYNP7Tsy/U5LDYT/ACYHe924lvMkmxvUnkuv4hqoabE5Tey3f4fOcnS6eepyrHDqzznmvMuI5vzDPZkxV4MxPRTELQfNht3NY3o1oAHgvl2pzz1WWWafV/5r5j6VpsEdLiji
+h0X+b+c4mo5rRRvsVHNKFio5pQs57KPs8V97Y36lvwe8cfUe6aUsaUK50TrpHJQjotyNTN1DLSaRHECnAV1VISgKk8kBBKFVkNsLh3riG8SBUqblNMnioXqVJBChUipPBQpDbLwIhIaTqQKlRgqTrodFC7lSaIUglYlKgtLhcSG11oFCoq8t
+qQ0kiuhIQpQkBQtFCRVC7iuu/RQofbeQxxLa6EihIWIKEmqhluVJohSCeKgIiGGHEQ3Oc3gSKFTdjoUJAQu5UnioUi5SgS8sB+puJFBqRTVOpkilSVCkEqMFSURehLzDFO7c46a1FKFYlKE6aoNyLghRUKUwQ4wwG2lxJHnVG4puZblbglMm
+5BJ4KFFSgLOstaWucXa3CmgUBWpQFKlTcy3FSlMbliW2AhxvqaimgCUxuVqVBuKlBuQTRXdlJrDsrc6+u6mlPFKYIuCgFwQC4ICQYdhJLr6igppRARcEAuCAXBASDDtcXOcHCloA0KBEXBC7i4INxcELuS0wyHXFwIHm0G8oNyLgg3FwQbi4
+INyWGGa3ucNNKCtSg3IuCDcy9Uc16zc8aKjmm4FRzTcCo5puCHEU3puVGjEI5rFmSNlHIodVrkbEcTNELjyN8Di8+/4VzvhD/Qaulz/lGd7p3/q0cAtNG+wlCwlCwlCzPGwTO8jjmFxtkOa4tYEy1zsKiuOrHeyMIE8QfPZ8JvEL1fZ/iTg1
+ppv9n71+B5bj/D1L/asa/a/H8Tb5gwSey3i0fCMQZSJBPmvA82Iw+xe3oR+scF7qElNWjyLVHHXBZEFwQC4IBcEAuCAXBALggFwQC4IBcEAuCChcEopFRzKUBUcylAVHMpQFRzKUCbglAXBCULggFwQC4IBcEAuCAXBALggFwQC4IBcEBz2S
+8qzWb8ah4fCD2S8OkSaigewh13D3R3D4+CwyZFjVlUbOA2/bRpXHJ+DkPLL2swPAnWP7o+ZHmGi3Tm1moHNxceS+d8d4j7Vk9TjfyY9fi/8AA9xwPh/s2P1+RfKl0+C/xMQrz9Hf2EoWEoWEoWc/lD2eK+9sb9S36f3mcfUO4mlL7guejrpH
+JQSKb1tRqZuGkaarJEL1CAqSKoUqd6gRUkKFKOUKiKjmp3mRQneoCteZQEVHNQqIJqo7MipIpvUKVJFN6jKURgqSK71iZIqd6FIrRRggnkVAVqFDIhxCIFSRTesdylajmgZU71GVFXIUio5qblRFRzUKKhClajmsaZlaIJ6oQrUc1DIEiiAr
+Uc0AqOam4KKsysVHNY7gVHNAKhAQTyKjsEVPNTcEVCGSYqE3KKhNwKhQCoQEE1QEVHNXcCo5qAVHNAKjmgFRzQCo5oBUc0AqOaAVHNGVCo5rHcoqOabgVHNNwKjmm4FRzTcCo5puBUc03AqOabgVHNNwZdXrzxoQBAEBDtyFRpROKxKjZx/Y
+rXI2o4mZ/WuPM3wOLz9/hXOdRCP9Bq6TUflGd9p/yaOvLQbggCAIC8CPGlo8OZloz4UaE8RIcRjrXMcDUOB4EEAqxk4u11I0pKn0PTmWcwSO3bJvcTD4MDN+Cw/P3NEdv2Y9w87/ALB/Q6/QuC8VWqhUveXX8V954Li3DXoslx9x9Ph8DH8x
+BjykxElZqC6FGgvLIkN4o5rgaEEL0qd7o6ejTu8EAu8EAu8EAu8EAu8EAu8EAu8EAu8EAu8EAu8EAu8EAu8EAu8EAu8EAu8EAu8EAu8EAu8EAu8EAu8EAu8EAu8EAu8EAu8EAu8EAu8EBu8Jw2exvEIGF4bAMaYmHWsaN3Uk8ABqSpKSirYo
+7VtQznI7JcqjZ7lSaD8fxGHfiE4zR0BjhQu6PcNGD2rau3kLyHHeLPEvU438t/UvxZ6LgnDPaJevyr5C6fF/gjzevDntAgCAIAgOwZP9nix4DDY36lyNP7zNGp90pLcPBc9HWyOQg6UW1Gpm4HBZELoCrt6FRCjKVUbBQ71AURmZDliCjlAQ
+hUFGzIooypFVGUq7epYKHelmSIUZSHLGwVJogKqGSIduQpVRsFTvWJkiHbkQ7yqlgollQUMggKneo2VILEyKHegCMFTvQEKNgh29EVEKWUIAgKkkFYtgVKWCFCoK2ZBLAUAQBAUVsBLAUAQBAEAQBRlQUsyCWAlgJYCWAlgJYCWAlgJYMvL1
+54wIAgCAh25Co0n8VGZI2ketCtUjYjiZuoDlomboHG7QG1x9sxwmZSBFB+DT9S6XVbZDvdK7xnWlxjkhAEAQBAcnlvMeL5SxuVzBgU0YE5KPuY7e1wPsmOHtmuGhC3afPk02RZcbpo058GPU43iyK0z0k92Cbbst+u3K7GS+YJNjWYhIF3nO
+dTRpPGtPMfxHmnUafRuF8Uhq8fMvnXg/wPAcQ0GTQ5OSW67n4/4+JjWI2JCiOhRYbmPY4tc1woWkbwRwK7uzriLuiWBd0SwLuiWBd0SwLuiWBd0SwLuiWBd0SwLuiWBd0SwLuiWBd0SwLuiWBd0SwLuiWBd0SwLuiWBd0SwLuiWBd0SwLuiW
+Bd0SwLuiWBd0Swa0jJzeJTcKQkJZ8eYjuDIcNgqXH/xx4KOSStlMgZgx/BtguWiyG6Xns4YrC+ps9k2Cz7I8obT6XuHIaec4xxeOkjUd5PovvZ2/C+GS107ltBdX9y/zseZ8Qn53FZ6PiWJTUSZmpqI6LGjRDV0R5NSSV8/nOWSTnN22e7hC
+OOKhBUkbdYGYQBAEAQHYsqDu5DHZrdbJCED1e+n6lydP1ZxdS9kisvwXOidfI5CFVbe41s3A3LIxCWAgKqGRU71LBQ71ClSTVGVFSSsbKVO5ClanmoCFGZFTvUMkVdvUBVylgqdyhUVqeaGQWNgoUK+hWpKgRCMyKqMFTvUMkVJoogVUbBWp
+5pZRUqFCFKuUZUQoZFXb0BCgIduURUQqykHcpZH1K1PNGUVPNQCpQEE0UZSKlSwKnmpYIVsqCWUKAIAgIduQEHh4IAgCAIAhQo2VBSyip5pYFTzSwKnmlgVPNLAqeaWBU80sCp5pYFTzSwKnmlgVPNLBmAgAkA1FdDzXrbZ4wJYCWAlgRA0E
+hrrgDoaUqlsq6mk9DI2kYaLWzNHFTTd60SN8TY51hCPheDYkx1wbDfJvNOLDUfISup1i3TO40Uri0dSqea4RzhU80AqeaAVPNAKnmgFTzQHNZRzfjuSMcg4/gE33UxC817Haw40M74b2+2afk3ihC5Gm1WTSZFlxPf7fgzj6nTY9XjeLKrX2
+fFHolhyztxwZ+ZMquhyOY5Zg8ukIjwC48LjxB9rE3Hc6h3fQ+F8Vx6yFx6rqu9fijwev4fk0M+We6fR+P+PwMcTcvNSEzFk52XiQI8FxZEhxBa5p5ELuk01aOvo0b+vyqihf1+VBQv6/KgoX9flQUL+vyoKF/X5UFC/r8qChf1+VBQv6/Kgo
+X9flQUL+vyoKF/X5UFC/r8qChf1+VBQv6/KgoX9flQUL+vyoKF/X5UFC/r8qChf1+VBQv6/KgoX9flQUb3CMKxLHZ+FhmFSr5iYinzWN4Di4ncAOJKxlJRVsUd7x7MWWtguDmDCdAxXOM9B81ntYDTxdxbD6eyeRwG7z3F+MQ0keVby7l97O
+34ZwueulzPaC6v7l/nY83Y1jWK5hxSZxrGp2JNzs2++LFedXHgANwAGgA0A0C8DlyzzzeTI7bPc4sUMEFjxqkjZVPNajYKnmgFTzQCp5oBU80AqeaA7PhrfJMnx4p0diE42G3qyGKn5VzNOvk2cLUy3o05eui5aODI38PctqNbNzDtcaPfaK
+HWlVkCEIQSaoXYoSaoUNDXOAe+0HeaVosQabioVFCeKjsqZUk8ViUNtc4Nc60E6mlaIXYohaIJNVGUqTRQyRXQkXOoCaE03KFKvoCQ11QDoab1iClSg2IuCm5kRXXfQKF2IiWtcWsdcAdDSlVC9ShQUVqVGUqSQVBsIoa1xDH3jgaUqoVMpU
+lR7FKk8lGUqhUiX2NNGPuFBrSmqFKkngpuXYgnmoxaK1KhkTEDRS191W1OlKHkgNOpQuwqSo9haIuCblJfaA219ajUUpQ8lAUJogHCqgK1Kbgs62xpD6k1qKbkLsadwWI2FwQbAu5IVMk0sBD/OJILabhzqhStSgFSgFSgLUaYd1/nVpbThz
+qgKkoCtShdhUrHcuxIpYXF9HAgBtN451S2KIqUsUA7mgJuChSzbCxxL6OFKCm9AVuCAXBALggJbYQ4ufaQNBStSgIuCAXBALggLMsdde+2gqNK1PJAVuCAy/d0Xr6PG0LuiUKF3RKFC7olChd0ShRR6jRkbaKNCsGjNHGTTa8FokjbE0XwDi
+mXMTwtorFl6T0AcSW6PA+CuDqoc0GdhpJ8kzolx4FdSdwKlAKlAKlAKlAKlAKlAchgOYMZyxisDG8Bn4knOyxqyIzlxa4bnNPFp0K24c+TTzWTE6aNWbDj1EHjyK0z0Rl3OeTNuclCwrGxCwTN0JlsJ7fYTFPsK+zH+bJuHtSQvdcK43DVfI
+ntPw7n5fh9p4viPCMmjbnDeHj3rz/E6jmXK2N5TnfIsYlbLie6jM1hRhza79R1HEL0kJqatHTUziLisxQuKChcUFC4oKFxQULigoXFBQuKChcUFC4oKFxQULigoXFBQuKChcUFC4oKFxQULigoXFBQuKCjsWT8jY7nOZDJCF3Uox1sWbiNPd
+s6D7J3Qemi1zyKHUUcvnHaplXZRIR8p7NxBxDHHeZOYk+kRkF45nc944MHmN41Oi8nxXjyxN48DuXj3L8Weg4bwWWesuo2j4d7/BHnqen57E5yNiGIzcWZmpl5iRo0Vxc+I47ySd68ZOcsknObts9hCEccVGKpI0KlYGQqUAqUAqUAqUAqUA
+be4hrRVxNAOZQHb8cYJISGBMI/5PlwIlPtr/ADnfqXZY48qSOryy5pNmhAGm5b4o47N7DWaMGarSsiUSShaKkqCihNEKQTVYgqTwQtFCa8FPgWil3RYlIQqRBNOCjZkVJUsFSUMkqKk6blAVJrwUZlRUmnBQlFUZkQTRYhblVDJKiCeFEKUu
+UYKl2qgSsgu03KFord0UZSEMkiDuUKVQEE8FGFuRUqWWipNFDIXdEBUmnBC0Rd0WLFEJZQgIdyQpFTuUoUVu6KWQipVLQWJaCCggogmnBCkXdEAuQCpUAqUAqUBUmioW4rpVYvYyJUAQoQBAEAQBAEAQBAEAQBAEBmBevs8YEsBLASwEsFHV
+UsyNCIFizNGwmWb1qkbIs2cpOOwzEIM61twY7z2/ZMOjh8S400ciEq3Os5qwgYLjEWBA1lYwEeWcNzoTtR8W70LpssPVzo73Dk9ZBM4ipWo2ipQCpQCpQCpQCpQCpQEtiPY5r2Pc1zSHNc00II3EEbiqnW5KvqZryJ2gWxJFuVdqskcYwt4D
+BPFl8eGOBiDfEp9kKPHul6Th3H54WoandePf8/j9vmed1/Ao5LyabZ+Hd83h9nkdqxrZdCxCQbmTZxikLGsLjC5kJkUOiN6NdudT7E0cORXtNPrMeeCnFpp966HlcuKeGThkVMx7GZGl4r4EeE+FFhm17HtLXNPIg6hcyzApeUsC8pYF5SwL
+ylgXlLAvKWBeUsC8pYF5SwLylgXlLAvKWBeUsC8pYF5SwLylg15KUncSmmSWHykaZmIpoyFCaXOd6B+dRtJWwZDktnuAZPw0Zm2q4xAkpZurJJsSrojvsSW6vPuWV6lcDV8QxaaHPN0v89F3m7BpsupnyYo2/wDP0GPto233FMxSrst5LlnY
+DgLWmFSHRkeOzkS3SG0/Yt1PEncvD8R43l1Vww/Jj9b/AA8j13D+C49NWTN8qX1L8fMxLUgUHBdEd4KlAKlAKlAKlAKlAKlAKlAc/lCThvnYmMTjaymFt799fbRPaM9J19C3YY80r8DTnnyxrxLujRZuYiTcd1YkZxe49SVz4o62TN7BaKLa
+jUzct0WaMGagWQJUBQmqgKk1QqIqFiUpcELTKE0Cx+JkVqAoCCeRQqKk81GUglQySKEqFKkhRgrUBQu5U70MipJqp3AgkqArUqbl3IqFNyla0RspUlQFSRRRl3K1CnUpBOuhQqIqeahkQTRGCpKgK1KhdyCeahUKhTcpUkVTcEVCMu5FTzUs
+oqeaAgnioUi4puNyFiKIVTKgSOahQSEBAKERBPEoUioQCoQEXFTcE3JbAqFLLQJBSwkVTqZE1PNQCp5oBU80AqeaAVPNAKnmgFTzQCp5oBU80AqeaAVPNAKnmgFTzQCp5oDMVRzXrjxgqOaAVHNAKjmgFRzQFXU3oZI0XioWLKmbSO2tVraN
+kWcZMw960yRuiyIsmMx4OcGNPL5K6LIk+3b7aF+sLg6jFzx26nYaXNySp9DoTg9ri1wIINCCKEHkurO2IqUAqUAqUAqUAqUAqUAqUAqUBzuU88ZpyPP+qGWsWiyj3Ed7D9lBjDk+GfNd+fkQuTptXm0kubDKvsfmjj6jS4dXHlzRv7V5MzXh
+O2jZxtEgw8P2m4M3B8RpY3EoFTCr+GKvZ4ODm9V6vQ9o8cvk5/kv6V+K/wA7nl9ZwHLiuWnfMvDv/Bm7xnY5iYlhiuTsTlsdw+KLoZhxGiIR0INj/QQei9Pi1UMi5k9vFbo6KUJQfLJUzoM7JzmHTDpTEJSNLR2aGHGYWOHoK5Kd7pmNGhcE
+sULwliheEsULwliheEsULwliheEsULwliheEsULwliheEsULglijeYXhWKY3MCUwjDpicjH2sFhdTxO4elRyUd2xR37D9kcLCpL1b2iZhlMFkGauYIzbj0Lz5oPRtxXEz63HgjzSdLxexsx4p5pcuNNv4HDY9t9ynk+Vi4Nsky9CdEItfic3
+DIa48w0+fE+EQOhXldd2jXu6dW/F9PmX4nodHwCUqlqXS8F1+d93zGEswZlx7NWIvxbMOKzE/NP07yM6to+xaNzW9AAF5fNnyaifPllbPS4cGPTx5MUaRxtStJtFSgFSgFSgFSgFSgFSgFSgNWWgTE3MQ5WWhmJFiuDGNG8kqpW6RG0lbO14
+n3OGScHLMnEDxAd3k3EbuixzvHg3cufjhyKjrsuTnlZtoDNNy3pHGbN9CbRbEYNm4A0WZiW3CqAgmqAqSpbBWoUtmRSo5qArUc1GZWVJUspQ71AQTRC9CCaqMyKkqFTK1CxKURghxFd6hUVLkMiCeKx+AKE6KF6FbuiMtkEoylXELEIgkUQJ
+FKjmp3GRUnVQEE0UKmLuiGRUnmp1KnRUmqlhIguULZBNUBFRzUtlKuI5pbCIqOablsgmihRcgILjRQpW7opbLYu6IxYJqoCKjmhRUc0AqEBUklRAio5qlFRzQgqOajYFRzUsoqOahbFRzQWQXK2Bd0QouKgFxQC4oBcUAuKAXFALigFxQC4o
+BcUAuKAXFALigMxEAEgEGnEcV648YQgCAkb0BLgGuLQ4OAO8bigKkVCBGm4VQzNvEasGjJGym4IaSGuDqcQtUkbE6OMiCLAitjwXFkSG4Oa4bwRxWiUTfGRpZiwlmYJaJmDCoQbOQhWflmDV3+dYOPULrdRg/Tidrpc9rkkdMqea4RzhUoBU
+oBUoBUoBUoBUoBUoBUoBceaA5rLOdM1ZOmTNZZxyakHONXshurDifhQzVrvSFyNPqs2ld4ZNfZ9HQ4+fS4dSqzRT/wA+JlvB+0vL4pLMw3aXkuTxSDShmJVrQ4de7fp+K5q9Bpe0k4bZ4/OtvqOj1HZ6L3wTr4P8Tn5XD9hmeKHLGcjgs3E3
+Ss26zXlbFp/ReV6DTcc02faM1fg9mdLn4XqtP70G14rdfUaWKbDs3yre+wuYkMTgnVrocXu3EeDtD6HLtVqIvc4Fdx1TEcmZuwmpxDLeIwmj2wgF7fxm1C2LJGXRijhnkw3WxfMcODhQ/KsrFEB1dxBQUTVyChVyCiC6m9wHigotCbEjuDID
+HRXHcGNLj8iWKOdw7IedMVoZLLU+5p3PiQu6b8b6BYPJGPVijteH7DcxuheVY9iuHYVLgVc5z+8IHjo0fjLXLUxirKouTpFJqZ2AZGqcVzDFzLOw98CWPetrypDowfCeV0+p4/psO3Pb8Fv9fQ7HBwjV5+kaXi9v8TreP9pvE2SzsM2f5Zkc
+ClBo2JFY2JFpzDGgQ2nxuXntT2jzZNsEa+L3f4fad1p+z+KG+eXN8Fsvx+wxHjuZMfzPOnEcw4vNYhMHc+YiF1vRo3NHQALoc2bLqJc2WTb+J3mLDjwR5cUUl8DjqnmtRtFSgFSgFSgFSgFSgFSgFSgFSgDbnENaCSTQADUlKB3CTlRlGU76
+Lacam4dGt3+SQzxPuz8i5mHFy7vqcLPl5vkrobKXg3VLnAGhNTxP7VyUjhtm9gw6BbUjW2buG1ZmLNSipEXa0O0Lw0UrUoCh3KAojMiqlghjQ5wa54YDxO4KNg0zvUZmirtyxBCFRAAc8NLg0HidwSy0VdpXVRspQ7lDKqKqN0CKBzgC4NB0
+qeCllKPADiA4EDSo4qFRVGUh3JY2VFa603KBkPaGvLQ8OANA4bihkUcpYKu3qFRU7lL3KHtDHFrXh4HEbio2DTO9LBChlQQoiNDXUa8OFAaj8yxstFVDIogIO5S9wHtDaUeHVFTTh0VbBRyllRCWUKAl4DQ0h4dcKkDh0UbBSpUsEJZkgllL
+FoDWuDwSa1aN4UBpK2AoAgLFoDA+8EkkW8R1UbBpnepZkFbDChSbRZfeK1pbx8VAQgCAICQ0FhfeAQQLeJ6qgoSVALigFxQFm0LHOL2gilAd5QFbigFxQC4oCzaODiXtbaKgH23QICtxQC4oBcUBZlHVue1tBUV49EBW4oDMVTzXrrPHCp5p
+YFTzSwKnmlgVPNLAqeaWCDqhTSeFGVG2jMJWtozRx8eETVapI2xZsocaaw+ZZNycQw4sM1BH5jzHRaJRN8ZGnimX5TMgfiGAw2S+I0L48jWjYp4uhfu/+D1+fTW+aJ2WDU/ozOmRGRYMR0KNDcx7Da5rgQWnkRwXBarZnOW+6K3FKQFxSkBc
+UpAXFKQFxSkBcUpAXFKQFxSkBcUpAXFKQBNRQgEcilIHL4Jm/NOW3B2AZixHD6e1l5l7W/i1t+Rb8WpzYPyU2vJmnLpsOf8AKQT80d6wntJ7VMMo2PikliLR/jcm24/CZaV2WPjusx9ZJ+a/Cjr8nA9HPpFryf42dkgdqidmGhmP7P8ACJ0c
+SyM5tfQ9r/zrm4+0uRe/jXzNr8Thz7OY37mR/Ov/AKNw3b7stnNcT2RBrjvMLyd36mrlR7UQ74P6UceXZzKvdyL6GX+nHsGiaxNmc8w+5gwv1RFuXafD4S+r8TW+z2oXSUfr/AfTk2EQtYOzGdefdQoX64hUfafD3Rl9X4hdntQ+so/X+BR3
+aD2bSeuFbIodw3GKZdv5muK0y7UR/Rg/pRsj2cyP3si+hm1me1XjUJph4DkjB5AcC+K99PQwMC4mTtJll7kEvNt/gcmHZ3Evfm35JL8Tq2L9oratitzWY9Bw9ruElKsYR8J1zvlXCy8b1uTpKvJI5uPgujx9Y35s6Li+YsezBEMbHcansReT
+Ws1MPiD4iaD4l1uXNkzO8km/NnYY8GPCqxxS8kcfcaU4LVSNguKUgLilIC4pSAuKUgLilIC4pSAuKUgLilIC4pSAuKUga0rLTU9MMlZOA+NGiGjWMFSVVG3SI3StnbJWUk8ojvIhhTmNU0A86FKdfdP/ADfn5eLCo7vqcPLm5to9DYjvpiK6
+PHiOiRHm5znGpJPFclI4jZu4UI0W1I1tm7htotiMGaoFFkiF1AQdyAqTQKMFSapexUVcsSlTuQqKOKllKkmihSqhUFGzIqd6WClSsWZUVJNVLBVxNd6WZIqdyhO8qozIgmigKqGRRGCHKFKncoEVqVG6MipJrvUYKuJUKQhUghSpJKxsqIUK
+VJNUKQdyBdStTzUZWDuUshSp5pZkEAOgUYK3FSwQoZIK2UKAhyAip5oBU80AUYKVKlmVCp5pYFTzSwKnmoBU80AqeaAVPNAEBBNEKRcUAuKAXFALigFxQC4oBcUAuKAXFALigFxQC4oDMq9ceNsILCCwgsILCCwgso7XghkmaLx0WLRkmbaL
+CBWtozTNhHgdFqlE2RkbCJCfCeIkNzmuaatc00IPMFaZRNyka81M4XjrBBzLLOEdotZPwABFHK8bnhcXLgjk6nLxamWPY4LEslYtKwjOYaYeKSe/vpXznAe6ZvHyrgz08ofE7CGohP4HXiXNJaRQjeDvC00jduLimxdxcU2G4uKbDcXFNhuL
+imw3FxTYbi4psNxcU2G4uKbDcXFNhuLimw3FxTYbi4psNxcU2G4uKbDcXFNhuLimw3FxTYbi4psNxcU2G4uKbDcXFNhuLimw3FxTYbi4psNxcU2G4uKbDcXFNhuWhtiRXiFChue92ga0Ek+gJVk6HYZPJs0yG2bzBMswqWOoETWM/wDBYNfj
+W6OBvd7GmeeMem5vzi0th8B0jlmUdKQ3i2JMvNZiKOp9qOgXKhjUNonDnkc3ubCDBJNStyiaHI3sGFTgtiRrcrN3DZQblsSMbNUCiyIX3CqdSEXFVlBOixBQmqjLRBNFLHwKuJUKUcShUVc5YmRUmqgKlxQEXFR+JmVJNVAULioZIq4lQFSe
+KhUVJNEKVuKjKQ5yxBW4oZIqTROpSCeKxBUk0QIpcVGZFSTVQEE1UMqsgmiFIuKAqTRYlRFxUMiHE1QFSSVHsCpJRmXUVKhKopcUKLigBcaKMFbuixAuKGSFxQouKAhxKArcUAuKAXFRgqTRQyTIuKFFxQC4qAXFALigFxQC4oATVAVu6IBd
+0QC7ogF3RALuiAXdEAu6IBd0QC7ogF3RALuiAXdEBma4L1x42hcEFC4IKFwQULggoXBBQuCCiCQUKlRRwQppPaCsWZG3iwgeC1tGSZsosAV3LXKJsTNnGlgeC1OBsUjbwjNSUXv5OPEgxB7ZjiCtbgbVI3UfF4c+LcdwaTxDh3hZ3cX8Zq0z
+wxl1RvhnlDozYxcHyVNGrH4phzjwo2MwfrXHlpIvocmOsl3mg7KGBv1l84QAOUaVe0/IVg9J4M2LWLvRT1m4f9+OGfk4ix9lfiZe1x8B6zZD78cM/JxE9lfiPa4+A9Zsh9+OGfk4ieyvxHtcfAes2Q+/HDPycRPZX4j2uPgPWbIffjhn5OIn
+sr8R7XHwHrNw/wC/HC/ycRPZX4j2uPgPWdh/35YX+TiJ7K/Ee1x8B6zsP+/LC/ycRPZX4j2uPgPWdh/35YX+TiJ7K/Ee1x8B6zsP+/LC/wAnET2V+I9rj4Ees/D/AL8sL/Eensr8R7XHwHrPw/78sL/EenssvEe1x8B6z8O+/LC/xIieyy8R
+7XHwHrPw778cM/JxFPZX4j2uPgPWfh3344Z+TiJ7K/Ee1x8B60MO+/HDPycRPZX4l9qj4EetDDvvxwz8nET2Z+I9qXgPWhh3344Z+TiJ7M/Ee1LwI9aOHffjhn4kRX2V+I9qXgPWjh3344Z+JEU9mfiPal4D1o4d9+OGfiRFPZn4j2peA9aO
+Hffjhn4kRPZ34j2qPgPWlh3344X+JET2d+I9qj4D1o4d9+OGfk4iezvxHtS8Cwyxl+FrMZuY/pAlHuPylZLTeLI9V4I1mSeSpPUS+J4i4fbHtgsPoGqzWnijW9TJ9DcNzDMSzDBwTD5TC2HSsCHWIR1edVujBR6I0SyOXVnHPEaYimNMRXxI
+jt7nuJJ9JWaia2zXhS45LNRMXI3MODTgs0jW2blkMDVZpGJrACiyRCRRUEkiiiBVGykEhQIqTRRmRUnipQ7ypNVAVJqhkijisWUqSAoCpIqhaIqFDIgnioUoTxUKiriFAVJBChUVJCGRVRgqTVYgioQyKucFOhSpcFBRUkbkLRUkBYspUkKF
+IqOaFRBNUKVJopZaIJ4qMIrcFDIgnigIuCjFFSRVDIioUDKoBUKAguUbBWo5qFoVHNCoXBCkXIATVAVuCFoXBSxQuCWKIJqsQtiKjmhkKjmgFQgIuCAXBALggFwQC5AQSgIqOaFoVHNBQqOaChUc0FCo5oKFRzQUKjmgoVHNBQqOaChUc0FC
+o5oKMzuFCRUGhpUL1x44hAEAQEuba4tuBoaVB0KAhAEAQEvbY4tua6nEGoUBpuAQppuaCFizI0IkILFoqZoRpcNNLmnStQsGjOzaxJcHgsHEzUjbvlQeCwcTJSNu+VqdyxcTPmKPky2moNRXQ7li4l5jTMoVOQc5HkvMKcheYeS9FeQcxJlK
+AGoNRXQ7k5BzEeS9E5BzEGV9ypyF5h5L7lOUc7JMnRodoa10rqE5RzsjyX3Kco52QZXopyDnZHknRXkHMPI/NDqjU0pxU5BzEeS9E5BzkeS9E5S848m6Kco5yTJ1ZdUb6U4pyl5inknROUcwMr0RxLzEeS9FOUcxIlKtLqjQ0pXVOUcxTyU8
+inKOYeTKcrLzDyZOUc5IlCWl1wFKaE6nwTlLzDyZOUnMXbLDkslEnMajJcclVExcjcQ5YEE1AtFdTv8ABZcpLNZkIBZJGLZqNhhZUY2aloVIXawOBAc0UFdTSvRCpFdAN6FIR7FIO5YgNbcaXNboTVxooDTLkKiriKKdDIrUKCgxt7g25ra8
+XGgUboGmSKqN2ZFCoCp3oFuS1tzg24NqaVJoApZkihO8KGSRUkUUKUJFFAQ2jnBtwFTSp3BQtFXC1xbUGhpUbipZkVJUBQngoCEMkREFri24OtNKtNQVLKUqFGKKkhSzIqSKqPcCK0McWXtdTi01CgKIZJUQTRRuilSeKllrYRBabbmu0Bq0
+1CNiilQFDIEiigKVCMUTEbaR5zXXAHQ1p0KWZIooCCeChSqEJe21rTe03CtAdR4qXYKKFoIKFaIZEuaGsa+9puroDqPFAVu6KArWioFQpZaJIAYH3t1JFK6hLFEVCxFFTvQoQpNn1PvLm76Urr4+CArUIBUIBUICwaCwvvboQKV1KWCtQgIJ
+qgISy0WDKsc+5otpoTqfBBRVBQQUEFFmtuDjc0WitCdT4JYoqgoIKCCizGX3ec1toJ1NK9B1QUVQUZmuK9ceOFxQC4oBcUAuKAXFALigFxQC4oATVBZU0UKUcOilFTNNzAVC2aboPRYtGXMaToAWNF5jSdL9Fi4l5ihluix5S8xUy3ROUcxU
+y3ROUvMR5N0TlHMPJuico5h5N0TlHMPJuinKOcjyf3JV5EXnHk/uSpyjnHk/uSnKOceTe5PxJyjmKmWCcpeYeTBOUcw8mCcpeYh0t0U5RzFfJhyTlHMPJuinKOYgy9OCco5h5P0UcS8zK+ThOUvMPJwlDmYMuFKHMV8nV5S8w8nWNDmI7jk1
+XlLzE9xruTlHMWEDonKTmJbCHJWg2aghq0SywZRBZa0IQU6KoAoLKqFsi4ozIgmqxBVxogKE1WNlTKu3JdmRCgsq7ep1F0VcoVOyhPBQtkIVFSeCx6mRUnghbKncpZkVUbshU71C2VJIKhkirnKAqdVCoqTwUst7lSVG7KVQtlTvWPwL3FXI
+CCoCtxR7GZBPFTqLogmqhUypUKVJqgQO5SylEstgmigTIuKFKkqdCkE14KWQg6IUrcVBYuKCwTVCpkIUi7opYIJqnUXQULYQWFAnZB0CFIuKFFSgIUsBLASwEsBLASwOCCytxSzIXFLAuKWBcUsC4pYFxSwLilgXFLAuKWBcUsGZ1688aEAQ
+BAEAQBAEAQBAEBBCFsoW8lC2QW81KFlS0KUVMqWDmpRbIMMHipQsr3SULHdJRLHdJVCx3SgsqYQ3USjJDuhySgO6HJKA7oclOUFTDFdyvKWyO7HJKFjuxyShY7sclKFgw+SULIMKqUWyphaJRLI7roo0Wx3XRShZBhaJQsju0astkGHTgpSK
+pEd2ORUovMO7HIpQ5ivdjkpQ5h3Y5JRbKmGOSVuWxYFaFk2iilCwGo6IrJI5J1L5kUA3qULIJQpU6lGwUO9QyRCjYIJFFCoqdyF7yp3KMpVRsFDvUMrIcoUo5QFa0UKhUJZSp3qdxSh3KGS2KqMFTvWJkmUdvQpCliypcKLEqIqEstlVGylE
+YKneoVMg7lj3lKO3JYKqFFQhkVJqp1KiCQsS2VQpDkuwVUbBU70TKmFC2RcFAQTVRlK1CtlsqsTEVCGSYqEFkXBSxZCpSKhSwKhLBVRmVhQWEFhCkEgIBcEBB1KAhSwEsBLASwEsBLAUMrFQFUwKhLAqEsCoSwKhLAqEsCoSwKhLAqEsGZql
+evPGipQCpQCpQCpQCpQCpQCpQCpQCpQCpQCtUAQEE0QFdFDIEVShRFoQC3qgFvVALeqjAt6qAih5JRaFDyUoUKHklChQ8koUVIqqCCKKUBTolCiLeiUKFvRQpBFDuQpFOiAgtoNygIoeSFogg03KCitDyQUKV4IwVt6qGQp4qAqW6oKFvVKL
+RUjVT4jYigTYbCnVQpB0QoJNFLFFKkqNloqTwUKVJohUQhSrjwUBChSpJKhkkVJU+IKk0UBQlCoqXc1LRkVJqoCpKgIU2MipJqoWihJ3KGRUk1T4gq4lYlRFaoZFCVOgKuPBYghR0ZUVJNU2KVceCgKEkFCpEEmixspWpKFoqSaqCiEMiCVL
+oFVDKipJqoUgkqArUpsCHEqFRFShaIJooCpPJRuwQmxkkFBRU70J3hC0QTRR0KIqVSkKOgFNgVJNUZUhUqFoVKChUpZSCeKlgi4KgF3JARUqbFoVKbChUpsKFSmwoVKbChUpsKFSpsKFaoUK7AJsAmwCbAJsAmwCbAJsDNDgWktNKjTRevPG
+hAEAAqaICXtLHFhpUGmhqFAQqAgCAl7Cxxa6lRyNVB0ISwQTRLAuCpaJeDDNrqbgdDVQUVJqqVKiEAUsEvYWUqRqK6GqWRlbgqNxcEG4uCDcl4LQ01HnCooVLRStSoBUqAVKAkhwaHEijt2uqFKoQKWCCacFS0SQQwP0oSRv1QtEXdFKFFXO
+13JQoi7opQJIJZfpStN+vxKFKE0QEF2m5AVu6IWiwBLDE0oCBv1+JCGmTRTYqtkXdFCkE8VASAXNc8Uo2lanVCmmTxShRFylBEVKhkSGucHOFPNFTU0QIoTXgpsXcrd0U2LuULtdyFAa59baeaCTU0UKilyMpBJpVTYpWpUAa0vNrSK0J1NN
+yjKjTJ4qFKud0UBUu03IVENaYrgxtATzNAsWZFLkBQlRlIqVChoL3hgpVxoKmgUMlZR2lVLKUJ4qWCrj0UKiG1c4NFKk0FShSr6scWmlQaaFYlKEoCtSsWVEE6gc06mREUGG8sdSoNDQ1CgNMnigRUu03LHYyK3dFComIx0N5Y4gkcjUIVGn
+cUKVJWIIqVDImI10N1HUJIB0Nd6FKXdFAUu6Iy0Q53RQiDw5lLqecKihqhkUJ01UYIuCmwIqVDJFnNcwNcSPPFRQ1QFCaaoKIuKFIJ5qNEJc0tY15pR9aa66K2UpcowKlQEE6oVEkODBE0oSQNdfiUKVu6IBd0RgXdFNigsIh95pStu/Wvgq
+CtwQEXdFGiqxd0UG5YNcYZiaUaQDrr8SDcrd0Qbi7og3F3RBuWa1zmOeKUZStTrqg3K3dEG4qUKKlAS1rnhzgR5gqamiAipQCpQCpQEta591CPNBcammiAipQGal7A8aEAQBAEAQBAEAUYCxBV29ZIqIVKEAQBAFgGDuKGKKLMyCAIAsAEAQ
+BAEAQBYsFTvVRkgqUICrt6AhRgLEFXb0BB3IVFUKwjMSrliVEIZA7lGCioIduQr6EKd5EFiZEO3ICqjKiixKip3oUq7ghUQozIg7lAVQEO3rFhFXblDIo7cgKnchUVWLMiigKu3owQp3GZU71Cog7lgUodyAqdyFRVDIod6x7gQ5QFUMkQ5Y
+lKOQFTuQIqdywMiqGSCFKICrt6xYIUMkQ5CkLFgoqzIh25QiKoUHcowVWICGSCFIduQFUAO5GCiiARgLEEO3oZIhChAFGAoCrlUCFQFGVBQoQBAEAQBAEAQBAEAQBAEAQBAf/9k=
+'@
+
+function Get-FrameSampleBitmap([string]$Kind) {
+    $b64 = if ($Kind -eq 'h') { $script:FrameSampleHB64 } else { $script:FrameSampleVB64 }
+    $bytes = [Convert]::FromBase64String(([string]$b64 -replace '\s', ''))
+    $ms = New-Object System.IO.MemoryStream(, $bytes)
+    try {
+        $tmp = [System.Drawing.Image]::FromStream($ms)
+        try { return (New-Object System.Drawing.Bitmap($tmp)) } finally { $tmp.Dispose() }
+    } finally { $ms.Dispose() }
+}
+
+# Миниатюра слота комплекта: образец обложки ($Kind: v или h) с наложенной рамкой, вписанный в $W x $H на тёмном фоне.
+# Рамка накладывается так же, как в New-FramedCover: образец занимает область под обложку ($Hole - @{x;y;w;h}; если не задана,
+# ищется прозрачный центр шаблона) с запасом 2 пикселя и обрезкой по центру, сверху рисуется рамка. Без рамки ($FramePath пуст)
+# показывается один образец. Если у шаблона нет прозрачной области, показывается сама рамка.
+function New-FrameSampleThumbBitmap([string]$FramePath, $Hole, [string]$Kind, [int]$W, [int]$H, [bool]$Fit = $false, $Adj = $null) {
+    $bmp = New-Object System.Drawing.Bitmap($W, $H, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+    $g = [System.Drawing.Graphics]::FromImage($bmp)
+    $cov = $null; $fr = $null; $canvas = $null; $g2 = $null; $ia = $null
+    try {
+        $g.Clear([System.Drawing.Color]::FromArgb(45, 52, 64))
+        $cov = Get-FrameSampleBitmap $Kind
+        $src = $cov
+        if (-not [string]::IsNullOrWhiteSpace($FramePath) -and [System.IO.File]::Exists($FramePath)) {
+            $fr = Open-FrameBitmapNoLock $FramePath
+            $hr = $Hole
+            $punch = $false
+            try { if ($null -ne $hr -and $hr.manual) { $punch = $true } } catch {}
+            if ($null -eq $hr) { $hr = Find-FrameHoleRect $fr }
+            if ($null -eq $hr) {
+                $hr = Find-FramePlaceholderRect $fr
+                if ($null -ne $hr) { $punch = $true }
+            }
+            if ($null -eq $hr) {
+                try { Write-ConfigLog ('Frames: превью: в шаблоне нет прозрачной области ' + $fr.Width + 'x' + $fr.Height + ', центр ARGB ' + $fr.GetPixel([int]($fr.Width / 2), [int]($fr.Height / 2)).ToString()) } catch {}
+            }
+            if ($true) {
+                $cw = [int]$fr.Width; $ch = [int]$fr.Height
+                if ($Fit -and $null -ne $hr) {
+                    # «Вписать»: обложка в области под обложку с запасом 2 пикселя.
+                    $pad = 2
+                    $dx = [Math]::Max(0, [int]$hr.x - $pad); $dy = [Math]::Max(0, [int]$hr.y - $pad)
+                    $dr = [Math]::Min($cw, [int]$hr.x + [int]$hr.w + $pad); $db = [Math]::Min($ch, [int]$hr.y + [int]$hr.h + $pad)
+                    $dw = $dr - $dx; $dh = $db - $dy
+                } else {
+                    # Обложка занимает весь холст рамки (с обрезкой по центру), рамка накладывается поверх целиком.
+                    $dx = 0; $dy = 0; $dw = $cw; $dh = $ch
+                }
+                if ($dw -lt 8 -or $dh -lt 8) {
+                    $src = $fr
+                } else {
+                    $canvas = New-Object System.Drawing.Bitmap($cw, $ch, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+                    $g2 = [System.Drawing.Graphics]::FromImage($canvas)
+                    $g2.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+                    $g2.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
+                    $g2.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+                    $g2.Clear([System.Drawing.Color]::Transparent)
+                    $sw = [double]$cov.Width; $sh = [double]$cov.Height
+                    $scale = [Math]::Max($dw / $sw, $dh / $sh)
+                    $srcW = $dw / $scale; $srcH = $dh / $scale
+                    $srcX = ($sw - $srcW) / 2.0; $srcY = ($sh - $srcH) / 2.0
+                    $ia = New-Object System.Drawing.Imaging.ImageAttributes
+                    $ia.SetWrapMode([System.Drawing.Drawing2D.WrapMode]::TileFlipXY)
+                    $dest = New-Object System.Drawing.Rectangle($dx, $dy, $dw, $dh)
+                    if (Test-FrameAdjustIsDefault $Adj) {
+                        $g2.DrawImage($cov, $dest, [single]$srcX, [single]$srcY, [single]$srcW, [single]$srcH, [System.Drawing.GraphicsUnit]::Pixel, $ia)
+                    } else {
+                        # Шаблон подгонки: масштаб и смещение, как в New-FramedCover.
+                        $zm = [Math]::Max(0.05, [double]$Adj.Zoom)
+                        $wC = $sw * $scale * $zm; $hC = $sh * $scale * $zm
+                        $ccx = $dx + $dw / 2.0 + [double]$Adj.X * $dw
+                        $ccy = $dy + $dh / 2.0 + [double]$Adj.Y * $dh
+                        $g2.SetClip($dest)
+                        $destC = New-Object System.Drawing.Rectangle([int][Math]::Round($ccx - $wC / 2.0), [int][Math]::Round($ccy - $hC / 2.0), [int][Math]::Max(1, [Math]::Round($wC)), [int][Math]::Max(1, [Math]::Round($hC)))
+                        $g2.DrawImage($cov, $destC, [single]0, [single]0, [single]$sw, [single]$sh, [System.Drawing.GraphicsUnit]::Pixel, $ia)
+                        $g2.ResetClip()
+                    }
+                    if ($punch) {
+                        # Область задана вручную или найдена по заглушке: в копии рамки вырезаем её, иначе заглушка закроет образец.
+                        $gp = [System.Drawing.Graphics]::FromImage($fr)
+                        try {
+                            $gp.CompositingMode = [System.Drawing.Drawing2D.CompositingMode]::SourceCopy
+                            $gp.FillRectangle([System.Drawing.Brushes]::Transparent, [int]$hr.x, [int]$hr.y, [int]$hr.w, [int]$hr.h)
+                        } finally { $gp.Dispose() }
+                    }
+                    $g2.DrawImage($fr, 0, 0, $cw, $ch)
+                    $src = $canvas
+                }
+            }
+        }
+        $k = [Math]::Min($W / [double]$src.Width, $H / [double]$src.Height)
+        $tw = [int][Math]::Round($src.Width * $k); $th = [int][Math]::Round($src.Height * $k)
+        $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+        $g.DrawImage($src, [int](($W - $tw) / 2), [int](($H - $th) / 2), $tw, $th)
+    } catch {
+        try { Write-ConfigLog ('Frames: превью комплекта: ' + $_.Exception.Message) } catch {}
+    } finally {
+        if ($null -ne $ia) { try { $ia.Dispose() } catch {} }
+        if ($null -ne $g2) { try { $g2.Dispose() } catch {} }
+        $g.Dispose()
+        if ($null -ne $canvas) { try { $canvas.Dispose() } catch {} }
+        if ($null -ne $fr) { try { $fr.Dispose() } catch {} }
+        if ($null -ne $cov) { try { $cov.Dispose() } catch {} }
+    }
+    return $bmp
+}
+
+# Шаблоны рамок на SteamGridDB лежат в подборке (collection), а не в записях платформ. Список берётся тем же
+# внутренним запросом сайта, что и порядок обложек (POST /api/public/search/assets), только вместо game_id
+# передаётся collection_id. Ключ API не нужен. Заголовки, параллельность и обработка отказов - в Invoke-SgdbSitePostBatch.
+# 18993 - подборка «Templates» (автор Seth-fey). Другие подборки добавляются в этот список.
+$script:FrameTemplateCollections = @('18993')
+$script:FrameTemplateCache = $null
+
+# Шаблоны подборок (только вертикальные, без WebP и анимации) или $null, если сайт не ответил. Результат кешируется до перезапуска.
+function Get-SgdbCollectionTemplates([string[]]$CollectionIds) {
+    if ($null -ne $script:FrameTemplateCache) { return @($script:FrameTemplateCache) }
+    $ids = @($CollectionIds | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+    # Вызов из блоков с GetNewClosure() приносит пустой список ($script: там указывает на область замыкания), поэтому запасной вариант.
+    if ($ids.Count -eq 0) { $ids = @($script:FrameTemplateCollections | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }) }
+    if ($ids.Count -eq 0) { $ids = @('18993') }
+    $all = New-Object System.Collections.ArrayList
+    $seen = @{}
+    $gotAny = $false
+    foreach ($cid in $ids) {
+        $mk = {
+            param([int]$page)
+            return ('{"collection_id":"' + $cid + '","asset_type":"grid","page":' + $page + ',"limit":48,"user_steam64":null,"user_steam64_likes":null}')
+        }
+        $first = @(Invoke-SgdbSitePostBatch @((& $mk 0)) 15)
+        if ($first.Count -eq 0 -or $null -eq $first[0] -or -not $first[0].Success) {
+            try { Write-ConfigLog ('Frames: подборка ' + $cid + ' недоступна (HTTP ' + [string]$first[0].Status + ' ' + [string]$first[0].ErrorMessage + ')') } catch {}
+            continue
+        }
+        $gotAny = $true
+        $pages = @($first[0])
+        $total = 0
+        try { $total = [int]$first[0].Data.total } catch {}
+        $lastPage = [Math]::Min(9, [int][Math]::Ceiling($total / 48.0) - 1)
+        if ($lastPage -ge 1) {
+            $bodies = @(1..$lastPage | ForEach-Object { & $mk $_ })
+            $pages += @(Invoke-SgdbSitePostBatch $bodies 15 @() 6)
+        }
+        foreach ($r in $pages) {
+            if ($null -eq $r -or -not $r.Success) { continue }
+            $list = @()
+            try { $list = @($r.Data.assets) } catch {}
+            foreach ($it in $list) {
+                if ($null -eq $it) { continue }
+                $idKey = ''; try { $idKey = [string]$it.id } catch {}
+                if ($idKey -eq '' -or $seen.ContainsKey($idKey)) { continue }
+                $mime = ''; try { $mime = [string]$it.mime } catch {}
+                $url = ''; try { $url = [string]$it.url } catch {}
+                if ([string]::IsNullOrWhiteSpace($url)) { continue }
+                if (($mime -match $script:SgdbUnsupportedMimeRx) -or ($url -match $script:SgdbUnsupportedUrlRx)) { continue }
+                $w = 0; $h = 0
+                try { $w = [double]$it.width; $h = [double]$it.height } catch {}
+                # Вертикальные (2:3 и близкие размеры); квадратные и горизонтальные шаблоны этот шаг не использует.
+                if ($w -le 0 -or $h -le 0 -or ($w / $h) -lt 0.62 -or ($w / $h) -gt 0.74) { continue }
+                $seen[$idKey] = $true
+                [void]$all.Add($it)
+            }
+        }
+    }
+    if (-not $gotAny) { return $null }
+    $arr = @($all.ToArray())
+    for ($n = 0; $n -lt $arr.Count; $n++) {
+        try { Save-SgdbRealScore $arr[$n] } catch {}
+        try { Add-Member -InputObject $arr[$n] -NotePropertyName score -NotePropertyValue ([double](1000000 - $n)) -Force } catch {}
+    }
+    try { Write-ConfigLog ('Frames: загружено шаблонов из подборок: ' + $arr.Count) } catch {}
+    if ($arr.Count -gt 0) { $script:FrameTemplateCache = $arr }
+    return $arr
+}
+
+# Проверка, что грид - шаблон рамки, а не обычная обложка: у шаблона PNG с прозрачной областью в центре
+# (не меньше четверти площади, см. Find-FrameHoleRect). Однотонность центра для этого не годится: белый логотип
+# на белом фоне тоже однотонный. Проверяются лёгкие превью (поле thumb), результат кешируется по id грида.
+$script:FrameProbeCache = @{}
+
+# GDI+ не читает WebP, поэтому у таких миниатюр прозрачность раньше определить не удавалось (результат «неизвестно»,
+# и непрозрачные шаблоны попадали в список). Первый кадр декодируется утилитой libwebp (как для обложек).
+function Test-FrameWebpBytesHaveHole([byte[]]$Bytes) {
+    $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ('sc_fthumb_' + [guid]::NewGuid().ToString('N').Substring(0, 10) + '.webp')
+    $wb = $null
+    try {
+        [System.IO.File]::WriteAllBytes($tmp, $Bytes)
+        $wb = Get-WebpFirstFrameBitmap $tmp
+        if ($null -eq $wb) { return $null }
+        return ($null -ne (Find-FrameHoleRect $wb))
+    } catch { return $null } finally {
+        if ($null -ne $wb) { try { $wb.Dispose() } catch {} }
+        try { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue } catch {}
+    }
+}
+
+function Test-FrameBytesHaveHole([byte[]]$Bytes) {
+    $ms = $null; $img = $null; $bmp = $null
+    $isWebp = $false
+    try { $isWebp = ($Bytes.Length -gt 12 -and $Bytes[0] -eq 0x52 -and $Bytes[1] -eq 0x49 -and $Bytes[2] -eq 0x46 -and $Bytes[3] -eq 0x46 -and $Bytes[8] -eq 0x57 -and $Bytes[9] -eq 0x45 -and $Bytes[10] -eq 0x42 -and $Bytes[11] -eq 0x50) } catch {}
+    if ($isWebp) { return (Test-FrameWebpBytesHaveHole $Bytes) }
+    try {
+        $ms = New-Object System.IO.MemoryStream(, $Bytes)
+        $img = [System.Drawing.Image]::FromStream($ms)
+        $bmp = New-Object System.Drawing.Bitmap($img)
+        return ($null -ne (Find-FrameHoleRect $bmp))
+    } catch { return $null } finally {
+        if ($null -ne $bmp) { try { $bmp.Dispose() } catch {} }
+        if ($null -ne $img) { try { $img.Dispose() } catch {} }
+        if ($null -ne $ms) { try { $ms.Dispose() } catch {} }
+    }
+}
+
+# Возвращает hashtable id -> $true (шаблон) / $false (обычная обложка) / $null (определить не удалось).
+function Test-FrameTemplateItems([array]$Items, [int]$MaxPar = 12) {
+    $res = @{}
+    $todo = New-Object System.Collections.ArrayList
+    foreach ($it in @($Items)) {
+        if ($null -eq $it) { continue }
+        $k = ''; try { $k = [string]$it.id } catch {}
+        if ($k -eq '') { continue }
+        if ($script:FrameProbeCache.ContainsKey($k)) { $res[$k] = $script:FrameProbeCache[$k]; continue }
+        $u = ''; try { $u = [string]$it.thumb } catch {}
+        if ([string]::IsNullOrWhiteSpace($u)) { try { $u = [string]$it.url } catch {} }
+        if ([string]::IsNullOrWhiteSpace($u) -or $u -match $script:SgdbUnsupportedUrlRx) { $res[$k] = $null; continue }
+        [void]$todo.Add(@{ Id = $k; Url = $u })
+    }
+    if ($todo.Count -eq 0) { return $res }
+    $client = $null
+    try {
+        try { Add-Type -AssemblyName System.Net.Http -ErrorAction SilentlyContinue } catch {}
+        try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch {}
+        $client = New-Object System.Net.Http.HttpClient
+        $client.Timeout = [TimeSpan]::FromSeconds(15)
+        [void]$client.DefaultRequestHeaders.UserAgent.ParseAdd('Mozilla/5.0 (Windows NT 10.0; Win64; x64)')
+        $maxPar = [Math]::Max(1, [Math]::Min(32, $MaxPar))
+        $running = New-Object System.Collections.ArrayList
+        $next = 0
+        $deadline = (Get-Date).AddSeconds(30)
+        while (($next -lt $todo.Count -or $running.Count -gt 0) -and (Get-Date) -lt $deadline) {
+            while ($running.Count -lt $maxPar -and $next -lt $todo.Count) {
+                $e = $todo[$next]; $next++
+                $t = $null
+                try { $t = $client.GetByteArrayAsync([string]$e.Url) } catch { $t = $null }
+                if ($null -eq $t) { $res[[string]$e.Id] = $null } else { [void]$running.Add(@{ E = $e; T = $t }) }
+            }
+            for ($i = $running.Count - 1; $i -ge 0; $i--) {
+                $r = $running[$i]
+                if ($r.T.IsCompleted) {
+                    $running.RemoveAt($i)
+                    $v = $null
+                    try {
+                        if ($r.T.Status -eq [System.Threading.Tasks.TaskStatus]::RanToCompletion) { $v = Test-FrameBytesHaveHole ([byte[]]$r.T.Result) }
+                    } catch { $v = $null }
+                    $res[[string]$r.E.Id] = $v
+                }
+            }
+            [System.Windows.Forms.Application]::DoEvents()
+            Start-Sleep -Milliseconds 20
+        }
+        foreach ($r in @($running)) { $res[[string]$r.E.Id] = $null }
+    } catch {} finally {
+        if ($null -ne $client) { try { $client.Dispose() } catch {} }
+    }
+    foreach ($e in $todo) {
+        $ek = [string]$e.Id
+        if (-not $res.ContainsKey($ek)) { $res[$ek] = $null }
+        if ($null -ne $res[$ek]) { $script:FrameProbeCache[$ek] = $res[$ek] }
+    }
+    return $res
+}
+
+# Выбор платформы с галочкой «только шаблоны с прозрачной областью». Возвращает @{ Index; OnlyFrames } или $null.
+function Show-FramesPlatformPicker($owner, [string]$Title, [string[]]$Items, [bool]$OnlyFrames = $true) {
+    $f = $null
+    try {
+        $f = New-FramesDlgForm $Title 470 360
+        $lb = New-Object System.Windows.Forms.ListBox
+        $lb.Location = New-Object System.Drawing.Point(15, 15)
+        $lb.Size = New-Object System.Drawing.Size(440, 245)
+        $lb.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+        $lb.BackColor = [System.Drawing.Color]::FromArgb(30, 38, 48)
+        $lb.ForeColor = [System.Drawing.Color]::FromArgb(220, 223, 228)
+        foreach ($it in @($Items)) { [void]$lb.Items.Add([string]$it) }
+        if ($lb.Items.Count -gt 0) { $lb.SelectedIndex = 0 }
+        $f.Controls.Add($lb)
+        $cb = New-Object System.Windows.Forms.CheckBox
+        $cb.Location = New-Object System.Drawing.Point(15, 268)
+        $cb.Size = New-Object System.Drawing.Size(440, 24)
+        $cb.Text = (T 'frames_only_real')
+        $cb.Checked = $OnlyFrames
+        $cb.ForeColor = [System.Drawing.Color]::FromArgb(220, 223, 228)
+        $f.Controls.Add($cb)
+        Add-FramesDlgOkCancel $f (New-FramesDlgButton (T 'frames_ok') $true) (New-FramesDlgButton (T 'frames_cancel'))
+        $lb.Add_DoubleClick({ if ($lb.SelectedIndex -ge 0) { $f.DialogResult = [System.Windows.Forms.DialogResult]::OK } }.GetNewClosure())
+        if ($f.ShowDialog($owner) -eq [System.Windows.Forms.DialogResult]::OK -and $lb.SelectedIndex -ge 0) {
+            return @{ Index = [int]$lb.SelectedIndex; OnlyFrames = [bool]$cb.Checked }
+        }
+        return $null
+    } catch { return $null } finally { if ($null -ne $f) { try { $f.Dispose() } catch {} } }
+}
+
+# Название платформы или магазина шаблона (поле game.name в ответе сайта), '' если не указано.
+function Get-FrameTemplatePlatformName($Item) {
+    try { return ([string]$Item.game.name).Trim() } catch { return '' }
+}
+
+# ===================== РАМКИ ОБЛОЖЕК: КОМПЛЕКТЫ (вертикальная + горизонтальная рамка) =====================
+# Комплект - пара рамок под одно оформление (например, «PS5»): вертикальная для обложки <id>p и горизонтальная для <id>.
+# Любая из двух может отсутствовать. Хранится в Frames\kits.json: массив { id, name, v, h, sgdb } (v и h - id шаблонов из index.json,
+# sgdb - запись SteamGridDB (платформа или магазин), по которой искали обложки; у старых комплектов поля нет).
+# Ориентация шаблона определяется по размерам: шире, чем выше - горизонтальный, иначе вертикальный.
+
+function Read-FrameKits {
+    $p = Join-Path (Get-FramesDir) 'kits.json'
+    $list = New-Object System.Collections.ArrayList
+    if (-not [System.IO.File]::Exists($p)) { return @() }
+    try {
+        $raw = [System.IO.File]::ReadAllText($p, [System.Text.Encoding]::UTF8)
+        if ([string]::IsNullOrWhiteSpace($raw)) { return @() }
+        # Результат ConvertFrom-Json сначала кладётся в переменную: при @($raw | ConvertFrom-Json) в Windows PowerShell 5.1
+        # получался вложенный массив, и у «записи» комплекта нельзя было присвоить свойства (name, v, h) - правка комплекта не сохранялась.
+        $parsed = $raw | ConvertFrom-Json -ErrorAction Stop
+        foreach ($e in @($parsed)) {
+            foreach ($x in @($e)) {
+                if ($null -ne $x -and -not [string]::IsNullOrWhiteSpace([string]$x.id)) { [void]$list.Add($x) }
+            }
+        }
+    } catch {}
+    return @($list.ToArray())
+}
+
+function Save-FrameKits($Items) {
+    $p = Join-Path (Get-FramesDir) 'kits.json'
+    $tmp = $p + '.tmp'
+    $json = ConvertTo-Json -InputObject @($Items) -Depth 3
+    [System.IO.File]::WriteAllText($tmp, $json, (New-Object System.Text.UTF8Encoding($false)))
+    Move-Item -LiteralPath $tmp -Destination $p -Force
+}
+
+# Наборы рамок по названию (для списков и меню): в хранилище они лежат в порядке добавления.
+function Get-FrameKitsSorted {
+    try { return @(@(Read-FrameKits) | Where-Object { $null -ne $_ } | Sort-Object -Property { [string]$_.name } -CaseSensitive:$false) } catch { return @() }
+}
+
+function Get-FrameKit([string]$Id) {
+    if ([string]::IsNullOrWhiteSpace($Id)) { return $null }
+    foreach ($k in (Read-FrameKits)) { if ([string]$k.id -eq $Id) { return $k } }
+    return $null
+}
+
+# Добавляет комплект (если $Id пуст) или обновляет существующий. Возвращает запись комплекта.
+# $Sgdb - запись SteamGridDB, по которой искали обложки комплекта. $null при изменении существующего комплекта оставляет
+# прежнее значение (например, окно открыли, но поиск заново не делали).
+function Set-FrameKit([string]$Id, [string]$Name, [string]$VId, [string]$HId, $Sgdb = $null) {
+    $items = @(Read-FrameKits)
+    $sg = $null
+    if ($null -ne $Sgdb) { $sg = ([string]$Sgdb).Trim() }
+    if ([string]::IsNullOrWhiteSpace($Id)) {
+        $entry = [PSCustomObject]@{ id = [guid]::NewGuid().ToString('N').Substring(0, 12); name = $Name; v = $VId; h = $HId; sgdb = $(if ($null -ne $sg) { $sg } else { '' }) }
+        Save-FrameKits (@($items) + @($entry))
+        return $entry
+    }
+    foreach ($k in $items) {
+        if ([string]$k.id -eq $Id) {
+            $k.name = $Name; $k.v = $VId; $k.h = $HId
+            if ($null -ne $sg) {
+                if ($null -ne $k.PSObject.Properties['sgdb']) { $k.sgdb = $sg } else { $k | Add-Member -NotePropertyName sgdb -NotePropertyValue $sg }
+            }
+            Save-FrameKits $items
+            return $k
+        }
+    }
+    return $null
+}
+
+function Remove-FrameKit([string]$Id) {
+    try {
+        $k = Get-FrameKit $Id
+        Save-FrameKits @(Read-FrameKits | Where-Object { [string]$_.id -ne $Id })
+        if ($null -ne $k) { Remove-UnusedFrames @([string]$k.v, [string]$k.h) }
+    } catch {}
+}
+# Фильтр прозрачности для окна выбора обложек: по умолчанию остаются только обложки с прозрачной областью (рамки).
+# Prepare проверяет превью (JPEG отбрасывается сразу), Test отдаёт $true / $false / $null (не определено - показывается).
+function New-FrameTransparencyFilter {
+    $f = @{}
+    $f.Prepare = {
+        param($items, $par = 12)
+        $todo = New-Object System.Collections.ArrayList
+        foreach ($it in @($items)) {
+            if ($null -eq $it) { continue }
+            $k = ''; try { $k = [string]$it.id } catch {}
+            if ($k -eq '') { continue }
+            $m = ''; try { $m = [string]$it.mime } catch {}
+            if ($m -match 'jpe?g') { $script:FrameProbeCache[$k] = $false; continue }
+            # Анимированная обложка не может быть шаблоном рамки: у неё статичная миниатюра, и по ней проверка прозрачности проходила бы.
+            $an = $false; try { $an = [bool](Test-SgdbItemAnimated $it) } catch {}
+            if ($an) { $script:FrameProbeCache[$k] = $false; continue }
+            [void]$todo.Add($it)
+        }
+        if ($todo.Count -gt 0) { [void](Test-FrameTemplateItems @($todo.ToArray()) ([int]$par)) }
+    }
+    $f.Test = {
+        param($it)
+        $an = $false; try { $an = [bool](Test-SgdbItemAnimated $it) } catch {}
+        if ($an) { return $false }
+        $k = ''; try { $k = [string]$it.id } catch {}
+        if ($k -ne '' -and $script:FrameProbeCache.ContainsKey($k)) { return $script:FrameProbeCache[$k] }
+        return $null
+    }
+    return $f
+}
+
+# Удаляет шаблоны, на которые больше не ссылается ни один комплект.
+function Remove-UnusedFrames([string[]]$Ids) {
+    try {
+        $used = @{}
+        foreach ($k in @(Read-FrameKits)) { $used[[string]$k.v] = $true; $used[[string]$k.h] = $true }
+        foreach ($id in @($Ids)) {
+            if ([string]::IsNullOrWhiteSpace([string]$id) -or $used.ContainsKey([string]$id)) { continue }
+            try { [void](Remove-CoverFrame ([string]$id)) } catch {}
+        }
+    } catch {}
+}
+
+# Добавляет картинку как шаблон рамки (область под обложку ищется сама, иначе выделяется мышью). Возвращает рамку или $null.
+function Import-FrameForKit($owner, [string]$Path, [string]$Name, $Rect = $null, [bool]$Fit = $false) {
+    $info = Get-CoverFrameFileInfo $Path
+    if ($null -eq $info) {
+        [void](Show-AppMessageBox((T 'frames_bad_file'), (T 'frames_title'), [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning))
+        return $null
+    }
+    $rect = $Rect
+    if ($null -eq $rect -and $null -eq $info.Hole -and $null -eq $info.Guess) {
+        $rect = Show-FrameRectPicker $owner $Path
+        if ($null -eq $rect) { return $null }
+    }
+    $entry = Add-CoverFrame $Path $Name (Find-CoverFramePlatformKey $Name) $rect $Fit
+    if ($null -eq $entry) {
+        [void](Show-AppMessageBox((T 'frames_add_fail'), (T 'frames_title'), [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning))
+    }
+    return $entry
+}
+
+# Окно комплекта (упрощённая карточка): поиск на SteamGridDB, название, две миниатюры (вертикальная и горизонтальная).
+# Клик по миниатюре открывает окно выбора обложек. Можно сохранить пару или только одну рамку.
+# Возвращает @{ Name; Slot; Temps; Sgdb } или $null (Sgdb - запись SteamGridDB, выбранная в этом окне, или ''). Сохраняет результат Save-FrameKitResult.
+function Show-FrameKitDialog($owner, $Kit = $null) {
+    $f = $null
+    $ctx = @{ GameId = 0; Cands = @(); Sugg = @(); Shown = @(); CollItems = @(); AllTpls = @(); ByPlat = @{}; AllLabel = ''; Chosen = ''; Timer = $null; ListMode = 'games'; Busy = $false; Assets = $null; AssetsGid = 0; Keep = $false; Temps = (New-Object System.Collections.ArrayList) }
+    try {
+        $isNew = ($null -eq $Kit)
+        $ttl = if ($isNew) { (T 'frames_kit_title_new') } else { (T 'frames_kit_title_edit') }
+        # Высота: самое нижнее содержимое - кнопки под вертикальной миниатюрой (до y=429); «Сохранить»/«Отмена» стоят правее на той же высоте.
+        $f = New-FramesDlgForm $ttl 618 444
+        $dark = [System.Drawing.Color]::FromArgb(30, 38, 48)
+        $txt = [System.Drawing.Color]::FromArgb(220, 223, 228)
+        $muted = [System.Drawing.Color]::FromArgb(140, 146, 156)
+
+        # Поля как в карточке игры: подпись слева (90x28), поле 420x28 в рамке (Panel с FixedSingle, внутри TextBox
+        # без рамки, по центру по вертикали), шрифт Segoe UI 9.
+        $mkField = {
+            param([string]$caption, [int]$y)
+            $lb = New-Object System.Windows.Forms.Label
+            $lb.Text = $caption
+            $lb.Location = New-Object System.Drawing.Point(15, $y)
+            $lb.Size = New-Object System.Drawing.Size(90, 28)
+            $lb.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
+            $f.Controls.Add($lb)
+            $pn = New-Object System.Windows.Forms.Panel
+            $pn.Location = New-Object System.Drawing.Point(110, $y)
+            $pn.Size = New-Object System.Drawing.Size(420, 28)
+            $pn.BackColor = $dark
+            $pn.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+            $f.Controls.Add($pn)
+            $tb = New-Object System.Windows.Forms.TextBox
+            $tb.AutoSize = $false
+            $tb.BorderStyle = [System.Windows.Forms.BorderStyle]::None
+            $tb.BackColor = $dark; $tb.ForeColor = $txt
+            $tb.Font = New-Object System.Drawing.Font('Segoe UI', 9)
+            $pn.Controls.Add($tb)
+            $tb.Width = $pn.ClientSize.Width - 10
+            $tb.Location = New-Object System.Drawing.Point(5, [int](($pn.ClientSize.Height - $tb.PreferredHeight) / 2))
+            return $tb
+        }
+        $tbS = & $mkField (T 'frames_kit_search') 12
+        $tbN = & $mkField (T 'frames_kit_name') 48
+        if (-not $isNew) { $tbN.Text = [string]$Kit.name }
+        # Запись SteamGridDB, по которой искали обложки, показывается при открытии сохранённого комплекта (как в колонке списка).
+        # Поле заполняется до подключения обработчиков TextChanged, поэтому поиск не запускается; $ctx.Chosen остаётся пустым,
+        # и сохранённая запись не перезаписывается, пока пользователь сам не выберет другую.
+        if (-not $isNew) {
+            try {
+                $sgShow = ''
+                if ($null -ne $Kit.PSObject.Properties['sgdb']) { $sgShow = ([string]$Kit.sgdb).Trim() }
+                if ($sgShow -eq '' -or $sgShow -eq '-') {
+                    $sgShow = ''
+                    foreach ($fid in @([string]$Kit.v, [string]$Kit.h)) {
+                        $fr0 = Get-CoverFrame $fid
+                        if ($null -eq $fr0) { continue }
+                        $g0 = (([string]$fr0.name) -replace '\s*\([^()]*\)\s*$', '').Trim()
+                        # Рамки из файлов называются по имени комплекта: такое «название» не запись SteamGridDB, поле остаётся пустым.
+                        if ($g0 -ne '' -and -not $g0.Equals(([string]$Kit.name).Trim(), [System.StringComparison]::OrdinalIgnoreCase)) { $sgShow = $g0; break }
+                    }
+                }
+                if ($sgShow -ne '') { $tbS.Text = $sgShow }
+            } catch {}
+        }
+
+        $ctx.Slot = @{
+            v = @{ Id = $(if ($isNew) { '' } else { [string]$Kit.v }); New = ''; Cleared = $false; Rect = $null; Pinned = $false; Fit = $(if ($isNew) { $false } else { (Get-CoverFrameFit ([string]$Kit.v)) }); FitChanged = $false; Adj = $(if ($isNew) { $null } else { (Get-CoverFrameAdj ([string]$Kit.v)) }); AdjChanged = $false }
+            h = @{ Id = $(if ($isNew) { '' } else { [string]$Kit.h }); New = ''; Cleared = $false; Rect = $null; Pinned = $false; Fit = $(if ($isNew) { $false } else { (Get-CoverFrameFit ([string]$Kit.h)) }); FitChanged = $false; Adj = $(if ($isNew) { $null } else { (Get-CoverFrameAdj ([string]$Kit.h)) }); AdjChanged = $false }
+        }
+        $ctx.Pb = @{}
+        # Значки кнопок слота: корзина («Убрать»), рамка выделения («Область…»), «во весь холст» («Вписать»).
+        # Рисуются через GDI+ на сетке 16x16, цвет зависит от состояния (обычный, недоступна, включена).
+        $ctx.Tip = New-Object System.Windows.Forms.ToolTip
+        $ctx.Tip.InitialDelay = 300
+        $iconPF = {
+            param([double[]]$v)
+            $arr = New-Object 'System.Drawing.PointF[]' ([int]($v.Count / 2))
+            for ($q = 0; $q -lt $arr.Length; $q++) { $arr[$q] = New-Object System.Drawing.PointF([single]$v[2 * $q], [single]$v[2 * $q + 1]) }
+            return , $arr
+        }.GetNewClosure()
+        $iconDraw = {
+            param($g, [string]$kind, $rc, $col)
+            $pen = $null
+            try {
+                $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+                $pen = New-Object System.Drawing.Pen($col, 1.6)
+                $pen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+                $pen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+                $pen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
+                $g.TranslateTransform([single]($rc.X + ($rc.Width - 16) / 2), [single]($rc.Y + ($rc.Height - 16) / 2))
+                switch ($kind) {
+                    'pin' {
+                        # Замок «закрепить обложку»: закрытый - обложка закреплена.
+                        $pen.Width = 1.6
+                        $g.DrawRectangle($pen, [single]3, [single]7.5, [single]10, [single]7)
+                        $g.DrawArc($pen, [single]5, [single]2, [single]6, [single]6, [single]180, [single]180)
+                        $g.DrawLines($pen, (& $iconPF @(5, 5, 5, 7.5)))
+                        $g.DrawLines($pen, (& $iconPF @(11, 5, 11, 7.5)))
+                        $g.DrawLines($pen, (& $iconPF @(8, 10.5, 8, 12.5)))
+                    }
+                    'pinopen' {
+                        # Открытый замок: обложка не закреплена (дужка поднята и не входит в корпус справа).
+                        $pen.Width = 1.6
+                        $g.DrawRectangle($pen, [single]3, [single]7.5, [single]10, [single]7)
+                        $g.DrawArc($pen, [single]5, [single]0.5, [single]6, [single]6, [single]180, [single]180)
+                        $g.DrawLines($pen, (& $iconPF @(5, 3.5, 5, 7.5)))
+                        $g.DrawLines($pen, (& $iconPF @(11, 3.5, 11, 4.5)))
+                        $g.DrawLines($pen, (& $iconPF @(8, 10.5, 8, 12.5)))
+                    }
+                    'clear' {
+                        $g.DrawLines($pen, (& $iconPF @(2, 4, 14, 4)))
+                        $g.DrawLines($pen, (& $iconPF @(6, 4, 6, 2, 10, 2, 10, 4)))
+                        $g.DrawLines($pen, (& $iconPF @(3.5, 4, 4.5, 14, 11.5, 14, 12.5, 4)))
+                        $g.DrawLines($pen, (& $iconPF @(6.5, 7, 6.5, 11.5)))
+                        $g.DrawLines($pen, (& $iconPF @(9.5, 7, 9.5, 11.5)))
+                    }
+                    'edit' {
+                        # Карандаш: корпус по диагонали, острие слева внизу, линия отделяет ластик.
+                        $g.DrawPolygon($pen, (& $iconPF @(2.5, 13.5, 3.5, 10, 11, 2.5, 13.5, 5, 6, 12.5)))
+                        $g.DrawLines($pen, (& $iconPF @(9.5, 4, 12, 6.5)))
+                        $g.DrawLines($pen, (& $iconPF @(3.5, 10, 6, 12.5)))
+                    }
+                    'area' {
+                        $g.DrawLines($pen, (& $iconPF @(4, 1, 4, 12, 15, 12)))
+                        $g.DrawLines($pen, (& $iconPF @(1, 4, 12, 4, 12, 15)))
+                    }
+                    'fit' {
+                        $g.DrawLines($pen, (& $iconPF @(1, 5, 1, 1, 5, 1)))
+                        $g.DrawLines($pen, (& $iconPF @(11, 1, 15, 1, 15, 5)))
+                        $g.DrawLines($pen, (& $iconPF @(15, 11, 15, 15, 11, 15)))
+                        $g.DrawLines($pen, (& $iconPF @(5, 15, 1, 15, 1, 11)))
+                        $g.DrawRectangle($pen, [single]5, [single]5, [single]6, [single]6)
+                    }
+                }
+                $g.ResetTransform()
+            } catch {} finally { if ($null -ne $pen) { try { $pen.Dispose() } catch {} } }
+        }.GetNewClosure()
+        $mkIconBtn = {
+            param([string]$kind, [string]$tip, [int]$x, [int]$y)
+            $b = New-Object System.Windows.Forms.Button
+            $b.Text = ''
+            $b.Size = New-Object System.Drawing.Size(32, 28)
+            $b.Location = New-Object System.Drawing.Point($x, $y)
+            $b.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+            $b.UseVisualStyleBackColor = $false
+            $b.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(61, 68, 80)
+            $b.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(42, 52, 66)
+            $b.FlatAppearance.MouseDownBackColor = [System.Drawing.Color]::FromArgb(25, 55, 75)
+            $b.BackColor = [System.Drawing.Color]::FromArgb(30, 38, 48)
+            $b.Cursor = [System.Windows.Forms.Cursors]::Hand
+            # Всё нужное для рисования лежит в Tag самой кнопки: вложенное замыкание переменные $iconDraw/$kind не видело.
+            $b.Tag = @{ Kind = $kind; On = $false; Draw = $iconDraw }
+            $b.Add_Paint({
+                param($sd, $ev)
+                try {
+                    $tg = $sd.Tag
+                    $kd = [string]$tg.Kind
+                    $col = [System.Drawing.Color]::FromArgb(205, 210, 218)
+                    if (-not $sd.Enabled) { $col = [System.Drawing.Color]::FromArgb(88, 95, 106) }
+                    elseif ($kd -eq 'fit' -and [bool]$tg.On) { $col = [System.Drawing.Color]::FromArgb(95, 185, 240) }
+                    elseif ($kd -eq 'clear') { $col = [System.Drawing.Color]::FromArgb(222, 160, 160) }
+                    elseif ($kd -eq 'pin') { $col = $(if ([bool]$tg.On) { [System.Drawing.Color]::FromArgb(130, 220, 80) } else { [System.Drawing.Color]::FromArgb(105, 175, 65) }) }
+                    $dr = $tg.Draw
+                    $kdDraw = $kd
+                    if ($kd -eq 'pin' -and -not [bool]$tg.On) { $kdDraw = 'pinopen' }
+                    & $dr $ev.Graphics $kdDraw $sd.ClientRectangle $col
+                } catch {}
+            })
+            $f.Controls.Add($b)
+            try { $ctx.Tip.SetToolTip($b, $tip) } catch {}
+            return $b
+        }
+        # Размеры слотов (с рамкой 1 px) подобраны так, чтобы внутренняя область точно совпадала с пропорциями обложек: 186x279 = 2:3, 383x179 = 920:430.
+        # Отступы одинаковые: 15 слева, 15 между слотами, 15 справа (ширина окна 15 + 188 + 15 + 385 + 15 = 618).
+        $geo = @{ v = @(15, 114, 188, 281); h = @(218, 114, 385, 181) }
+        $caps = @{ v = (T 'frames_kit_v'); h = (T 'frames_kit_h') }
+        foreach ($w in @('v', 'h')) {
+            $cap = New-Object System.Windows.Forms.Label
+            $cap.Text = [string]$caps[$w]; $cap.AutoSize = $true
+            $cap.Location = New-Object System.Drawing.Point([int]$geo[$w][0], 92)
+            $f.Controls.Add($cap)
+            $pb = New-Object System.Windows.Forms.PictureBox
+            $pb.Location = New-Object System.Drawing.Point([int]$geo[$w][0], [int]$geo[$w][1])
+            $pb.Size = New-Object System.Drawing.Size([int]$geo[$w][2], [int]$geo[$w][3])
+            $pb.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+            $pb.BackColor = $dark
+            $pb.SizeMode = [System.Windows.Forms.PictureBoxSizeMode]::CenterImage
+            $pb.Cursor = [System.Windows.Forms.Cursors]::Hand
+            $pb.Add_Paint({
+                param($s, $ev)
+                try {
+                    if ($null -eq $s.Image) {
+                        $fl = [System.Windows.Forms.TextFormatFlags]::HorizontalCenter -bor [System.Windows.Forms.TextFormatFlags]::VerticalCenter -bor [System.Windows.Forms.TextFormatFlags]::WordBreak
+                        [System.Windows.Forms.TextRenderer]::DrawText($ev.Graphics, (T 'frames_kit_click'), $s.Font, $s.ClientRectangle, $muted, $fl)
+                    }
+                } catch {}
+            }.GetNewClosure())
+            $f.Controls.Add($pb)
+            $ctx.Pb[$w] = $pb
+            # Кнопки под миниатюрой - значки (рисуются кодом, без картинок и текста), подсказка при наведении.
+            $by0 = [int]$geo[$w][1] + [int]$geo[$w][3] + 6
+            # Блок из 5 кнопок (5 x 32 px с шагом 36 = 176 px) стоит ровно по центру под миниатюрой.
+            $bx0 = [int]$geo[$w][0] + [int][Math]::Floor(([int]$geo[$w][2] - 176) / 2)
+            # Первой идёт кнопка «Закрепить» (зелёная галочка): закреплённая обложка не меняется при новом запросе SteamGridDB.
+            $bp = & $mkIconBtn 'pin' (T 'frames_kit_pin') $bx0 $by0
+            $bp.Enabled = $false
+            $ctx.Pb[$w + 'Pin'] = $bp
+            # Второй - «карандаш» (редактирование): окно подгонки обложки под рамку (как в карточке игры) на образце; положение сохраняется в шаблоне рамки.
+            $be = & $mkIconBtn 'edit' (T 'frames_kit_eye') ($bx0 + 36) $by0
+            $be.Enabled = $false
+            $ctx.Pb[$w + 'Eye'] = $be
+            $ba = & $mkIconBtn 'area' (T 'frames_kit_area') ($bx0 + 72) $by0
+            $ba.Enabled = $false
+            $ctx.Pb[$w + 'Area'] = $ba
+            $bf = & $mkIconBtn 'fit' (T 'frames_kit_fit') ($bx0 + 108) $by0
+            $bf.Enabled = $false
+            $ctx.Pb[$w + 'Fit'] = $bf
+            $bc = & $mkIconBtn 'clear' (T 'frames_kit_clear') ($bx0 + 144) $by0
+            $ctx.Pb[$w + 'Clear'] = $bc
+        }
+
+        # ----- «Применить набор для»: эмуляторы, лончеры и коллекции, к которым набор применяется при сохранении -----
+        # Эмуляторы и лончеры: набор привязывается (рамка накладывается на обложки новых игр), у привязанных к этому набору стоит галочка.
+        # Коллекции: набор применяется к обложкам игр, которые уже в этих коллекциях Steam.
+        $kitIdNow = ''
+        if (-not $isNew) { $kitIdNow = [string]$Kit.id }
+        $ctx.TgtKeys = New-Object System.Collections.ArrayList
+        $ctx.TgtNames = New-Object System.Collections.ArrayList
+        $ctx.TgtOn = New-Object System.Collections.ArrayList
+        $ctx.TgtInit = @{}
+        $ctx.TgtCollLoaded = $false
+        $ctx.TgClosedAt = 0
+        $tgtY = 360   # на строку выше ряда кнопок под вертикальной миниатюрой (он на y=401), под кнопками горизонтальной миниатюры (до y=329)
+        # Галочка «Использовать для»: включена - отмеченные в списке эмуляторы, врапперы, лончеры и коллекции применяются при сохранении набора;
+        # выключена - набор нигде не применяется и привязки не меняются.
+        $lbApply = New-SCUseFramesCheckBox $f ([string](T 'frames_kit_apply_for')) 218 $tgtY 28 $false
+        $lbApply.Width = [Math]::Min(144, [int]$lbApply.Width)
+        $f.Controls.Add($lbApply)
+        $pnTg = New-Object System.Windows.Forms.Panel
+        $pnTg.Location = New-Object System.Drawing.Point(365, $tgtY)
+        $pnTg.Size = New-Object System.Drawing.Size(238, 28)   # правый край на x=603, как у горизонтальной миниатюры и кнопки «Отмена»
+        $pnTg.BackColor = $dark
+        $pnTg.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+        $pnTg.Cursor = [System.Windows.Forms.Cursors]::Hand
+        $f.Controls.Add($pnTg)
+        $lbTg = New-Object System.Windows.Forms.Label
+        $lbTg.Location = New-Object System.Drawing.Point(5, 0)
+        $lbTg.Size = New-Object System.Drawing.Size(206, 26)
+        $lbTg.AutoEllipsis = $true
+        $lbTg.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
+        $lbTg.BackColor = $dark
+        $lbTg.Cursor = [System.Windows.Forms.Cursors]::Hand
+        $pnTg.Controls.Add($lbTg)
+        $tgDimText = [System.Drawing.Color]::FromArgb(84, 93, 104)
+        $pnTg.Add_Paint({
+            param($s, $ev)
+            try {
+                $ev.Graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+                $ab = New-Object System.Drawing.SolidBrush($(if ([bool]$lbApply.Checked) { $muted } else { $tgDimText }))
+                try {
+                    $ax = [single]($s.ClientSize.Width - 14); $ay = [single](($s.ClientSize.Height - 4) / 2.0)
+                    $ev.Graphics.FillPolygon($ab, [System.Drawing.PointF[]]@((New-Object System.Drawing.PointF(($ax - 4), $ay)), (New-Object System.Drawing.PointF(($ax + 4), $ay)), (New-Object System.Drawing.PointF($ax, ($ay + 4.5)))))
+                } finally { $ab.Dispose() }
+            } catch {}
+        }.GetNewClosure())
+
+        $clb = New-Object System.Windows.Forms.ListBox
+        $clb.Font = New-Object System.Drawing.Font('Segoe UI', 9)
+        $clb.BackColor = $dark; $clb.ForeColor = $txt
+        $clb.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+        $clb.IntegralHeight = $false
+        $clb.DrawMode = [System.Windows.Forms.DrawMode]::OwnerDrawFixed
+        $clb.ItemHeight = 22
+        $clb.Visible = $false
+        $f.Controls.Add($clb)
+
+        $ctx.UpdateTg = {
+            $nm = New-Object System.Collections.Generic.List[string]
+            for ($i = 0; $i -lt $ctx.TgtKeys.Count; $i++) {
+                if ([string]$ctx.TgtKeys[$i] -ne '' -and [bool]$ctx.TgtOn[$i]) { [void]$nm.Add([string]$ctx.TgtNames[$i]) }
+            }
+            $tgOn = [bool]$lbApply.Checked
+            if ($nm.Count -eq 0) { $lbTg.Text = (T 'frames_kit_apply_none'); $lbTg.ForeColor = $(if ($tgOn) { $muted } else { $tgDimText }) }
+            else { $lbTg.Text = ($nm.ToArray() -join ', '); $lbTg.ForeColor = $(if ($tgOn) { $txt } else { $tgDimText }) }
+        }.GetNewClosure()
+        $ctx.AddTg = {
+            param([string]$key, [string]$name, [bool]$on)
+            [void]$ctx.TgtKeys.Add($key); [void]$ctx.TgtNames.Add($name); [void]$ctx.TgtOn.Add($on)
+            [void]$clb.Items.Add($name)
+        }.GetNewClosure()
+        # Эмуляторы и лончеры известны сразу; коллекции читаются при первом открытии списка.
+        try {
+            $tgEmus = @(@($global:emulatorProfiles) | Where-Object { $null -ne $_ } | Sort-Object -Property { [string]$_.Name } -CaseSensitive:$false)
+            if ($tgEmus.Count -gt 0) {
+                & $ctx.AddTg '' ([string](T 'frames_bind_emus')) $false
+                foreach ($tep in $tgEmus) {
+                    $tkey = 'emu:' + [string]$tep.Id
+                    $ton = ($kitIdNow -ne '' -and [string]$tep.FrameKit -eq $kitIdNow)
+                    if ($ton) { $ctx.TgtInit[$tkey] = $true }
+                    & $ctx.AddTg $tkey ([string]$tep.Name) $ton
+                }
+            }
+            $tgWr = @(@($global:launchWrappers) | Where-Object { $null -ne $_ } | Sort-Object -Property { [string]$_.Name } -CaseSensitive:$false)
+            if ($tgWr.Count -gt 0) {
+                & $ctx.AddTg '' ([string](T 'frames_bind_wraps')) $false
+                foreach ($twp in $tgWr) {
+                    $tkey = 'wrap:' + [string]$twp.Id
+                    $ton = ($kitIdNow -ne '' -and [string]$twp.FrameKit -eq $kitIdNow)
+                    if ($ton) { $ctx.TgtInit[$tkey] = $true }
+                    & $ctx.AddTg $tkey ([string]$twp.Name) $ton
+                }
+            }
+            $tgLn = @(Get-FrameBindingTargets | Where-Object { ([string]$_.Key).StartsWith('launcher:') })
+            if ($tgLn.Count -gt 0) {
+                & $ctx.AddTg '' ([string](T 'frames_bind_launchers')) $false
+                foreach ($tl in $tgLn) {
+                    $tkey = [string]$tl.Key
+                    $ton = ($kitIdNow -ne '' -and [string](Get-LauncherFrameKit ($tkey.Substring(9))) -eq $kitIdNow)
+                    if ($ton) { $ctx.TgtInit[$tkey] = $true }
+                    & $ctx.AddTg $tkey ([string]$tl.Name) $ton
+                }
+            }
+        } catch {}
+        $ctx.LoadColl = {
+            if ([bool]$ctx.TgtCollLoaded) { return }
+            $ctx.TgtCollLoaded = $true
+            $prevC = [System.Windows.Forms.Cursor]::Current
+            try {
+                [System.Windows.Forms.Cursor]::Current = [System.Windows.Forms.Cursors]::WaitCursor
+                $snapT = Read-SteamCollectionsSnapshot
+                $rowsT = @(Get-CollPickerItems $snapT @())
+                if ($rowsT.Count -gt 0) {
+                    & $ctx.AddTg '' ([string](T 'frames_kit_apply_colls')) $false
+                    foreach ($rt in $rowsT) { & $ctx.AddTg ('coll:' + [string]$rt.Key) ([string]$rt.Name) $false }
+                }
+            } catch {
+                try { Write-ConfigLog ('Frames: список коллекций для набора: ' + $_.Exception.Message) } catch {}
+            } finally { [System.Windows.Forms.Cursor]::Current = $prevC }
+        }.GetNewClosure()
+        $ctx.ToggleTg = {
+            if ($clb.Visible) { $clb.Visible = $false; return }
+            if (-not [bool]$lbApply.Checked) { return }
+            if (([Environment]::TickCount - [int]$ctx.TgClosedAt) -lt 250) { return }
+            # $lst создаётся ниже этого блока, поэтому в замыкании он был бы пуст: берём его через $ctx.Lst.
+            if ($null -ne $ctx.Lst) { $ctx.Lst.Visible = $false }
+            & $ctx.LoadColl
+            if ($clb.Items.Count -eq 0) { return }
+            $hh = [Math]::Min(264, ($clb.Items.Count * 22) + 4)
+            # Список встаёт вплотную над полем и той же ширины (левый и правый край как у поля, рамки сходятся в одну линию).
+            $clb.SetBounds([int]$pnTg.Left, ([int]$pnTg.Top - $hh + 1), [int]$pnTg.Width, $hh)
+            $clb.SelectedIndex = -1
+            $clb.Visible = $true
+            $clb.BringToFront()
+            $clb.Focus()
+        }.GetNewClosure()
+        $clb.Add_DrawItem({
+            param($s, $e)
+            try {
+                if ($e.Index -lt 0 -or $e.Index -ge $ctx.TgtKeys.Count) { return }
+                $isH = ([string]$ctx.TgtKeys[$e.Index] -eq '')
+                $bgc = $dark
+                if (-not $isH -and (($e.State -band [System.Windows.Forms.DrawItemState]::Selected) -ne 0)) { $bgc = [System.Drawing.Color]::FromArgb(42, 52, 66) }
+                $bb = New-Object System.Drawing.SolidBrush($bgc)
+                try { $e.Graphics.FillRectangle($bb, $e.Bounds) } finally { $bb.Dispose() }
+                $fl = [System.Windows.Forms.TextFormatFlags]::VerticalCenter -bor [System.Windows.Forms.TextFormatFlags]::Left -bor [System.Windows.Forms.TextFormatFlags]::EndEllipsis -bor [System.Windows.Forms.TextFormatFlags]::NoPrefix
+                if ($isH) {
+                    $rc = New-Object System.Drawing.Rectangle(($e.Bounds.X + 6), $e.Bounds.Y, ($e.Bounds.Width - 12), $e.Bounds.Height)
+                    $hf = New-Object System.Drawing.Font($s.Font, [System.Drawing.FontStyle]::Bold)
+                    try { [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, [string]$ctx.TgtNames[$e.Index], $hf, $rc, $muted, $fl) } finally { $hf.Dispose() }
+                } else {
+                    $on = [bool]$ctx.TgtOn[$e.Index]
+                    $bx = [int]($e.Bounds.X + 10); $by = [int]($e.Bounds.Y + [Math]::Floor(($e.Bounds.Height - 14) / 2))
+                    $e.Graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::None
+                    if ($on) {
+                        $fb = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(51, 125, 168))
+                        try { $e.Graphics.FillRectangle($fb, $bx, $by, 14, 14) } finally { $fb.Dispose() }
+                    }
+                    $bp = New-Object System.Drawing.Pen($(if ($on) { [System.Drawing.Color]::FromArgb(95, 185, 240) } else { [System.Drawing.Color]::FromArgb(110, 118, 130) }))
+                    try { $e.Graphics.DrawRectangle($bp, $bx, $by, 13, 13) } finally { $bp.Dispose() }
+                    if ($on) {
+                        $e.Graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+                        $cp = New-Object System.Drawing.Pen([System.Drawing.Color]::White, 1.8)
+                        try { $e.Graphics.DrawLines($cp, [System.Drawing.PointF[]]@((New-Object System.Drawing.PointF(($bx + 3), ($by + 7))), (New-Object System.Drawing.PointF(($bx + 6), ($by + 10))), (New-Object System.Drawing.PointF(($bx + 11), ($by + 4))))) } finally { $cp.Dispose() }
+                    }
+                    $rc = New-Object System.Drawing.Rectangle(($e.Bounds.X + 32), $e.Bounds.Y, ($e.Bounds.Width - 36), $e.Bounds.Height)
+                    [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, [string]$ctx.TgtNames[$e.Index], $s.Font, $rc, $txt, $fl)
+                }
+            } catch {}
+        }.GetNewClosure())
+        $clb.Add_MouseMove({
+            param($s, $e)
+            try { $hi = $s.IndexFromPoint($e.Location); if ($hi -ge 0 -and $hi -ne $s.SelectedIndex) { $s.SelectedIndex = $hi } } catch {}
+        }.GetNewClosure())
+        $clb.Add_MouseDown({
+            param($s, $e)
+            try {
+                $ci = $s.IndexFromPoint($e.Location)
+                if ($ci -lt 0 -or [string]$ctx.TgtKeys[$ci] -eq '') { return }
+                $ctx.TgtOn[$ci] = (-not [bool]$ctx.TgtOn[$ci])
+                # Отметили пункт в списке - применение включается само.
+                if ([bool]$ctx.TgtOn[$ci]) { $lbApply.Checked = $true }
+                $s.Invalidate()
+                & $ctx.UpdateTg
+            } catch {}
+        }.GetNewClosure())
+        $clb.Add_Leave({ $ctx.TgClosedAt = [Environment]::TickCount; $clb.Visible = $false }.GetNewClosure())
+        $pnTg.Add_Click({ & $ctx.ToggleTg }.GetNewClosure())
+        $lbTg.Add_Click({ & $ctx.ToggleTg }.GetNewClosure())
+        # Галочка выключена - поле выбора выглядит и ведёт себя как недоступное: фон как у окна, приглушённые текст и стрелка, курсор обычный.
+        $ctx.ApplyTgState = {
+            $tgOn = [bool]$lbApply.Checked
+            $tgBg = $(if ($tgOn) { $dark } else { $f.BackColor })
+            $pnTg.BackColor = $tgBg
+            $lbTg.BackColor = $tgBg
+            $tgCur = $(if ($tgOn) { [System.Windows.Forms.Cursors]::Hand } else { [System.Windows.Forms.Cursors]::Default })
+            $pnTg.Cursor = $tgCur
+            $lbTg.Cursor = $tgCur
+            if (-not $tgOn) { $clb.Visible = $false }
+            & $ctx.UpdateTg
+            $pnTg.Invalidate()
+        }.GetNewClosure()
+        $lbApply.Add_CheckedChanged({ try { & $ctx.ApplyTgState } catch {} }.GetNewClosure())
+        & $ctx.UpdateTg
+        # Уже привязанный к набору эмулятор/враппер/лончер: галочка стоит сразу.
+        try { $lbApply.Checked = ($ctx.TgtInit.Count -gt 0) } catch {}
+        try { & $ctx.ApplyTgState } catch {}
+
+        $lst = New-Object System.Windows.Forms.ListBox
+        $lst.Location = New-Object System.Drawing.Point(110, 41)
+        $lst.Size = New-Object System.Drawing.Size(420, 180)
+        $lst.Font = New-Object System.Drawing.Font('Segoe UI', 9)
+        $lst.IntegralHeight = $false
+        $lst.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+        $lst.BackColor = $dark; $lst.ForeColor = $txt
+        $lst.Visible = $false
+        $f.Controls.Add($lst)
+        $lst.BringToFront()
+        $ctx.Lst = $lst
+
+        # Кнопки как в окнах эмуляторов и врапперов: «Сохранить» 96x30 и «Отмена» 90x30 в правом нижнем углу.
+        $btnOk = New-FramesDlgButton (T 'set_save') $true
+        $btnOk.Size = New-Object System.Drawing.Size(96, 30)
+        $btnCancelKit = New-FramesDlgButton (T 'set_cancel')
+        $btnCancelKit.Size = New-Object System.Drawing.Size(90, 30)
+        $by = $f.ClientSize.Height - 30 - 14
+        $btnCancelKit.Location = New-Object System.Drawing.Point(($f.ClientSize.Width - 15 - 90), $by)
+        $btnOk.Location = New-Object System.Drawing.Point(($btnCancelKit.Left - 6 - 96), $by)
+        $btnOk.DialogResult = [System.Windows.Forms.DialogResult]::OK
+        $btnCancelKit.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+        $f.Controls.Add($btnOk)
+        $f.Controls.Add($btnCancelKit)
+        $f.AcceptButton = $btnOk
+        $f.CancelButton = $btnCancelKit
+
+        $ctx.ShowSlot = {
+            param([string]$w)
+            $s = $ctx.Slot[$w]; $pb = $ctx.Pb[$w]
+            $old = $pb.Image; $pb.Image = $null
+            if ($null -ne $old) { try { $old.Dispose() } catch {} }
+            $path = ''; $hole = $null
+            if ([string]$s.New -ne '') { $path = [string]$s.New }
+            elseif ([string]$s.Id -ne '' -and -not [bool]$s.Cleared) {
+                $fr = Get-CoverFrame ([string]$s.Id)
+                if ($null -ne $fr) { $path = Join-Path (Get-FramesDir) ([string]$fr.file); $hole = $fr }
+            }
+            if ($path -ne '' -and -not [System.IO.File]::Exists($path)) { $path = ''; $hole = $null }
+            # Область под обложку, указанная вручную, действует для выбранного нового файла.
+            if ($path -ne '' -and $null -ne $s.Rect -and ([string]$s.New -ne '' -or [bool]$s.RectChanged)) { $hole = $s.Rect }
+            try { $ctx.Pb[$w + 'Area'].Enabled = ($path -ne '') } catch {}
+            try { $ctx.Pb[$w + 'Eye'].Enabled = ($path -ne '') } catch {}
+            try {
+                $fb = $ctx.Pb[$w + 'Fit']
+                $fb.Enabled = ($path -ne '')
+                $fb.Tag.On = [bool]$s.Fit
+                if ([bool]$s.Fit) {
+                    $fb.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(51, 125, 168)
+                    $fb.BackColor = [System.Drawing.Color]::FromArgb(25, 55, 75)
+                } else {
+                    $fb.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(61, 68, 80)
+                    $fb.BackColor = [System.Drawing.Color]::FromArgb(30, 38, 48)
+                }
+                $fb.Invalidate()
+            } catch {}
+            try {
+                $pnb = $ctx.Pb[$w + 'Pin']
+                $pnb.Enabled = ($path -ne '')
+                if ($path -eq '') { $s.Pinned = $false }
+                $pnb.Tag.On = [bool]$s.Pinned
+                if ([bool]$s.Pinned) {
+                    $pnb.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(78, 150, 62)
+                    $pnb.BackColor = [System.Drawing.Color]::FromArgb(28, 58, 34)
+                } else {
+                    $pnb.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(61, 68, 80)
+                    $pnb.BackColor = [System.Drawing.Color]::FromArgb(30, 38, 48)
+                }
+                $pnb.Invalidate()
+            } catch {}
+            # Всегда показывается образец обложки; выбранная рамка накладывается на него.
+            try { $pb.Image = New-FrameSampleThumbBitmap $path $hole ([string]$w) ($pb.Width - 2) ($pb.Height - 2) ([bool]$s.Fit) $s.Adj } catch {}
+            $pb.Invalidate()
+        }.GetNewClosure()
+
+        # Скачивает выбранную обложку (ссылка или файл) во временный файл; '' при неудаче.
+        $ctx.Fetch = {
+            param([string]$chosen)
+            $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ('sc_kit_' + [guid]::NewGuid().ToString('N').Substring(0, 10) + '.img')
+            $ok = $false
+            $prevC = [System.Windows.Forms.Cursor]::Current
+            try {
+                [System.Windows.Forms.Cursor]::Current = [System.Windows.Forms.Cursors]::WaitCursor
+                if ($chosen -match '^(?i)https?://') { $ok = [bool](Download-RemoteImage $chosen $tmp 512) }
+                elseif ([System.IO.File]::Exists($chosen)) { Copy-Item -LiteralPath $chosen -Destination $tmp -Force; $ok = $true }
+            } finally { [System.Windows.Forms.Cursor]::Current = $prevC }
+            if ($ok) { [void]$ctx.Temps.Add($tmp); return $tmp }
+            return ''
+        }.GetNewClosure()
+
+        # Обложки нужного вида (v - вертикальные, h - горизонтальные) в порядке сайта (по популярности).
+        # Для вертикальных сначала идут шаблоны подборки выбранной платформы, затем обложки её записи на сайте.
+        $ctx.Items = {
+            param([string]$w)
+            $site = @()
+            if ([int]$ctx.GameId -gt 0) {
+                $prevC = [System.Windows.Forms.Cursor]::Current
+                try {
+                    [System.Windows.Forms.Cursor]::Current = [System.Windows.Forms.Cursors]::WaitCursor
+                    if ([int]$ctx.AssetsGid -ne [int]$ctx.GameId) {
+                        $hdr = @{ Authorization = ('Bearer ' + [string](Ensure-SteamGridDbApiKey)) }
+                        $ctx.Assets = Get-SgdbAssetsForGame ([int]$ctx.GameId) $hdr
+                        $ctx.AssetsGid = [int]$ctx.GameId
+                    }
+                } finally { [System.Windows.Forms.Cursor]::Current = $prevC }
+                if ($null -ne $ctx.Assets) {
+                    $src = if ($w -eq 'v') { $ctx.Assets.GridsVertical } else { $ctx.Assets.GridsHorizontal }
+                    $site = @(@($src) | Where-Object { $null -ne $_ })
+                }
+            }
+            if ($w -ne 'v' -or @($ctx.CollItems).Count -eq 0) { return $site }
+            $have = @{}
+            $out = New-Object System.Collections.ArrayList
+            foreach ($x in @($ctx.CollItems)) {
+                if ($null -eq $x) { continue }
+                $k = ''; try { $k = [string]$x.id } catch {}
+                if ($k -ne '') { $have[$k] = $true }
+                [void]$out.Add($x)
+            }
+            foreach ($x in $site) {
+                $k = ''; try { $k = [string]$x.id } catch {}
+                if ($k -ne '' -and $have.ContainsKey($k)) { continue }
+                [void]$out.Add($x)
+            }
+            return @($out.ToArray())
+        }.GetNewClosure()
+
+        $ctx.SetSlotFile = {
+            param([string]$w, [string]$tmp)
+            $ctx.Slot[$w].New = $tmp
+            $ctx.Slot[$w].Cleared = $false
+            $ctx.Slot[$w].Rect = $null
+            $ctx.Slot[$w].Adj = $null; $ctx.Slot[$w].AdjChanged = $false
+            & $ctx.ShowSlot $w
+        }.GetNewClosure()
+
+        # Сбрасывает выбранную на SteamGridDB игру (и платформу подборки) вместе с загруженными по ней обложками.
+        $ctx.ResetGame = {
+            $ctx.GameId = 0
+            $ctx.CollItems = @()
+            $ctx.Assets = $null
+            $ctx.AssetsGid = 0
+            $ctx.Chosen = ''
+            $ctx.Cands = @()
+        }.GetNewClosure()
+
+        $ctx.Pick = {
+            param([string]$w)
+            try {
+                $lst.Visible = $false
+                try { $clb.Visible = $false } catch {}
+                # Поле SteamGridDB очищено: прежний результат поиска больше не действует, обложку выбирают из файла.
+                if (([string]$tbS.Text).Trim() -eq '') { & $ctx.ResetGame }
+                if ([int]$ctx.GameId -le 0 -and @($ctx.CollItems).Count -eq 0) { [void](& $ctx.Resolve) }
+                $items = @()
+                if ([int]$ctx.GameId -gt 0 -or @($ctx.CollItems).Count -gt 0) { $items = @(& $ctx.Items $w) }
+                # Игра не выбрана или у неё нет ни одной обложки этого вида: вместо пустого окна с анимацией загрузки
+                # (раньше окно открывалось, крутило заглушки и только потом писало «не найдено») сразу открывается выбор своей обложки из файла.
+                if ($items.Count -eq 0) {
+                    $ofdK = New-Object System.Windows.Forms.OpenFileDialog
+                    try {
+                        $ofdK.Title = (T 'frames_kit_click')
+                        $ofdK.Filter = (T 'custom_filter')
+                        $ofdK.CheckFileExists = $true
+                        $ofdK.Multiselect = $false
+                        if ($ofdK.ShowDialog($f) -ne [System.Windows.Forms.DialogResult]::OK) { return }
+                        $tmpK = & $ctx.Fetch ([string]$ofdK.FileName)
+                    } finally { try { $ofdK.Dispose() } catch {} }
+                    if ($tmpK -eq '') {
+                        [void](Show-AppMessageBox($f, (T 'frames_dl_fail'), (T 'frames_title'), [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning))
+                        return
+                    }
+                    & $ctx.SetSlotFile $w $tmpK
+                    return
+                }
+                $kind = if ($w -eq 'v') { 'vertical' } else { 'horizontal' }
+                $tw = if ($w -eq 'v') { 170 } else { 270 }
+                $th = if ($w -eq 'v') { 230 } else { 130 }
+                $mp = $null
+                if ([int]$ctx.GameId -gt 0) { $mp = New-SgdbMorePageState $kind ([int]$ctx.GameId) '' }
+                $title = if ($w -eq 'v') { (T 'frames_kit_v') } else { (T 'frames_kit_h') }
+                $chosen = Show-SgdbAssetChooser $title $items $tw $th $f $null $mp @() (New-FrameTransparencyFilter)
+                if ([string]::IsNullOrWhiteSpace([string]$chosen)) { return }
+                $tmp = & $ctx.Fetch ([string]$chosen)
+                if ($tmp -eq '') {
+                    [void](Show-AppMessageBox($f, (T 'frames_dl_fail'), (T 'frames_title'), [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning))
+                    return
+                }
+                & $ctx.SetSlotFile $w $tmp
+            } catch {
+                try { Write-ConfigLog ('Frames: выбор обложки комплекта: ' + $_.Exception.Message) } catch {}
+            }
+        }.GetNewClosure()
+
+        # После выбора игры миниатюры заполняются самыми популярными обложками с прозрачной областью (как в карточке игры).
+        # Если среди первых вариантов таких нет, слот остаётся как был.
+        $ctx.AutoFill = {
+            try {
+                $flt = New-FrameTransparencyFilter
+                # Кандидаты обеих миниатюр проверяются на прозрачность ОДНИМ общим пакетом (до 24 загрузок одновременно),
+                # а выбранные вертикальная и горизонтальная обложки скачиваются параллельно, а не друг за другом.
+                $byW = @{}
+                $all = New-Object System.Collections.ArrayList
+                foreach ($w in @('v', 'h')) {
+                    # Закреплённая обложка не меняется: для неё кандидаты не берутся.
+                    if ([bool]$ctx.Slot[$w].Pinned) { $byW[$w] = @(); continue }
+                    $byW[$w] = @(@(& $ctx.Items $w) | Select-Object -First 24)
+                    foreach ($it in $byW[$w]) { [void]$all.Add($it) }
+                }
+                # Обложка не найдена в новом запросе: у незакреплённого слота прежняя обложка убирается (как кнопкой «Убрать»).
+                $clrSlots = {
+                    param($ws)
+                    foreach ($cw in @($ws)) {
+                        $cs = $ctx.Slot[$cw]
+                        if ([bool]$cs.Pinned) { continue }
+                        $cs.New = ''; $cs.Rect = $null; $cs.Cleared = $true; $cs.Adj = $null; $cs.AdjChanged = $false
+                        & $ctx.ShowSlot $cw
+                    }
+                }
+                if ($all.Count -eq 0) { & $clrSlots @('v', 'h'); return }
+                $prevC = [System.Windows.Forms.Cursor]::Current
+                try {
+                    [System.Windows.Forms.Cursor]::Current = [System.Windows.Forms.Cursors]::WaitCursor
+                    & $flt.Prepare @($all.ToArray()) 24
+                } finally { [System.Windows.Forms.Cursor]::Current = $prevC }
+                $jobs = New-Object System.Collections.ArrayList
+                foreach ($w in @('v', 'h')) {
+                    $pick = $null
+                    if ([bool]$ctx.Slot[$w].Pinned) { continue }
+                    foreach ($it in $byW[$w]) { if ((& $flt.Test $it) -eq $true) { $pick = $it; break } }
+                    if ($null -eq $pick) { & $clrSlots @($w); continue }
+                    $u = ''; try { $u = [string]$pick.url } catch {}
+                    if ($u -eq '') { continue }
+                    $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ('sc_kit_' + [guid]::NewGuid().ToString('N').Substring(0, 10) + '.img')
+                    [void]$jobs.Add(@{ W = $w; Url = $u; Path = $tmp })
+                }
+                if ($jobs.Count -eq 0) { return }
+                $web = @($jobs.ToArray() | Where-Object { [string]$_.Url -match '^(?i)https?://' })
+                if ($web.Count -gt 0) {
+                    try { $prevC = [System.Windows.Forms.Cursor]::Current; [System.Windows.Forms.Cursor]::Current = [System.Windows.Forms.Cursors]::WaitCursor } catch {}
+                    try { Invoke-ParallelUiDownload @($web | ForEach-Object { @{ Url = [string]$_.Url; Path = [string]$_.Path } }) 25 512 } catch {}
+                    finally { try { [System.Windows.Forms.Cursor]::Current = $prevC } catch {} }
+                }
+                foreach ($j in $jobs) {
+                    $tmp = ''
+                    if ([System.IO.File]::Exists([string]$j.Path)) { [void]$ctx.Temps.Add([string]$j.Path); $tmp = [string]$j.Path }
+                    else { $tmp = & $ctx.Fetch ([string]$j.Url) }   # запасной путь (локальный файл или иной способ загрузки)
+                    if ($tmp -ne '') { & $ctx.SetSlotFile ([string]$j.W) $tmp }
+                }
+            } catch {
+                try { Write-ConfigLog ('Frames: автозаполнение комплекта: ' + $_.Exception.Message) } catch {}
+            }
+        }.GetNewClosure()
+
+        # Список как в старом окне «Выберите платформу или магазин»: «Все шаблоны подборки (N)» и платформы подборки по алфавиту.
+        # Строится при первом клике по полю (подборка запрашивается с сайта и хранится до перезапуска программы).
+        # $script: внутри GetNewClosure() не видит переменных программы, поэтому номера подборок берутся в локальную переменную заранее.
+        $collIds = @($script:FrameTemplateCollections)
+        $ctx.BuildSuggest = {
+            $tpls = @()
+            $prevC = [System.Windows.Forms.Cursor]::Current
+            try {
+                [System.Windows.Forms.Cursor]::Current = [System.Windows.Forms.Cursors]::WaitCursor
+                $tpls = @(Get-SgdbCollectionTemplates $collIds | Where-Object { $null -ne $_ })
+            } catch { $tpls = @() } finally { [System.Windows.Forms.Cursor]::Current = $prevC }
+            if ($tpls.Count -eq 0) {
+                try { Write-ConfigLog 'Frames: список подборки пуст или сайт не ответил (см. строки Frames: выше)' } catch {}
+                [void](Show-AppMessageBox($f, (T 'frames_coll_fail'), (T 'frames_title'), [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information))
+                return
+            }
+            $by = @{}
+            foreach ($t in $tpls) {
+                $pn = Get-FrameTemplatePlatformName $t
+                if ($pn -eq '') { $pn = '-' }
+                if (-not $by.ContainsKey($pn)) { $by[$pn] = New-Object System.Collections.ArrayList }
+                [void]$by[$pn].Add($t)
+            }
+            $ctx.AllTpls = $tpls
+            $ctx.ByPlat = $by
+            $ctx.AllLabel = ((T 'frames_all_platforms') + ' (' + $tpls.Count + ')')
+            $ctx.Sugg = @(@($ctx.AllLabel) + @($by.Keys | Sort-Object))
+        }.GetNewClosure()
+
+        $ctx.ShowSuggest = {
+            $ctx.Busy = $true
+            try {
+                if (@($ctx.Sugg).Count -eq 0) { & $ctx.BuildSuggest }
+                $q = ([string]$tbS.Text).Trim().ToLowerInvariant()
+                $lst.Items.Clear()
+                foreach ($r in @($ctx.Sugg)) {
+                    if ($q -ne '' -and -not ([string]$r).ToLowerInvariant().Contains($q)) { continue }
+                    [void]$lst.Items.Add([string]$r)
+                }
+                $ctx.ListMode = 'suggest'
+                if ($lst.Items.Count -eq 0) { $lst.Visible = $false; return }
+                $lst.Height = [Math]::Min(180, ([int]$lst.ItemHeight * $lst.Items.Count) + 4)
+                $lst.Visible = $true
+                $lst.BringToFront()
+            } finally { $ctx.Busy = $false }
+        }.GetNewClosure()
+
+        # Выбор пункта списка: «все шаблоны подборки» или платформа. У платформы берутся шаблоны подборки и обложки её записи на сайте.
+        $ctx.ChoosePlatform = {
+            param([string]$label)
+            try {
+                $ctx.Busy = $true
+                try {
+                    if ($label -eq [string]$ctx.AllLabel) {
+                        $ctx.GameId = 0
+                        $ctx.CollItems = @($ctx.AllTpls)
+                        $tbS.Text = (T 'frames_all_platforms')
+                    } else {
+                        $items = @($ctx.ByPlat[$label])
+                        $gid = 0
+                        foreach ($x in $items) { try { $g = [int]$x.game.id; if ($g -gt 0) { $gid = $g; break } } catch {} }
+                        $ctx.GameId = $gid
+                        $ctx.CollItems = $items
+                        $tbS.Text = $label
+                        if ([string]::IsNullOrWhiteSpace([string]$tbN.Text) -and $label -ne '-') { $tbN.Text = $label }
+                    }
+                } finally { $ctx.Busy = $false }
+                $lst.Visible = $false
+                & $ctx.AutoFill
+            } catch {
+                try { Write-ConfigLog ('Frames: выбор платформы комплекта: ' + $_.Exception.Message) } catch {}
+            }
+        }.GetNewClosure()
+
+        # У сохранённого комплекта поле SteamGridDB заполнено, но игра/платформа в окне ещё не выбрана (GameId = 0).
+        # Перед открытием списка обложек определяем их по тексту поля: сначала как платформу подборки, затем как игру из поиска.
+        # Миниатюры комплекта при этом не меняются. Возвращает $true, если источник обложек найден.
+        $ctx.Resolve = {
+            try {
+                if ([int]$ctx.GameId -gt 0 -or @($ctx.CollItems).Count -gt 0) { return $true }
+                $q = ([string]$tbS.Text).Trim()
+                if ($q -eq '' -or $q -eq '-') { return $false }
+                if (@($ctx.Sugg).Count -eq 0) { & $ctx.BuildSuggest }
+                if ($q -eq [string](T 'frames_all_platforms') -and @($ctx.AllTpls).Count -gt 0) {
+                    $ctx.CollItems = @($ctx.AllTpls)
+                    return $true
+                }
+                if ($ctx.ByPlat.ContainsKey($q)) {
+                    $items = @($ctx.ByPlat[$q])
+                    $gid = 0
+                    foreach ($x in $items) { try { $g = [int]$x.game.id; if ($g -gt 0) { $gid = $g; break } } catch {} }
+                    $ctx.GameId = $gid
+                    $ctx.CollItems = $items
+                    return $true
+                }
+                $prevC = [System.Windows.Forms.Cursor]::Current
+                $cands = @()
+                try {
+                    [System.Windows.Forms.Cursor]::Current = [System.Windows.Forms.Cursors]::WaitCursor
+                    $cands = @(Get-EditorSgdbCandidates $q)
+                } finally { [System.Windows.Forms.Cursor]::Current = $prevC }
+                if ($cands.Count -eq 0) { return $false }
+                $hit = $null
+                foreach ($c in $cands) { if (([string]$c.Name).Trim() -ieq $q) { $hit = $c; break } }
+                if ($null -eq $hit) { $hit = $cands[0] }
+                $ctx.GameId = [int]$hit.Id
+                return ([int]$ctx.GameId -gt 0)
+            } catch {
+                try { Write-ConfigLog ('Frames: определение записи комплекта: ' + $_.Exception.Message) } catch {}
+                return $false
+            }
+        }.GetNewClosure()
+
+        # Поиск как в карточке игры: запрос уходит через 350 мс после окончания ввода, результаты выпадают под полем.
+        # Enter ищет сразу, стрелка вниз переходит в список, Enter или клик по пункту выбирают игру.
+        $ctx.Search = {
+            param([bool]$needFocus)
+            try {
+                $q = ([string]$tbS.Text).Trim()
+                if ($q.Length -lt 2) { return }
+                $ctx.Busy = $true
+                $prevC = [System.Windows.Forms.Cursor]::Current
+                $cands = @()
+                try {
+                    [System.Windows.Forms.Cursor]::Current = [System.Windows.Forms.Cursors]::WaitCursor
+                    $cands = @(Get-EditorSgdbCandidates $q)
+                } finally { [System.Windows.Forms.Cursor]::Current = $prevC; $ctx.Busy = $false }
+                # Пока шёл поиск, текст мог измениться: этот результат устарел, ищем заново по актуальному тексту.
+                if ((([string]$tbS.Text).Trim()) -ne $q) { $ctx.Timer.Stop(); $ctx.Timer.Start(); return }
+                if ($needFocus -and -not $tbS.Focused) { return }
+                $ctx.Cands = $cands
+                $ctx.ListMode = 'games'
+                $lst.Items.Clear()
+                foreach ($c in $cands) { [void]$lst.Items.Add([string]$c.Name) }
+                if ($cands.Count -eq 0) { [void]$lst.Items.Add((T 'frames_kit_nores')) }
+                $lst.Height = [Math]::Min(180, ([int]$lst.ItemHeight * $lst.Items.Count) + 4)
+                $lst.SelectedIndex = -1
+                $lst.Visible = $true
+                $lst.BringToFront()
+            } catch { $ctx.Busy = $false }
+        }.GetNewClosure()
+
+        $ctx.Timer = New-Object System.Windows.Forms.Timer
+        $ctx.Timer.Interval = 350
+        $ctx.Timer.Add_Tick({
+            try {
+                $ctx.Timer.Stop()
+                if ([bool]$ctx.Busy) { return }
+                & $ctx.Search $true
+            } catch { try { $ctx.Timer.Stop() } catch {} }
+        }.GetNewClosure())
+
+        # Выбор пункта списка: платформа подборки (список пустого поля) или игра из поиска.
+        $ctx.Commit = {
+            try {
+                $i = [int]$lst.SelectedIndex
+                if ($i -lt 0) { return }
+                $ctx.Timer.Stop()
+                if ([string]$ctx.ListMode -eq 'suggest') {
+                    & $ctx.ChoosePlatform ([string]$lst.SelectedItem)
+                    $ctx.Chosen = ([string]$tbS.Text).Trim()
+                    return
+                }
+                $cl = @($ctx.Cands)
+                if ($i -ge $cl.Count) { return }
+                $ctx.GameId = [int]$cl[$i].Id
+                $ctx.CollItems = @()
+                $ctx.Busy = $true
+                try { $tbS.Text = [string]$cl[$i].Name } finally { $ctx.Busy = $false }
+                $ctx.Chosen = ([string]$tbS.Text).Trim()
+                if ([string]::IsNullOrWhiteSpace([string]$tbN.Text)) { $tbN.Text = [string]$cl[$i].Name }
+                $lst.Visible = $false
+                & $ctx.AutoFill
+            } catch {}
+        }.GetNewClosure()
+
+        # Enter в поле поиска ищет, а не закрывает окно кнопкой по умолчанию.
+        $tbS.Add_Enter({ $f.AcceptButton = $null }.GetNewClosure())
+        $tbS.Add_Leave({ $f.AcceptButton = $btnOk }.GetNewClosure())
+        $tbS.Add_Click({
+            $t = ([string]$tbS.Text).Trim()
+            if ($t -eq '') { & $ctx.ShowSuggest; return }
+            if ($t -eq [string]$ctx.Chosen -or $lst.Visible) { return }
+            $ctx.Timer.Stop(); $ctx.Timer.Start()
+        }.GetNewClosure())
+        $tbS.Add_TextChanged({
+            if ([bool]$ctx.Busy) { return }
+            $ctx.Timer.Stop()
+            if (([string]$tbS.Text).Trim() -eq '') { & $ctx.ResetGame; & $ctx.ShowSuggest; return }
+            if ([string]$ctx.ListMode -eq 'suggest') { $lst.Visible = $false }
+            $ctx.Timer.Start()
+        }.GetNewClosure())
+        $tbS.Add_KeyDown({
+            param($s, $e)
+            if ($e.KeyCode -eq [System.Windows.Forms.Keys]::Down -and $lst.Visible -and $lst.Items.Count -gt 0) {
+                $e.SuppressKeyPress = $true
+                $lst.SelectedIndex = 0
+                $lst.Focus()
+                return
+            }
+            if ($e.KeyCode -eq [System.Windows.Forms.Keys]::Enter) {
+                $e.SuppressKeyPress = $true
+                $ctx.Timer.Stop()
+                & $ctx.Search $false
+            }
+        }.GetNewClosure())
+        $tbN.Add_Enter({ $lst.Visible = $false }.GetNewClosure())
+        $f.Add_Click({ $lst.Visible = $false }.GetNewClosure())
+        $lst.Add_Click({ & $ctx.Commit }.GetNewClosure())
+        $lst.Add_KeyDown({
+            param($s, $e)
+            if ($e.KeyCode -eq [System.Windows.Forms.Keys]::Enter) { $e.SuppressKeyPress = $true; & $ctx.Commit }
+            elseif ($e.KeyCode -eq [System.Windows.Forms.Keys]::Escape) { $e.SuppressKeyPress = $true; $lst.Visible = $false; $tbS.Focus() }
+        }.GetNewClosure())
+
+        # Ручное указание области под обложку для выбранного шаблона: в окне сразу выделена найденная автоматически область.
+        $ctx.Area = {
+            param([string]$w)
+            try {
+                $s = $ctx.Slot[$w]
+                $p = [string]$s.New
+                if ($p -eq '' -and [string]$s.Id -ne '' -and -not [bool]$s.Cleared) {
+                    # Сохранённая рамка: область правится по готовому PNG, новые координаты применятся при сохранении комплекта.
+                    $fr = Get-CoverFrame ([string]$s.Id)
+                    if ($null -eq $fr) { return }
+                    $fp = Join-Path (Get-FramesDir) ([string]$fr.file)
+                    if (-not [System.IO.File]::Exists($fp)) { return }
+                    $ini = $s.Rect
+                    if ($null -eq $ini) { $ini = @{ x = [int]$fr.x; y = [int]$fr.y; w = [int]$fr.w; h = [int]$fr.h } }
+                    $rr = Show-FrameRectPicker $f $fp $ini
+                    if ($null -eq $rr) { return }
+                    $same = ([int]$rr.x -eq [int]$fr.x -and [int]$rr.y -eq [int]$fr.y -and [int]$rr.w -eq [int]$fr.w -and [int]$rr.h -eq [int]$fr.h)
+                    if ($same) { $s.Rect = $null; $s.RectChanged = $false; & $ctx.ShowSlot $w; return }   # область не менялась: PNG не трогаем
+                    $rr['manual'] = $true
+                    $s.Rect = $rr
+                    $s.RectChanged = $true
+                    & $ctx.ShowSlot $w
+                    return
+                }
+                if ($p -eq '' -or -not [System.IO.File]::Exists($p)) { return }
+                $init = $s.Rect
+                if ($null -eq $init) {
+                    $inf = Get-CoverFrameFileInfo $p
+                    if ($null -ne $inf) { if ($null -ne $inf.Hole) { $init = $inf.Hole } elseif ($null -ne $inf.Guess) { $init = $inf.Guess } }
+                }
+                $r = Show-FrameRectPicker $f $p $init
+                if ($null -eq $r) { return }
+                $r['manual'] = $true
+                $s.Rect = $r
+                & $ctx.ShowSlot $w
+            } catch {
+                try { Write-ConfigLog ('Frames: область под обложку комплекта: ' + $_.Exception.Message) } catch {}
+            }
+        }.GetNewClosure()
+        # «Вписать»: переключает режим наложения для слота (обложка в прозрачной области или на весь холст).
+        $ctx.ToggleFit = {
+            param([string]$w)
+            $s = $ctx.Slot[$w]
+            $s.Fit = (-not [bool]$s.Fit)
+            $s.FitChanged = $true
+            & $ctx.ShowSlot $w
+        }.GetNewClosure()
+        $ctx.Pb['vPin'].Add_Click({ $ctx.Slot['v'].Pinned = (-not [bool]$ctx.Slot['v'].Pinned); & $ctx.ShowSlot 'v' }.GetNewClosure())
+        $ctx.Pb['hPin'].Add_Click({ $ctx.Slot['h'].Pinned = (-not [bool]$ctx.Slot['h'].Pinned); & $ctx.ShowSlot 'h' }.GetNewClosure())
+        $ctx.Pb['vFit'].Add_Click({ & $ctx.ToggleFit 'v' }.GetNewClosure())
+        $ctx.Pb['hFit'].Add_Click({ & $ctx.ToggleFit 'h' }.GetNewClosure())
+        $ctx.Pb['vArea'].Add_Click({ & $ctx.Area 'v' }.GetNewClosure())
+        $ctx.Pb['hArea'].Add_Click({ & $ctx.Area 'h' }.GetNewClosure())
+        $ctx.Pb['v'].Add_Click({ & $ctx.Pick 'v' }.GetNewClosure())
+        $ctx.Pb['h'].Add_Click({ & $ctx.Pick 'h' }.GetNewClosure())
+        # «Карандаш»: окно подгонки (масштаб колесом, смещение перетаскиванием) на образце обложки с выбранной рамкой.
+        # Результат запоминается в слоте и при сохранении комплекта пишется в шаблон рамки (поле adj).
+        $ctx.EditAdj = {
+            param([string]$w)
+            $s = $ctx.Slot[$w]
+            $path = ''; $hole = $null
+            if ([string]$s.New -ne '') { $path = [string]$s.New }
+            elseif ([string]$s.Id -ne '' -and -not [bool]$s.Cleared) {
+                $fr = Get-CoverFrame ([string]$s.Id)
+                if ($null -ne $fr) { $path = Join-Path (Get-FramesDir) ([string]$fr.file); $hole = $fr }
+            }
+            if ($path -eq '' -or -not [System.IO.File]::Exists($path)) { return }
+            if ($null -ne $s.Rect -and ([string]$s.New -ne '' -or [bool]$s.RectChanged)) { $hole = $s.Rect }
+            $fb = $null; $sample = ''; $punched = ''
+            try {
+                $fb = Open-FrameBitmapNoLock $path
+                $hr = $hole; $punch = $false
+                try { if ($null -ne $hr -and $hr.manual) { $punch = $true } } catch {}
+                if ($null -eq $hr) { $hr = Find-FrameHoleRect $fb }
+                if ($null -eq $hr) { $hr = Find-FramePlaceholderRect $fb; if ($null -ne $hr) { $punch = $true } }
+                if ($null -eq $hr) { $hr = @{ x = 0; y = 0; w = [int]$fb.Width; h = [int]$fb.Height } }
+                $useFrame = $path
+                if ($punch) {
+                    # Область под обложку задана вручную или найдена по заглушке: в копии рамки вырезаем её, иначе заглушка закроет образец.
+                    $pc = New-Object System.Drawing.Bitmap($fb)
+                    $gp = [System.Drawing.Graphics]::FromImage($pc)
+                    try {
+                        $gp.CompositingMode = [System.Drawing.Drawing2D.CompositingMode]::SourceCopy
+                        $gp.FillRectangle([System.Drawing.Brushes]::Transparent, [int]$hr.x, [int]$hr.y, [int]$hr.w, [int]$hr.h)
+                    } finally { $gp.Dispose() }
+                    $punched = Join-Path ([System.IO.Path]::GetTempPath()) ('sc_kit_frame_' + [guid]::NewGuid().ToString('N').Substring(0, 10) + '.png')
+                    $pc.Save($punched, [System.Drawing.Imaging.ImageFormat]::Png)
+                    $pc.Dispose()
+                    $useFrame = $punched
+                }
+                $sb = Get-FrameSampleBitmap $w
+                $sample = Join-Path ([System.IO.Path]::GetTempPath()) ('sc_kit_sample_' + [guid]::NewGuid().ToString('N').Substring(0, 10) + '.png')
+                try { $sb.Save($sample, [System.Drawing.Imaging.ImageFormat]::Png) } finally { $sb.Dispose() }
+                $frRec = [pscustomobject]@{ file = ''; x = [int]$hr.x; y = [int]$hr.y; w = [int]$hr.w; h = [int]$hr.h; fit = [bool]$s.Fit; adj = '' }
+                $res = @{ Saved = $false; Adj = $null }
+                [void](Show-EditorFrameAdjustWindow $null $f @{ Base = $sample; FramePath = $useFrame; Frame = $frRec; Kind = $w; Cur = $s.Adj; Result = $res })
+                if ($res.Saved) { $s.Adj = $res.Adj; $s.AdjChanged = $true; & $ctx.ShowSlot $w }
+            } catch {
+                try { Write-ConfigLog ('Frames: шаблон подгонки: ' + $_.Exception.Message) } catch {}
+            } finally {
+                if ($null -ne $fb) { try { $fb.Dispose() } catch {} }
+                foreach ($tf in @($sample, $punched)) { if ($tf -ne '') { try { Remove-Item -LiteralPath $tf -Force -ErrorAction SilentlyContinue } catch {} } }
+            }
+        }.GetNewClosure()
+        $ctx.Pb['vEye'].Add_Click({ & $ctx.EditAdj 'v' }.GetNewClosure())
+        $ctx.Pb['hEye'].Add_Click({ & $ctx.EditAdj 'h' }.GetNewClosure())
+        $ctx.Pb['vClear'].Add_Click({ $ctx.Slot['v'].New = ''; $ctx.Slot['v'].Rect = $null; $ctx.Slot['v'].Cleared = $true; $ctx.Slot['v'].Adj = $null; $ctx.Slot['v'].AdjChanged = $false; & $ctx.ShowSlot 'v' }.GetNewClosure())
+        $ctx.Pb['hClear'].Add_Click({ $ctx.Slot['h'].New = ''; $ctx.Slot['h'].Rect = $null; $ctx.Slot['h'].Cleared = $true; $ctx.Slot['h'].Adj = $null; $ctx.Slot['h'].AdjChanged = $false; & $ctx.ShowSlot 'h' }.GetNewClosure())
+        & $ctx.ShowSlot 'v'
+        & $ctx.ShowSlot 'h'
+
+        # При правке сохранённого комплекта фокус не уходит в поле SteamGridDB (иначе его текст выделяется при открытии):
+        # он переводится на кнопку «Сохранить». У нового комплекта поле поиска по-прежнему получает фокус.
+        if (-not $isNew) {
+            $f.Add_Shown({ try { $f.ActiveControl = $btnOk } catch {} }.GetNewClosure())
+        }
+
+        $f.Add_FormClosing({
+            param($s, $e)
+            try {
+                if ($f.DialogResult -ne [System.Windows.Forms.DialogResult]::OK) { return }
+                $has = $false
+                foreach ($w in @('v', 'h')) {
+                    $sl = $ctx.Slot[$w]
+                    if ([string]$sl.New -ne '' -or ([string]$sl.Id -ne '' -and -not [bool]$sl.Cleared)) { $has = $true }
+                }
+                if (-not $has) {
+                    $e.Cancel = $true
+                    $f.DialogResult = [System.Windows.Forms.DialogResult]::None
+                    [void](Show-AppMessageBox($f, (T 'frames_kit_need_one'), (T 'frames_title'), [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information))
+                }
+            } catch {}
+        }.GetNewClosure())
+
+        if ($f.ShowDialog($owner) -ne [System.Windows.Forms.DialogResult]::OK) { return $null }
+        $nm = ([string]$tbN.Text).Trim()
+        if ($nm -eq '') { $nm = ([string]$tbS.Text).Trim() }
+        if ($nm -eq '') { $nm = (T 'frames_kit_title_new') }
+        $ctx.Keep = $true
+        # Отмеченные в «Применить набор для» (ключи emu:/launcher:/coll:) и снятые галочки у тех эмуляторов и лончеров, что были привязаны к набору.
+        $tgtSel = New-Object System.Collections.Generic.List[string]
+        $tgtUnb = New-Object System.Collections.Generic.List[string]
+        for ($ti = 0; $ti -lt $ctx.TgtKeys.Count; $ti++) {
+            $tk = [string]$ctx.TgtKeys[$ti]
+            if ($tk -eq '') { continue }
+            if ([bool]$ctx.TgtOn[$ti]) { [void]$tgtSel.Add($tk) }
+            elseif ($ctx.TgtInit.ContainsKey($tk)) { [void]$tgtUnb.Add($tk) }
+        }
+        # Галочка «Использовать для» выключена: ничего не применяем, а привязки, что были у набора, снимаем (рамки с игр уберёт Apply-FrameKitTargets после вопроса).
+        if (-not [bool]$lbApply.Checked) { $tgtSel.Clear(); $tgtUnb.Clear(); foreach ($uk in @($ctx.TgtInit.Keys)) { [void]$tgtUnb.Add([string]$uk) } }
+        return @{ Name = $nm; Slot = $ctx.Slot; Temps = $ctx.Temps; Sgdb = ([string]$ctx.Chosen).Trim(); Targets = $tgtSel.ToArray(); Unbound = $tgtUnb.ToArray() }
+    } catch {
+        try { Write-ConfigLog ('Frames: окно комплекта: ' + $_.Exception.Message) } catch {}
+        return $null
+    } finally {
+        if ($null -ne $ctx.Pb) { foreach ($pbk in @('v', 'h')) { try { if ($null -ne $ctx.Pb[$pbk] -and $null -ne $ctx.Pb[$pbk].Image) { $ctx.Pb[$pbk].Image.Dispose() } } catch {} } }
+        if (-not $ctx.Keep) { foreach ($t in @($ctx.Temps)) { try { Remove-Item -LiteralPath ([string]$t) -Force -ErrorAction SilentlyContinue } catch {} } }
+        if ($null -ne $ctx.Timer) { try { $ctx.Timer.Stop(); $ctx.Timer.Dispose() } catch {} }
+        if ($null -ne $ctx.Tip) { try { $ctx.Tip.Dispose() } catch {} }
+        if ($null -ne $f) { try { $f.Dispose() } catch {} }
+    }
+}
+
+# Сохраняет результат окна комплекта: добавляет выбранные картинки как шаблоны, создаёт или обновляет комплект,
+# убирает шаблоны, которые остались без комплекта. Возвращает комплект.
+# Применяет набор к выбранным в окне набора категориям.
+#  * emu:<id> / wrap:<id> - эмулятор или враппер: набор записывается в профиль (рамка ложится на обложки игр, запускаемых через него);
+#  * launcher:<id> - лончер: то же, что выбор набора на вкладке лончера в библиотеке;
+#  * coll:<ключ> - коллекция Steam: набор накладывается на обложки игр, которые уже в этой коллекции (массовая смена рамок).
+# Unbound - эмуляторы и лончеры, у которых галочку сняли: привязка к этому набору убирается.
+function Apply-FrameKitTargets($owner, $Kit, $r) {
+    try {
+        if ($null -eq $Kit -or $null -eq $r) { return }
+        $kid = [string]$Kit.id
+        if ($kid -eq '') { return }
+        $sel = @(); $unb = @()
+        try { $sel = @($r.Targets) } catch {}
+        try { $unb = @($r.Unbound) } catch {}
+        if ($sel.Count -eq 0 -and $unb.Count -eq 0) { return }
+        $emuChanged = $false
+        $setEmu = {
+            param([string]$epId, [string]$val, [bool]$isWrap = $false)
+            $profList = $(if ($isWrap) { @($global:launchWrappers) } else { @($global:emulatorProfiles) })
+            foreach ($ep in $profList) {
+                if ($null -eq $ep) { continue }
+                if ([string]$ep.Id -ne $epId) { continue }
+                if ($ep -is [System.Collections.IDictionary]) { $ep['FrameKit'] = $val }
+                elseif ($null -ne $ep.PSObject.Properties['FrameKit']) { $ep.FrameKit = $val }
+                else { Add-Member -InputObject $ep -NotePropertyName FrameKit -NotePropertyValue $val -Force }
+                return $true
+            }
+            return $false
+        }
+        foreach ($k in $sel) {
+            $ks = [string]$k
+            if ($ks.StartsWith('emu:')) { if (& $setEmu $ks.Substring(4) $kid) { $emuChanged = $true } }
+            elseif ($ks.StartsWith('wrap:')) { if (& $setEmu $ks.Substring(5) $kid $true) { $emuChanged = $true } }
+            elseif ($ks.StartsWith('launcher:')) { Set-LauncherFrameKit $ks.Substring(9) $kid }
+        }
+        foreach ($k in $unb) {
+            $ks = [string]$k
+            if ($ks.StartsWith('emu:')) { if (& $setEmu $ks.Substring(4) '') { $emuChanged = $true } }
+            elseif ($ks.StartsWith('wrap:')) { if (& $setEmu $ks.Substring(5) '' $true) { $emuChanged = $true } }
+            elseif ($ks.StartsWith('launcher:')) { if ([string](Get-LauncherFrameKit $ks.Substring(9)) -eq $kid) { Set-LauncherFrameKit $ks.Substring(9) '' } }
+        }
+        if ($emuChanged) { Save-Configuration }
+        # Коллекции: игры-ярлыки, которые в них состоят.
+        # Игры, к которым набор будет применён, собираются в один список: о применении к уже добавленным играм спрашиваем один раз.
+        $applyList = New-Object System.Collections.Generic.List[object]
+        $collKeys = @($sel | Where-Object { ([string]$_).StartsWith('coll:') } | ForEach-Object { ([string]$_).Substring(5) })
+        if ($collKeys.Count -gt 0) {
+            $matched = New-Object System.Collections.Generic.List[object]
+            $prevC = [System.Windows.Forms.Cursor]::Current
+            try {
+                [System.Windows.Forms.Cursor]::Current = [System.Windows.Forms.Cursors]::WaitCursor
+                $snap = Read-SteamCollectionsSnapshot
+                foreach ($en in @(Get-SteamLibraryEntries)) {
+                    if ($null -eq $en -or [string]$en.Kind -ne 'shortcut') { continue }
+                    $rec = $null
+                    try { $rec = $en.ShortcutRecord } catch {}
+                    $keysEn = @(Get-CollKeysForEntry $snap ([string]$en.AppId) 'shortcut' $rec)
+                    foreach ($ck in $collKeys) { if ($keysEn -contains $ck) { [void]$matched.Add($en); break } }
+                }
+            } finally { [System.Windows.Forms.Cursor]::Current = $prevC }
+            foreach ($mx in $matched) { [void]$applyList.Add($mx) }
+        }
+        # Лончеры (EA App, Epic и т.д.): набор не только запоминается для новых игр, но и накладывается на обложки уже добавленных игр этого лончера.
+        $launchKeys = @($sel | Where-Object { ([string]$_).StartsWith('launcher:') } | ForEach-Object { ([string]$_).Substring(9) })
+        if ($launchKeys.Count -gt 0) {
+            $lmatched = New-Object System.Collections.Generic.List[object]
+            $prevL = [System.Windows.Forms.Cursor]::Current
+            try {
+                [System.Windows.Forms.Cursor]::Current = [System.Windows.Forms.Cursors]::WaitCursor
+                foreach ($len in @(Get-SteamLibraryEntries)) {
+                    if ($null -eq $len -or [string]$len.Kind -ne 'shortcut') { continue }
+                    $llid = ''
+                    try { $llid = [string](Get-BulkEntryLauncherId $len) } catch {}
+                    if ($llid -ne '' -and ($launchKeys -contains $llid)) { [void]$lmatched.Add($len) }
+                }
+            } finally { [System.Windows.Forms.Cursor]::Current = $prevL }
+            foreach ($mx in $lmatched) { [void]$applyList.Add($mx) }
+        }
+        # Эмуляторы и враппера: набор не только запоминается в профиле (для новых игр), но и накладывается на обложки
+        # уже добавленных в Steam игр этого эмулятора/враппера.
+        $emuIds = @($sel | Where-Object { ([string]$_).StartsWith('emu:') } | ForEach-Object { ([string]$_).Substring(4) })
+        $wrapIds = @($sel | Where-Object { ([string]$_).StartsWith('wrap:') } | ForEach-Object { ([string]$_).Substring(5) })
+        if ($emuIds.Count -gt 0 -or $wrapIds.Count -gt 0) {
+            $ematched = New-Object System.Collections.Generic.List[object]
+            $prevE = [System.Windows.Forms.Cursor]::Current
+            try {
+                [System.Windows.Forms.Cursor]::Current = [System.Windows.Forms.Cursors]::WaitCursor
+                foreach ($een in @(Get-SteamLibraryEntries)) {
+                    if ($null -eq $een -or [string]$een.Kind -ne 'shortcut') { continue }
+                    $hit = $false
+                    if ($emuIds.Count -gt 0) {
+                        $eep = $null
+                        try { $eep = Get-EntryEmulatorProfile $een } catch {}
+                        if ($null -ne $eep -and ($emuIds -contains [string]$eep.Id)) { $hit = $true }
+                    }
+                    if (-not $hit -and $wrapIds.Count -gt 0) {
+                        $elw = $null
+                        try { $elw = Find-LaunchWrapperForShortcut ([string]$een.Exe) ([string]$een.LaunchOptions) } catch {}
+                        if ($null -ne $elw -and ($wrapIds -contains [string]$elw.Wrapper.Id)) { $hit = $true }
+                    }
+                    if ($hit) { [void]$ematched.Add($een) }
+                }
+            } finally { [System.Windows.Forms.Cursor]::Current = $prevE }
+            foreach ($mx in $ematched) { [void]$applyList.Add($mx) }
+        }
+        $applyUnique = @($applyList.ToArray() | Sort-Object -Property { [string]$_.AppId } -Unique)
+        if ($applyUnique.Count -gt 0) {
+            $applyQ = (Get-EditorFrameText 'frames_kit_apply_existing_q' 'Применить набор «{0}» к играм выбранных эмуляторов, врапперов, лончеров и коллекций, уже добавленным в библиотеку Steam ({1})? Если выбрать «Нет», набор будет только привязан: рамки получат новые игры, а обложки уже добавленных не изменятся.').Replace('{0}', [string]$Kit.name).Replace('{1}', [string]$applyUnique.Count)
+            if ([bool](Show-ThemedConfirm $owner $global:appTitle $applyQ)) { Invoke-BulkCoverFrames -Entries $applyUnique -Sel $kid -Owner $owner }
+        }
+        # Сняли галочку или убрали пункты: рамки снимаются с обложек уже добавленных игр отвязанных эмуляторов, врапперов и лончеров.
+        $uEmuIds = @($unb | Where-Object { ([string]$_).StartsWith('emu:') } | ForEach-Object { ([string]$_).Substring(4) })
+        $uWrapIds = @($unb | Where-Object { ([string]$_).StartsWith('wrap:') } | ForEach-Object { ([string]$_).Substring(5) })
+        $uLaunchIds = @($unb | Where-Object { ([string]$_).StartsWith('launcher:') } | ForEach-Object { ([string]$_).Substring(9) })
+        if ($uEmuIds.Count -gt 0 -or $uWrapIds.Count -gt 0 -or $uLaunchIds.Count -gt 0) {
+            $umatched = New-Object System.Collections.Generic.List[object]
+            $prevU = [System.Windows.Forms.Cursor]::Current
+            try {
+                [System.Windows.Forms.Cursor]::Current = [System.Windows.Forms.Cursors]::WaitCursor
+                foreach ($uen in @(Get-SteamLibraryEntries)) {
+                    if ($null -eq $uen -or [string]$uen.Kind -ne 'shortcut') { continue }
+                    $uhit = $false
+                    if ($uEmuIds.Count -gt 0) {
+                        $uep = $null
+                        try { $uep = Get-EntryEmulatorProfile $uen } catch {}
+                        if ($null -ne $uep -and ($uEmuIds -contains [string]$uep.Id)) { $uhit = $true }
+                    }
+                    if (-not $uhit -and $uWrapIds.Count -gt 0) {
+                        $ulw = $null
+                        try { $ulw = Find-LaunchWrapperForShortcut ([string]$uen.Exe) ([string]$uen.LaunchOptions) } catch {}
+                        if ($null -ne $ulw -and ($uWrapIds -contains [string]$ulw.Wrapper.Id)) { $uhit = $true }
+                    }
+                    if (-not $uhit -and $uLaunchIds.Count -gt 0) {
+                        $ullid = ''
+                        try { $ullid = [string](Get-BulkEntryLauncherId $uen) } catch {}
+                        if ($ullid -ne '' -and ($uLaunchIds -contains $ullid)) { $uhit = $true }
+                    }
+                    if ($uhit) { [void]$umatched.Add($uen) }
+                }
+            } finally { [System.Windows.Forms.Cursor]::Current = $prevU }
+            if ($umatched.Count -gt 0) {
+                $unbQ = (Get-EditorFrameText 'frames_kit_unbind_q' 'Набор отвязан от эмуляторов, врапперов и лончеров, которые вы сняли. Снять рамки с обложек их игр, уже добавленных в библиотеку Steam ({1})? Если выбрать «Нет», у этих игр рамки останутся, набор только отвязывается.').Replace('{1}', [string]$umatched.Count)
+                if ([bool](Show-ThemedConfirm $owner $global:appTitle $unbQ)) { Invoke-BulkCoverFrames -Entries $umatched.ToArray() -Sel 'none' -Owner $owner }
+            }
+        }
+    } catch {
+        try { Write-ConfigLog ('Frames: применение набора к категориям: ' + $_.Exception.Message) } catch {}
+    }
+}
+
+function Save-FrameKitResult($owner, $Kit, $r) {
+    $kitId = ''; $oldV = ''; $oldH = ''
+    if ($null -ne $Kit) { $kitId = [string]$Kit.id; $oldV = [string]$Kit.v; $oldH = [string]$Kit.h }
+    $ids = @{ v = $oldV; h = $oldH }
+    $sfx = @{ v = (T 'frames_kit_v'); h = (T 'frames_kit_h') }
+    foreach ($w in @('v', 'h')) {
+        $sl = $r.Slot[$w]
+        if ([string]$sl.New -ne '') {
+            $en = Import-FrameForKit $owner ([string]$sl.New) (([string]$r.Name) + ' (' + [string]$sfx[$w] + ')') $sl.Rect ([bool]$sl.Fit)
+            if ($null -ne $en) {
+                $ids[$w] = [string]$en.id
+                if ([bool]$sl.AdjChanged) { Set-CoverFrameAdj ([string]$en.id) $sl.Adj }
+            }
+        } elseif ([bool]$sl.Cleared) { $ids[$w] = ''
+        } else {
+            if ([bool]$sl.RectChanged -and [string]$sl.Id -ne '' -and $null -ne $sl.Rect) { [void](Set-CoverFrameRect ([string]$sl.Id) $sl.Rect) }
+            if ([bool]$sl.FitChanged -and [string]$sl.Id -ne '') { Set-CoverFrameFit ([string]$sl.Id) ([bool]$sl.Fit) }
+            if ([bool]$sl.AdjChanged -and [string]$sl.Id -ne '') { Set-CoverFrameAdj ([string]$sl.Id) $sl.Adj }
+        }
+    }
+    # Запись SteamGridDB сохраняется, только если её выбрали в этом окне; иначе у существующего комплекта остаётся прежняя.
+    $sg = $null
+    try { $sgNew = ([string]$r.Sgdb).Trim(); if ($sgNew -ne '' -and $sgNew -ne '-') { $sg = $sgNew } } catch {}
+    $k = Set-FrameKit $kitId ([string]$r.Name) ([string]$ids['v']) ([string]$ids['h']) $sg
+    Remove-UnusedFrames @($oldV, $oldH)
+    foreach ($t in @($r.Temps)) { try { Remove-Item -LiteralPath ([string]$t) -Force -ErrorAction SilentlyContinue } catch {} }
+    try { Apply-FrameKitTargets $owner $k $r } catch {}
+    return $k
+}
+
+# Вкладка «Рамки» в настройках: список комплектов + «Создать / Изменить / Удалить» и «Шаблоны…» (список отдельных шаблонов).
+function Add-FramesManagerControls ($owner, $container) {
+    $btnW = 90; $btnH = 28; $btnGap = 8
+    $btnRowTop = $container.ClientSize.Height - 10 - $btnH
+    $listBottomGap = 13
+
+    $lv = New-Object System.Windows.Forms.ListView
+    # Двойная буферизация (свойство у Control закрытое): без неё OwnerDraw-таблица при пересборке списка и после долгой работы
+    # на UI-потоке перерисовывается по частям, и на ней остаются белые пятна. Включаем до создания хэндла окна.
+    try { [System.Windows.Forms.Control].GetProperty('DoubleBuffered', [System.Reflection.BindingFlags]'Instance,NonPublic').SetValue($lv, $true, $null) } catch {}
+    $lv.Location = New-Object System.Drawing.Point(0, 0)
+    $lv.Size = New-Object System.Drawing.Size($container.ClientSize.Width, ($btnRowTop - $listBottomGap))
+    $lv.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor `
+                 [System.Windows.Forms.AnchorStyles]::Right -bor [System.Windows.Forms.AnchorStyles]::Bottom
+    $lv.View = [System.Windows.Forms.View]::Details
+    $lv.FullRowSelect = $true
+    $lv.GridLines = $false
+    $lv.MultiSelect = $false
+    $lv.HideSelection = $false
+    $lv.HeaderStyle = [System.Windows.Forms.ColumnHeaderStyle]::Clickable
+    $lv.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+    $lv.BackColor = $steamUi.Input
+    $lv.ForeColor = $steamUi.Text
+    $lv.Font = New-Object System.Drawing.Font('Segoe UI', 8.5)
+    # Колонки: 1 - название (как пользователь назвал комплект), 2 - SteamGridDB (запись, по которой искали обложки),
+    # 3 - состав комплекта: «Пара» (обе обложки), «Вертикальная» или «Горизонтальная» (только одна из них).
+    $colName = 150; $colSgdb = 150
+    $colKit = [System.Math]::Max(100, ($container.ClientSize.Width - $colName - $colSgdb))
+    [void]$lv.Columns.Add((T 'frames_name'), $colName)
+    [void]$lv.Columns.Add((T 'frames_kit_search'), $colSgdb)
+    [void]$lv.Columns.Add((T 'frames_kit_col_name'), $colKit)
+    $container.Controls.Add($lv)
+
+    # Как у таблиц эмуляторов и врапперов: пользователь не меняет ширину колонок (ни перетаскиванием границы, ни двойным
+    # кликом), а горизонтальная полоса прокрутки скрыта. Ширину выставляет только код ($fitColumns): колонки «SteamGridDB»
+    # и «Комплект» ровно по самому длинному тексту (заголовок или значение), всё оставшееся место занимает «Название».
+    # Сумма ширин всегда равна ширине списка, поэтому справа в заголовке нет белой полосы.
+    $widthGuard = @{ Busy = $false; Fitting = $false }
+    $lv.Add_ColumnWidthChanging({
+        param($s, $e)
+        if (-not $widthGuard.Busy) {
+            $e.Cancel = $true
+            try { $e.NewWidth = [int]$s.Columns[$e.ColumnIndex].Width } catch {}
+        }
+    }.GetNewClosure())
+
+    $fitColumns = {
+        # ColumnWidthChanged вызывает эту же функцию: повторный вход пропускаем.
+        if ($widthGuard.Fitting) { return }
+        $widthGuard.Fitting = $true
+        $widthGuard.Busy = $true
+        try {
+            try {
+                if ($lv.Columns.Count -lt 3) { return }
+                # Для заголовка запас под стрелку сортировки (▲/▼) и полужирное начертание активной колонки.
+                $hdrFont = New-Object System.Drawing.Font('Segoe UI Semibold', 8.5)
+                $need = @(0, 0, 0)
+                try {
+                    $arrow = ' ' + [char]0x25B2
+                    for ($ci = 1; $ci -lt 3; $ci++) {
+                        $wMax = [System.Windows.Forms.TextRenderer]::MeasureText(([string]$lv.Columns[$ci].Text + $arrow), $hdrFont).Width
+                        foreach ($it in $lv.Items) {
+                            if ($it.SubItems.Count -le $ci) { continue }
+                            $tw = [System.Windows.Forms.TextRenderer]::MeasureText([string]$it.SubItems[$ci].Text, $lv.Font).Width
+                            if ($tw -gt $wMax) { $wMax = $tw }
+                        }
+                        # 6 px слева (как в отрисовке) + запас справа, чтобы текст не обрезался многоточием.
+                        $need[$ci] = [int]$wMax + 18
+                    }
+                } finally { $hdrFont.Dispose() }
+                $first = [int]$lv.ClientSize.Width - $need[1] - $need[2]
+                if ($first -lt 100) { $first = 100 }
+                if ([int]$lv.Columns[1].Width -ne $need[1]) { $lv.Columns[1].Width = $need[1] }
+                if ([int]$lv.Columns[2].Width -ne $need[2]) { $lv.Columns[2].Width = $need[2] }
+                if ([int]$lv.Columns[0].Width -ne $first) { $lv.Columns[0].Width = $first }
+            } catch {}
+        } finally { $widthGuard.Busy = $false; $widthGuard.Fitting = $false }
+        try { [Win32ScrollBarHelper]::HideHorizontal($lv.Handle) } catch {}
+        try { [Win32ScrollBarHelper]::LockHeaderSizing($lv.Handle) } catch {}
+    }.GetNewClosure()
+    $lv.Add_Resize({ & $fitColumns }.GetNewClosure())
+    $lv.Add_HandleCreated({ & $fitColumns }.GetNewClosure())
+    $lv.Add_ColumnWidthChanged({ & $fitColumns }.GetNewClosure())
+
+    # Сортировка по клику на заголовок (повторный клик меняет направление) - как у таблиц эмуляторов и врапперов.
+    $lvSorter = New-Object ListViewColumnSorter
+    $lvSorter.SortColumn = 0
+    $lvSorter.Order = [System.Windows.Forms.SortOrder]::Ascending
+    $lv.ListViewItemSorter = $lvSorter
+    # Как на главном экране: пока пользователь не кликнул по заголовку, активной колонки (стрелки) нет.
+    $sortUi = @{ On = $false }
+    $lv.Add_ColumnClick({
+        param($s, $e)
+        try {
+            if ($lvSorter.SortColumn -eq $e.Column) {
+                if ($lvSorter.Order -eq [System.Windows.Forms.SortOrder]::Ascending) { $lvSorter.Order = [System.Windows.Forms.SortOrder]::Descending }
+                else { $lvSorter.Order = [System.Windows.Forms.SortOrder]::Ascending }
+            } else {
+                $lvSorter.SortColumn = $e.Column
+                $lvSorter.Order = [System.Windows.Forms.SortOrder]::Ascending
+            }
+            $sortUi.On = $true
+            $lv.Sort(); $lv.Invalidate()
+            try { [Win32ScrollBarHelper]::RefreshHeader($lv.Handle) } catch {}
+        } catch {}
+    }.GetNewClosure())
+
+    # Полностью своя отрисовка: нативный светлый заголовок и белый фон строк иначе не убрать.
+    $lv.OwnerDraw = $true
+    $lv.Add_DrawColumnHeader({
+        param($s, $e)
+        $e.Graphics.FillRectangle((New-Object System.Drawing.SolidBrush($steamUi.Panel2)), $e.Bounds)
+        $borderPen = New-Object System.Drawing.Pen($steamUi.Border)
+        $e.Graphics.DrawLine($borderPen, $e.Bounds.Left, $e.Bounds.Bottom - 1, $e.Bounds.Right, $e.Bounds.Bottom - 1)
+        $borderPen.Dispose()
+        if ($e.Header.Index -lt ($s.Columns.Count - 1)) {
+            $divPen = New-Object System.Drawing.Pen($steamUi.Border)
+            $e.Graphics.DrawLine($divPen, ($e.Bounds.Right - 1), ($e.Bounds.Top + 4), ($e.Bounds.Right - 1), ($e.Bounds.Bottom - 5))
+            $divPen.Dispose()
+        }
+        if (-not [string]::IsNullOrEmpty($e.Header.Text)) {
+            $headerText = $e.Header.Text
+            $isActiveCol = ($sortUi.On -and $lvSorter.SortColumn -eq $e.Header.Index -and $lvSorter.Order -ne [System.Windows.Forms.SortOrder]::None)
+            if ($isActiveCol) {
+                $arrow = if ($lvSorter.Order -eq [System.Windows.Forms.SortOrder]::Ascending) { ' ' + [char]0x25B2 } else { ' ' + [char]0x25BC }
+                $headerText = $headerText + $arrow
+            }
+            $sf = New-Object System.Drawing.StringFormat
+            $sf.LineAlignment = [System.Drawing.StringAlignment]::Center
+            $sf.Trimming = [System.Drawing.StringTrimming]::EllipsisCharacter
+            $sf.FormatFlags = [System.Drawing.StringFormatFlags]::NoWrap
+            $textRect = New-Object System.Drawing.RectangleF(($e.Bounds.X + 6), $e.Bounds.Y, ($e.Bounds.Width - 8), $e.Bounds.Height)
+            # Как на главном экране: активная колонка - акцентным цветом, полужирным, со стрелкой.
+            $hdrBrush = New-Object System.Drawing.SolidBrush($(if ($isActiveCol) { $steamUi.Accent } else { $steamUi.Muted }))
+            $hdrFont = if ($isActiveCol) { New-Object System.Drawing.Font('Segoe UI Semibold', 8.5) } else { $lv.Font }
+            $e.Graphics.DrawString($headerText, $hdrFont, $hdrBrush, $textRect, $sf)
+            $hdrBrush.Dispose(); if ($isActiveCol) { $hdrFont.Dispose() }
+        }
+        $e.DrawDefault = $false
+    }.GetNewClosure())
+    $lv.Add_DrawItem({ param($s, $e) $e.DrawDefault = $false })
+    $cellBrushSel = New-Object System.Drawing.SolidBrush($steamUi.Selected)
+    $cellBrushBg = New-Object System.Drawing.SolidBrush($steamUi.Input)
+    $cellBrushText = New-Object System.Drawing.SolidBrush($steamUi.Text)
+    $cellFmt = New-Object System.Drawing.StringFormat
+    $cellFmt.LineAlignment = [System.Drawing.StringAlignment]::Center
+    $cellFmt.Trimming = [System.Drawing.StringTrimming]::EllipsisCharacter
+    $cellFmt.FormatFlags = [System.Drawing.StringFormatFlags]::NoWrap
+    $lv.Add_DrawSubItem({
+        param($s, $e)
+        $bgBrush = if ($e.Item.Selected) { $cellBrushSel } else { $cellBrushBg }
+        $e.Graphics.FillRectangle($bgBrush, $e.Bounds)
+        $textRect = New-Object System.Drawing.RectangleF(($e.Bounds.X + 6), $e.Bounds.Y, ($e.Bounds.Width - 8), $e.Bounds.Height)
+        $e.Graphics.DrawString($e.SubItem.Text, $e.Item.Font, $cellBrushText, $textRect, $cellFmt)
+    }.GetNewClosure())
+    $lv.Add_Disposed({ try { $cellBrushSel.Dispose(); $cellBrushBg.Dispose(); $cellBrushText.Dispose(); $cellFmt.Dispose() } catch {} }.GetNewClosure())
+
+    $reloadList = {
+        # Список пересобирается под отключённой перерисовкой: иначе после Clear() таблица на мгновение пустая и рисуется по строкам.
+        $lv.BeginUpdate()
+        try {
+        $lv.Items.Clear()
+        foreach ($k in @(Get-FrameKitsSorted)) {
+            # Состав комплекта: обе рамки - «Пара», одна - «Вертикальная» или «Горизонтальная».
+            $frV = Get-CoverFrame ([string]$k.v)
+            $frH = Get-CoverFrame ([string]$k.h)
+            $hasV = ($null -ne $frV)
+            $hasH = ($null -ne $frH)
+            $kitText = '-'
+            if ($hasV -and $hasH) { $kitText = (T 'frames_kit_pair') }
+            elseif ($hasV) { $kitText = (T 'frames_kit_v') }
+            elseif ($hasH) { $kitText = (T 'frames_kit_h') }
+            # Запись SteamGridDB хранится у комплекта с момента, когда он сохранён с выбранной платформой. У комплектов,
+            # созданных раньше, её берём из названия рамки: оно создавалось как «<имя из поиска> (Вертикальная)».
+            $sg = ''
+            try { if ($null -ne $k.PSObject.Properties['sgdb']) { $sg = ([string]$k.sgdb).Trim() } } catch {}
+            if ($sg -eq '') {
+                foreach ($fr in @($frV, $frH)) {
+                    if ($null -eq $fr) { continue }
+                    $guess = (([string]$fr.name) -replace '\s*\([^()]*\)\s*$', '').Trim()
+                    # Совпадает с именем комплекта: рамка из файла, записи SteamGridDB у такого комплекта нет.
+                    if ($guess -ne '' -and -not $guess.Equals(([string]$k.name).Trim(), [System.StringComparison]::OrdinalIgnoreCase)) { $sg = $guess; break }
+                }
+            }
+            if ($sg -eq '') { $sg = '-' }
+            $item = New-Object System.Windows.Forms.ListViewItem([string]$k.name)
+            [void]$item.SubItems.Add($sg)
+            [void]$item.SubItems.Add($kitText)
+            $item.Tag = [string]$k.id
+            [void]$lv.Items.Add($item)
+        }
+        $lv.Sort()
+        & $fitColumns
+        } finally { $lv.EndUpdate() }
+        try { if ($lv.IsHandleCreated) { $lv.Invalidate(); [Win32ScrollBarHelper]::RefreshHeader($lv.Handle) } } catch {}
+    }.GetNewClosure()
+    & $reloadList
+
+    $styleBtn = {
+        param($b, [string]$text, [int]$x, [int]$w)
+        $b.Text = $text
+        $b.Location = New-Object System.Drawing.Point($x, $btnRowTop)
+        $b.Size = New-Object System.Drawing.Size($w, $btnH)
+        $b.Anchor = [System.Windows.Forms.AnchorStyles]::Bottom -bor [System.Windows.Forms.AnchorStyles]::Right
+        $b.FlatStyle = 'Flat'
+        $b.FlatAppearance.BorderColor = $steamUi.Border
+        $b.BackColor = $steamUi.Panel
+        $b.ForeColor = $steamUi.Text
+        $b.Cursor = [System.Windows.Forms.Cursors]::Hand
+        $container.Controls.Add($b)
+    }.GetNewClosure()
+
+    $btnAdd = New-Object System.Windows.Forms.Button
+    & $styleBtn $btnAdd (T 'emu_btn_add') ($container.ClientSize.Width - 3 * $btnW - 2 * $btnGap) $btnW
+    $btnAdd.Add_Click({
+        try {
+            $r = Show-FrameKitDialog $owner $null
+            if ($null -ne $r) { [void](Save-FrameKitResult $owner $null $r); & $reloadList }
+        } catch {
+            try { [void](Show-AppMessageBox($owner, ((T 'frames_title') + "`r`n`r`n" + $_.Exception.Message + "`r`n`r`n" + $_.InvocationInfo.PositionMessage), $global:appTitle, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)) } catch {}
+        }
+    }.GetNewClosure())
+
+    $editSelected = {
+        try {
+            if ($lv.SelectedItems.Count -eq 0) { return }
+            $k = Get-FrameKit ([string]$lv.SelectedItems[0].Tag)
+            if ($null -eq $k) { return }
+            $r = Show-FrameKitDialog $owner $k
+            if ($null -ne $r) { [void](Save-FrameKitResult $owner $k $r); & $reloadList }
+        } catch {
+            try { [void](Show-AppMessageBox($owner, ((T 'frames_title') + "`r`n`r`n" + $_.Exception.Message + "`r`n`r`n" + $_.InvocationInfo.PositionMessage), $global:appTitle, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)) } catch {}
+        }
+    }.GetNewClosure()
+    $btnEdit = New-Object System.Windows.Forms.Button
+    & $styleBtn $btnEdit (T 'emu_btn_edit') ($container.ClientSize.Width - 2 * $btnW - $btnGap) $btnW
+    $btnEdit.Add_Click($editSelected)
+
+    $btnRemove = New-Object System.Windows.Forms.Button
+    & $styleBtn $btnRemove (T 'emu_btn_remove') ($container.ClientSize.Width - $btnW) $btnW
+    $btnRemove.Add_Click({
+        try {
+            if ($lv.SelectedItems.Count -eq 0) { return }
+            $k = Get-FrameKit ([string]$lv.SelectedItems[0].Tag)
+            if ($null -eq $k) { return }
+            if (-not (Show-ThemedConfirm $owner $global:appTitle (T 'frames_kit_confirm_remove' @([string]$k.name)))) { return }
+            Remove-FrameKit ([string]$k.id)
+            & $reloadList
+        } catch {}
+    }.GetNewClosure())
+
+    $lv.Add_MouseDoubleClick($editSelected)
 }
 
 # ===================== WebP: ДЕКОДЕР (libwebp) =====================
@@ -25815,14 +32433,51 @@ function Save-ExistingShortcutCoversToGrid ($shortcutRecord) {
         @{Temp="temp_header.jpg";Base=($shortcutId);Legacy=".jpg"}
     )
     $changed=$false
+    $frameIdEx=''
+    try { $frameIdEx=[string](Get-CoverFrameIdForShortcut ([string]$shortcutRecord.Exe) ([string]$shortcutRecord.LaunchOptions) ([string]$shortcutRecord.StartDir) ([string]$shortcutRecord.AppName)) } catch {}
+    # Вариант «Значок» в меню рамки карточки: значок лончера рисуется на обложках при записи в grid (как в Copy-TempCoversDirectlyToGrid).
+    $bLidV = ''; $bLidH = ''
+    try {
+        $bfs = $script:EditorFrameState
+        if ($null -ne $bfs -and -not [string]::IsNullOrWhiteSpace([string]$bfs.Badge)) {
+            Initialize-EditorFrameSel $bfs
+            $bLidV = Get-EditorBadgeLauncherForSel $bfs ([string]$bfs.V)
+            $bLidH = Get-EditorBadgeLauncherForSel $bfs ([string]$bfs.H)
+        }
+    } catch {}
+    foreach ($bk in @(@('v', 'temp_p.jpg', $bLidV), @('h', 'temp_header.jpg', $bLidH))) {
+        if ([string]::IsNullOrWhiteSpace([string]$bk[2])) { continue }
+        try {
+            $tpb = Join-Path $global:tempCovers ([string]$bk[1])
+            if (-not (Test-Path -LiteralPath $tpb)) { continue }
+            # В temp обложка с рамкой, загруженная из grid: значок рисуется на исходной обложке, а не поверх рамки.
+            $rrb = Find-EditorFrameRecordForTemp $tpb
+            if ($null -ne $rrb) { Copy-Item -LiteralPath ([string]$rrb.Orig) -Destination $tpb -Force }
+            Copy-Item -LiteralPath $tpb -Destination (Join-Path $global:tempCovers ('pre_badge_' + [string]$bk[0] + '.bin')) -Force
+            [void](Add-LauncherBadgeToCoverFile $tpb ([string]$bk[2]) ([string]$bk[0]))
+        } catch {}
+    }
     foreach($item in $map){
         $src=Join-Path $global:tempCovers $item.Temp
         if(Test-Path $src){
             try{
-                [void](Copy-CoverToGridSlot $src $gridDir ([string]$item.Base) ([string]$item.Legacy))
+                if([string]$item.Temp -eq 'temp_p.jpg'){ [void](Copy-VerticalCoverToGridSlot $src $gridDir $shortcutId (Resolve-EditorFrameIdForSave 'v' $frameIdEx)) }
+                elseif([string]$item.Temp -eq 'temp_header.jpg'){ [void](Copy-HorizontalCoverToGridSlot $src $gridDir $shortcutId (Resolve-EditorFrameIdForSave 'h' (Get-CoverFrameHIdForVId $frameIdEx))) }
+                else { [void](Copy-CoverToGridSlot $src $gridDir ([string]$item.Base) ([string]$item.Legacy)) }
                 $changed=$true
-            }catch{}
+            }catch{ }
         }
+    }
+    # Метка «значок» для обложек, на которые он нарисован (по ней карточка и массовая смена знают исходник без значка).
+    foreach ($bk2 in @(@('v', $bLidV, ($shortcutId + 'p'), $shortcutId), @('h', $bLidH, $shortcutId, ($shortcutId + 'h')))) {
+        if ([string]::IsNullOrWhiteSpace([string]$bk2[1])) { continue }
+        try {
+            $preB = Join-Path $global:tempCovers ('pre_badge_' + [string]$bk2[0] + '.bin')
+            if (-not [System.IO.File]::Exists($preB)) { continue }
+            $dstB = Find-GridSlotFile $gridDir ([string]$bk2[2])
+            if ($null -ne $dstB) { Set-BadgeCoverRecord ([string]$bk2[3]) $preB ([string]$dstB) (([string]$bk2[2]) + '.orig') }
+        } catch {}
+        try { Remove-Item -LiteralPath (Join-Path $global:tempCovers ('pre_badge_' + [string]$bk2[0] + '.bin')) -Force -ErrorAction SilentlyContinue } catch {}
     }
     try {
         $iconSrc = Get-TempIconPath
@@ -28735,7 +35390,7 @@ function Add-GameToSteamQuietly ($game) {
             # нет данных - ничего не пишем (Steam использует своё). Общее значение включено - его подставит сама функция.
             $batchLogoPos = $null
             try { if ($null -eq (Get-LogoDefaultPosition) -and [string]$appId -match '^\d+$') { $batchLogoPos = Get-SteamPicsLogoPosition ([string]$appId) } } catch {}
-            Copy-TempCoversDirectlyToGrid $newId $batchLogoPos | Out-Null
+            Copy-TempCoversDirectlyToGrid $newId $batchLogoPos (Get-CoverFrameIdForShortcut ([string]$finalExe) ([string]$finalLaunchQ) ([string]$finalStart) ([string]$displayName) $(if ($isLauncherGame) { [string]$game.Launcher } else { '' }) $true) | Out-Null
             # Регион обложек (из «Настроек» / фактический fallback english) — чтобы
             # при позже открытой карточке кнопка региона совпадала с сохранённым.
             try {
@@ -29353,7 +36008,7 @@ function Add-RomToSteamQuietly ($game) {
         # Коллекции, выбранные кнопкой «Коллекции» главного окна (тихое добавление рома).
         try { Add-MainDefaultCollectionsToNewShortcut ([string]$newId) } catch {}
         # Положение логотипа по умолчанию подставит сама Copy-TempCoversDirectlyToGrid.
-        Copy-TempCoversDirectlyToGrid $newId | Out-Null
+        Copy-TempCoversDirectlyToGrid $newId $null (Get-CoverFrameIdForShortcut ([string]$finalExe) ([string]$finalLaunch) ([string]$startDir) ([string]$displayName) '' $true) | Out-Null
         try {
             $quietSlots = [PSCustomObject]@{
                 Vertical   = [PSCustomObject]@{ Source = 'SteamGridDB' }
@@ -32192,7 +38847,7 @@ function Show-SgdbFullPreview {
 }
 
 # Кнопка с глазом ровно по центру миниатюры плитки. Выглядит так же, как «глаз» (скрыть логотип) в карточке игры:
-# плоская кнопка 26x24 в цветах темы, значок рисует Invoke-EditorDrawIcon 'eye'. Работает и для вариантов SteamGridDB
+# плоская кнопка 26x24 в цветах темы, значок рисует Invoke-EditorDrawIcon 'zoom'. Работает и для вариантов SteamGridDB
 # (источник — URL в $pb.Tag, миниатюра — $pb.ThumbBytes), и для своих обложек (источник — путь к файлу в $pb.Tag).
 # Открывает полноразмерный просмотр для плитки (PictureBox). Используется и кнопкой-глазком, и правой кнопкой мыши по плитке.
 function Show-SgdbPreviewForPb {
@@ -32229,7 +38884,7 @@ function Add-SgdbPreviewEye {
     $eye.Tag = @{ Pb = $pb; Owner = $owner }
     $eye.Add_Paint({
         param($sender, $e)
-        try { Invoke-EditorDrawIcon $e.Graphics 'eye' $sender.ForeColor $sender.ClientSize $false } catch {}
+        try { Invoke-EditorDrawIcon $e.Graphics 'zoom' $sender.ForeColor $sender.ClientSize $false } catch {}
     })
     $eye.Add_Click({
         try { Show-SgdbPreviewForPb $this.Tag.Pb $this.Tag.Owner } catch {}
@@ -32251,7 +38906,7 @@ function Add-SgdbPreviewEye {
     if ($null -ne $tip) { try { $tip.SetToolTip($eye, (T 'preview_eye_tip')) } catch {} }
 }
 
-function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$thumbHeight, $owner, $customStore = $null, $moreProvider = $null, $platformKeys = @()) {
+function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$thumbHeight, $owner, $customStore = $null, $moreProvider = $null, $platformKeys = @(), $transparency = $null) {
     try { Update-SgdbCurlResolve 600 -Wait } catch {}
     $items=@($items)
     if($items.Count -eq 0 -and $null -eq $customStore -and $null -eq $moreProvider){return $null}
@@ -32327,6 +38982,33 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
     $btnMime=& $newBarButton ''
     $btnTags=& $newBarButton ''
     foreach($bb in @($btnSort,$btnDim,$btnStyle,$btnLang,$btnMime,$btnTags)){ $bar.Controls.Add($bb) }
+    # Кнопка «Без прозрачности» (только когда вызывающий код передал фильтр): по умолчанию показываются обложки с прозрачной областью, при нажатии - все.
+    $btnTransp=$null
+    # Теперь это тумблер (как «Автоимпорт» в окне библиотеки): включён - показываются все варианты, выключен - только с прозрачной областью.
+    $pnTransp=$null; $lblTransp=$null
+    if($null -ne $transparency){
+        $transpText=(T 'frames_no_transp')
+        $transpTw=[System.Windows.Forms.TextRenderer]::MeasureText($transpText,(New-Object System.Drawing.Font('Segoe UI',9))).Width
+        $pnTransp=New-Object System.Windows.Forms.Panel
+        $pnTransp.BackColor=$bar.BackColor
+        $pnTransp.Margin=New-Object System.Windows.Forms.Padding(8,0,0,0)
+        $pnTransp.Size=New-Object System.Drawing.Size((42+8+$transpTw+6),28)
+        $btnTransp=New-Object SteamToggleSwitch
+        $btnTransp.Size=New-Object System.Drawing.Size(42,24)
+        $btnTransp.Location=New-Object System.Drawing.Point(0,2)
+        $pnTransp.Controls.Add($btnTransp)
+        $lblTransp=New-Object System.Windows.Forms.Label
+        $lblTransp.AutoSize=$false
+        $lblTransp.Location=New-Object System.Drawing.Point(50,0)
+        $lblTransp.Size=New-Object System.Drawing.Size(($transpTw+6),28)
+        $lblTransp.TextAlign=[System.Drawing.ContentAlignment]::MiddleLeft
+        $lblTransp.Font=New-Object System.Drawing.Font('Segoe UI',9)
+        $lblTransp.ForeColor=[System.Drawing.Color]::FromArgb(220,223,228)
+        $lblTransp.Cursor=[System.Windows.Forms.Cursors]::Hand
+        $lblTransp.Text=$transpText
+        $pnTransp.Controls.Add($lblTransp)
+        $bar.Controls.Add($pnTransp)
+    }
 
     # Область миниатюр. Обычный Panel + ручной перенос строк: это надёжнее
     # FlowLayoutPanel при AutoScroll и не создаёт горизонтальный диапазон.
@@ -32384,8 +39066,14 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
     $dialogState.CloseMenuNow=$false
     $dialogState.LastMenu=$null
     $dialogState.OldMenus=New-Object System.Collections.ArrayList
+    $dialogState.ShowAll=$false
     $passesFilter={
         param($it)
+        if($null -ne $transparency -and -not [bool]$dialogState.ShowAll){
+            $trv=$null
+            try { $trv=& $transparency.Test $it } catch {}
+            if($trv -eq $false){ return $false }
+        }
         $f=$dialogState.Filter
         if($f.Dim.Count -gt 0){
             $dv=''
@@ -32605,6 +39293,7 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
     # Кладёт варианты в очередь на показ, пропуская уже виденные (по id).
     $enqueueItems={
         param($list)
+        if($null -ne $transparency -and -not [bool]$dialogState.ShowAll){ try { & $transparency.Prepare @($list) } catch {} }
         foreach($ni in @($list)){
             if($null -eq $ni){continue}
             $nid=''
@@ -32871,6 +39560,7 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
             if($dev -gt 0){ $tgx=$tgx+' ('+$dev+')' }
             $btnTags.Text=($tgx+' '+[char]0x25BE)
             if($dev -gt 0){ $btnTags.ForeColor=$acc; $btnTags.FlatAppearance.BorderColor=$acc } else { $btnTags.ForeColor=$nor; $btnTags.FlatAppearance.BorderColor=$brd }
+            if($null -ne $btnTransp){ $btnTransp.Checked=[bool]$dialogState.ShowAll; if([bool]$dialogState.ShowAll){ $lblTransp.ForeColor=$acc } else { $lblTransp.ForeColor=$nor } }
         } catch {}
     }
 
@@ -32987,6 +39677,7 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
     }
 
     $isDefaultFilter={
+        if($null -ne $transparency -and -not [bool]$dialogState.ShowAll){ return $false }
         $f=$dialogState.Filter
         return ($f.Dim.Count -eq 0 -and $f.Style.Count -eq 0 -and $f.Lang.Count -eq 0 -and $f.Mime.Count -eq 0 -and [bool]$f.Static -and [bool]$f.Animated -and [bool]$f.Humor -and [bool]$f.Epilepsy -and [bool]$f.Untagged -and ([bool]$f.Adult -eq [bool]$dialogState.AdultDefault))
     }
@@ -33008,7 +39699,7 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
     }
 
     # Меню сортировки.
-    $sortMenu=New-Object System.Windows.Forms.ContextMenuStrip
+    $sortMenu=(New-PanelCtxMenu)
     $sortMenu.BackColor=[System.Drawing.Color]::FromArgb(30,38,48)
     $sortMenu.ForeColor=[System.Drawing.Color]::FromArgb(220,223,228)
     try { Initialize-SCFilterRenderer; $sortMenu.Renderer=(New-Object SCFilterRenderer) } catch {}
@@ -33034,6 +39725,22 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
             $sortMenu.Show($btnSort,(New-Object System.Drawing.Point(0,$btnSort.Height)))
         } catch {}
     })
+    if($null -ne $btnTransp){
+        $transpToggle={
+            try {
+                $dialogState.ShowAll=(-not [bool]$dialogState.ShowAll)
+                & $updateBar
+                if(-not [bool]$dialogState.ShowAll){
+                    # Фильтр включён снова: превью уже полученных вариантов проверяются перед перестройкой списка.
+                    $allIt=@($dialogState.AllItems | ForEach-Object { $_.Item })
+                    try { & $transparency.Prepare $allIt } catch {}
+                }
+                & $applyFilters
+            } catch {}
+        }
+        $btnTransp.Add_Click($transpToggle)
+        $lblTransp.Add_Click($transpToggle)
+    }
 
     # Подпись значения фильтра: стиль / тип файла / язык.
     $filterValueLabel={
@@ -33143,7 +39850,7 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
         # закрывает его и тут же открывает новое), и доступ к уже уничтоженному ContextMenuStrip ронял окно выбора.
         # Откладываем: освобождаем все старые меню при закрытии окна.
         try { if($null -ne $dialogState.LastMenu){ [void]$dialogState.OldMenus.Add($dialogState.LastMenu) } } catch {}
-        $menu=New-Object System.Windows.Forms.ContextMenuStrip
+        $menu=(New-PanelCtxMenu)
         $menu.BackColor=[System.Drawing.Color]::FromArgb(30,38,48)
         $menu.ForeColor=[System.Drawing.Color]::FromArgb(220,223,228)
         try { Initialize-SCFilterRenderer; $menu.Renderer=(New-Object SCFilterRenderer) } catch {}
@@ -33374,7 +40081,7 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
             if($removable){
                 $tag=[PSCustomObject]@{Card=$card;Path=$path}
 
-                $menu=New-Object System.Windows.Forms.ContextMenuStrip
+                $menu=(New-PanelCtxMenu)
                 $menu.ShowCheckMargin=$false; $menu.ShowImageMargin=$false
                 try { Initialize-SCFilterRenderer; $menu.Renderer=(New-Object SCFilterRenderer) } catch {}
                 $menu.ForeColor=[System.Drawing.Color]::FromArgb(220,223,228)
@@ -34187,9 +40894,43 @@ function Set-EditorLogoSourceDefaults($hs, [string]$source, [string]$appId = '')
 # ===================== ПРЯМОЕ ПРИМЕНЕНИЕ СВЕЖЕСКАЧАННЫХ ОБЛОЖЕК =====================
 # Используется автоматическим потоком "Добавить выбранные игры в Steam":
 # копирует обложки НАПРЯМУЮ из temp-папки в config\grid.
-function Copy-TempCoversDirectlyToGrid ($shortcutId, $logoPosition = $null) {
+function Copy-TempCoversDirectlyToGrid ($shortcutId, $logoPosition = $null, [string]$frameId = '') {
     # Положение логотипа не передано (автоимпорт, ромы и т.п.) - берём «по умолчанию», если галочка включена.
     if ($null -eq $logoPosition) { try { $logoPosition = Get-LogoDefaultPosition } catch {} }
+    # Вариант «Значок» у лончера: рисуем значок на вертикальной и горизонтальной обложках в temp, дальше они копируются как обычно.
+    $badgeLid = [string]$script:CoverBadgeLauncherId
+    $script:CoverBadgeLauncherId = ''
+    # Горизонтальная рамка из выбора для новых игр в главном окне ($null - берётся рамка того же набора, что и вертикальная).
+    $hFrameOverride = $script:CoverFrameHIdOverride
+    $script:CoverFrameHIdOverride = $null
+    # Карточка открыта и знает лончер игры: значок рисуется по выбору в меню рамки каждой панели («Значок» / «Авто» с вариантом лончера).
+    $bLidV = ''; $bLidH = ''
+    $bfs = $script:EditorFrameState
+    try {
+        if ($null -ne $bfs -and -not [string]::IsNullOrWhiteSpace([string]$bfs.Badge)) {
+            $bLidV = Get-EditorBadgeLauncherForSel $bfs ([string]$bfs.V)
+            $bLidH = Get-EditorBadgeLauncherForSel $bfs ([string]$bfs.H)
+        } elseif (-not [string]::IsNullOrWhiteSpace($badgeLid)) {
+            # Без карточки (автоимпорт) или карточка без выбора: как раньше, значок по варианту на вкладке лончера.
+            $bSelV = 'auto'; $bSelH = 'auto'
+            if ($null -ne $bfs) { $bSelV = [string]$bfs.V; $bSelH = [string]$bfs.H }
+            $bTmp = @{ Badge = $badgeLid; BadgeAuto = $true }
+            $bLidV = Get-EditorBadgeLauncherForSel $bTmp $bSelV
+            $bLidH = Get-EditorBadgeLauncherForSel $bTmp $bSelH
+        }
+    } catch {}
+    foreach ($bk in @(@('v', 'temp_p.jpg', $bLidV), @('h', 'temp_header.jpg', $bLidH))) {
+        if ([string]::IsNullOrWhiteSpace([string]$bk[2])) { continue }
+        try {
+            $tpb = Join-Path $global:tempCovers ([string]$bk[1])
+            # В temp обложка с другой рамкой (загружена из grid): значок рисуется на исходной обложке, а не поверх рамки.
+            $rrb = Find-EditorFrameRecordForTemp $tpb
+            if ($null -ne $rrb) { Copy-Item -LiteralPath ([string]$rrb.Orig) -Destination $tpb -Force }
+            # Исходник без значка: по нему делается метка (см. Set-BadgeCoverRecord) и к нему возвращаются при смене значка на рамку.
+            Copy-Item -LiteralPath $tpb -Destination (Join-Path $global:tempCovers ('pre_badge_' + [string]$bk[0] + '.bin')) -Force
+            [void](Add-LauncherBadgeToCoverFile $tpb ([string]$bk[2]) ([string]$bk[0]))
+        } catch {}
+    }
     $steamPathProperty = Get-ConfiguredSteamExePath
     $steamPath = Get-ConfiguredSteamInstallPath
     $userDataPath = Get-ConfiguredSteamUserDataPath
@@ -34210,10 +40951,20 @@ function Copy-TempCoversDirectlyToGrid ($shortcutId, $logoPosition = $null) {
         $gridDir = Join-Path $_.FullName "config\grid"
         if (-not (Test-Path $gridDir)) { New-Item -ItemType Directory -Path $gridDir | Out-Null }
 
-        if (Test-Path (Join-Path $global:tempCovers "temp_p.jpg")) { try { [void](Copy-CoverToGridSlot (Join-Path $global:tempCovers "temp_p.jpg") $gridDir ([string]$shortcutId + "p") ".jpg") } catch {} }
+        if (Test-Path (Join-Path $global:tempCovers "temp_p.jpg")) { try { [void](Copy-VerticalCoverToGridSlot (Join-Path $global:tempCovers "temp_p.jpg") $gridDir ([string]$shortcutId) (Resolve-EditorFrameIdForSave 'v' $frameId)) } catch { } }
         if (Test-Path (Join-Path $global:tempCovers "temp_hero.jpg")) { try { [void](Copy-CoverToGridSlot (Join-Path $global:tempCovers "temp_hero.jpg") $gridDir ([string]$shortcutId + "_hero") ".jpg") } catch {} }
         if (Test-Path (Join-Path $global:tempCovers "temp_logo.png")) { try { [void](Copy-CoverToGridSlot (Join-Path $global:tempCovers "temp_logo.png") $gridDir ([string]$shortcutId + "_logo") ".png"); Remove-HiddenLogoStash ([string]$shortcutId) } catch {} }
-        if (Test-Path (Join-Path $global:tempCovers "temp_header.jpg")) { try { [void](Copy-CoverToGridSlot (Join-Path $global:tempCovers "temp_header.jpg") $gridDir ([string]$shortcutId) ".jpg") } catch {} }
+        if (Test-Path (Join-Path $global:tempCovers "temp_header.jpg")) { try { [void](Copy-HorizontalCoverToGridSlot (Join-Path $global:tempCovers "temp_header.jpg") $gridDir ([string]$shortcutId) (Resolve-EditorFrameIdForSave 'h' $(if ($null -ne $hFrameOverride) { [string]$hFrameOverride } else { Get-CoverFrameHIdForVId $frameId }))) } catch { } }
+        # Метка «значок» для обложек, на которые он нарисован.
+        foreach ($bk2 in @(@('v', $bLidV, ([string]$shortcutId + 'p'), [string]$shortcutId), @('h', $bLidH, [string]$shortcutId, ([string]$shortcutId + 'h')))) {
+            if ([string]::IsNullOrWhiteSpace([string]$bk2[1])) { continue }
+            try {
+                $preB = Join-Path $global:tempCovers ('pre_badge_' + [string]$bk2[0] + '.bin')
+                if (-not [System.IO.File]::Exists($preB)) { continue }
+                $dstB = Find-GridSlotFile $gridDir ([string]$bk2[2])
+                if ($null -ne $dstB) { Set-BadgeCoverRecord ([string]$bk2[3]) $preB ([string]$dstB) (([string]$bk2[2]) + '.orig') }
+            } catch {}
+        }
         $iconTemp = Get-TempIconPath
         if ($null -ne $iconTemp) {
             $iconExt = [System.IO.Path]::GetExtension($iconTemp)
@@ -34849,7 +41600,7 @@ function Set-SteamButtonIcons {
         try {
             $dbFl = [System.Reflection.BindingFlags]::Instance -bor [System.Reflection.BindingFlags]::NonPublic
             $dbProp = [System.Windows.Forms.Control].GetProperty('DoubleBuffered', $dbFl)
-            foreach ($dbCtl in @($pnlBatchActions, $btnAddToSteam, $btnSteamLibrary, $btnSwapEmuMain, $btnRestartSteam, $btnApplyColl, $btnApplyLibs, $btnApplySaves)) {
+            foreach ($dbCtl in @($pnlBatchActions, $btnAddToSteam, $btnSteamLibrary, $btnSwapEmuMain, $btnRestartSteam, $btnApplyColl, $btnApplyFrames, $btnApplyLibs, $btnApplySaves)) {
                 try { if ($null -ne $dbCtl) { $dbProp.SetValue($dbCtl, $true, $null) } } catch {}
             }
         } catch {}
@@ -34867,7 +41618,7 @@ $drawSteamButtonContent = {
         $btn = $sender
         $g = $e.Graphics
         $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::ClearTypeGridFit
-        $icon = if ($btn -eq $btnAddToSteam) { $script:steamAddButtonIcon } elseif ($btn -eq $btnSwapEmuMain) { $script:steamSwapButtonIcon } elseif ($btn -eq $btnApplyColl) { $script:collButtonIcon } elseif ($btn -eq $btnApplyLibs) { $script:libsApplyIcon } elseif ($btn -eq $btnApplySaves) { $script:savesApplyIcon } else { $script:steamLibraryButtonIcon }
+        $icon = if ($btn -eq $btnAddToSteam) { $script:steamAddButtonIcon } elseif ($btn -eq $btnSwapEmuMain) { $script:steamSwapButtonIcon } elseif ($btn -eq $btnApplyColl) { $script:collButtonIcon } elseif ($btn -eq $btnApplyFrames) { $script:framesButtonIcon } elseif ($btn -eq $btnApplyLibs) { $script:libsApplyIcon } elseif ($btn -eq $btnApplySaves) { $script:savesApplyIcon } else { $script:steamLibraryButtonIcon }
         $text = [string]$btn.Tag
         if ([string]::IsNullOrWhiteSpace($text)) { return }
         if ($btn -eq $btnSteamLibrary -and $script:sizeCalcBtnSwapped) { $icon = $null }   # «Отменить подсчёт» — без значка Steam
@@ -34948,6 +41699,7 @@ $btnAddToSteam.Add_Paint($drawSteamButtonContent)
 $btnSteamLibrary.Add_Paint($drawSteamButtonContent)
 $btnSwapEmuMain.Add_Paint($drawSteamButtonContent)
 $btnApplyColl.Add_Paint($drawSteamButtonContent)
+$btnApplyFrames.Add_Paint($drawSteamButtonContent)
 $btnApplyLibs.Add_Paint($drawSteamButtonContent)
 $btnApplySaves.Add_Paint($drawSteamButtonContent)
 
@@ -35278,13 +42030,38 @@ function Set-EditorSourceBadge($slot, [string]$source) {
     } catch {}
 }
 
-# Иконка слота взята из EXE: значок источника (папка) не показываем вовсе — папка означает только
-# «добавлена вручную из файла». Источник слота остаётся 'Local' (нужен для сохранения), а признак «из EXE»
+# Иконка слота взята из EXE: вместо значка-папки («добавлена вручную из файла») показываем серый значок выбранного источника. Источник слота остаётся 'Local' (нужен для сохранения), а признак «из EXE»
 # виден только по нажатой (подсвеченной) кнопке EXE.
 function Set-EditorSourceBadgeExe($slot) {
     try {
-        Set-EditorSourceBadge $slot 'Local'
-        if ($null -ne $slot -and $null -ne $slot.SourceBadge) { $slot.SourceBadge.Visible = $false }
+        if ($null -eq $slot -or $null -eq $slot.SourceBadge) { return }
+        # Источник слота остаётся 'Local' (нужен для сохранения), а значок показывает серый логотип выбранного источника
+        # (Steam или SteamGridDB): иконка взята из EXE, но «родной» источник карточки виден, хоть и приглушён.
+        $slot.Source = 'Local'
+        $which = 'Steam'
+        try { if ([string]$slot.EditorState.SearchSource -eq 'SteamGridDB') { $which = 'SteamGridDB' } } catch {}
+        $src = $null
+        if ($which -eq 'Steam') { $src = Get-SteamSourceIconBitmap } else { $src = Get-SteamGridDbSourceIconBitmap }
+        if ($null -eq $src) { $slot.SourceBadge.Visible = $false; return }
+        $gray = New-Object System.Drawing.Bitmap($src.Width, $src.Height, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+        $gg = [System.Drawing.Graphics]::FromImage($gray)
+        $ia = New-Object System.Drawing.Imaging.ImageAttributes
+        try {
+            # Оттенки серого с яркостью по весам RGB и прозрачностью 55%: значок приглушён, но узнаваем.
+            $cm = New-Object System.Drawing.Imaging.ColorMatrix
+            $cm.Matrix00 = 0.30; $cm.Matrix01 = 0.30; $cm.Matrix02 = 0.30
+            $cm.Matrix10 = 0.59; $cm.Matrix11 = 0.59; $cm.Matrix12 = 0.59
+            $cm.Matrix20 = 0.11; $cm.Matrix21 = 0.11; $cm.Matrix22 = 0.11
+            $cm.Matrix33 = 0.55; $cm.Matrix44 = 1.0
+            $ia.SetColorMatrix($cm)
+            $gg.DrawImage($src, (New-Object System.Drawing.Rectangle(0, 0, $src.Width, $src.Height)), 0, 0, $src.Width, $src.Height, [System.Drawing.GraphicsUnit]::Pixel, $ia)
+        } finally { $ia.Dispose(); $gg.Dispose(); try { $src.Dispose() } catch {} }
+        try { if ($null -ne $slot.SourceBadge.Image) { $slot.SourceBadge.Image.Dispose() } } catch {}
+        $slot.SourceBadge.Image = $gray
+        $slot.SourceBadge.SizeMode = [System.Windows.Forms.PictureBoxSizeMode]::Zoom
+        $slot.SourceBadge.Visible = $true
+        $slot.SourceBadge.BringToFront()
+        try { if ($slot.SourceBadge.Tag -is [System.Windows.Forms.ToolTip]) { $slot.SourceBadge.Tag.SetToolTip($slot.SourceBadge, '') } } catch {}
     } catch {}
 }
 
@@ -35700,7 +42477,7 @@ function Update-EditorComposeView($slot) {
 # в любой версии Windows и не превращаются в квадратики там, где шрифта нет. Рисунок построен на сетке 16x16 пикселей
 # с линией 1 px по координатам x.5 (без масштабирования), поэтому линии получаются чёткими, а не размытыми.
 function Invoke-EditorDrawIcon($g, [string]$kind, [System.Drawing.Color]$color, $clientSize, [bool]$flag) {
-    # kind: 'eye' (flag = логотип скрыт - глаз перечёркнут), 'lock' (flag = замок закрыт), 'frames' (flag = включено - уголки внутрь),
+    # kind: 'eye' (flag = логотип скрыт - глаз перечёркнут), 'zoom' (лупа с плюсом), 'lock' (flag = замок закрыт), 'frames' (flag = включено - уголки внутрь),
     # 'exe' (окно программы с заголовком: иконка из EXE).
     # Рисунок построен на сетке 20x20 (раньше 16x16) с линией 1.5 px и скруглёнными концами; при масштабе экрана > 100%
     # сетка растёт вместе с DPI. Прямые линии стоят на x.5 - они попадают ровно в пиксель и остаются чёткими.
@@ -35739,6 +42516,19 @@ function Invoke-EditorDrawIcon($g, [string]$kind, [System.Drawing.Color]$color, 
             $g.FillEllipse($brush, [single]7.2, [single]7.2, [single]5.6, [single]5.6)
             if ($flag) { $g.DrawLine($pen, [single]3.5, [single]3.5, [single]16.5, [single]16.5) }
         }
+        elseif ($kind -eq 'zoom') {
+            # Лупа с плюсом (просмотр обложки в полном размере). Сетка 20x20: стекло - круг с центром (8.5, 8.5), радиус 6;
+            # плюс по линиям x.5 (ровно в пиксель); ручка - под 45 градусов от края стекла, чуть толще и со скруглённым концом.
+            $g.DrawEllipse($pen, [single]2.5, [single]2.5, [single]12, [single]12)
+            $g.DrawLine($pen, [single]5.5, [single]8.5, [single]11.5, [single]8.5)
+            $g.DrawLine($pen, [single]8.5, [single]5.5, [single]8.5, [single]11.5)
+            $hp = New-Object System.Drawing.Pen($color, [single]2.0)
+            try {
+                $hp.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+                $hp.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+                $g.DrawLine($hp, [single]13.2, [single]13.2, [single]17.5, [single]17.5)
+            } finally { $hp.Dispose() }
+        }
         elseif ($kind -eq 'lock') {
             $g.DrawRectangle($pen, [single]4.5, [single]9.5, [single]11, [single]8)
             $g.FillRectangle($brush, [single]9, [single]12, [single]2, [single]2.5)
@@ -35746,6 +42536,19 @@ function Invoke-EditorDrawIcon($g, [string]$kind, [System.Drawing.Color]$color, 
             $g.DrawLine($pen, [single]6.5, [single]9.5, [single]6.5, [single]6)
             $g.DrawArc($pen, [single]6.5, [single]2.5, [single]7, [single]7, [single]180, [single]180)
             if ($flag) { $g.DrawLine($pen, [single]13.5, [single]6, [single]13.5, [single]9.5) }
+        }
+        elseif ($kind -eq 'coverframe') {
+            # Рамка обложки: четыре трапеции вокруг окошка с диагональными просветами (как значок-образец). Сетка 20x20, заливка.
+            foreach ($c in @(
+                @(2.8,2.0, 17.2,2.0, 13.2,6.0, 6.8,6.0),
+                @(2.0,2.8, 6.0,6.8, 6.0,13.2, 2.0,17.2),
+                @(18.0,2.8, 18.0,17.2, 14.0,13.2, 14.0,6.8),
+                @(2.8,18.0, 6.8,14.0, 13.2,14.0, 17.2,18.0))) {
+                $pts = [System.Drawing.PointF[]]@(
+                    [System.Drawing.PointF]::new([single]$c[0], [single]$c[1]), [System.Drawing.PointF]::new([single]$c[2], [single]$c[3]),
+                    [System.Drawing.PointF]::new([single]$c[4], [single]$c[5]), [System.Drawing.PointF]::new([single]$c[6], [single]$c[7]))
+                $g.FillPolygon($brush, $pts)
+            }
         }
         elseif ($kind -eq 'frames') {
             if ($flag) {
@@ -35821,7 +42624,7 @@ function Initialize-EditorCompose($heroSlot, $logoSlot) {
     # а ползунок занимает всё оставшееся место справа.
     $scaleLblW = 152
     # Под превью две строки: ползунок масштаба (28 px) и ниже галочка «по умолчанию» (22 px).
-    $rowY = [int](35 + $picH + 4)
+    $rowY = [int]([int]$heroSlot.Picture.Top + $picH + 4)
     $heroSlot.Picture.Size = New-Object System.Drawing.Size([int]$heroSlot.Picture.Width, $picH)
     $heroSlot.Missing.Size = New-Object System.Drawing.Size([int]$heroSlot.Missing.Width, $picH)
 
@@ -36205,10 +43008,18 @@ function Initialize-EditorCompose($heroSlot, $logoSlot) {
     # Значок стоит сразу после своей кнопки.
     $badgeLogoCtl = $logoSlot.SourceBadge
     $badgeHeroCtl = $heroSlot.SourceBadge
-    $badgeHeroCtl.Location = New-Object System.Drawing.Point(([int]$heroSlot.Panel.Width - 10 - [int]$badgeHeroCtl.Width), 8)
+    # Блок логотипа (лупа, кнопка, значок) отодвинут от блока фона на 20 px, чтобы группы не сливались.
+    # Левее каждой кнопки стоит лупа: крупный просмотр фона и логотипа (зазор 4 px, как у остальных кнопок заголовка).
+    $zoomTip = $null
+    try { $zoomTip = $heroSlot.EyeTip } catch {}
+    $badgeHeroCtl.Location = New-Object System.Drawing.Point(([int]$heroSlot.Panel.Width - 10 - [int]$badgeHeroCtl.Width), 10)
     $btnBg.Location = New-Object System.Drawing.Point(([int]$badgeHeroCtl.Left - 4 - [int]$btnBg.Width), 8)
-    $badgeLogoCtl.Location = New-Object System.Drawing.Point(([int]$btnBg.Left - 6 - [int]$badgeLogoCtl.Width), 8)
+    $zoomBg = New-EditorZoomButton $heroSlot.Panel ([int]$btnBg.Left - 4 - 26) 8 $heroSlot $zoomTip
+    $badgeLogoCtl.Location = New-Object System.Drawing.Point(([int]$zoomBg.Left - 20 - [int]$badgeLogoCtl.Width), 10)
     $btnLogo.Location = New-Object System.Drawing.Point(([int]$badgeLogoCtl.Left - 4 - [int]$btnLogo.Width), 8)
+    $zoomLogo = New-EditorZoomButton $heroSlot.Panel ([int]$btnLogo.Left - 4 - 26) 8 $logoSlot $zoomTip
+    $heroSlot | Add-Member -NotePropertyName ZoomBackground -NotePropertyValue $zoomBg -Force
+    $heroSlot | Add-Member -NotePropertyName ZoomLogo -NotePropertyValue $zoomLogo -Force
     $heroSlot.Panel.Controls.Add($btnLogo)
     $heroSlot.Panel.Controls.Add($btnBg)
     $btnLogo.BringToFront(); $btnBg.BringToFront()
@@ -36216,7 +43027,7 @@ function Initialize-EditorCompose($heroSlot, $logoSlot) {
     $heroSlot | Add-Member -NotePropertyName BtnLogo -NotePropertyValue $btnLogo -Force
     $heroSlot | Add-Member -NotePropertyName BtnBackground -NotePropertyValue $btnBg -Force
     # Подпись слота не должна заезжать под кнопки.
-    try { $heroSlot.Caption.AutoEllipsis = $true; $heroSlot.Caption.Width = [math]::Max(60, [int]$btnLogo.Left - 10 - 8) } catch {}
+    try { $heroSlot.Caption.AutoEllipsis = $true; $heroSlot.Caption.Width = [math]::Max(60, [int]$zoomLogo.Left - 10 - 8) } catch {}
     # Подсказки на кнопках заголовка (тот же ToolTip, что у «глаза», задержки как у главного окна).
     try {
         $heroTip = $heroSlot.EyeTip
@@ -36332,8 +43143,8 @@ function Initialize-EditorCompose($heroSlot, $logoSlot) {
     # Строка целиком стоит по центру свободной полосы между низом превью и нижним краем слота.
     $layoutRow = {
         try {
-            $band = [int]$heroSlot.Panel.Height - (35 + $picH)
-            $y0 = [int](35 + $picH + [Math]::Max(2, [Math]::Floor(($band - 28) / 2)))
+            $band = [int]$heroSlot.Panel.Height - ([int]$heroSlot.Picture.Top + $picH)
+            $y0 = [int]([int]$heroSlot.Picture.Top + $picH + [Math]::Max(2, [Math]::Floor(($band - 28) / 2)))
             $xFrames = 10 + $scaleLblW + 4
             $xEye = $xFrames + 26 + 6
             # Две кнопки одинакового размера (26x24) с зазором 6 px, затем ползунок: у SteamSlider дорожка начинается
@@ -36360,8 +43171,58 @@ function Set-EditorMissingState($slot, [bool]$missing) {
     if ($script:LogoComposeEnabled) { try { Update-EditorComposeView $slot } catch {} }
 }
 
+# Подгоняет область картинки слота под размер самой картинки (вертикальная, горизонтальная, иконка в компоновке с логотипом).
+# Zoom у PictureBox рисует картинку не по границам области (на скриншотах она то на 1 px сдвинута, то на 2 px выше области), поэтому
+# область делается ровно по картинке и ставится по центру отведённого места (AvailX/Y/W/H): края картинки совпадают с краями области,
+# и отступы 8 px до границ панели и до кнопок получаются точными. Без картинки область занимает всё отведённое место.
+function Set-EditorSlotBoxFit($slot) {
+    try {
+        if ($null -eq $slot -or $null -eq $slot.PSObject.Properties['FitBox'] -or -not [bool]$slot.FitBox) { return }
+        $pb = $slot.Picture
+        $ax = [int]$slot.AvailX; $ay = [int]$slot.AvailY; $aw = [int]$slot.AvailW; $ah = [int]$slot.AvailH
+        $nw = $aw; $nh = $ah
+        $img = $null
+        try { $img = $pb.Image } catch {}
+        if ($null -ne $img) {
+            $iw = 0; $ih = 0
+            try { $iw = [int]$img.Width; $ih = [int]$img.Height } catch {}
+            if ($iw -gt 0 -and $ih -gt 0) {
+                $ratio = [Math]::Min($aw / [double]$iw, $ah / [double]$ih)
+                $nw = [Math]::Max(1, [Math]::Min($aw, [int][Math]::Round($iw * $ratio)))
+                $nh = [Math]::Max(1, [Math]::Min($ah, [int][Math]::Round($ih * $ratio)))
+            }
+        }
+        $nx = $ax + [int][Math]::Floor(($aw - $nw) / 2)
+        $ny = $ay + [int][Math]::Floor(($ah - $nh) / 2)
+        $pb.SizeMode = [System.Windows.Forms.PictureBoxSizeMode]::StretchImage
+        $pb.SetBounds($nx, $ny, $nw, $nh)
+    } catch {}
+}
+
 function Set-EditorPreviewFile($slot, $filePath) {
+    # Обложка слота «Вертикальная» / «Горизонтальная» загружена (или заменена) в temp, а в панели выбран набор рамок
+    # (в том числе из профиля эмулятора): показываем её сразу с рамкой, а не только после выбора в меню.
+    if (-not [bool]$script:EditorFrameApplying) {
+        try {
+            $kindProp = $slot.PSObject.Properties['FrameKind']
+            if ($null -ne $kindProp -and $null -ne $slot.PSObject.Properties['FrameState'] -and -not [string]::IsNullOrWhiteSpace([string]$filePath)) {
+                $fkind = [string]$kindProp.Value
+                $tempName = 'temp_header.jpg'; if ($fkind -eq 'v') { $tempName = 'temp_p.jpg' }
+                if ([string]::Equals([System.IO.Path]::GetFileName([string]$filePath), $tempName, [System.StringComparison]::OrdinalIgnoreCase) -and (Test-Path -LiteralPath ([string]$filePath))) {
+                    $fsx = $slot.FrameState
+                    Initialize-EditorFrameSel $fsx
+                    $selx = [string]$fsx.H; if ($fkind -eq 'v') { $selx = [string]$fsx.V }
+                    if ((Get-EditorFrameIdForSel $selx $fkind) -ne '' -or (Get-EditorBadgeLauncherForSel $fsx $selx) -ne '') {
+                        $script:EditorFrameApplying = $true
+                        try { Update-EditorFramePreview $slot } finally { $script:EditorFrameApplying = $false }
+                        return $true
+                    }
+                }
+            }
+        } catch { $script:EditorFrameApplying = $false }
+    }
     $r = Set-EditorPreviewFileCore $slot $filePath
+    Set-EditorSlotBoxFit $slot
     if ($script:LogoComposeEnabled) { try { Update-EditorComposeView $slot } catch {} }
     # Иконка слота сменилась — пересчитываем подсветку кнопки EXE сразу, а не при наведении мыши.
     # Переключение Enabled вызывает обработчик EnabledChanged кнопки (он вызывает $updateIconExeState).
@@ -36376,6 +43237,8 @@ function Set-EditorPreviewFile($slot, $filePath) {
 }
 
 function Set-EditorPreviewFileCore($slot, $filePath) {
+    # Файл, который сейчас показан в слоте (с рамкой, если она наложена): его открывает кнопка «глаз» и правая кнопка мыши.
+    try { $slot | Add-Member -NotePropertyName ShownFile -NotePropertyValue ([string]$filePath) -Force } catch {}
     # Старая анимация слота снимается до освобождения картинки (возвращает в PictureBox статичный кадр).
     try { Stop-CoverAnimation $slot.Picture $true } catch {}
     try {
@@ -36477,17 +43340,25 @@ function New-EditorCoverSlot($parent, [string]$title, [int]$x, [int]$y, [int]$w,
     $caption.ForeColor = $steamUi.Text
     $group.Controls.Add($caption)
 
+    # Единый отступ вокруг миниатюры: 8 px от кнопок в заголовке (они заканчиваются на y 32), от левого, правого и нижнего края панели.
+    # Размеры считаются от клиентской области панели (рамка FixedSingle занимает по 1 px с каждой стороны), поэтому слева и справа отступ одинаковый.
+    $slotPad = 8
+    $slotPicTop = 32 + $slotPad
+    # Внутренняя область = размер панели минус рамка FixedSingle (по 1 px с каждой стороны). $group.ClientSize до создания окна
+    # возвращает размер БЕЗ вычета рамки (270x280 вместо 268x278), из-за чего области выходили на 2 px больше и отступы справа/снизу были 6 px, а не 8.
+    $slotCw = [int]$w - 2
+    $slotCh = [int]$h - 2
     $pb = New-Object System.Windows.Forms.PictureBox
-    $pb.Location = New-Object System.Drawing.Point(10, 35)
-    $pb.Size = New-Object System.Drawing.Size(([int]$w - 20), ([int]$h - 45))
+    $pb.Location = New-Object System.Drawing.Point($slotPad, $slotPicTop)
+    $pb.Size = New-Object System.Drawing.Size(($slotCw - 2 * $slotPad), ($slotCh - $slotPicTop - $slotPad))
     $pb.SizeMode = [System.Windows.Forms.PictureBoxSizeMode]::Zoom
     $pb.BackColor = $steamUi.Input
     $pb.Cursor = [System.Windows.Forms.Cursors]::Hand
     $group.Controls.Add($pb)
 
     $missing = New-Object System.Windows.Forms.PictureBox
-    $missing.Location = New-Object System.Drawing.Point(10, 35)
-    $missing.Size = New-Object System.Drawing.Size(([int]$w - 20), ([int]$h - 45))
+    $missing.Location = $pb.Location
+    $missing.Size = $pb.Size
     $missing.SizeMode = [System.Windows.Forms.PictureBoxSizeMode]::Zoom
     $missing.BackColor = $steamUi.Input
     $missing.Visible = $false
@@ -36505,8 +43376,9 @@ function New-EditorCoverSlot($parent, [string]$title, [int]$x, [int]$y, [int]$w,
     # справа от названия миниатюры, а не поверх самой картинки.
     $sourceBadge = New-Object System.Windows.Forms.PictureBox
     # Размер 26x24 - как у кнопки EXE в слоте иконки; правый край на линии 10 px от края панели (как у области картинки).
-    $sourceBadge.Size = New-Object System.Drawing.Size(26,24)
-    $sourceBadge.Location = New-Object System.Drawing.Point(([int]$w - 10 - 26), 8)
+    # Значок чуть меньше кнопок (22x20), по вертикали центрирован относительно них (кнопки: y=8, высота 24).
+    $sourceBadge.Size = New-Object System.Drawing.Size(22,20)
+    $sourceBadge.Location = New-Object System.Drawing.Point(([int]$w - 10 - 22), 10)
     $sourceBadge.BackColor = [System.Drawing.Color]::Transparent
     $sourceBadge.SizeMode = [System.Windows.Forms.PictureBoxSizeMode]::Zoom
     $sourceBadge.Visible = $false
@@ -36535,6 +43407,1365 @@ function New-EditorCoverSlot($parent, [string]$title, [int]$x, [int]$y, [int]$w,
 }
 
 
+
+# ===================== РАМКИ В КАРТОЧКЕ ИГРЫ: ВЫБОР КОМПЛЕКТА В ЗАГОЛОВКАХ ПАНЕЛЕЙ 1 И 2 (этап 1) =====================
+# Значок рамки стоит в заголовке панели слева от значка источника. Меню: «Авто (по привязке)», «Без рамки», комплекты,
+# «Изменить комплект…», «Комплекты…» и переключатель «Связать панели». Выбор накладывает рамку на миниатюру:
+# исходная обложка лежит в temp_p.jpg (вертикальная) / temp_header.jpg (горизонтальная) и не меняется.
+# Запись рамки в grid при сохранении и «Авто» подключаются на следующем этапе.
+
+function Get-EditorFrameText([string]$Key, [string]$Fallback) {
+    $t = ''
+    try { $t = [string](T $Key) } catch {}
+    if ([string]::IsNullOrWhiteSpace($t) -or $t -eq $Key) { return $Fallback }
+    return $t
+}
+
+# Id рамки для выбора в панели: '' для «Авто» (пока не подключено), «Без рамки» и несуществующего комплекта.
+function Get-EditorFrameIdForSel([string]$Sel, [string]$Kind) {
+    if ([string]::IsNullOrWhiteSpace($Sel) -or $Sel -eq 'none' -or $Sel -eq 'auto') { return '' }
+    $k = Get-FrameKit $Sel
+    if ($null -eq $k) { return '' }
+    if ($Kind -eq 'v') { return [string]$k.v }
+    return [string]$k.h
+}
+
+# Ищет запись framed.json для файла temp (карточка загружает в temp уже готовую обложку с рамкой из grid) по id игры из состояния карточки. Возвращает @{ Frame; Orig } или $null. Так рамка не накладывается второй раз.
+function Find-EditorFrameRecordForTemp([string]$TempPath) {
+    try {
+        if ([string]::IsNullOrWhiteSpace($TempPath) -or -not (Test-Path -LiteralPath $TempPath)) { return $null }
+        $m = Read-FramedCoverRecords
+        if ($null -eq $m -or $m.Count -eq 0) { return $null }
+        $len = [int64](New-Object System.IO.FileInfo($TempPath)).Length
+        # Карточка открыта для уже добавленной игры: метка ищется по самой игре (temp_p.jpg - ключ <id>, temp_header.jpg - <id>h).
+        # Проверяется только дешёвое: исходник на месте и размер temp равен размеру записанного файла (temp - его копия из grid).
+        try {
+            $fsK = $script:EditorFrameState
+            $sidK = ''; if ($null -ne $fsK -and $fsK.ContainsKey('ShortcutId')) { $sidK = [string]$fsK['ShortcutId'] }
+            if ($sidK -ne '') {
+                $nmK = [System.IO.Path]::GetFileName($TempPath); $keyK = ''
+                if ([string]::Equals($nmK, 'temp_p.jpg', [System.StringComparison]::OrdinalIgnoreCase)) { $keyK = $sidK }
+                elseif ([string]::Equals($nmK, 'temp_header.jpg', [System.StringComparison]::OrdinalIgnoreCase)) { $keyK = $sidK + 'h' }
+                if ($keyK -ne '' -and $m.ContainsKey($keyK)) {
+                    $rK = $m[$keyK]
+                    $opK = Join-Path (Get-FramesOrigDir) ([string]$rK.orig)
+                    $okOrigK = [System.IO.File]::Exists($opK); $okLenK = ([int64]$rK.len -eq $len)
+                    if ($okOrigK -and $okLenK) { return @{ Frame = [string]$rK.frame; Orig = $opK; Adj = [string]$rK.adj } }
+                } else {
+                }
+            } else {
+            }
+        } catch { }
+    } catch { }
+    return $null
+}
+
+# Один раз для каждой панели, когда в temp появилась обложка: если она была записана с рамкой комплекта, этот комплект выбран.
+function Initialize-EditorFrameSel($fs) {
+    try {
+        foreach ($kind in @('v', 'h')) {
+            $flag = 'Init' + $kind.ToUpper()
+            if ([bool]$fs[$flag]) { continue }
+            $name = 'temp_header.jpg'; if ($kind -eq 'v') { $name = 'temp_p.jpg' }
+            $tp = Join-Path $global:tempCovers $name
+            if (-not (Test-Path -LiteralPath $tp)) { continue }
+            $fs[$flag] = $true
+            $rec = Find-EditorFrameRecordForTemp $tp
+            if ($null -eq $rec) { continue }
+            # Метка «значок лончера»: выбран пункт «Значок».
+            if ([string]$rec.Frame -eq 'badge') {
+                if (-not [string]::IsNullOrWhiteSpace([string]$fs.Badge)) { if ($kind -eq 'v') { $fs.V = 'badge' } else { $fs.H = 'badge' } }
+                continue
+            }
+            foreach ($k in @(Get-FrameKitsSorted)) {
+                $fid = [string]$k.h; if ($kind -eq 'v') { $fid = [string]$k.v }
+                if ($fid -ne '' -and $fid -eq [string]$rec.Frame) {
+                    if ($kind -eq 'v') { $fs.V = [string]$k.id } else { $fs.H = [string]$k.id }
+                    # Подгонка обложки под рамку, записанная вместе с картинкой, возвращается в карточку.
+                    try { $fs.Adj[$kind] = (Read-FrameAdjust ([string]$rec.Adj)) } catch {}
+                    break
+                }
+            }
+        }
+    } catch { }
+}
+
+function Set-EditorFrameButtonState($btn, [bool]$on) {
+    try {
+        $btn.Tag = @{ Active = $on }
+        if ($on) { $btn.BackColor = $steamUi.Accent; $btn.ForeColor = [System.Drawing.Color]::White }
+        else { $btn.BackColor = $steamUi.Panel; $btn.ForeColor = $steamUi.Text }
+        $btn.FlatAppearance.MouseOverBackColor = $(if ($on) { $steamUi.Accent } else { $steamUi.Border })
+        $btn.Invalidate()
+    } catch {}
+}
+
+function Update-EditorFrameButtons($fs) {
+    try {
+        foreach ($kind in @('v', 'h')) {
+            $sl = $fs.Slots[$kind]
+            if ($null -eq $sl) { continue }
+            $sel = [string]$fs.H; if ($kind -eq 'v') { $sel = [string]$fs.V }
+            Set-EditorFrameButtonState $sl.FrameButton (((Get-EditorFrameIdForSel $sel $kind) -ne '') -or ((Get-EditorBadgeLauncherForSel $fs $sel) -ne ''))
+        }
+    } catch {}
+}
+
+# Id рамки для записи в grid. $AutoId - рамка по привязке (для вертикальной). Без открытой карточки или при «Авто» берётся она;
+# для горизонтальной «Авто» рамку не накладывает.
+# Подгонка обложки под рамку для записи в grid (только пока карточка открыта и в панели выбран комплект).
+function Get-EditorFrameAdjustForSave([string]$Kind) {
+    try {
+        $fs = $script:EditorFrameState
+        if ($null -eq $fs) { return $null }
+        $sel = [string]$fs.H; if ($Kind -eq 'v') { $sel = [string]$fs.V }
+        if ($sel -eq 'auto' -or $sel -eq 'none') { return $null }
+        $a = $fs.Adj[$Kind]
+        if (Test-FrameAdjustIsDefault $a) { return $null }
+        return $a
+    } catch { return $null }
+}
+
+function Resolve-EditorFrameIdForSave([string]$Kind, [string]$AutoId = '') {
+    try {
+        $fs = $script:EditorFrameState
+        if ($null -eq $fs) { return $AutoId }
+        Initialize-EditorFrameSel $fs
+        $sel = [string]$fs.H; if ($Kind -eq 'v') { $sel = [string]$fs.V }
+        if ($sel -eq 'auto') { return $AutoId }
+        $resId = Get-EditorFrameIdForSel $sel $Kind
+        return $resId
+    } catch { return $AutoId }
+}
+
+# Подпись выбора рамок в карточке (комплект и подгонка для вертикальной и горизонтальной обложек).
+# Нужна, чтобы смена одной только рамки считалась изменением карточки: сами файлы temp при этом не меняются.
+function Get-EditorFrameSignature {
+    try {
+        $fs = $script:EditorFrameState
+        if ($null -eq $fs) { return '' }
+        Initialize-EditorFrameSel $fs
+        $av = ''; $ah = ''
+        try { $av = Format-FrameAdjust $fs.Adj['v'] } catch {}
+        try { $ah = Format-FrameAdjust $fs.Adj['h'] } catch {}
+        return ([string]$fs.V + '|' + [string]$fs.H + '|' + $av + '|' + $ah)
+    } catch { return '?' + [guid]::NewGuid().ToString('N') }
+}
+
+# Лончер, значок которого рисуется на обложке в карточке (вариант «Значок»): только пока в панели стоит «Авто».
+function Get-EditorBadgeLauncherForSel($fs, [string]$Sel) {
+    try {
+        if ($null -eq $fs) { return '' }
+        if ([string]::IsNullOrWhiteSpace([string]$fs.Badge)) { return '' }
+        # Явный выбор «Значок» в меню рамки панели.
+        if ($Sel -eq 'badge') { return [string]$fs.Badge }
+        # «Авто»: значок только если он задан как вариант лончера на его вкладке (BadgeAuto); иначе ничего не рисуется.
+        if (($Sel -eq 'auto' -or [string]::IsNullOrWhiteSpace($Sel)) -and [bool]$fs.BadgeAuto) { return [string]$fs.Badge }
+        return ''
+    } catch { return '' }
+}
+
+# Копия обложки со значком лончера для миниатюры карточки (кеш в Frames\cache); $null - значок нарисовать не удалось.
+function Get-BadgedCoverPreviewFile([string]$CoverPath, [string]$LauncherId, [string]$Kind) {
+    try {
+        if (-not [System.IO.File]::Exists($CoverPath)) { return $null }
+        $ci = New-Object System.IO.FileInfo($CoverPath)
+        $key = ($CoverPath.ToLowerInvariant() + '|' + $ci.Length + '|' + $ci.LastWriteTimeUtc.Ticks + '|badge|' + $LauncherId + '|' + $Kind)
+        $sha = [System.Security.Cryptography.SHA1]::Create()
+        try { $hash = ([System.BitConverter]::ToString($sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($key))) -replace '-', '').Substring(0, 16).ToLowerInvariant() } finally { $sha.Dispose() }
+        $ext = [System.IO.Path]::GetExtension($CoverPath); if ([string]::IsNullOrWhiteSpace($ext)) { $ext = '.jpg' }
+        $out = Join-Path (Get-FramesCacheDir) ('badge_' + $hash + $ext)
+        if ([System.IO.File]::Exists($out) -and (New-Object System.IO.FileInfo($out)).Length -gt 0) { return $out }
+        Copy-Item -LiteralPath $CoverPath -Destination $out -Force -ErrorAction Stop
+        if (Add-LauncherBadgeToCoverFile $out $LauncherId $Kind) { return $out }
+        try { Remove-Item -LiteralPath $out -Force -ErrorAction SilentlyContinue } catch {}
+        return $null
+    } catch { return $null }
+}
+
+function Update-EditorFramePreview($slot) {
+    try {
+        if ($null -eq $slot) { return }
+        $kind = [string]$slot.FrameKind
+        $fs = $slot.FrameState
+        Initialize-EditorFrameSel $fs
+        $name = 'temp_header.jpg'; $sel = [string]$fs.H
+        if ($kind -eq 'v') { $name = 'temp_p.jpg'; $sel = [string]$fs.V }
+        $fid = Get-EditorFrameIdForSel $sel $kind
+        try { Set-EditorFrameButtonState $slot.FrameButton (($fid -ne '') -or ((Get-EditorBadgeLauncherForSel $fs $sel) -ne '')) } catch {}
+        $src = Join-Path $global:tempCovers $name
+        if (-not (Test-Path -LiteralPath $src)) { return }
+        $base = $src
+        $rec = Find-EditorFrameRecordForTemp $src
+        if ($null -ne $rec) { $base = [string]$rec.Orig }
+        $show = $base
+        if ($fid -ne '') {
+            # Подгонка действует только для той обложки, под которую сделана: при смене обложки сбрасывается.
+            $adj = $null
+            try { $adj = $fs.Adj[$kind] } catch {}
+            if ($null -ne $adj) {
+                $sig = Get-FrameFileSig $base
+                if ([string]::IsNullOrEmpty([string]$adj.Sig)) { $adj.Sig = $sig }
+                elseif ([string]$adj.Sig -ne $sig) {
+                    $adj = $null; try { $fs.Adj[$kind] = $null } catch {}
+                }
+            }
+            $f = Get-FramedCoverFile $base $fid $adj
+            if (-not [string]::IsNullOrWhiteSpace([string]$f)) { $show = [string]$f }
+        } else {
+            # Вариант «Значок» у лончера: в миниатюре карточки обложка показывается со значком лончера (в grid он рисуется при записи).
+            $blid = Get-EditorBadgeLauncherForSel $fs $sel
+            if ($blid -ne '') {
+                $f = Get-BadgedCoverPreviewFile $base $blid $kind
+                if (-not [string]::IsNullOrWhiteSpace([string]$f)) { $show = [string]$f }
+            }
+        }
+        [void](Set-EditorPreviewFile $slot $show)
+    } catch { }
+}
+
+# Ставит выбор в панели и, если включено «Связать панели», в соседней (для комплекта - только если в нём есть рамка нужного вида).
+function Set-EditorFrameSelection($slot, [string]$Sel) {
+    try {
+        $fs = $slot.FrameState
+        Initialize-EditorFrameSel $fs
+        $kind = [string]$slot.FrameKind
+        $otherKind = 'h'; if ($kind -eq 'h') { $otherKind = 'v' }
+        $before = @{ v = [string]$fs.V; h = [string]$fs.H }
+        if ($kind -eq 'v') { $fs.V = $Sel } else { $fs.H = $Sel }
+        if ([bool]$fs.Link) {
+            $ok = $true
+            if ($Sel -ne 'auto' -and $Sel -ne 'none' -and $Sel -ne 'badge') { $ok = ((Get-EditorFrameIdForSel $Sel $otherKind) -ne '') }
+            # В наборе нет рамки для соседней обложки - там рамка снимается («Без рамки»), а не остаётся от прежнего набора.
+            $otherSel = $Sel; if (-not $ok) { $otherSel = 'none' }
+            if ($otherKind -eq 'v') { $fs.V = $otherSel } else { $fs.H = $otherSel }
+        } else {
+        }
+        foreach ($k in @('v', 'h')) {
+            $now = if ($k -eq 'v') { [string]$fs.V } else { [string]$fs.H }
+            $adjReset = $false
+            if ($now -ne [string]$before[$k]) { try { $fs.Adj[$k] = $null; $adjReset = $true } catch {} }
+            if ($now -ne [string]$before[$k] -or $k -eq $kind) {
+                Update-EditorFramePreview $fs.Slots[$k]
+            }
+        }
+    } catch { }
+}
+
+# Владелец значка в карточке: эмулятор ('emu:<id>'), враппер ('wrap:<id>') или лончер. $Auto - значок рисуется при «Авто»
+# (в профиле выбран «Значок»). Пустой владелец убирает пункт «Значок» из меню рамок.
+function Set-EditorOwnerBadge([string]$OwnerId, [bool]$Auto = $false) {
+    try {
+        $fs = $script:EditorFrameState
+        if ($null -eq $fs) { return }
+        $old = [string]$fs.Badge
+        $fs.Badge = $OwnerId
+        $fs.BadgeAuto = ($Auto -and -not [string]::IsNullOrWhiteSpace($OwnerId))
+        Initialize-EditorFrameSel $fs
+        foreach ($k in @('v', 'h')) {
+            $slot = $fs.Slots[$k]
+            if ($null -eq $slot) { continue }
+            $cur = if ($k -eq 'v') { [string]$fs.V } else { [string]$fs.H }
+            if ($OwnerId -eq '' -and $cur -eq 'badge') { Set-EditorFrameSelection $slot 'auto' }
+            else { Update-EditorFramePreview $slot }
+        }
+    } catch {}
+}
+
+# Обработчик галочки «Враппер» создан через GetNewClosure: внутри него $script:EditorFrameState недоступен (виден как $null),
+# поэтому работа с состоянием рамок карточки вынесена в обычные функции.
+function Get-EditorBadgeKitIdValue { return [string]$script:LauncherBadgeKitId }
+
+function Test-EditorBadgeOwnerIsWrapper {
+    try {
+        $fs = $script:EditorFrameState
+        if ($null -eq $fs) { return $false }
+        return (([string]$fs.Badge) -like 'wrap:*')
+    } catch { return $false }
+}
+
+# Враппер выключен: значок враппера снимается, выбор «Значок» (и рамка, пришедшая от враппера при открытии карточки) возвращается в «Авто».
+# $BaselineFrames - подпись рамок на момент открытия карточки ('V|H|adjV|adjH'), $FromShortcut - враппер стоял в ярлыке.
+function Reset-EditorWrapperFrames([bool]$FromShortcut, [string]$BaselineFrames) {
+    try {
+        $fs = $script:EditorFrameState
+        if ($null -eq $fs) { return }
+        Initialize-EditorFrameSel $fs
+        $bSel = @('', '')
+        if ($FromShortcut -and -not [string]::IsNullOrEmpty($BaselineFrames)) { try { $bSel = @($BaselineFrames.Split('|')) } catch {} }
+        # Владелец значка - враппер: снимаем (пункт «Значок» из меню рамок исчезает, выбранный «Значок» -> «Авто»).
+        if (([string]$fs.Badge) -like 'wrap:*') { Set-EditorOwnerBadge '' $false }
+        $ki = 0
+        foreach ($wk in @('v', 'h')) {
+            $cur = if ($wk -eq 'v') { [string]$fs.V } else { [string]$fs.H }
+            $base = ''; if ($ki -lt $bSel.Count) { $base = [string]$bSel[$ki] }
+            $ki++
+            if ($cur -eq '' -or $cur -eq 'auto' -or $cur -eq 'none') { continue }
+            if ($cur -eq 'badge' -or ($FromShortcut -and $base -ne '' -and $cur -eq $base)) {
+                $slot = $fs.Slots[$wk]
+                if ($null -ne $slot) { Set-EditorFrameSelection $slot 'auto' }
+            }
+        }
+    } catch {}
+}
+
+function Get-EmulatorBadgeOwnerForProfile($Profile) {
+    try { if ($null -ne $Profile -and -not [string]::IsNullOrWhiteSpace([string]$Profile.Id)) { return ('emu:' + [string]$Profile.Id) } } catch {}
+    return ''
+}
+
+# Рамки из профиля эмулятора в карточке ROM: при открытии карточки и при смене эмулятора выбирается набор рамок этого эмулятора
+# (в обеих панелях, где он есть). Ручной выбор пользователя не трогается: меняется только «Авто» или набор прежнего эмулятора.
+# Эмулятор без набора возвращает «Авто», если стоял набор прежнего эмулятора.
+function Set-EditorEmulatorFrame([string]$KitId) {
+    try {
+        $fs = $script:EditorFrameState
+        if ($null -eq $fs) { return }
+        $kit = $null
+        if (-not [string]::IsNullOrWhiteSpace($KitId)) { $kit = Get-FrameKit $KitId }
+        $prev = ''
+        try { $prev = [string]$fs.EmuKit } catch {}
+        $newKit = ''; if ($null -ne $kit) { $newKit = [string]$kit.id }
+        $fs.EmuKit = $newKit
+        Initialize-EditorFrameSel $fs
+        foreach ($k in @('v', 'h')) {
+            $slot = $fs.Slots[$k]
+            if ($null -eq $slot) { continue }
+            $cur = if ($k -eq 'v') { [string]$fs.V } else { [string]$fs.H }
+            if ($cur -ne 'auto' -and $cur -ne '' -and $cur -ne $prev) { continue }
+            if ($newKit -ne '') {
+                if ((Get-EditorFrameIdForSel $newKit $k) -eq '') { continue }
+                if ($cur -ne $newKit) { Set-EditorFrameSelection $slot $newKit }
+            } elseif ($prev -ne '' -and $cur -eq $prev) {
+                Set-EditorFrameSelection $slot 'auto'
+            }
+        }
+    } catch {}
+}
+
+function Show-EditorFrameManagerDialog($owner) {
+    $f = $null
+    try {
+        $f = New-FramesDlgForm (Get-EditorFrameText 'frames_title' 'Рамки обложек') 640 430
+        $pnl = New-Object System.Windows.Forms.Panel
+        $pnl.Location = New-Object System.Drawing.Point(12, 12)
+        $pnl.Size = New-Object System.Drawing.Size(616, 406)
+        $pnl.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right -bor [System.Windows.Forms.AnchorStyles]::Bottom
+        $pnl.BackColor = $f.BackColor
+        $f.Controls.Add($pnl)
+        Add-FramesManagerControls $f $pnl
+        [void]$f.ShowDialog($owner)
+    } catch {} finally { try { if ($null -ne $f) { $f.Dispose() } } catch {} }
+}
+
+function New-EditorFrameMenuItem($menu, [string]$text, [bool]$checked, [scriptblock]$onClick) {
+    # Галочка рисуется рендерером программы (квадрат с заливкой акцентом и белой «птичкой», как в списках игр),
+    # а колонка галочек выравнивает текст всех пунктов по одной линии.
+    $mi = New-Object System.Windows.Forms.ToolStripMenuItem
+    $mi.Text = $text.Replace('&', '&&')
+    $mi.BackColor = $steamUi.Panel2
+    $mi.ForeColor = $steamUi.Text
+    $mi.Checked = $checked
+    if ($null -ne $onClick) { $mi.Add_Click($onClick) }
+    [void]$menu.Items.Add($mi)
+    return $mi
+}
+
+# Прокрутка колесом мыши в длинном меню или подменю: выпадающие меню не получают фокус, поэтому WM_MOUSEWHEEL уходит окну-владельцу.
+# Пока меню открыто, колесо над ним перехватывается, а в меню показывается «окно» из $Window пунктов, которое колесо сдвигает.
+# $Items - какие именно пункты прокручиваются (остальные, например «Без рамки» сверху и «Менеджер рамок» снизу, стоят на месте);
+# без $Items прокручиваются все пункты меню. Над прокручиваемой частью и под ней стоят тонкие полоски со стрелками ▲ ▼.
+function Enable-MenuWheelScroll($DropDown, [int]$Window = 18, $Items = $null, [int]$Height = 0) {
+    try {
+        if (-not ('SCMenuWheel10' -as [type])) {
+            Add-Type -ReferencedAssemblies @('System.Drawing','System.Windows.Forms') -TypeDefinition @'
+using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Windows.Forms;
+public sealed class SCMenuWheel10 : IMessageFilter
+{
+    private readonly ToolStripDropDown dd;
+    private int win;
+    // Общая высота меню (px): число видимых прокручиваемых пунктов считается так, чтобы меню целиком имело эту высоту при любом количестве закреплённых пунктов.
+    public static int TargetHeight = 520;
+    private List<ToolStripItem> items = null;
+    private int top = 0;
+    private bool dead = false;
+    private static readonly Dictionary<ToolStripDropDown, SCMenuWheel10> attached = new Dictionary<ToolStripDropDown, SCMenuWheel10>();
+    private SCMenuWheel10(ToolStripDropDown d, int w) { dd = d; win = w; }
+    // Стрелки прокрутки: ▲ сверху показывается, когда выше есть скрытые пункты, ▼ снизу - когда ниже. Щелчок по стрелке сдвигает список.
+    private ToolStripLabel up, down;
+    private int n = 0;
+    // Приглушённый цвет стрелки: смесь цвета текста и фона меню.
+    private Color Dim()
+    {
+        Color f = dd.ForeColor, b = dd.BackColor;
+        return Color.FromArgb((f.R * 6 + b.R * 4) / 10, (f.G * 6 + b.G * 4) / 10, (f.B * 6 + b.B * 4) / 10);
+    }
+    private ToolStripLabel MakeArrow(string t, int dir)
+    {
+        ToolStripLabel l = new ToolStripLabel(t);
+        l.AutoSize = false;
+        l.TextAlign = ContentAlignment.MiddleCenter;
+        l.BackColor = dd.BackColor;
+        l.ForeColor = Dim();
+        l.Font = new Font(dd.Font.FontFamily, 6f);
+        l.Size = new Size(20, 9);
+        l.Padding = Padding.Empty;
+        l.Margin = Padding.Empty;
+        l.Click += delegate { if (l.ForeColor == dd.BackColor) return; top += dir * 3; Apply(); };
+        return l;
+    }
+    private void Apply()
+    {
+        if (top > n - win) top = n - win;
+        if (top < 0) top = 0;
+        bool scroll = n > win;
+        dd.SuspendLayout();
+        for (int i = 0; i < n; i++) items[i].Visible = (i >= top && i < top + win);
+        // Стрелки всегда занимают место (когда список длиннее окна), только цвет гаснет: размер меню при прокрутке не меняется.
+        if (up != null) { up.Visible = scroll; up.ForeColor = (scroll && top > 0) ? Dim() : dd.BackColor; }
+        if (down != null) { down.Visible = scroll; down.ForeColor = (scroll && top + win < n) ? Dim() : dd.BackColor; }
+        dd.ResumeLayout(true);
+        dd.Invalidate();
+    }
+    public bool PreFilterMessage(ref Message m)
+    {
+        if (dead || m.Msg != 0x020A || dd == null || !dd.Visible) return false;
+        if (!dd.Bounds.Contains(Control.MousePosition)) return false;
+        int delta = (short)(((long)m.WParam >> 16) & 0xFFFF);
+        if (delta == 0 || n <= win) return true;
+        top += (delta > 0 ? -1 : 1) * 3 * Math.Max(1, Math.Abs(delta) / 120);
+        Apply();
+        return true;
+    }
+    public static void Attach(ToolStripDropDown dd, ToolStripItem[] only, int win, int targetH)
+    {
+        SCMenuWheel10 f = new SCMenuWheel10(dd, win);
+        // Меню собирается заново при каждом показе (то же меню, новые пункты): прежняя привязка гасится, её стрелки убираются.
+        SCMenuWheel10 old;
+        if (attached.TryGetValue(dd, out old))
+        {
+            old.dead = true;
+            if (old.up != null) dd.Items.Remove(old.up);
+            if (old.down != null) dd.Items.Remove(old.down);
+        }
+        attached[dd] = f;
+        int minW = 0;
+        dd.Opening += delegate
+        {
+            if (f.dead) return;
+            if (f.up == null)
+            {
+                f.items = new List<ToolStripItem>();
+                if (only != null) { foreach (ToolStripItem it in only) { if (it != null && dd.Items.Contains(it)) f.items.Add(it); } }
+                else { foreach (ToolStripItem it in dd.Items) f.items.Add(it); }
+                f.n = f.items.Count;
+                if (f.n == 0) return;
+                minW = dd.MinimumSize.Width;
+                f.up = f.MakeArrow("\u25B2", -1);
+                f.down = f.MakeArrow("\u25BC", 1);
+                dd.Items.Insert(dd.Items.IndexOf(f.items[0]), f.up);
+                dd.Items.Insert(dd.Items.IndexOf(f.items[f.n - 1]) + 1, f.down);
+            }
+            if (f.n == 0 || f.dead) return;
+            // Сколько прокручиваемых пунктов помещается: от целевой высоты отнимаются закреплённые пункты, две полоски со стрелками и поля меню.
+            int pitch = 22;
+            try { ToolStripItem it0 = f.items[0]; int h0 = it0.GetPreferredSize(Size.Empty).Height + it0.Margin.Vertical; if (h0 >= 16) pitch = h0; } catch { }
+            int pinned = 0;
+            foreach (ToolStripItem it in dd.Items)
+            {
+                if (it == f.up || it == f.down || f.items.Contains(it) || !it.Available) continue;
+                try { pinned += it.GetPreferredSize(Size.Empty).Height + it.Margin.Vertical; } catch { pinned += pitch; }
+            }
+            int w = ((targetH > 0 ? targetH : TargetHeight) - pinned - 18 - 4) / pitch;
+            if (w < 6) w = 6;
+            // Не показываем больше заданного числа пунктов одновременно: для контекстных списков единый предел — 18 строк.
+            if (f.win > 0 && w > f.win) w = f.win;
+            f.win = w;
+            // Ширина считается по всем пунктам, чтобы при прокрутке меню не меняло размер.
+            foreach (ToolStripItem it in f.items) it.Visible = true;
+            f.up.Visible = false; f.down.Visible = false;
+            f.up.Width = 20; f.down.Width = 20; f.up.Height = 9; f.down.Height = 9;
+            dd.MinimumSize = new Size(0, 0);
+            Size ps = dd.GetPreferredSize(Size.Empty);
+            dd.MinimumSize = new Size(Math.Max(ps.Width, minW), 0);
+            // Ширина стрелок задаётся один раз по самому широкому пункту (а не при каждой прокрутке), поэтому меню не растёт, а стрелка стоит по центру.
+            int aw = Math.Max(Math.Max(ps.Width, minW) - dd.Padding.Horizontal - 2, 20);
+            f.up.Width = aw; f.down.Width = aw;
+            f.top = 0;
+            f.Apply();
+        };
+        // Щелчок по стрелке не должен закрывать меню.
+        dd.Closing += delegate (object snd, ToolStripDropDownClosingEventArgs e)
+        {
+            if (f.dead || e.CloseReason != ToolStripDropDownCloseReason.ItemClicked || f.up == null) return;
+            Point pt = dd.PointToClient(Control.MousePosition);
+            if ((f.up.Visible && f.up.Bounds.Contains(pt)) || (f.down.Visible && f.down.Bounds.Contains(pt))) e.Cancel = true;
+        };
+        dd.Opened += delegate { if (!f.dead) Application.AddMessageFilter(f); };
+        dd.Closed += delegate { Application.RemoveMessageFilter(f); };
+    }
+}
+'@
+        }
+        $arr = $null
+        if ($null -ne $Items) { $arr = [System.Windows.Forms.ToolStripItem[]]@($Items) }
+        [SCMenuWheel10]::Attach($DropDown, $arr, $Window, $Height)
+    } catch {}
+}
+
+# Единый стиль всех чек-листов контекстного меню (главное окно и библиотека).
+# Различается только наличие колонки изображений: она нужна эмуляторам/врапперам,
+# но сами галочки, размеры, шрифт, рендерер и прокрутка всегда общие.
+function Initialize-SCContextChecklist {
+    param($DropDown, $OwnerMenu = $null, [bool]$ShowIcons = $false, [int]$Window = 18, $ScrollItems = $null, [int]$Height = 0, [bool]$AttachScroll = $true)
+    if ($null -eq $DropDown) { return }
+    try {
+        Initialize-SCFilterRenderer
+        [SCFilterRenderer]::Accent = $steamUi.Accent
+        [SCFilterRenderer]::Muted = $steamUi.Muted
+        if ($null -ne $OwnerMenu -and $null -ne $OwnerMenu.Renderer) { $DropDown.Renderer = $OwnerMenu.Renderer }
+        elseif ($null -eq $DropDown.Renderer) { $DropDown.Renderer = (New-Object SCFilterRenderer) }
+    } catch {}
+    try {
+        $DropDown.BackColor = [System.Drawing.Color]::FromArgb(22, 28, 36)
+        $DropDown.ForeColor = $steamUi.Text
+        if ($null -ne $OwnerMenu -and $null -ne $OwnerMenu.Font) { $DropDown.Font = $OwnerMenu.Font }
+        else { $DropDown.Font = New-Object System.Drawing.Font('Segoe UI', 9) }
+        # Для чек-листов колонка галочек всегда остаётся включённой: пустые пункты
+        # рисуются как пустые квадраты через SCFilterRenderer.
+        $DropDown.ShowCheckMargin = $true
+        $DropDown.ShowImageMargin = $ShowIcons
+        if ($ShowIcons) { $DropDown.ImageScalingSize = New-Object System.Drawing.Size(16, 16) }
+    } catch {}
+    if ($AttachScroll) { try { Enable-MenuWheelScroll $DropDown $Window $ScrollItems $Height } catch {} }
+}
+
+# Закрытие меню, у которого AutoClose отключён: щелчок мыши вне меню (и вне открытого подменю) в любом месте окна программы, Esc
+# или потеря активности окном закрывают меню. Щелчок по самой кнопке, открывшей меню, только закрывает его (сам щелчок гасится,
+# иначе кнопка тут же открыла бы меню снова).
+function Enable-MenuDismiss($Menu, $Group, $Button) {
+    try {
+        if (-not ('SCMenuDismiss' -as [type])) {
+            Add-Type -ReferencedAssemblies @('System.Drawing','System.Windows.Forms') -TypeDefinition @'
+using System;
+using System.Drawing;
+using System.Windows.Forms;
+using System.Text;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+public sealed class SCMenuDismiss : IMessageFilter
+{
+    private delegate bool EnumProc(IntPtr h, IntPtr l);
+    [DllImport("user32.dll")] private static extern bool EnumThreadWindows(uint tid, EnumProc cb, IntPtr l);
+    [DllImport("user32.dll", CharSet = CharSet.Auto)] private static extern int GetClassName(IntPtr h, StringBuilder sb, int n);
+    [DllImport("user32.dll")] private static extern IntPtr SendMessage(IntPtr h, int msg, IntPtr w, IntPtr l);
+    [DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
+    private readonly List<IntPtr> tips = new List<IntPtr>();
+    private Timer tipTimer;
+    // Пока меню открыто, подсказки всей программы отключены (TTM_ACTIVATE) и показанная убирается (TTM_POP): иначе они
+    // всплывают поверх меню. Новые окна подсказок отключаются на следующем тике; при закрытии меню включаются обратно.
+    private void SweepTips(bool restore)
+    {
+        try
+        {
+            EnumThreadWindows(GetCurrentThreadId(), delegate(IntPtr h, IntPtr l)
+            {
+                StringBuilder sb = new StringBuilder(64);
+                GetClassName(h, sb, 64);
+                if (sb.ToString() == "tooltips_class32")
+                {
+                    if (restore) { if (tips.Contains(h)) SendMessage(h, 0x401, (IntPtr)1, IntPtr.Zero); }
+                    else
+                    {
+                        if (!tips.Contains(h)) tips.Add(h);
+                        SendMessage(h, 0x401, IntPtr.Zero, IntPtr.Zero);
+                        SendMessage(h, 0x41C, IntPtr.Zero, IntPtr.Zero);
+                    }
+                }
+                return true;
+            }, IntPtr.Zero);
+        }
+        catch { }
+    }
+    private readonly ToolStripDropDown root;
+    private readonly ToolStripDropDownItem grp;
+    private readonly Rectangle swallow;
+    private readonly Form form;
+    private bool done = false;
+    private SCMenuDismiss(ToolStripDropDown r, ToolStripDropDownItem g, Rectangle s, Form f) { root = r; grp = g; swallow = s; form = f; }
+    private bool Inside(Point p)
+    {
+        if (root.Visible && root.Bounds.Contains(p)) return true;
+        if (grp != null && grp.HasDropDownItems && grp.DropDown.Visible && grp.DropDown.Bounds.Contains(p)) return true;
+        return false;
+    }
+    private void Finish()
+    {
+        if (done) return;
+        done = true;
+        try { Application.RemoveMessageFilter(this); } catch { }
+        try { if (tipTimer != null) { tipTimer.Stop(); tipTimer.Dispose(); tipTimer = null; } } catch { }
+        SweepTips(true);
+        try { if (form != null) form.Deactivate -= OnDeactivate; } catch { }
+        try { if (grp != null) { ToolStripDropDown d = grp.DropDown; d.Close(ToolStripDropDownCloseReason.CloseCalled); if (d.Visible) d.Visible = false; } } catch { }
+        try { if (root.Visible) root.Close(); } catch { }
+    }
+    private void OnDeactivate(object s, EventArgs e) { Finish(); }
+    public bool PreFilterMessage(ref Message m)
+    {
+        if (done) return false;
+        if (root.IsDisposed || !root.Visible) { Finish(); return false; }
+        int msg = m.Msg;
+        // Пока курсор над меню, движение и «зависание» мыши не доходят до окон под ним (превью, кнопки): иначе у них
+        // срабатывают их обработчики и всплывают подсказки фонового интерфейса.
+        if (msg == 0x200 || msg == 0x2A1)
+        {
+            if (Inside(Control.MousePosition))
+            {
+                bool own = (m.HWnd == root.Handle);
+                try { if (!own && grp != null && grp.DropDown.IsHandleCreated && m.HWnd == grp.DropDown.Handle) own = true; } catch { }
+                if (!own) return true;
+            }
+            return false;
+        }
+        if (msg == 0x201 || msg == 0x204 || msg == 0x207 || msg == 0xA1 || msg == 0xA4 || msg == 0xA7)
+        {
+            Point p = Control.MousePosition;
+            if (Inside(p)) return false;
+            bool sw = (msg == 0x201) && swallow.Contains(p);
+            Finish();
+            return sw;
+        }
+        if (msg == 0x100 && (int)(long)m.WParam == 27) { Finish(); return true; }
+        return false;
+    }
+    public static void Attach(ToolStripDropDown r, ToolStripDropDownItem g, Rectangle s, Form f)
+    {
+        SCMenuDismiss d = new SCMenuDismiss(r, g, s, f);
+        Application.AddMessageFilter(d);
+        d.SweepTips(false);
+        d.tipTimer = new Timer();
+        d.tipTimer.Interval = 30;
+        d.tipTimer.Tick += delegate { d.SweepTips(false); };
+        d.tipTimer.Start();
+        if (f != null) f.Deactivate += d.OnDeactivate;
+        r.Closed += delegate { d.Finish(); };
+    }
+}
+'@
+        }
+        $rect = [System.Drawing.Rectangle]::Empty
+        $frm = $null
+        if ($null -ne $Button) { $rect = $Button.RectangleToScreen($Button.ClientRectangle); $frm = $Button.FindForm() }
+        [SCMenuDismiss]::Attach($Menu, $Group, $rect, $frm)
+        try {
+            if ($null -ne ('SCToolTip' -as [type])) {
+                [SCToolTip]::Suppress = $true
+                $Menu.Add_Closed({ try { [SCToolTip]::Suppress = $false } catch {} })
+            }
+        } catch {}
+    } catch {}
+}
+
+function Show-EditorFrameMenu($slot, $owner) {
+    try {
+        $fs = $slot.FrameState
+        Initialize-EditorFrameSel $fs
+        Update-EditorFrameButtons $fs
+        $kind = [string]$slot.FrameKind
+        $cur = if ($kind -eq 'v') { [string]$fs.V } else { [string]$fs.H }
+        $menu = (New-PanelCtxMenu)
+        $menu.BackColor = $steamUi.Panel2; $menu.ForeColor = $steamUi.Text
+        try { Initialize-SCFilterRenderer; [SCFilterRenderer]::Accent = $steamUi.Accent; [SCFilterRenderer]::Muted = $steamUi.Muted; $menu.Renderer = (New-Object SCFilterRenderer) } catch {}
+        $menu.ShowCheckMargin = $true; $menu.ShowImageMargin = $false
+        # Меню не закрывается само (ни по выбору пункта, ни по щелчку в окне): его закрывают Enable-MenuDismiss (повторный щелчок
+        # по кнопке рамки, щелчок в любом месте окна, Esc, потеря активности) и пункты, открывающие отдельное окно.
+        $menu.AutoClose = $false
+        $s = $slot
+
+        # Меню остаётся открытым после выбора рамки в подменю и после переключения «Вписать обложку» / «Связать панели»:
+        # закрывается только дочернее меню, а отметки и доступность пунктов обновляются на месте ($st.Refresh).
+        $st = @{ Kits = @{}; KitNames = @{}; Grp = $null; GrpBase = ''; None = $null; Badge = $null; Fit = $null; Adjust = $null; Edit = $null; Link = $null }
+        $st.Cur = { if ($kind -eq 'v') { [string]$fs.V } else { [string]$fs.H } }.GetNewClosure()
+        $st.HideSub = { try { $d = $st.Grp.DropDown; if ($d.Visible) { $d.Close() }; if ($d.Visible) { $d.Visible = $false } } catch {} }.GetNewClosure()
+        $st.FitInfo = {
+            $c = & $st.Cur
+            $fid = Get-EditorFrameIdForSel $c $kind
+            $on = $false
+            if ($fid -ne '') { $on = [bool](Get-CoverFrameFit $fid) }
+            $oKind = 'v'; $oSel = [string]$fs.V
+            if ($kind -eq 'v') { $oKind = 'h'; $oSel = [string]$fs.H }
+            $oid = ''
+            if ([bool]$fs.Link -and $oSel -eq $c) { $oid = Get-EditorFrameIdForSel $c $oKind }
+            return @{ Id = $fid; On = $on; OtherId = $oid }
+        }.GetNewClosure()
+        $st.Refresh = {
+            try {
+                $c = & $st.Cur
+                $hb = -not [string]::IsNullOrWhiteSpace([string]$fs.Badge)
+                $bOn = $hb -and ($c -eq 'badge' -or ($c -eq 'auto' -and [bool]$fs.BadgeAuto))
+                $nOn = (($c -eq 'none' -or $c -eq 'auto') -and -not $bOn)
+                if ($null -ne $st.None) { $st.None.Checked = $nOn }
+                if ($null -ne $st.Badge) { $st.Badge.Checked = $bOn }
+                foreach ($kk in @($st.Kits.Keys)) { $st.Kits[$kk].Checked = ($c -eq $kk) }
+                if ($null -ne $st.Grp) {
+                    $kn = ''
+                    if ($st.KitNames.ContainsKey($c)) { $kn = [string]$st.KitNames[$c] }
+                    $gt = [string]$st.GrpBase
+                    if ($kn -ne '') { $gt = $gt + ': ' + $kn }
+                    $st.Grp.Text = $gt.Replace('&', '&&')
+                    $st.Grp.Checked = ($kn -ne '')
+                }
+                $fi = & $st.FitInfo
+                if ($null -ne $st.Fit) { $st.Fit.Checked = [bool]$fi.On; $st.Fit.Enabled = ($fi.Id -ne '') }
+                if ($null -ne $st.Adjust) { $st.Adjust.Enabled = ($fi.Id -ne '') }
+                if ($null -ne $st.Edit) {
+                    $hasKit = $false
+                    if ($c -ne 'auto' -and $c -ne 'none' -and $c -ne 'badge') { $hasKit = ($null -ne (Get-FrameKit $c)) }
+                    $st.Edit.Enabled = $hasKit
+                }
+                if ($null -ne $st.Link) { $st.Link.Checked = [bool]$fs.Link }
+            } catch {}
+        }.GetNewClosure()
+
+        # Пока комплект не выбран (внутреннее значение 'auto'), отмечена «Без рамки». Привязка комплектов к профилям эмуляторов
+        # подключится позже через 'auto' (см. Resolve-EditorFrameIdForSave).
+        $hasBadge = -not [string]::IsNullOrWhiteSpace([string]$fs.Badge)
+        $badgeOn = $hasBadge -and ($cur -eq 'badge' -or ($cur -eq 'auto' -and [bool]$fs.BadgeAuto))
+        $noneOn = (($cur -eq 'none' -or $cur -eq 'auto') -and -not $badgeOn)
+        $st.None = New-EditorFrameMenuItem $menu (Get-EditorFrameText 'card_frame_none' 'Без рамки') $noneOn ({ Set-EditorFrameSelection $s 'none'; & $st.Refresh; try { $menu.Close() } catch {} }.GetNewClosure())
+        # «Значок» - как на вкладке лончера: вместо рамки на обложки дорисовывается значок лончера. Пункт есть у игр из лончеров, ROM-игр эмуляторов и игр через враппер.
+        if ($hasBadge) {
+            $st.Badge = New-EditorFrameMenuItem $menu (Get-BadgeMenuText ([string]$fs.Badge)) $badgeOn ({ Set-EditorFrameSelection $s 'badge'; & $st.Refresh }.GetNewClosure())
+        }
+        $kitList = @(Get-FrameKitsSorted | Where-Object { (Get-EditorFrameIdForSel ([string]$_.id) $kind) -ne '' })
+        if ($kitList.Count -le 8) {
+            foreach ($k in $kitList) {
+                $kid = [string]$k.id
+                $st.Kits[$kid] = New-EditorFrameMenuItem $menu ([string]$k.name) ($cur -eq $kid) ({ Set-EditorFrameSelection $s $kid; & $st.Refresh }.GetNewClosure())
+            }
+        } else {
+            # Наборов много: они уходят в подменю «Наборы рамок» (с прокруткой), чтобы основное меню оставалось коротким.
+            # Если набор выбран, его название видно прямо в пункте подменю, а пункт отмечен.
+            $grpText = (Get-EditorFrameText 'card_frame_kits_group' 'Рамки')
+            $curKitName = ''
+            foreach ($k in $kitList) { if ([string]$k.id -eq $cur) { $curKitName = [string]$k.name; break } }
+            if ($curKitName -ne '') { $grpText = $grpText + ': ' + $curKitName }
+            $miGrp = New-EditorFrameMenuItem $menu $grpText ($curKitName -ne '') $null
+            $st.Grp = $miGrp; $st.GrpBase = (Get-EditorFrameText 'card_frame_kits_group' 'Рамки')
+            try {
+                $dd = $miGrp.DropDown
+                $dd.BackColor = $steamUi.Panel2; $dd.ForeColor = $steamUi.Text
+                try { $dd.Renderer = $menu.Renderer } catch {}
+                $dd.ShowCheckMargin = $true; $dd.ShowImageMargin = $false
+                $dd.AutoClose = $false
+                Enable-MenuWheelScroll $dd 18
+                foreach ($k in $kitList) {
+                    $kid = [string]$k.id
+                    $st.KitNames[$kid] = [string]$k.name
+                    $st.Kits[$kid] = New-EditorFrameMenuItem $dd ([string]$k.name) ($cur -eq $kid) ({ Set-EditorFrameSelection $s $kid; & $st.Refresh; & $st.HideSub }.GetNewClosure())
+                }
+            } catch {}
+        }
+        [void]$menu.Items.Add('-')
+        $kitSel = $null
+        if ($cur -ne 'auto' -and $cur -ne 'none' -and $cur -ne 'badge') { $kitSel = Get-FrameKit $cur }
+        # «Вписать обложку»: режим рамки этой панели (обложка вписывается в область под обложку или занимает весь холст).
+        # Пункт есть всегда; без выбранного комплекта он неактивен.
+        $fi0 = & $st.FitInfo
+        $miFit = New-EditorFrameMenuItem $menu (Get-EditorFrameText 'card_frame_fit' 'Вписать обложку') ([bool]$fi0.On) ({
+            try {
+                $fi = & $st.FitInfo
+                if ($fi.Id -eq '') { return }
+                $fitNew = -not [bool]$fi.On
+                Set-CoverFrameFit $fi.Id $fitNew
+                if ($fi.OtherId -ne '' -and $fi.OtherId -ne $fi.Id) { Set-CoverFrameFit $fi.OtherId $fitNew }
+                foreach ($kk in @('v', 'h')) { Update-EditorFramePreview $s.FrameState.Slots[$kk] }
+                & $st.Refresh
+            } catch {}
+        }.GetNewClosure())
+        $st.Fit = $miFit
+        if ($fi0.Id -eq '') { $miFit.Enabled = $false }
+        # «Изменить положение…»: окно подгонки обложки в рамке (масштаб колесом, смещение перетаскиванием). Раньше открывалось кнопкой «глаз».
+        # Без выбранной рамки неактивен (как «Вписать обложку»).
+        $miAdjust = New-EditorFrameMenuItem $menu (Get-EditorFrameText 'card_frame_adjust' 'Изменить положение…') $false ({
+            try {
+                if ([bool]$s.IsLoading) { return }
+                $fiA = & $st.FitInfo
+                if ($fiA.Id -eq '') { return }
+                try { $menu.Close() } catch {}
+                [void](Show-EditorFrameAdjustWindow $s $owner)
+            } catch {}
+        }.GetNewClosure())
+        $st.Adjust = $miAdjust
+        if ($fi0.Id -eq '') { $miAdjust.Enabled = $false }
+        # «Изменить комплект…» виден всегда; без выбранного комплекта неактивен (как «Вписать обложку»).
+        $kitCopy = $kitSel
+        $miEdit = New-EditorFrameMenuItem $menu (Get-EditorFrameText 'card_frame_edit' 'Изменить рамку…') $false ({
+            try {
+                $cNow = & $st.Cur
+                $kitCopy = $null
+                if ($cNow -ne 'auto' -and $cNow -ne 'none' -and $cNow -ne 'badge') { $kitCopy = Get-FrameKit $cNow }
+                if ($null -eq $kitCopy) { return }
+                try { $menu.Close() } catch {}
+                $r = Show-FrameKitDialog $owner $kitCopy
+                if ($null -ne $r) {
+                    [void](Save-FrameKitResult $owner $kitCopy $r)
+                    foreach ($kk in @('v', 'h')) { Update-EditorFramePreview $s.FrameState.Slots[$kk] }
+                }
+            } catch {}
+        }.GetNewClosure())
+        $st.Edit = $miEdit
+        if ($null -eq $kitCopy) { $miEdit.Enabled = $false }
+        # «Комплекты…»: окно управления комплектами рамок (добавить, скачать, удалить). Пункт есть всегда, в том числе когда комплектов ещё нет:
+        # иначе из меню не видно, где их добавлять (раньше это окно открывалось только из настроек).
+        [void](New-EditorFrameMenuItem $menu (Get-EditorFrameText 'card_frame_manage' 'Менеджер рамок…') $false ({
+            try {
+                try { $menu.Close() } catch {}
+                Show-EditorFrameManagerDialog $owner
+                foreach ($kk in @('v', 'h')) { Update-EditorFramePreview $s.FrameState.Slots[$kk] }
+            } catch {}
+        }.GetNewClosure()))
+        [void]$menu.Items.Add('-')
+        $st.Link = New-EditorFrameMenuItem $menu (Get-EditorFrameText 'card_frame_link' 'Связать панели') ([bool]$fs.Link) ({
+            try {
+                $s.FrameState.Link = -not [bool]$s.FrameState.Link
+                # Связывание включено: соседняя панель сразу получает комплект, выбранный в этой панели (если в комплекте есть рамка нужного вида), а не только после следующей смены выбора.
+                if ([bool]$s.FrameState.Link) { Set-EditorFrameSelection $s (& $st.Cur) }
+                & $st.Refresh
+            } catch {}
+        }.GetNewClosure())
+
+        if ($null -ne $st.Grp) {
+            foreach ($it in @($menu.Items)) {
+                if ($it -is [System.Windows.Forms.ToolStripMenuItem] -and -not [object]::ReferenceEquals($it, $st.Grp)) {
+                    $it.Add_Click({ & $st.HideSub }.GetNewClosure())
+                }
+            }
+        }
+        $btn = $slot.FrameButton
+        $menu.Show($btn, (New-Object System.Drawing.Point(0, $btn.Height)))
+        try { Enable-MenuDismiss $menu $st.Grp $btn } catch {}
+    } catch { }
+}
+
+# Кнопка-лупа 26x24 в заголовке слота (тот же вид, что у кнопки просмотра в слотах 1 и 2). Tag = слот, чью картинку она увеличивает.
+function New-EditorZoomButton($panel, [int]$x, [int]$y, $slot, $tip = $null) {
+    $z = New-Object System.Windows.Forms.Button
+    $z.Size = New-Object System.Drawing.Size(26, 24)
+    $z.Location = New-Object System.Drawing.Point($x, $y)
+    $z.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    $z.FlatAppearance.BorderColor = $steamUi.Border
+    $z.FlatAppearance.BorderSize = 1
+    $z.FlatAppearance.MouseOverBackColor = $steamUi.Border
+    $z.UseVisualStyleBackColor = $false
+    $z.BackColor = $steamUi.Panel
+    $z.ForeColor = $steamUi.Text
+    $z.Padding = New-Object System.Windows.Forms.Padding(0)
+    $z.Text = ''
+    $z.TabStop = $false
+    $z.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $z.Tag = $slot
+    $z.Add_Paint({
+        param($s, $e)
+        try { Invoke-EditorDrawIcon $e.Graphics 'zoom' $s.ForeColor $s.ClientSize $false } catch {}
+    })
+    $z.Add_Click({
+        try {
+            $sl = $this.Tag
+            $own = $this.FindForm()
+            $isIcon = $false
+            try { $isIcon = ($null -ne $sl.PSObject.Properties['IsIconSlot'] -and [bool]$sl.IsIconSlot) } catch {}
+            if ($isIcon) {
+                # Иконка может быть не выложена в слот как файл превью: тогда берём текущую иконку из temp.
+                $ip = ''
+                try { if ($null -ne $sl.PSObject.Properties['ShownFile']) { $ip = [string]$sl.ShownFile } } catch {}
+                if ([string]::IsNullOrWhiteSpace($ip) -or -not (Test-Path -LiteralPath $ip -PathType Leaf)) { try { $ip = [string](Get-TempIconPath) } catch { $ip = '' } }
+                if (-not [string]::IsNullOrWhiteSpace($ip) -and (Test-Path -LiteralPath $ip -PathType Leaf)) { Show-SgdbFullPreview $own $ip $null $false $null }
+            } else { Show-EditorSlotPreview $sl $own }
+        } catch {}
+    })
+    $panel.Controls.Add($z)
+    $z.BringToFront()
+    if ($null -ne $tip) { try { $tip.SetToolTip($z, (T 'preview_eye_tip')) } catch {} }
+    return $z
+}
+
+# Крупный просмотр обложки слота (то же окно, что у «глаза» в выборе обложек SteamGridDB).
+function Show-EditorSlotPreview($slot, $owner) {
+    try {
+        if ($null -eq $slot -or [bool]$slot.IsLoading) { return }
+        $path = ''
+        try { if ($null -ne $slot.PSObject.Properties['ShownFile']) { $path = [string]$slot.ShownFile } } catch {}
+        if ([string]::IsNullOrWhiteSpace($path) -or -not (Test-Path -LiteralPath $path -PathType Leaf)) { return }
+        # Только увеличенный просмотр (с рамкой, если она наложена). Положение обложки в рамке меняется в меню рамки: «Изменить положение…».
+        Show-SgdbFullPreview $owner $path $null $false $null
+    } catch {}
+}
+
+# Видимая часть области под обложку: ограничивающий прямоугольник тех пикселей рамки внутри области [X0, Y0, W, H],
+# сквозь которые обложка просвечивает (прозрачные и полупрозрачные). Непрозрачная часть рамки обложку закрывает, поэтому
+# обложка может уходить краем под неё: пустое место там всё равно не видно. Возвращает @{ L; T; R; B } в пикселях рамки
+# (R и B не включаются) или $null, если просвечивающих пикселей нет / прочитать рамку не удалось - тогда берётся вся область.
+# Сканирование идёт с каждой из четырёх сторон до первого просвечивающего пикселя, поэтому быстрое.
+function Get-FrameVisibleRect($Bmp, [int]$X0, [int]$Y0, [int]$W, [int]$H) {
+    try {
+        $bw = [int]$Bmp.Width; $bh = [int]$Bmp.Height
+        $xa = [Math]::Max(0, $X0); $ya = [Math]::Max(0, $Y0)
+        $xb = [Math]::Min($bw, $X0 + $W); $yb = [Math]::Min($bh, $Y0 + $H)
+        if (($xb - $xa) -lt 1 -or ($yb - $ya) -lt 1) { return $null }
+        $rect = New-Object System.Drawing.Rectangle(0, 0, $bw, $bh)
+        $data = $Bmp.LockBits($rect, [System.Drawing.Imaging.ImageLockMode]::ReadOnly, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+        $stride = 0; $buf = $null
+        try {
+            $stride = [int]$data.Stride
+            $buf = New-Object byte[] ($stride * $bh)
+            [System.Runtime.InteropServices.Marshal]::Copy($data.Scan0, $buf, 0, $buf.Length)
+        } finally { $Bmp.UnlockBits($data) }
+        # Пиксель с прозрачностью ниже порога считается просвечивающим (почти непрозрачные пиксели обложку скрывают).
+        $thr = 224
+        $left = -1
+        :scanL for ($x = $xa; $x -lt $xb; $x++) {
+            $o = $ya * $stride + $x * 4 + 3
+            for ($y = $ya; $y -lt $yb; $y++) { if ($buf[$o] -lt $thr) { $left = $x; break scanL }; $o += $stride }
+        }
+        if ($left -lt 0) { return $null }
+        $right = $left
+        :scanR for ($x = $xb - 1; $x -gt $left; $x--) {
+            $o = $ya * $stride + $x * 4 + 3
+            for ($y = $ya; $y -lt $yb; $y++) { if ($buf[$o] -lt $thr) { $right = $x; break scanR }; $o += $stride }
+        }
+        $top = -1
+        :scanT for ($y = $ya; $y -lt $yb; $y++) {
+            $o = $y * $stride + $left * 4 + 3
+            for ($x = $left; $x -le $right; $x++) { if ($buf[$o] -lt $thr) { $top = $y; break scanT }; $o += 4 }
+        }
+        if ($top -lt 0) { return $null }
+        $bottom = $top
+        :scanB for ($y = $yb - 1; $y -gt $top; $y--) {
+            $o = $y * $stride + $left * 4 + 3
+            for ($x = $left; $x -le $right; $x++) { if ($buf[$o] -lt $thr) { $bottom = $y; break scanB }; $o += 4 }
+        }
+        return @{ L = [int]$left; T = [int]$top; R = [int]($right + 1); B = [int]($bottom + 1) }
+    } catch { return $null }
+}
+
+# Окно подгонки обложки под рамку: показывает итог (обложка + рамка поверх). Колесо мыши и ползунок внизу - масштаб,
+# перетаскивание левой кнопкой - смещение, двойной щелчок или «Сбросить» - вернуть по центру, Esc / Enter - закрыть.
+# Для плавности обложка и рамка заранее приводятся к размеру окна (перерисовка при перетаскивании - один быстрый DrawImage
+# в двойной буферизации), а после паузы в 140 мс картинка перерисовывается в хорошем качестве.
+# Результат запоминается в состоянии карточки ($fs.Adj) и применяется при сохранении. Возвращает $false, если окно открыть нельзя
+# (рамка не выбрана, обложка анимированная или не читается GDI+) - тогда вызывающий код показывает обычный просмотр.
+function Show-EditorFrameAdjustWindow($slot, $owner, $Override = $null) {
+    $cov = $null; $frBmp = $null; $f = $null; $proxy = $null; $frScaled = $null; $hqTimer = $null
+    try {
+        if ($null -ne $Override) {
+            # Режим заготовки (окно комплекта рамок): образец обложки и рамка заданы вызывающим кодом, результат уходит в $Override.Result.
+            $fs = $null
+            $kind = [string]$Override.Kind
+            $base = [string]$Override.Base
+            $fr = $Override.Frame
+            $framePath = [string]$Override.FramePath
+            if (-not [System.IO.File]::Exists($base) -or -not [System.IO.File]::Exists($framePath)) { return $false }
+        } else {
+        if ($null -eq $slot -or $null -eq $slot.PSObject.Properties['FrameState']) { return $false }
+        $fs = $slot.FrameState
+        $kind = [string]$slot.FrameKind
+        Initialize-EditorFrameSel $fs
+        $sel = [string]$fs.H; $name = 'temp_header.jpg'
+        if ($kind -eq 'v') { $sel = [string]$fs.V; $name = 'temp_p.jpg' }
+        $fid = Get-EditorFrameIdForSel $sel $kind
+        if ($fid -eq '') { return $false }
+        $src = Join-Path $global:tempCovers $name
+        if (-not (Test-Path -LiteralPath $src)) { return $false }
+        $base = $src
+        $rec = Find-EditorFrameRecordForTemp $src
+        if ($null -ne $rec) { $base = [string]$rec.Orig }
+        $fr = Get-CoverFrame $fid
+        if ($null -eq $fr) { return $false }
+        $info = Get-ImageContainerInfo $base
+        if ([bool]$info.Animated -or [string]$info.Format -eq 'webm') { return $false }
+        $framePath = Join-Path (Get-FramesDir) ([string]$fr.file)
+        if (-not [System.IO.File]::Exists($framePath)) { return $false }
+        }
+        $cov = Open-FrameBitmapNoLock $base
+        $frBmp = Open-FrameBitmapNoLock $framePath
+        $cw = [int]$frBmp.Width; $ch = [int]$frBmp.Height
+        $sw = [double]$cov.Width; $sh = [double]$cov.Height
+
+        # Область под обложку - так же, как в New-FramedCover.
+        if ([bool]$fr.fit) {
+            $pad = 2
+            $dx = [Math]::Max(0, [int]$fr.x - $pad); $dy = [Math]::Max(0, [int]$fr.y - $pad)
+            $dr = [Math]::Min($cw, [int]$fr.x + [int]$fr.w + $pad); $db = [Math]::Min($ch, [int]$fr.y + [int]$fr.h + $pad)
+            $dw = $dr - $dx; $dh = $db - $dy
+        } else { $dx = 0; $dy = 0; $dw = $cw; $dh = $ch }
+        if ($dw -lt 8 -or $dh -lt 8) { return $false }
+        $s0 = [Math]::Max($dw / $sw, $dh / $sh)
+        # Видимая часть области под обложку (без непрозрачных участков рамки): обложка обязана закрывать только её.
+        $vl = $dx; $vt = $dy; $vr = $dx + $dw; $vb = $dy + $dh
+        $vis = Get-FrameVisibleRect $frBmp $dx $dy $dw $dh
+        if ($null -ne $vis) { $vl = [int]$vis.L; $vt = [int]$vis.T; $vr = [int]$vis.R; $vb = [int]$vis.B }
+
+        # Размер окна: рамка целиком, но не больше 80% рабочей области экрана.
+        $wa = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+        try { if ($null -ne $owner) { $wa = [System.Windows.Forms.Screen]::FromControl($owner).WorkingArea } } catch {}
+        $barH = 64
+        # Тот же предел 760 x 560 px и масштаб до 2x, что и у окна «Область под обложку» (и не больше экрана).
+        $k = [Math]::Min(2.0, [Math]::Min([Math]::Min(760.0 / $cw, 560.0 / $ch), [Math]::Min(($wa.Width * 0.8) / $cw, ($wa.Height * 0.85 - $barH - 40) / $ch)))
+        $dispW = [Math]::Max(260, [int][Math]::Round($cw * $k)); $dispH = [Math]::Max(120, [int][Math]::Round($ch * $k))
+        $k = [Math]::Min($dispW / [double]$cw, $dispH / [double]$ch)
+
+        # Заготовки для быстрой перерисовки: рамка по размеру окна и уменьшенная копия обложки (запас в 2 раза по размеру
+        # относительно масштаба 100%, чтобы при увеличении картинка не мылилась сразу). Маленькую обложку не растягиваем.
+        $frScaled = New-Object System.Drawing.Bitmap($dispW, $dispH, [System.Drawing.Imaging.PixelFormat]::Format32bppPArgb)
+        $gf = [System.Drawing.Graphics]::FromImage($frScaled)
+        try {
+            $gf.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+            $gf.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+            $gf.DrawImage($frBmp, 0, 0, $dispW, $dispH)
+        } finally { $gf.Dispose() }
+        $pw = [int][Math]::Round($sw * $s0 * $k * 2.0); $ph = [int][Math]::Round($sh * $s0 * $k * 2.0)
+        if ($pw -ge [int]$sw -or $ph -ge [int]$sh -or $pw -lt 16 -or $ph -lt 16) { $pw = [int]$sw; $ph = [int]$sh }
+        $proxy = New-Object System.Drawing.Bitmap($pw, $ph, [System.Drawing.Imaging.PixelFormat]::Format32bppPArgb)
+        $gp = [System.Drawing.Graphics]::FromImage($proxy)
+        try {
+            $gp.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+            $gp.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+            $gp.DrawImage($cov, 0, 0, $pw, $ph)
+        } finally { $gp.Dispose() }
+        # Дальше нужен только proxy: исходник и рамку в полном размере освобождаем.
+        $cov.Dispose(); $cov = $null; $frBmp.Dispose(); $frBmp = $null
+
+        $cur = $null
+        if ($null -ne $Override) { $cur = $Override.Cur } else { try { $cur = $fs.Adj[$kind] } catch {} }
+        # В карточке игры без своей подгонки окно открывается с шаблоном рамки.
+        if ($null -eq $cur -and $null -eq $Override) { try { $cur = Read-FrameAdjust ([string]$fr.adj) } catch {} }
+        # Масштаб 1.0 - обложка ровно закрывает область под неё; меньше нельзя (остались бы пустые места).
+        $zMin = 1.0; $zMax = 4.0
+        $st = @{ Saved = $false; Z = 1.0; X = 0.0; Y = 0.0; Drag = $false; PX = 0; PY = 0; SX = 0.0; SY = 0.0; Hq = $true }
+        if ($null -ne $cur) {
+            $st.Z = [Math]::Max($zMin, [Math]::Min($zMax, [double]$cur.Zoom)); $st.X = [double]$cur.X; $st.Y = [double]$cur.Y
+        }
+        # Смещение ограничено так, чтобы обложка всегда полностью закрывала видимую часть области под неё: края обложки не заходят
+        # внутрь видимой части, но могут уходить под непрозрачные участки рамки (пустое место под ними не видно).
+        # Если непрозрачных участков в области нет, видимая часть равна всей области - как раньше.
+        $clampPos = {
+            $wCv = $sw * $s0 * [double]$st.Z; $hCv = $sh * $s0 * [double]$st.Z
+            $cx0 = $dx + $dw / 2.0; $cy0 = $dy + $dh / 2.0
+            # Центр обложки: левый край не правее $vl, правый не левее $vr (то же по вертикали).
+            $xLo = ($vr - $wCv / 2.0 - $cx0) / $dw; $xHi = ($vl + $wCv / 2.0 - $cx0) / $dw
+            $yLo = ($vb - $hCv / 2.0 - $cy0) / $dh; $yHi = ($vt + $hCv / 2.0 - $cy0) / $dh
+            if ($xLo -gt $xHi) { $xm = ($xLo + $xHi) / 2.0; $xLo = $xm; $xHi = $xm }
+            if ($yLo -gt $yHi) { $ym = ($yLo + $yHi) / 2.0; $yLo = $ym; $yHi = $ym }
+            $st.X = [Math]::Max($xLo, [Math]::Min($xHi, [double]$st.X))
+            $st.Y = [Math]::Max($yLo, [Math]::Min($yHi, [double]$st.Y))
+        }.GetNewClosure()
+        & $clampPos
+
+        $f = New-SCForm
+        $f.Text = (Get-EditorFrameText 'frame_adjust_title' 'Подгонка обложки под рамку')
+        $f.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedDialog
+        $f.MaximizeBox = $false; $f.MinimizeBox = $false; $f.ShowInTaskbar = $false
+        $f.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterParent
+        $f.BackColor = $steamUi.Panel2; $f.ForeColor = $steamUi.Text
+        $f.Font = New-Object System.Drawing.Font('Segoe UI', 9)
+        $f.KeyPreview = $true
+        $f.ClientSize = New-Object System.Drawing.Size($dispW, ($dispH + $barH))
+
+        # Полотно: обычная панель с двойной буферизацией (свойство DoubleBuffered закрытое, включаем через рефлексию).
+        $canvas = New-Object System.Windows.Forms.Panel
+        $canvas.Location = New-Object System.Drawing.Point(0, 0)
+        $canvas.Size = New-Object System.Drawing.Size($dispW, $dispH)
+        $canvas.BackColor = $steamUi.Input
+        $canvas.Cursor = [System.Windows.Forms.Cursors]::SizeAll
+        try { [System.Windows.Forms.Control].GetProperty('DoubleBuffered', [System.Reflection.BindingFlags]'NonPublic,Instance').SetValue($canvas, $true, $null) } catch {}
+        $f.Controls.Add($canvas)
+
+        $bar = New-Object System.Windows.Forms.Panel
+        $bar.Location = New-Object System.Drawing.Point(0, $dispH)
+        $bar.Size = New-Object System.Drawing.Size($dispW, $barH)
+        $bar.BackColor = $steamUi.Panel
+        $f.Controls.Add($bar)
+
+        # Верхняя строка панели - подсказка, нижняя - подпись масштаба, ползунок и «Сбросить».
+        $lblHint = New-Object System.Windows.Forms.Label
+        $lblHint.Location = New-Object System.Drawing.Point(8, 4)
+        $lblHint.Size = New-Object System.Drawing.Size(($dispW - 16), 20)
+        $lblHint.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
+        $lblHint.ForeColor = $steamUi.Muted
+        $lblHint.Font = New-Object System.Drawing.Font('Segoe UI', 8.5)
+        $lblHint.AutoEllipsis = $true
+        $lblHint.Text = (Get-EditorFrameText 'frame_adjust_hint' 'Колесо — масштаб, перетаскивание — смещение, Enter — сохранить, Esc — отмена')
+        $bar.Controls.Add($lblHint)
+
+        $lblZoom = New-Object System.Windows.Forms.Label
+        $lblZoom.Location = New-Object System.Drawing.Point(8, 30)
+        $lblZoom.Size = New-Object System.Drawing.Size(116, 28)
+        $lblZoom.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
+        $lblZoom.ForeColor = $steamUi.Text
+        $lblZoom.Font = New-Object System.Drawing.Font('Segoe UI', 8.5)
+        $bar.Controls.Add($lblZoom)
+        $zoomWord = (Get-EditorFrameText 'frame_adjust_zoom' 'Масштаб')
+
+        $btnReset = New-Object System.Windows.Forms.Button
+        $btnReset.Text = (Get-EditorFrameText 'frame_adjust_reset' 'Сбросить')
+        $btnReset.Size = New-Object System.Drawing.Size(100, 26)
+        $btnReset.Location = New-Object System.Drawing.Point(($dispW - 100 - 8 - 100 - 8), 31)
+        $btnReset.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+        $btnReset.FlatAppearance.BorderColor = $steamUi.Border
+        $btnReset.FlatAppearance.BorderSize = 1
+        $btnReset.FlatAppearance.MouseOverBackColor = $steamUi.Border
+        $btnReset.UseVisualStyleBackColor = $false
+        $btnReset.BackColor = $steamUi.Panel2; $btnReset.ForeColor = $steamUi.Text
+        $btnReset.TabStop = $false
+        $btnReset.Cursor = [System.Windows.Forms.Cursors]::Hand
+        $bar.Controls.Add($btnReset)
+
+        # «Сохранить» - единственный способ применить подгонку: закрытие окна крестиком или Esc оставляет всё как было.
+        $btnSave = New-Object System.Windows.Forms.Button
+        $btnSave.Text = (Get-EditorFrameText 'frame_adjust_save' 'Сохранить')
+        $btnSave.Size = New-Object System.Drawing.Size(100, 26)
+        $btnSave.Location = New-Object System.Drawing.Point(($dispW - 100 - 8), 31)
+        $btnSave.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+        $btnSave.FlatAppearance.BorderColor = $steamUi.Accent2
+        $btnSave.FlatAppearance.BorderSize = 1
+        $btnSave.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(35,78,106)
+        $btnSave.UseVisualStyleBackColor = $false
+        $btnSave.BackColor = [System.Drawing.Color]::FromArgb(25,55,75); $btnSave.ForeColor = $steamUi.Text
+        $btnSave.TabStop = $false
+        $btnSave.Cursor = [System.Windows.Forms.Cursors]::Hand
+        $bar.Controls.Add($btnSave)
+        $btnSave.Add_Click({ $st.Saved = $true; $f.Close() }.GetNewClosure())
+
+        # Ползунок масштаба в стиле Steam (тот же, что у масштаба логотипа): 20-400%, метка на 100%.
+        $slider = New-Object SteamSlider
+        $slider.Minimum = [int][Math]::Round($zMin * 100)
+        $slider.Maximum = [int][Math]::Round($zMax * 100)
+        $slider.SmallChange = 5
+        $slider.LargeChange = 25
+        $slider.MarkValue = 100
+        $slider.BackColor = $steamUi.Panel
+        $slider.TabStop = $false
+        $slider.Location = New-Object System.Drawing.Point(130, 30)
+        $slider.Size = New-Object System.Drawing.Size(($dispW - 130 - 100 - 100 - 24), 28)
+        $bar.Controls.Add($slider)
+
+        $updUi = {
+            $pct = [int][Math]::Round($st.Z * 100)
+            $lblZoom.Text = ($zoomWord + ': ' + [string]$pct + '%')
+            if ([int]$slider.Value -ne $pct) { $slider.Value = $pct }
+        }.GetNewClosure()
+
+        # Перерисовка в хорошем качестве после паузы в движении.
+        $hqTimer = New-Object System.Windows.Forms.Timer
+        $hqTimer.Interval = 140
+        $hqTimer.Add_Tick({ $hqTimer.Stop(); $st.Hq = $true; $canvas.Invalidate() }.GetNewClosure())
+        $touch = { $st.Hq = $false; $hqTimer.Stop(); $hqTimer.Start(); $canvas.Invalidate() }.GetNewClosure()
+
+        $canvas.Add_Paint({
+            param($s, $e)
+            $g = $e.Graphics
+            $g.CompositingMode = [System.Drawing.Drawing2D.CompositingMode]::SourceOver
+            $g.CompositingQuality = [System.Drawing.Drawing2D.CompositingQuality]::HighSpeed
+            $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::None
+            if ($st.Hq) {
+                $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBilinear
+                $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+            } else {
+                $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::Bilinear
+                $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighSpeed
+            }
+            $g.Clear($steamUi.Input)
+            $wC = $sw * $s0 * $st.Z * $k; $hC = $sh * $s0 * $st.Z * $k
+            $ccx = ($dx + $dw / 2.0 + $st.X * $dw) * $k; $ccy = ($dy + $dh / 2.0 + $st.Y * $dh) * $k
+            $g.SetClip((New-Object System.Drawing.RectangleF([single]($dx * $k), [single]($dy * $k), [single]($dw * $k), [single]($dh * $k))))
+            $g.DrawImage($proxy, (New-Object System.Drawing.RectangleF([single]($ccx - $wC / 2.0), [single]($ccy - $hC / 2.0), [single]$wC, [single]$hC)), (New-Object System.Drawing.RectangleF([single]0, [single]0, [single]$pw, [single]$ph)), [System.Drawing.GraphicsUnit]::Pixel)
+            $g.ResetClip()
+            $g.DrawImage($frScaled, (New-Object System.Drawing.Rectangle(0, 0, $dispW, $dispH)), 0, 0, $dispW, $dispH, [System.Drawing.GraphicsUnit]::Pixel)
+        }.GetNewClosure())
+
+        $reset = { $st.Z = 1.0; $st.X = 0.0; $st.Y = 0.0; & $updUi; $st.Hq = $true; $canvas.Invalidate() }.GetNewClosure()
+        $btnReset.Add_Click($reset)
+        $canvas.Add_DoubleClick($reset)
+
+        $canvas.Add_MouseDown({
+            param($s, $e)
+            if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Left) { $st.Drag = $true; $st.PX = $e.X; $st.PY = $e.Y; $st.SX = $st.X; $st.SY = $st.Y }
+        }.GetNewClosure())
+        $canvas.Add_MouseMove({
+            param($s, $e)
+            if (-not $st.Drag) { return }
+            $st.X = [Math]::Max(-4.0, [Math]::Min(4.0, $st.SX + (($e.X - $st.PX) / $k) / $dw))
+            $st.Y = [Math]::Max(-4.0, [Math]::Min(4.0, $st.SY + (($e.Y - $st.PY) / $k) / $dh))
+            & $clampPos
+            & $touch
+        }.GetNewClosure())
+        $canvas.Add_MouseUp({ param($s, $e); $st.Drag = $false }.GetNewClosure())
+
+        # Смена масштаба с неподвижной точкой (px, py в координатах рамки): точка под курсором остаётся на месте.
+        $zoomAt = {
+            param([double]$px, [double]$py, [double]$z1)
+            $z0 = [double]$st.Z
+            $z1 = [Math]::Max($zMin, [Math]::Min($zMax, $z1))
+            if ($z1 -eq $z0) { return }
+            $ccx = $dx + $dw / 2.0 + $st.X * $dw; $ccy = $dy + $dh / 2.0 + $st.Y * $dh
+            $r = $z1 / $z0
+            $ncx = $px - ($px - $ccx) * $r; $ncy = $py - ($py - $ccy) * $r
+            $st.Z = $z1
+            $st.X = [Math]::Max(-4.0, [Math]::Min(4.0, ($ncx - ($dx + $dw / 2.0)) / $dw))
+            $st.Y = [Math]::Max(-4.0, [Math]::Min(4.0, ($ncy - ($dy + $dh / 2.0)) / $dh))
+            & $clampPos
+            & $updUi
+            & $touch
+        }.GetNewClosure()
+
+        # Колесо идёт в окно (у панели нет фокуса).
+        $wheel = {
+            param($s, $e)
+            try {
+                $pt = $canvas.PointToClient([System.Windows.Forms.Cursor]::Position)
+                $px = [double]$pt.X / $k; $py = [double]$pt.Y / $k
+                if ($pt.X -lt 0 -or $pt.Y -lt 0 -or $pt.X -gt $dispW -or $pt.Y -gt $dispH) { $px = $dx + $dw / 2.0; $py = $dy + $dh / 2.0 }
+                & $zoomAt $px $py ([double]$st.Z * [Math]::Pow(1.1, [double]$e.Delta / 120.0))
+            } catch {}
+        }.GetNewClosure()
+        $f.Add_MouseWheel($wheel)
+        $canvas.Add_MouseWheel($wheel)
+        $bar.Add_MouseWheel($wheel)
+        $btnReset.Add_MouseWheel($wheel)
+        $btnSave.Add_MouseWheel($wheel)
+        $slider.Add_MouseWheel($wheel)
+
+        # Ползунок: масштаб вокруг центра области под обложку.
+        $slider.Add_Scroll({
+            try { & $zoomAt ($dx + $dw / 2.0) ($dy + $dh / 2.0) ([double]$slider.Value / 100.0) } catch {}
+        }.GetNewClosure())
+
+        $f.Add_KeyDown({
+            param($s, $e)
+            if ($e.KeyCode -eq [System.Windows.Forms.Keys]::Escape) { $e.Handled = $true; $s.Close() }
+            elseif ($e.KeyCode -eq [System.Windows.Forms.Keys]::Return) { $e.Handled = $true; $st.Saved = $true; $s.Close() }
+        }.GetNewClosure())
+        & $updUi
+        [void]$f.ShowDialog($owner)
+
+        # Закрыли без «Сохранить» - ничего не меняем.
+        if (-not $st.Saved) { return $true }
+        # Запоминаем подгонку (для этой обложки) и обновляем миниатюру в карточке.
+        try {
+            $newAdj = @{ Zoom = [double]$st.Z; X = [double]$st.X; Y = [double]$st.Y; Sig = (Get-FrameFileSig $base) }
+            if (Test-FrameAdjustIsDefault $newAdj) { $newAdj = $null }
+            if ($null -ne $Override) { $Override.Result.Saved = $true; $Override.Result.Adj = $newAdj }
+            else {
+                $fs.Adj[$kind] = $newAdj
+                Update-EditorFramePreview $slot
+            }
+        } catch {}
+        return $true
+    } catch {
+        return $false
+    } finally {
+        try { if ($null -ne $hqTimer) { $hqTimer.Stop(); $hqTimer.Dispose() } } catch {}
+        try { if ($null -ne $f) { $f.Dispose() } } catch {}
+        try { if ($null -ne $proxy) { $proxy.Dispose() } } catch {}
+        try { if ($null -ne $frScaled) { $frScaled.Dispose() } } catch {}
+        try { if ($null -ne $cov) { $cov.Dispose() } } catch {}
+        try { if ($null -ne $frBmp) { $frBmp.Dispose() } } catch {}
+    }
+}
+
+function Add-EditorFrameControls($slots, $owner) {
+    $state = @{ Link = $true; V = 'auto'; H = 'auto'; EmuKit = ''; Badge = ''; BadgeAuto = $false; InitV = $false; InitH = $false; Slots = @{ v = $slots.Vertical; h = $slots.Horizontal }; Adj = @{ v = $null; h = $null } }
+    # Выбор действует, пока карточка открыта: по нему при сохранении решается, какую рамку писать в grid.
+    $script:EditorFrameState = $state
+    try { $owner.Add_FormClosed({ $script:EditorFrameState = $null }) } catch {}
+    foreach ($pair in @(@('v', $slots.Vertical), @('h', $slots.Horizontal))) {
+        $kind = [string]$pair[0]; $slot = $pair[1]
+        if ($null -eq $slot) { continue }
+        $w = [int]$slot.Panel.Width
+        # Область картинки: снизу ровно 8 px от внутреннего края слота - как у слота иконки; слева и справа тоже по 8 (ширина слота минус рамка).
+        # Вертикальная: верх на 8 px ниже кнопок (они до y=32). Горизонтальная: высота области равна высоте типичной обложки
+        # (пропорции Steam 920x430), чтобы вписывание по центру не добавляло зазора снизу.
+        try {
+            $cw0 = [int]$slot.Panel.ClientSize.Width; $ch0 = [int]$slot.Panel.ClientSize.Height
+            $pw0 = $cw0 - 15
+            $ph0 = $ch0 - 8 - 40
+            $py0 = 40
+            if ($kind -eq 'h') { $ph0 = [int][Math]::Round($pw0 * 430.0 / 920.0); $py0 = $ch0 - 8 - $ph0 }
+            foreach ($ctl in @($slot.Picture, $slot.Missing)) {
+                if ($null -eq $ctl) { continue }
+                $ctl.Location = New-Object System.Drawing.Point(7, $py0)
+                $ctl.Size = New-Object System.Drawing.Size($pw0, $ph0)
+            }
+        } catch {}
+        $btn = New-Object System.Windows.Forms.Button
+        $btn.Size = New-Object System.Drawing.Size(26, 24)
+        # Значок источника стоит на линии 10 px от правого края (x = w - 36); значок рамки - левее него с зазором 4 px.
+        $btn.Location = New-Object System.Drawing.Point(($w - 10 - 22 - 4 - 26), 8)
+        # Стиль как у кнопки EXE и кнопок управления логотипом: плоская, с рамкой, при включённой рамке залита акцентом.
+        $btn.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+        $btn.FlatAppearance.BorderColor = $steamUi.Border
+        $btn.FlatAppearance.BorderSize = 1
+        $btn.UseVisualStyleBackColor = $false
+        $btn.Padding = New-Object System.Windows.Forms.Padding(0)
+        $btn.Text = ''
+        $btn.TabStop = $false
+        $btn.Cursor = [System.Windows.Forms.Cursors]::Hand
+        Set-EditorFrameButtonState $btn $false
+        $btn.Add_Paint({
+            param($s, $e)
+            try { Invoke-EditorDrawIcon $e.Graphics 'coverframe' $s.ForeColor $s.ClientSize $false } catch {}
+        })
+        $slot.Panel.Controls.Add($btn)
+        $btn.BringToFront()
+        try { $tip = New-SCToolTip; $tip.SetToolTip($btn, (Get-EditorFrameText 'card_frame_tip' 'Рамка обложки')) } catch {}
+
+        # Кнопка «глаз» левее кнопки рамки (зазор 4 px): крупный просмотр обложки, как у «глаза» в выборе обложек.
+        $eye = New-Object System.Windows.Forms.Button
+        $eye.Size = New-Object System.Drawing.Size(26, 24)
+        $eye.Location = New-Object System.Drawing.Point(($w - 10 - 22 - 4 - 26 - 4 - 26), 8)
+        $eye.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+        $eye.FlatAppearance.BorderColor = $steamUi.Border
+        $eye.FlatAppearance.BorderSize = 1
+        $eye.FlatAppearance.MouseOverBackColor = $steamUi.Border
+        $eye.UseVisualStyleBackColor = $false
+        $eye.BackColor = $steamUi.Panel
+        $eye.ForeColor = $steamUi.Text
+        $eye.Padding = New-Object System.Windows.Forms.Padding(0)
+        $eye.Text = ''
+        $eye.TabStop = $false
+        $eye.Cursor = [System.Windows.Forms.Cursors]::Hand
+        $eye.Add_Paint({
+            param($s, $e)
+            try { Invoke-EditorDrawIcon $e.Graphics 'zoom' $s.ForeColor $s.ClientSize $false } catch {}
+        })
+        $slot.Panel.Controls.Add($eye)
+        $eye.BringToFront()
+        try { $tip.SetToolTip($eye, (Get-EditorFrameText 'preview_eye_tip' 'Просмотр в полном размере')) } catch {}
+        $slotEye = $slot
+        $eye.Add_Click({ Show-EditorSlotPreview $slotEye $owner }.GetNewClosure())
+        # Правая кнопка мыши по миниатюре - то же, что «глаз».
+        try {
+            $slot.Picture.Add_MouseUp({
+                param($s, $e)
+                try { if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Right) { Show-EditorSlotPreview $slotEye $owner } } catch {}
+            }.GetNewClosure())
+        } catch {}
+        $slot | Add-Member -NotePropertyName EyeButton -NotePropertyValue $eye -Force
+        # Заголовок короче на ширину значков глаза и рамки, чтобы не заходить под них.
+        try { $slot.Caption.Size = New-Object System.Drawing.Size(([int]$w - 112), 22) } catch {}
+        $slot | Add-Member -NotePropertyName FrameKind -NotePropertyValue $kind -Force
+        $slot | Add-Member -NotePropertyName FrameState -NotePropertyValue $state -Force
+        $slot | Add-Member -NotePropertyName FrameButton -NotePropertyValue $btn -Force
+        $sl = $slot
+        $btn.Add_Click({ Show-EditorFrameMenu $sl $owner }.GetNewClosure())
+        $btn.Add_MouseEnter({ try { Initialize-EditorFrameSel $state; Update-EditorFrameButtons $state } catch {} }.GetNewClosure())
+    }
+}
 
 function Set-EditorSlotLoading($slot, [bool]$loading) {
     try {
@@ -37879,14 +46110,114 @@ function Show-SupportDialog ($owner) {
     try { $dlg.Dispose() } catch {}
 }
 
+# Вид списка рамок под галочкой «Использовать рамки»: включён - обычное поле, выключен - фон как у окна, приглушённые текст и стрелка.
+# Enabled у списка не трогаем (Windows рисует отключённый комбобокс светлым, отсюда были белые артефакты), используем свойство Dim.
+function Set-SCFrameComboState ($Combo, $Panel, [bool]$On) {
+    try {
+        $bg = $steamUi.Input
+        if (-not $On) { $bg = $Panel.Parent.BackColor }
+        $Panel.BackColor = $bg
+        $Combo.BackColor = $bg
+        try { $Combo.BorderColor = $bg } catch {}
+        $Combo.Dim = (-not $On)
+        $Combo.Cursor = [System.Windows.Forms.Cursors]::Default
+        $Combo.Invalidate(); $Panel.Invalidate()
+    } catch {}
+}
+
 # Диалог добавления/редактирования одного эмулятора. $existing - существующий
 # профиль (хэштаблица Id/Name/ExePath/Args/Extensions) при редактировании,
 # либо $null при добавлении нового. Возвращает обновлённую хэштаблицу или
 # $null, если пользователь нажал «Отмена».
+# Галочка-заголовок строки «Использовать рамки» / «Использовать для»: рисуется как остальные галочки программы
+# (квадрат 14x14, заливка Accent и белая «птичка»). Ширина подгоняется под текст, чтобы поле выбора можно было поставить правее.
+function New-SCUseFramesCheckBox ($Dlg, [string]$Text, [int]$X, [int]$Y, [int]$H, [bool]$Checked) {
+    $chk = New-Object System.Windows.Forms.CheckBox
+    $chk.Text = $Text
+    $chk.Location = New-Object System.Drawing.Point($X, $Y)
+    $w = 150
+    try { $w = [int][System.Windows.Forms.TextRenderer]::MeasureText($Text, $Dlg.Font).Width + 28 } catch {}
+    $chk.Size = New-Object System.Drawing.Size($w, $H)
+    $chk.AutoSize = $false
+    $chk.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
+    $chk.UseVisualStyleBackColor = $false
+    $chk.BackColor = $Dlg.BackColor
+    $chk.ForeColor = $steamUi.Muted
+    $chk.Checked = $Checked
+    $chk.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    $chk.FlatAppearance.BorderSize = 0
+    $chk.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $chk.Tag = $false
+    $chk.Add_MouseEnter({ param($s, $e) $s.Tag = $true; $s.Invalidate() })
+    $chk.Add_MouseLeave({ param($s, $e) $s.Tag = $false; $s.Invalidate() })
+    $chk.Add_GotFocus({ param($s, $e) $s.Invalidate() })
+    $chk.Add_LostFocus({ param($s, $e) $s.Invalidate() })
+    $chk.Add_Paint({
+        param($s, $pe)
+        $g = $pe.Graphics
+        $bgBrush = New-Object System.Drawing.SolidBrush($s.BackColor)
+        $g.FillRectangle($bgBrush, $s.ClientRectangle)
+        $bgBrush.Dispose()
+        $boxRect = New-Object System.Drawing.Rectangle(0, [int](($s.ClientSize.Height - 14) / 2), 14, 14)
+        if ($s.Checked) {
+            $fillBrush = New-Object System.Drawing.SolidBrush($steamUi.Accent)
+            $g.FillRectangle($fillBrush, $boxRect)
+            $fillBrush.Dispose()
+            $markPen = New-Object System.Drawing.Pen([System.Drawing.Color]::White, 1.6)
+            $g.DrawLine($markPen, $boxRect.X + 3, $boxRect.Y + 7, $boxRect.X + 6, $boxRect.Y + 10)
+            $g.DrawLine($markPen, $boxRect.X + 6, $boxRect.Y + 10, $boxRect.X + 11, $boxRect.Y + 3)
+            $markPen.Dispose()
+        } else {
+            $borderColor = if ([bool]$s.Tag -or $s.Focused) { [System.Drawing.Color]::White } else { $steamUi.Muted }
+            $borderPen = New-Object System.Drawing.Pen($borderColor, 1.2)
+            $g.DrawRectangle($borderPen, $boxRect)
+            $borderPen.Dispose()
+        }
+        $textRect = New-Object System.Drawing.Rectangle(22, 0, [Math]::Max(10, $s.ClientSize.Width - 22), $s.ClientSize.Height)
+        $flags = [System.Windows.Forms.TextFormatFlags]::Left -bor [System.Windows.Forms.TextFormatFlags]::VerticalCenter -bor [System.Windows.Forms.TextFormatFlags]::NoPrefix -bor [System.Windows.Forms.TextFormatFlags]::EndEllipsis
+        [System.Windows.Forms.TextRenderer]::DrawText($g, [string]$s.Text, $s.Font, $textRect, $s.ForeColor, $flags)
+    }.GetNewClosure())
+    return $chk
+}
+
+# Вопрос при сохранении профиля эмулятора/враппера с включённой галочкой «Использовать рамки»: наложить выбранный вариант
+# на обложки игр, уже добавленных в библиотеку Steam ($Count штук), или только на новые. $Kind: 'emu' или 'wrap'.
+function Confirm-ProfileFramesApply([string]$Kind, [string]$KitId, [int]$Count, $Owner) {
+    try {
+        $kitTitle = $KitId
+        if ($KitId -eq [string]$script:LauncherBadgeKitId) {
+            if ($Kind -eq 'wrap') { $kitTitle = (Get-EditorFrameText 'wrap_frame_badge' 'Значок враппера') }
+            else { $kitTitle = (Get-EditorFrameText 'emu_frame_badge' 'Значок эмулятора') }
+        } else {
+            $kk = Get-FrameKit $KitId
+            if ($null -ne $kk) { $kitTitle = [string]$kk.name }
+        }
+        $qKey = 'emu_frames_apply_q'; $qRu = 'Применить выбранный вариант «{0}» к играм этого эмулятора, уже добавленным в библиотеку Steam ({1})? Если выбрать «Нет», рамки получат только новые игры.'
+        if ($Kind -eq 'wrap') { $qKey = 'wrap_frames_apply_q'; $qRu = 'Применить выбранный вариант «{0}» к играм этого враппера, уже добавленным в библиотеку Steam ({1})? Если выбрать «Нет», рамки получат только новые игры.' }
+        $askText = (Get-EditorFrameText $qKey $qRu)
+        $askText = $askText.Replace('{0}', $kitTitle).Replace('{1}', [string]$Count)
+        return [bool](Show-ThemedConfirm $Owner $global:appTitle $askText)
+    } catch { return $false }
+}
+
+# Предупреждение при сохранении профиля с включённой галочкой «Использовать рамки» и выбранным «Без рамки»: это не то же самое,
+# что снять галочку - после сохранения рамки снимаются со всех уже добавленных игр эмулятора/враппера. $Kind: 'emu' или 'wrap'.
+function Confirm-ProfileFramesRemove([string]$Kind, $Owner) {
+    try {
+        $qKey = 'emu_frames_remove_q'
+        $qRu = 'Выбрано «Без рамки»: после сохранения рамки будут сняты с обложек всех игр этого эмулятора, уже добавленных в библиотеку Steam. Продолжить?'
+        if ($Kind -eq 'wrap') {
+            $qKey = 'wrap_frames_remove_q'
+            $qRu = 'Выбрано «Без рамки»: после сохранения рамки будут сняты с обложек всех игр этого враппера, уже добавленных в библиотеку Steam. Продолжить?'
+        }
+        return [bool](Show-ThemedConfirm $Owner $global:appTitle (Get-EditorFrameText $qKey $qRu))
+    } catch { return $true }
+}
+
 function Show-EmulatorEditDialog ($owner, $existing = $null) {
     $dlg = New-SCForm
     $dlg.Text = if ($existing -eq $null) { (T 'emu_dlg_new') } else { (T 'emu_dlg_edit') }
-    $dlg.ClientSize = New-Object System.Drawing.Size(480, 296)
+    $dlg.ClientSize = New-Object System.Drawing.Size(480, 336)
     $dlg.StartPosition = 'CenterParent'
     $dlg.FormBorderStyle = 'FixedDialog'
     $dlg.MaximizeBox = $false; $dlg.MinimizeBox = $false
@@ -38170,6 +46501,78 @@ function Show-EmulatorEditDialog ($owner, $existing = $null) {
     $lblArgsHint.Font = New-Object System.Drawing.Font('Segoe UI', 7.5)
     $dlg.Controls.Add($lblArgsHint)
 
+    # Строка «Использовать рамки:» под аргументами - как остальные строки окна (подпись слева, поле справа), только поле - выпадающий
+    # список, как меню рамок в карточке игры: первым пунктом и по умолчанию «Без рамки», дальше доступные наборы с вертикальной
+    # рамкой. Выбранный набор запоминается в профиле (FrameKit); «Без рамки» - рамка для этого эмулятора не используется.
+    $emuFrameKitIds = @('', [string]$script:LauncherBadgeKitId)
+    $emuFrameKitNames = @((Get-EditorFrameText 'card_frame_none' 'Без рамки'), (Get-EditorFrameText 'emu_frame_badge' 'Значок эмулятора'))
+    try {
+        foreach ($fk in @(Get-FrameKitsSorted)) {
+            if ([string]::IsNullOrWhiteSpace([string]$fk.v)) { continue }
+            $emuFrameKitIds += [string]$fk.id
+            $emuFrameKitNames += [string]$fk.name
+        }
+    } catch {}
+    # Галочка «Использовать рамки» - заголовок строки: включена - выбранный набор применяется (к новым играм и, по вопросу при
+    # сохранении, к уже добавленным), выключена - рамки для этого эмулятора не используются, список выбора недоступен.
+    $emuFramesOnInit = ($existing -ne $null -and (-not [string]::IsNullOrWhiteSpace([string]$existing.FrameKit) -or [bool]$existing.FramesRemove))
+    $lblFrames = New-SCUseFramesCheckBox $dlg ([string](T 'frames_use_chk')) 16 246 28 $emuFramesOnInit
+    $emuFramesFieldX = [Math]::Max(120, [Math]::Min(300, (16 + [int]$lblFrames.Width + 6)))
+    $dlg.Controls.Add($lblFrames)
+
+    $pnlFrames = New-Object System.Windows.Forms.Panel
+    $pnlFrames.Location = New-Object System.Drawing.Point($emuFramesFieldX, 246)
+    $pnlFrames.Size = New-Object System.Drawing.Size((460 - $emuFramesFieldX), $emuFieldHeight)
+    $pnlFrames.BackColor = $steamUi.Input
+    $pnlFrames.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+    $dlg.Controls.Add($pnlFrames)
+
+    $cmbFrames = New-Object SmartExeComboBox
+    $cmbFrames.Dock = [System.Windows.Forms.DockStyle]::Fill
+    $cmbFrames.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
+    $cmbFrames.DrawMode = [System.Windows.Forms.DrawMode]::OwnerDrawFixed
+    $cmbFrames.CustomDropDown = $true
+    $cmbFrames.ItemHeight = 18
+    $cmbFrames.IntegralHeight = $false
+    $cmbFrames.MaxDropDownItems = 10
+    $cmbFrames.DropDownHeight = 288
+    $cmbFrames.DropDownWidth = [Math]::Max(200, (460 - $emuFramesFieldX))
+    $cmbFrames.BackColor = $steamUi.Input
+    $cmbFrames.ForeColor = $steamUi.Text
+    $cmbFrames.Font = New-Object System.Drawing.Font('Segoe UI', 9)
+    $cmbFrames.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    try { $cmbFrames.BorderColor = $steamUi.Input } catch {}
+    foreach ($fkName in $emuFrameKitNames) { [void]$cmbFrames.Items.Add([string]$fkName) }
+    $emuFrameSelIdx = 0
+    if ($existing -ne $null) {
+        $savedKit = [string]$existing.FrameKit
+        if (-not [string]::IsNullOrWhiteSpace($savedKit)) {
+            $kitPos = [Array]::IndexOf([string[]]$emuFrameKitIds, $savedKit)
+            if ($kitPos -ge 0) { $emuFrameSelIdx = $kitPos }
+        }
+    }
+    $cmbFrames.SelectedIndex = $emuFrameSelIdx
+    $cmbFrames.Add_DrawItem({
+        param($sender, $e)
+        if ($e.Index -lt 0) { return }
+        $inEdit = (($e.State -band [System.Windows.Forms.DrawItemState]::ComboBoxEdit) -ne 0)
+        $isSel = ((($e.State -band [System.Windows.Forms.DrawItemState]::Selected) -ne 0) -and -not $inEdit)
+        $bg = if ($isSel) { $steamUi.Selected } elseif ($inEdit) { $sender.BackColor } else { $steamUi.Input }
+        $bgBrush = New-Object System.Drawing.SolidBrush($bg)
+        try {
+            $e.Graphics.FillRectangle($bgBrush, $e.Bounds)
+            $rc = New-Object System.Drawing.Rectangle(($e.Bounds.X + 6), $e.Bounds.Y, [Math]::Max(10, ($e.Bounds.Width - 8)), $e.Bounds.Height)
+            $fl = [System.Windows.Forms.TextFormatFlags]::Left -bor [System.Windows.Forms.TextFormatFlags]::VerticalCenter -bor [System.Windows.Forms.TextFormatFlags]::NoPrefix -bor [System.Windows.Forms.TextFormatFlags]::EndEllipsis
+            [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, [string]$sender.Items[$e.Index], $sender.Font, $rc, $(if ($sender.Dim) { $sender.DimColor } else { $steamUi.Text }), $fl)
+        } finally { $bgBrush.Dispose() }
+    }.GetNewClosure())
+    $pnlFrames.Controls.Add($cmbFrames)
+    Set-SCFrameComboState $cmbFrames $pnlFrames ([bool]$lblFrames.Checked)
+    $lblFrames.Add_CheckedChanged({ Set-SCFrameComboState $cmbFrames $pnlFrames ([bool]$lblFrames.Checked) }.GetNewClosure())
+    $emuFramesTipText = Get-WrappedTipText ([string](T 'emu_lbl_frames_tip'))
+    $emuExtractTip.SetToolTip($lblFrames, $emuFramesTipText)
+    $emuExtractTip.SetToolTip($pnlFrames, $emuFramesTipText)
+
     # Подсказки платформ эмуляции для поля «Расширения» — тот же приём, что и
     # выпадающий список параметров запуска в карточке игры (launchOptResults):
     # обычный ListBox, скрытый по умолчанию, разворачивается поверх остальных
@@ -38431,7 +46834,7 @@ function Show-EmulatorEditDialog ($owner, $existing = $null) {
 
     $btnOkEmu = New-Object System.Windows.Forms.Button
     $btnOkEmu.Text = (T 'set_save')
-    $btnOkEmu.Location = New-Object System.Drawing.Point(268, 246)
+    $btnOkEmu.Location = New-Object System.Drawing.Point(268, 286)
     $btnOkEmu.Size = New-Object System.Drawing.Size(96, 30)
     $btnOkEmu.FlatStyle = 'Flat'
     $btnOkEmu.BackColor = [System.Drawing.Color]::FromArgb(25,55,75)
@@ -38441,7 +46844,7 @@ function Show-EmulatorEditDialog ($owner, $existing = $null) {
 
     $btnCancelEmu = New-Object System.Windows.Forms.Button
     $btnCancelEmu.Text = (T 'set_cancel')
-    $btnCancelEmu.Location = New-Object System.Drawing.Point(370, 246)
+    $btnCancelEmu.Location = New-Object System.Drawing.Point(370, 286)
     $btnCancelEmu.Size = New-Object System.Drawing.Size(90, 30)
     $btnCancelEmu.FlatStyle = 'Flat'
     $btnCancelEmu.BackColor = $steamUi.Panel2
@@ -38452,10 +46855,20 @@ function Show-EmulatorEditDialog ($owner, $existing = $null) {
     $dlg.AcceptButton = $btnOkEmu
     $dlg.CancelButton = $btnCancelEmu
 
-    foreach ($otherCtrl in @($txtName, $txtExe, $btnBrowseExeEmu, $chkExtract, $chkMulti, $txtArgs, $btnOkEmu, $btnCancelEmu)) {
+    # «Без рамки» при включённой галочке - не то же самое, что выключенная галочка: рамки снимутся со всех игр эмулятора. Предупреждаем до закрытия окна.
+    $dlg.Add_FormClosing({
+        param($s, $e)
+        try {
+            if ($s.DialogResult -eq [System.Windows.Forms.DialogResult]::OK -and [bool]$lblFrames.Checked -and $cmbFrames.SelectedIndex -eq 0) {
+                if (-not (Confirm-ProfileFramesRemove 'emu' $s)) { $e.Cancel = $true }
+            }
+        } catch {}
+    }.GetNewClosure())
+
+    foreach ($otherCtrl in @($txtName, $txtExe, $btnBrowseExeEmu, $chkExtract, $chkMulti, $txtArgs, $cmbFrames, $btnOkEmu, $btnCancelEmu)) {
         $otherCtrl.Add_Enter({ & $closeExtResults }.GetNewClosure())
     }
-    foreach ($otherCtrl in @($txtExe, $btnBrowseExeEmu, $txtExt, $chkExtract, $chkMulti, $txtArgs, $btnOkEmu, $btnCancelEmu)) {
+    foreach ($otherCtrl in @($txtExe, $btnBrowseExeEmu, $txtExt, $chkExtract, $chkMulti, $txtArgs, $cmbFrames, $btnOkEmu, $btnCancelEmu)) {
         $otherCtrl.Add_Enter({ & $closeNameResults }.GetNewClosure())
     }
 
@@ -38496,6 +46909,7 @@ function Show-EmulatorEditDialog ($owner, $existing = $null) {
         # сама кнопка получает фокус.
         if ($control -ne $txtName -and $control -ne $txtExe -and $control -ne $txtExt -and `
             $control -ne $txtArgs -and $control -ne $nameResults -and $control -ne $extResults -and `
+            $control -ne $pnlFrames -and $control -ne $cmbFrames -and `
             $control -isnot [System.Windows.Forms.ButtonBase]) {
             # ВАЖНО: $dismissAction передан параметром именно для того, чтобы
             # .GetNewClosure() здесь захватывал настоящую локальную переменную
@@ -38543,6 +46957,9 @@ function Show-EmulatorEditDialog ($owner, $existing = $null) {
         Core       = if ($existing -ne $null) { [string]$existing.Core } else { '' }
         ExtractArchives = [bool]$chkExtract.Checked
         MultiDisc = [bool]$chkMulti.Checked
+        FrameKit  = $(if ([bool]$lblFrames.Checked -and $cmbFrames.SelectedIndex -ge 0 -and $cmbFrames.SelectedIndex -lt $emuFrameKitIds.Count) { [string]$emuFrameKitIds[$cmbFrames.SelectedIndex] } else { '' })
+        # Одноразовый флаг для окна настроек (в конфиг не пишется): галочка включена, выбрано «Без рамки» - снять рамки у уже добавленных игр.
+        FramesRemove = ([bool]$lblFrames.Checked -and $cmbFrames.SelectedIndex -eq 0)
     }
 }
 
@@ -38596,10 +47013,82 @@ function Resolve-WrapperPresetExePath ($Preset) {
     return $first
 }
 
+# Строка «Рамки:» в окне профиля (враппера): подпись слева и выпадающий список справа, как в окне «Изменить эмулятор».
+# Первым пунктом и по умолчанию «Без рамки», дальше наборы, у которых есть вертикальная рамка.
+# Возвращает @{ Ids; Combo; Tip }: Ids[Combo.SelectedIndex] - id набора ('' - без рамки).
+function Add-FrameKitPickerRow ($Dlg, [int]$Y, [string]$SavedKit, [string]$TipText) {
+    $ids = @('', [string]$script:LauncherBadgeKitId)
+    $names = @((Get-EditorFrameText 'card_frame_none' 'Без рамки'), (Get-EditorFrameText 'wrap_frame_badge' 'Значок враппера'))
+    try {
+        foreach ($fk in @(Get-FrameKitsSorted)) {
+            if ([string]::IsNullOrWhiteSpace([string]$fk.v)) { continue }
+            $ids += [string]$fk.id
+            $names += [string]$fk.name
+        }
+    } catch {}
+    $lbl = New-SCUseFramesCheckBox $Dlg ([string](T 'frames_use_chk')) 16 $Y 28 (-not [string]::IsNullOrWhiteSpace($SavedKit))
+    $fieldX = [Math]::Max(120, [Math]::Min(300, (16 + [int]$lbl.Width + 6)))
+    $fieldW = 460 - $fieldX
+    $Dlg.Controls.Add($lbl)
+
+    $pnl = New-Object System.Windows.Forms.Panel
+    $pnl.Location = New-Object System.Drawing.Point($fieldX, $Y)
+    $pnl.Size = New-Object System.Drawing.Size($fieldW, 28)
+    $pnl.BackColor = $steamUi.Input
+    $pnl.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+    $Dlg.Controls.Add($pnl)
+
+    $cmb = New-Object SmartExeComboBox
+    $cmb.Dock = [System.Windows.Forms.DockStyle]::Fill
+    $cmb.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
+    $cmb.DrawMode = [System.Windows.Forms.DrawMode]::OwnerDrawFixed
+    $cmb.CustomDropDown = $true
+    $cmb.ItemHeight = 18
+    $cmb.IntegralHeight = $false
+    $cmb.MaxDropDownItems = 10
+    $cmb.DropDownHeight = 288
+    $cmb.DropDownWidth = [Math]::Max(200, $fieldW)
+    $cmb.BackColor = $steamUi.Input
+    $cmb.ForeColor = $steamUi.Text
+    $cmb.Font = New-Object System.Drawing.Font('Segoe UI', 9)
+    $cmb.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    try { $cmb.BorderColor = $steamUi.Input } catch {}
+    foreach ($nm in $names) { [void]$cmb.Items.Add([string]$nm) }
+    $selIdx = 0
+    if (-not [string]::IsNullOrWhiteSpace($SavedKit)) {
+        $pos = [Array]::IndexOf([string[]]$ids, $SavedKit)
+        if ($pos -ge 0) { $selIdx = $pos }
+    }
+    $cmb.SelectedIndex = $selIdx
+    $cmb.Add_DrawItem({
+        param($sender, $e)
+        if ($e.Index -lt 0) { return }
+        $inEdit = (($e.State -band [System.Windows.Forms.DrawItemState]::ComboBoxEdit) -ne 0)
+        $isSel = ((($e.State -band [System.Windows.Forms.DrawItemState]::Selected) -ne 0) -and -not $inEdit)
+        $bg = if ($isSel) { $steamUi.Selected } elseif ($inEdit) { $sender.BackColor } else { $steamUi.Input }
+        $bgBrush = New-Object System.Drawing.SolidBrush($bg)
+        try {
+            $e.Graphics.FillRectangle($bgBrush, $e.Bounds)
+            $rc = New-Object System.Drawing.Rectangle(($e.Bounds.X + 6), $e.Bounds.Y, [Math]::Max(10, ($e.Bounds.Width - 8)), $e.Bounds.Height)
+            $fl = [System.Windows.Forms.TextFormatFlags]::Left -bor [System.Windows.Forms.TextFormatFlags]::VerticalCenter -bor [System.Windows.Forms.TextFormatFlags]::NoPrefix -bor [System.Windows.Forms.TextFormatFlags]::EndEllipsis
+            [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, [string]$sender.Items[$e.Index], $sender.Font, $rc, $(if ($sender.Dim) { $sender.DimColor } else { $steamUi.Text }), $fl)
+        } finally { $bgBrush.Dispose() }
+    }.GetNewClosure())
+    $pnl.Controls.Add($cmb)
+    Set-SCFrameComboState $cmb $pnl ([bool]$lbl.Checked)
+    $lbl.Add_CheckedChanged({ Set-SCFrameComboState $cmb $pnl ([bool]$lbl.Checked) }.GetNewClosure())
+
+    $tip = New-Object System.Windows.Forms.ToolTip
+    $tipText = Get-WrappedTipText $TipText
+    $tip.SetToolTip($lbl, $tipText)
+    $tip.SetToolTip($pnl, $tipText)
+    return @{ Ids = $ids; Combo = $cmb; Check = $lbl; Tip = $tip }
+}
+
 function Show-WrapperEditDialog ($owner, $existing = $null) {
     $dlg = New-SCForm
     $dlg.Text = if ($existing -eq $null) { (T 'wrap_dlg_new') } else { (T 'wrap_dlg_edit') }
-    $dlg.ClientSize = New-Object System.Drawing.Size(480, 214)
+    $dlg.ClientSize = New-Object System.Drawing.Size(480, 254)
     $dlg.StartPosition = 'CenterParent'
     $dlg.FormBorderStyle = 'FixedDialog'
     $dlg.MaximizeBox = $false; $dlg.MinimizeBox = $false
@@ -38683,9 +47172,14 @@ function Show-WrapperEditDialog ($owner, $existing = $null) {
     $lblHint.Font = New-Object System.Drawing.Font('Segoe UI', 7.5)
     $dlg.Controls.Add($lblHint)
 
+    # Строка «Рамки:» под подсказкой аргументов - как в окне «Изменить эмулятор»: «Без рамки» (по умолчанию) и наборы рамок.
+    $wrapSavedKit = ''
+    if ($existing -ne $null) { try { $wrapSavedKit = [string]$existing.FrameKit } catch {} }
+    $wrapFramePick = Add-FrameKitPickerRow $dlg 160 $wrapSavedKit ([string](T 'wrap_lbl_frames_tip'))
+
     $btnOk = New-Object System.Windows.Forms.Button
     $btnOk.Text = (T 'set_save')
-    $btnOk.Location = New-Object System.Drawing.Point(268, 164)
+    $btnOk.Location = New-Object System.Drawing.Point(268, 204)
     $btnOk.Size = New-Object System.Drawing.Size(96, 30)
     $btnOk.FlatStyle = 'Flat'
     $btnOk.BackColor = [System.Drawing.Color]::FromArgb(25,55,75)
@@ -38695,7 +47189,7 @@ function Show-WrapperEditDialog ($owner, $existing = $null) {
 
     $btnCancel = New-Object System.Windows.Forms.Button
     $btnCancel.Text = (T 'set_cancel')
-    $btnCancel.Location = New-Object System.Drawing.Point(370, 164)
+    $btnCancel.Location = New-Object System.Drawing.Point(370, 204)
     $btnCancel.Size = New-Object System.Drawing.Size(90, 30)
     $btnCancel.FlatStyle = 'Flat'
     $btnCancel.BackColor = $steamUi.Panel2
@@ -38815,15 +47309,31 @@ function Show-WrapperEditDialog ($owner, $existing = $null) {
         $otherCtrl.Add_Enter({ & $closeNameResults }.GetNewClosure())
     }
 
+    $dlg.Add_FormClosing({
+        param($s, $e)
+        try {
+            if ($s.DialogResult -eq [System.Windows.Forms.DialogResult]::OK -and [bool]$wrapFramePick.Check.Checked -and [int]$wrapFramePick.Combo.SelectedIndex -eq 0) {
+                if (-not (Confirm-ProfileFramesRemove 'wrap' $s)) { $e.Cancel = $true }
+            }
+        } catch {}
+    }.GetNewClosure())
+
     $res = $dlg.ShowDialog($owner)
     if ($res -ne [System.Windows.Forms.DialogResult]::OK) { return $null }
     $argsText = $txtArgs.Text.Trim()
+    $wrapKitOut = ''
+    try {
+        $wpi = [int]$wrapFramePick.Combo.SelectedIndex
+        if ([bool]$wrapFramePick.Check.Checked -and $wpi -ge 0 -and $wpi -lt @($wrapFramePick.Ids).Count) { $wrapKitOut = [string]$wrapFramePick.Ids[$wpi] }
+    } catch {}
     if ([string]::IsNullOrWhiteSpace($argsText)) { $argsText = '"{game}" {args}' }
     return @{
         Id      = if ($existing -ne $null -and -not [string]::IsNullOrWhiteSpace([string]$existing.Id)) { [string]$existing.Id } else { New-EmulatorProfileId }
         Name    = $txtName.Text.Trim()
         ExePath = $txtExe.Text.Trim()
         Args    = $argsText
+        FrameKit = $wrapKitOut
+        FramesRemove = $(try { [bool]$wrapFramePick.Check.Checked -and [int]$wrapFramePick.Combo.SelectedIndex -eq 0 } catch { $false })
     }
 }
 
@@ -39103,6 +47613,31 @@ function Add-WrappersManagerControls ($owner, $container) {
                 $global:launchWrappers = @($global:launchWrappers | ForEach-Object { if ([string]$_.Id -eq $selId) { $upd } else { $_ } })
                 Save-Configuration
                 & $reloadList
+                # Сменили набор рамок: он сразу накладывается на обложки уже добавленных игр, запускаемых через этот враппер
+                # («Без рамки» снимает рамки, которые стояли от прежнего набора).
+                try {
+                    $oldWk = ''; try { $oldWk = [string]$cur.FrameKit } catch {}
+                    $newWk = ''; try { $newWk = [string]$upd.FrameKit } catch {}
+                    # Галочка включена, выбрано «Без рамки» (окно уже предупредило): рамки снимаются со всех добавленных игр враппера.
+                    $wkRemove = $false; try { $wkRemove = [bool]$upd.FramesRemove } catch {}
+                    try { $upd.FramesRemove = $false } catch {}
+                    if (($oldWk -ne $newWk -and -not [string]::IsNullOrWhiteSpace($newWk)) -or $wkRemove) {
+                        $wkSel = $(if ([string]::IsNullOrWhiteSpace($newWk)) { 'none' } else { $newWk })
+                        $wkBadgeOwner = $(if ($newWk -eq [string]$script:LauncherBadgeKitId) { 'wrap:' + $selId } else { '' })
+                        $wkMatched = New-Object System.Collections.Generic.List[object]
+                        $prevWk = [System.Windows.Forms.Cursor]::Current
+                        try {
+                            [System.Windows.Forms.Cursor]::Current = [System.Windows.Forms.Cursors]::WaitCursor
+                            foreach ($wen in @(Get-SteamLibraryEntries)) {
+                                if ($null -eq $wen -or [string]$wen.Kind -ne 'shortcut') { continue }
+                                $wlw = $null
+                                try { $wlw = Find-LaunchWrapperForShortcut ([string]$wen.Exe) ([string]$wen.LaunchOptions) } catch {}
+                                if ($null -ne $wlw -and [string]$wlw.Wrapper.Id -eq $selId) { [void]$wkMatched.Add($wen) }
+                            }
+                        } finally { [System.Windows.Forms.Cursor]::Current = $prevWk }
+                        if ($wkMatched.Count -gt 0 -and ($wkRemove -or (Confirm-ProfileFramesApply 'wrap' $newWk $wkMatched.Count $owner))) { Invoke-BulkCoverFrames -Entries $wkMatched.ToArray() -Sel $wkSel -Owner $owner -BadgeOwner $wkBadgeOwner }
+                    }
+                } catch {}
             }
         } catch {
             Show-AppMessageBox($owner, ((T 'wrap_err_edit') + "`r`n$($_.Exception.Message)"), $global:appTitle, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
@@ -41056,7 +49591,7 @@ function Get-SaveGameParams ($Entry) {
 }
 
 $script:saveHasBackupCache = @{}
-function Reset-SaveBackupCache { $script:saveHasBackupCache = @{}; try { Reset-SaveDirIndex } catch {} }
+function Reset-SaveBackupCache { $script:saveHasBackupCache = @{}; try { $script:mainSavesRowFlags = @{} } catch {}; try { Reset-SaveDirIndex } catch {} }
 
 # Есть ли у игры хоть что-то, что попало бы в бэкап (используется галочкой «сохранения найдены» в карточке)
 # (папки/файлы с файлами внутри или существующие ключи реестра). Ничего не архивирует.
@@ -41678,6 +50213,10 @@ function Start-SaveDetectorGame ($Launch) {
                 if (-not [string]::IsNullOrWhiteSpace([string]$Launch.Args)) { $sp['ArgumentList'] = [string]$Launch.Args }
                 $wd = [string]$Launch.WorkDir
                 if (-not [string]::IsNullOrWhiteSpace($wd) -and [System.IO.Directory]::Exists($wd)) { $sp['WorkingDirectory'] = $wd }
+                else {
+                    # Рабочая папка не задана: запускаем из папки самой игры, а не из папки программы.
+                    try { $exeDir = [System.IO.Path]::GetDirectoryName([string]$Launch.Exe); if (-not [string]::IsNullOrWhiteSpace($exeDir) -and [System.IO.Directory]::Exists($exeDir)) { $sp['WorkingDirectory'] = $exeDir } } catch {}
+                }
                 Start-Process @sp
                 return $true
             }
@@ -42049,7 +50588,7 @@ function Show-SaveDetectorPicker {
                 & $openPath ([string]$cands[$i].Path)
             } catch {}
         }.GetNewClosure())
-        $ctx = New-Object System.Windows.Forms.ContextMenuStrip
+        $ctx = (New-PanelCtxMenu)
         $ctx.BackColor = $pal.Panel2; $ctx.ForeColor = $pal.Text
         # Тёмный рендерер меню (как в остальных меню программы): иначе слева торчит белая колонка под значки.
         try { Initialize-SCFilterRenderer; $ctx.Renderer = (New-Object SCFilterRenderer) } catch {}
@@ -42290,7 +50829,7 @@ function Show-SaveDetectorMultiPicker {
                 & $openPath ([string]$rows[$i].Path)
             } catch {}
         }.GetNewClosure())
-        $ctx = New-Object System.Windows.Forms.ContextMenuStrip
+        $ctx = (New-PanelCtxMenu)
         $ctx.BackColor = $pal.Panel2; $ctx.ForeColor = $pal.Text
         try { Initialize-SCFilterRenderer; $ctx.Renderer = (New-Object SCFilterRenderer) } catch {}
         $ctx.ShowCheckMargin = $false; $ctx.ShowImageMargin = $false
@@ -44253,6 +52792,30 @@ function Add-EmulatorsManagerControls ($owner, $container) {
                 try { Update-RomEmulatorIndicator } catch {}
                 if ($updPlans.Count -gt 0 -and $updAnswer -eq 'yes') { Invoke-EmulatorShortcutUpdate $updPlans $updSkipped $updatedProfile $owner $true }
                 elseif ($updPlans.Count -eq 0 -and $updSkipped.Count -gt 0) { Invoke-EmulatorShortcutUpdate $updPlans $updSkipped $updatedProfile $owner }
+                # Сменили набор рамок в профиле: он сразу накладывается на обложки уже добавленных игр этого эмулятора
+                # («Без рамки» снимает рамки, которые стояли от прежнего набора).
+                try {
+                    $oldFk = [string]$existingProfile.FrameKit; $newFk = [string]$updatedProfile.FrameKit
+                    # Галочка включена, выбрано «Без рамки» (окно уже предупредило): рамки снимаются со всех добавленных игр эмулятора.
+                    $fkRemove = $false; try { $fkRemove = [bool]$updatedProfile.FramesRemove } catch {}
+                    try { $updatedProfile.FramesRemove = $false } catch {}
+                    if (($oldFk -ne $newFk -and -not [string]::IsNullOrWhiteSpace($newFk)) -or $fkRemove) {
+                        $fkSel = $(if ([string]::IsNullOrWhiteSpace($newFk)) { 'none' } else { $newFk })
+                        $fkBadgeOwner = $(if ($newFk -eq [string]$script:LauncherBadgeKitId) { 'emu:' + $selId } else { '' })
+                        $fkMatched = New-Object System.Collections.Generic.List[object]
+                        $prevFk = [System.Windows.Forms.Cursor]::Current
+                        try {
+                            [System.Windows.Forms.Cursor]::Current = [System.Windows.Forms.Cursors]::WaitCursor
+                            foreach ($fen in @(Get-SteamLibraryEntries)) {
+                                if ($null -eq $fen -or [string]$fen.Kind -ne 'shortcut') { continue }
+                                $fep = $null
+                                try { $fep = Get-EntryEmulatorProfile $fen } catch {}
+                                if ($null -ne $fep -and [string]$fep.Id -eq $selId) { [void]$fkMatched.Add($fen) }
+                            }
+                        } finally { [System.Windows.Forms.Cursor]::Current = $prevFk }
+                        if ($fkMatched.Count -gt 0 -and ($fkRemove -or (Confirm-ProfileFramesApply 'emu' $newFk $fkMatched.Count $owner))) { Invoke-BulkCoverFrames -Entries $fkMatched.ToArray() -Sel $fkSel -Owner $owner -BadgeOwner $fkBadgeOwner }
+                    }
+                } catch {}
             }
         } catch {
             # См. комментарий в btnAddEmu.Add_Click — та же временная диагностика.
@@ -44646,15 +53209,28 @@ function Show-ProgramSettingsDialog {
     $dlg.Controls.Add($pnlWrappersManager)
     Add-WrappersManagerControls $dlg $pnlWrappersManager
 
+    $pnlFramesManager = New-Object System.Windows.Forms.Panel
+    $pnlFramesManager.Location = $pnlRomsManager.Location
+    $pnlFramesManager.Size = $pnlRomsManager.Size
+    $pnlFramesManager.Anchor = $pnlRomsManager.Anchor
+    $pnlFramesManager.Visible = $false
+    $dlg.Controls.Add($pnlFramesManager)
+    Add-FramesManagerControls $dlg $pnlFramesManager
+
     # Вкладки правой колонки в виде настоящих вкладок: активная сливается с таблицей под ней как единое целое
     # (заливка цвета строки заголовков таблицы, нет линии между вкладкой и таблицей),
     # неактивная ниже, темнее и стоит на линии верхней границы таблицы. Вкладка на 1 px заходит на границу таблицы
     # (панели таблиц лежат на Y=52) и стоит выше неё по порядку отрисовки, поэтому линию под активной вкладкой закрывает.
     $tabFont = $romsSection.Font
-    $tabPadX = 14
-    $tabW1 = [System.Windows.Forms.TextRenderer]::MeasureText([string](T 'emu_section'), $tabFont).Width + 2 * $tabPadX
-    $tabW2 = [System.Windows.Forms.TextRenderer]::MeasureText([string](T 'wrap_section'), $tabFont).Width + 2 * $tabPadX
-    $tabState = @{ Wrappers = $false; Hover = -1 }
+    # Вкладки делят всю ширину таблицы на три равные части (соседние вкладки заходят друг на друга на 1 px, поэтому сумма ширин = ширина таблицы + 2);
+    # остаток от деления на 3 раздаётся первым вкладкам. Ширина не зависит от языка заголовков.
+    $tabTotal = [int]$romsContentWidth + 2
+    $tabBase = [int][Math]::Floor($tabTotal / 3)
+    $tabRem = $tabTotal - 3 * $tabBase
+    $tabW1 = $tabBase + $(if ($tabRem -ge 1) { 1 } else { 0 })
+    $tabW2 = $tabBase + $(if ($tabRem -ge 2) { 1 } else { 0 })
+    $tabW3 = $tabBase
+    $tabState = @{ Tab = 0; Hover = -1 }
     $tabInactiveBack = $steamUi.Panel
     $tabHoverBack = [System.Drawing.Color]::FromArgb(33, 50, 70)
 
@@ -44662,13 +53238,17 @@ function Show-ProgramSettingsDialog {
     $wrapSection.Text = (T 'wrap_section')
     $wrapSection.Cursor = [System.Windows.Forms.Cursors]::Hand
     $dlg.Controls.Add($wrapSection)
+    $framesSection = New-Object System.Windows.Forms.Label
+    $framesSection.Text = (T 'frames_tab')
+    $framesSection.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $dlg.Controls.Add($framesSection)
 
     $paintSettingsTab = {
         param($s, $ev)
         try {
             $g = $ev.Graphics
             $idx = [int]$s.Tag
-            $active = (($idx -eq 1) -eq [bool]$tabState.Wrappers)
+            $active = ($idx -eq [int]$tabState.Tab)
             $w = $s.ClientSize.Width; $h = $s.ClientSize.Height
             $back = if ($active) { $steamUi.Panel2 } elseif ($tabState.Hover -eq $idx) { $tabHoverBack } else { $tabInactiveBack }
             $br = New-Object System.Drawing.SolidBrush($back)
@@ -44689,7 +53269,7 @@ function Show-ProgramSettingsDialog {
 
     $dbProp = [System.Windows.Forms.Control].GetProperty('DoubleBuffered', [System.Reflection.BindingFlags]'NonPublic,Instance')
     $tabIdx = 0
-    foreach ($tc in @($romsSection, $wrapSection)) {
+    foreach ($tc in @($romsSection, $wrapSection, $framesSection)) {
         $tc.AutoSize = $false
         $tc.Font = $tabFont
         $tc.Tag = $tabIdx
@@ -44703,18 +53283,21 @@ function Show-ProgramSettingsDialog {
 
     # Обе вкладки начинаются с Y=54 (одной высоты, под строкой «Открывать при запуске»); активная ещё на 1 px заходит на границу таблицы (Y=81) и закрывает её линию.
     $selectSettingsTab = {
-        param([bool]$wrappers)
-        $tabState.Wrappers = $wrappers
-        $pnlRomsManager.Visible = (-not $wrappers)
-        $pnlWrappersManager.Visible = $wrappers
-        $romsSection.SetBounds($romsContentX, 54, $tabW1, $(if ($wrappers) { 27 } else { 28 }))
-        $wrapSection.SetBounds(($romsContentX + $tabW1 - 1), 54, $tabW2, $(if ($wrappers) { 28 } else { 27 }))
-        if ($wrappers) { $wrapSection.BringToFront() } else { $romsSection.BringToFront() }
-        $romsSection.Invalidate(); $wrapSection.Invalidate()
+        param([int]$tab)
+        $tabState.Tab = $tab
+        $pnlRomsManager.Visible = ($tab -eq 0)
+        $pnlWrappersManager.Visible = ($tab -eq 1)
+        $pnlFramesManager.Visible = ($tab -eq 2)
+        $romsSection.SetBounds($romsContentX, 54, $tabW1, $(if ($tab -eq 0) { 28 } else { 27 }))
+        $wrapSection.SetBounds(($romsContentX + $tabW1 - 1), 54, $tabW2, $(if ($tab -eq 1) { 28 } else { 27 }))
+        $framesSection.SetBounds(($romsContentX + $tabW1 + $tabW2 - 2), 54, $tabW3, $(if ($tab -eq 2) { 28 } else { 27 }))
+        if ($tab -eq 1) { $wrapSection.BringToFront() } elseif ($tab -eq 2) { $framesSection.BringToFront() } else { $romsSection.BringToFront() }
+        $romsSection.Invalidate(); $wrapSection.Invalidate(); $framesSection.Invalidate()
     }.GetNewClosure()
-    $romsSection.Add_Click({ & $selectSettingsTab $false }.GetNewClosure())
-    $wrapSection.Add_Click({ & $selectSettingsTab $true }.GetNewClosure())
-    & $selectSettingsTab $false
+    $romsSection.Add_Click({ & $selectSettingsTab 0 }.GetNewClosure())
+    $wrapSection.Add_Click({ & $selectSettingsTab 1 }.GetNewClosure())
+    $framesSection.Add_Click({ & $selectSettingsTab 2 }.GetNewClosure())
+    & $selectSettingsTab 0
 
     $pnlSaves = New-Object System.Windows.Forms.Panel
     $pnlSaves.Location = New-Object System.Drawing.Point($romsContentX, $savesTop)
@@ -45730,6 +54313,7 @@ function Show-ProgramSettingsDialog {
     $btnSupport.Cursor = [System.Windows.Forms.Cursors]::Hand
     $btnSupport.Add_Click({ param($s, $e) try { Show-SupportDialog ($s.FindForm()) } catch {} })
     $dlg.Controls.Add($btnSupport)
+
 
     # «Отмена»/«Сохранить» перенесены в правую колонку (вровень по правому
     # краю со списком/кнопками эмуляторов, romsContentX+romsContentWidth) —
@@ -53189,10 +61773,14 @@ public static class SCDlssBar
     public static void Draw(Graphics g, int w, int h, string ver)
     {
         if (ver == null) return;
+        // Формат "Название|версия": у игр без DLSS слева пишется название другого апскейлера (FSR DX12, XeSS...).
+        string label = "DLSS";
+        int sep = ver.IndexOf('|');
+        if (sep > 0) { label = ver.Substring(0, sep); ver = ver.Substring(sep + 1); }
         int bh = 24;
         g.FillRectangle(br, 0, h - bh, w, bh);
         int ty = h - bh + (bh - fL.Height) / 2;
-        TextRenderer.DrawText(g, "DLSS", fL, new Point(8, ty), Color.White, tf);
+        TextRenderer.DrawText(g, label, fL, new Point(8, ty), Color.White, tf);
         int vw = TextRenderer.MeasureText(ver, fR, new Size(1000, 40), tf).Width;
         TextRenderer.DrawText(g, ver, fR, new Point(w - vw - 8, ty), Color.FromArgb(225, 228, 232), tf);
     }
@@ -53550,6 +62138,24 @@ function Stop-LibDlssScan {
     $script:libDlssRs = $null
 }
 
+# Запасные апскейлеры для игр БЕЗ DLSS (плитки библиотеки и панели главного экрана).
+# Порядок = приоритет (от самых популярных): FSR DX12, FSR VK, XeSS, XeSS DX11.
+# Элементы: @(файл, название). Названия берём из Get-UpscalerDefs, чтобы совпадали с карточкой игры.
+function Get-AltUpscalerList {
+    $altUps = @()
+    try {
+        $defMap = @{}
+        foreach ($ud in @(Get-UpscalerDefs)) { $defMap[[string]$ud.Key] = $ud }
+        foreach ($ak in @('FSR12', 'FSRVK', 'XESS', 'XESS11')) {
+            if ($defMap.ContainsKey($ak)) { $altUps += ,@([string]$defMap[$ak].File, [string]$defMap[$ak].Title) }
+        }
+    } catch { $altUps = @() }
+    if ($altUps.Count -eq 0) {
+        $altUps = @(@('amd_fidelityfx_dx12.dll', 'FSR DX12'), @('amd_fidelityfx_vk.dll', 'FSR VK'), @('libxess.dll', 'XeSS'), @('libxess_dx11.dll', 'XeSS DX11'))
+    }
+    return ,$altUps
+}
+
 function Start-LibDlssScan ($Entries) {
     Stop-LibDlssScan
     $script:gameRootCache = @{}
@@ -53560,6 +62166,7 @@ function Start-LibDlssScan ($Entries) {
     $libNames = @()
     try { $libNames = @(Get-UpscalerDefs | ForEach-Object { [string]$_.File }) } catch { $libNames = @() }
     if ($libNames.Count -eq 0) { $libNames = @('nvngx_dlss.dll') }
+    $altUps = Get-AltUpscalerList
     $dirs = New-Object System.Collections.Generic.List[string]
     $seen = @{}
     foreach ($en in @($Entries)) {
@@ -53571,12 +62178,27 @@ function Start-LibDlssScan ($Entries) {
         [void]$dirs.Add($d)
     }
     $worker = {
-        param($dirs, $state, $libNames)
+        param($dirs, $state, $libNames, $altUps)
         try {
+            # Версия файла в виде vA.B.C (хвостовые нули не показываем, но минимум две цифры).
+            $fmtVer = {
+                param($path)
+                try {
+                    $vi = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($path)
+                    $parts = @([int]$vi.FileMajorPart, [int]$vi.FileMinorPart, [int]$vi.FileBuildPart, [int]$vi.FilePrivatePart)
+                    if ($parts[0] -gt 0) {
+                        $n = 4
+                        while ($n -gt 2 -and $parts[$n - 1] -eq 0) { $n-- }
+                        return ('v' + ((@($parts[0..($n - 1)])) -join '.'))
+                    }
+                } catch {}
+                return ''
+            }
             foreach ($d in $dirs) {
                 if ($state['Cancel']) { break }
                 $ver = ''
                 $anyLib = $false
+                $altFound = @{}
                 try {
                     if ([System.IO.Directory]::Exists($d)) {
                         $found = ''
@@ -53596,6 +62218,14 @@ function Start-LibDlssScan ($Entries) {
                                     try { if ([System.IO.File]::Exists([System.IO.Path]::Combine($dir, [string]$ln))) { $anyLib = $true; break } } catch {}
                                 }
                             }
+                            # Запасные апскейлеры (FSR / XeSS): запоминаем первый найденный файл каждого вида.
+                            foreach ($au in $altUps) {
+                                if ($altFound.ContainsKey([string]$au[0])) { continue }
+                                try {
+                                    $ac = [System.IO.Path]::Combine($dir, [string]$au[0])
+                                    if ([System.IO.File]::Exists($ac)) { $altFound[[string]$au[0]] = $ac }
+                                } catch {}
+                            }
                             if ($depth -lt 12) {
                                 try {
                                     foreach ($sd in [System.IO.Directory]::EnumerateDirectories($dir)) {
@@ -53606,13 +62236,14 @@ function Start-LibDlssScan ($Entries) {
                                 } catch {}
                             }
                         }
-                        if ($found) {
-                            $vi = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($found)
-                            $parts = @([int]$vi.FileMajorPart, [int]$vi.FileMinorPart, [int]$vi.FileBuildPart, [int]$vi.FilePrivatePart)
-                            if ($parts[0] -gt 0) {
-                                $n = 4
-                                while ($n -gt 2 -and $parts[$n - 1] -eq 0) { $n-- }
-                                $ver = 'v' + ((@($parts[0..($n - 1)])) -join '.')
+                        if ($found) { $ver = [string](& $fmtVer $found) }
+                        # Нет DLSS (или версия не читается): показываем самый популярный из найденных других апскейлеров
+                        # в формате "Название|версия" — плитка рисует название слева вместо «DLSS».
+                        if ([string]::IsNullOrEmpty($ver)) {
+                            foreach ($au in $altUps) {
+                                if (-not $altFound.ContainsKey([string]$au[0])) { continue }
+                                $av = [string](& $fmtVer ([string]$altFound[[string]$au[0]]))
+                                if (-not [string]::IsNullOrEmpty($av)) { $ver = ([string]$au[1] + '|' + $av); break }
                             }
                         }
                     }
@@ -53666,6 +62297,7 @@ function Start-LibDlssScan ($Entries) {
         [void]$ps.AddArgument($dirs.ToArray())
         [void]$ps.AddArgument($state)
         [void]$ps.AddArgument($libNames)
+        [void]$ps.AddArgument($altUps)
         [void]$ps.BeginInvoke()
         $script:libDlssState = $state
         $script:libDlssPs = $ps
@@ -54064,8 +62696,40 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
         // внутри крестик (удалить коллекцию) или плюс (создать). Под курсором - светлее, значок белый.
         int bs = System.Math.Min(16, System.Math.Min(zr.Width, zr.Height));
         Rectangle br = new Rectangle(zr.X + (zr.Width - bs) / 2, zr.Y + (zr.Height - bs) / 2, bs, bs);
+        if (minus)
+        {
+            // Крестик удаления: красный круг с белым крестом (как на образце); у помеченной на удаление коллекции (greyx) - серый круг.
+            bool grey = (it.AccessibleDefaultActionDescription == "greyx");
+            Color cf = grey ? (hot ? Color.FromArgb(140, 148, 158) : Color.FromArgb(106, 114, 124)) : (hot ? Color.FromArgb(247, 84, 97) : Color.FromArgb(234, 53, 66));
+            System.Drawing.Drawing2D.SmoothingMode oldSmM = g.SmoothingMode;
+            System.Drawing.Drawing2D.PixelOffsetMode oldPo = g.PixelOffsetMode;
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.None;
+            // Чётный диаметр: центр круга и креста попадает ровно на границу пикселей.
+            int di = (bs % 2 == 0) ? bs : bs - 1;
+            float ccx = br.X + (br.Width / 2) , ccy = br.Y + (br.Height / 2);
+            float dd = (float)di;
+            using (SolidBrush cb2 = new SolidBrush(cf)) { g.FillEllipse(cb2, ccx - dd / 2f, ccy - dd / 2f, dd, dd); }
+            // Крест - один замкнутый 12-угольник вокруг точки (ccx, ccy): ровно симметричен по обеим осям и диагоналям.
+            float ea = dd * 0.29f, eb = dd * 0.167f, en = dd * 0.124f;
+            PointF[] xs = new PointF[] {
+                new PointF(ccx - eb, ccy - ea), new PointF(ccx, ccy - en), new PointF(ccx + eb, ccy - ea),
+                new PointF(ccx + ea, ccy - eb), new PointF(ccx + en, ccy), new PointF(ccx + ea, ccy + eb),
+                new PointF(ccx + eb, ccy + ea), new PointF(ccx, ccy + en), new PointF(ccx - eb, ccy + ea),
+                new PointF(ccx - ea, ccy + eb), new PointF(ccx - en, ccy), new PointF(ccx - ea, ccy - eb) };
+            using (SolidBrush wb = new SolidBrush(Color.White)) { g.FillPolygon(wb, xs); }
+            g.PixelOffsetMode = oldPo;
+            g.SmoothingMode = oldSmM;
+            return;
+        }
         Color fill = hot ? Color.FromArgb(30, 144, 230) : Color.FromArgb(54, 62, 73);
         Color c = hot ? Color.White : Color.FromArgb(200, 207, 215);
+        // Крестик удаления красный; серый - у коллекции, уже помеченной на удаление (AccessibleDefaultActionDescription == "greyx").
+        if (minus && it.AccessibleDefaultActionDescription != "greyx")
+        {
+            fill = hot ? Color.FromArgb(200, 56, 56) : Color.FromArgb(54, 62, 73);
+            c = hot ? Color.White : Color.FromArgb(232, 76, 76);
+        }
         System.Drawing.Drawing2D.SmoothingMode oldSm = g.SmoothingMode;
         g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
         using (System.Drawing.Drawing2D.GraphicsPath gp = new System.Drawing.Drawing2D.GraphicsPath())
@@ -54236,15 +62900,24 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
         }
         ToolStripMenuItem mi = e.Item as ToolStripMenuItem;
         bool on = (mi != null && mi.CheckState == CheckState.Checked);
+        // Визуальное состояние храним отдельно от CheckState: Checked гарантирует, что WinForms
+        // вызывает OnRenderItemCheck и для пустых квадратов. Это только отрисовка — CheckOnClick
+        // не включён, а фактический выбор по-прежнему определяется обработчиками меню.
+        string visual = e.Item.AccessibleDefaultActionDescription;
+        bool emptyVisual = (visual == "empty");
+        bool priorVisual = (visual == "prior" || (visual == "" && e.Item.AccessibleDescription == "prior"));
         Graphics g = e.Graphics;
-        if (on && e.Item.AccessibleDescription == "prior")
+        if (emptyVisual || (!on && !priorVisual))
         {
-            // «Было задано раньше»: квадрат со светлой прозрачной заливкой цвета акцента и тонким контуром, без «птички» —
-            // отличается от выбранного сейчас (сплошная заливка и белая «птичка»).
+            using (Pen p = new Pen(e.Item.Selected ? Color.White : Muted, 1.2f)) { g.DrawRectangle(p, cb); }
+        }
+        else if (priorVisual)
+        {
+            // «Было задано раньше»: квадрат со светлой прозрачной заливкой цвета акцента и тонким контуром, без «птички».
             using (SolidBrush b = new SolidBrush(Color.FromArgb(90, Accent.R, Accent.G, Accent.B))) { g.FillRectangle(b, cb); }
             using (Pen p = new Pen(Color.FromArgb(190, Accent.R, Accent.G, Accent.B), 1.2f)) { g.DrawRectangle(p, cb); }
         }
-        else if (on)
+        else
         {
             using (SolidBrush b = new SolidBrush(Accent)) { g.FillRectangle(b, cb); }
             using (Pen p = new Pen(Color.White, 1.6f))
@@ -54252,10 +62925,6 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
                 g.DrawLine(p, cb.X + 3, cb.Y + 7, cb.X + 6, cb.Y + 10);
                 g.DrawLine(p, cb.X + 6, cb.Y + 10, cb.X + 11, cb.Y + 3);
             }
-        }
-        else
-        {
-            using (Pen p = new Pen(e.Item.Selected ? Color.White : Muted, 1.2f)) { g.DrawRectangle(p, cb); }
         }
     }
 }
@@ -54376,6 +63045,7 @@ function Backup-SteamCollectionFiles ([string]$root, [string]$stamp) {
 
 function Write-CollFileAtomic ([string]$path, [byte[]]$bytes) {
     $tmp = $path + '.sctmp'
+    $script:steamFilesDirty = $true
     [System.IO.File]::WriteAllBytes($tmp, $bytes)
     try { [System.IO.File]::Copy($tmp, $path, $true) } finally { try { [System.IO.File]::Delete($tmp) } catch {} }
 }
@@ -55154,6 +63824,7 @@ function Invoke-CardCollectionsSave ($state, [string]$appId, [string]$oldAppId, 
 # (кнопка «Перезапустить Steam» или закрытие Steam пользователем). Очередь упорядочена; каждый элемент применяется как отдельная запись.
 # Типы: (без Type) - коллекции игры из карточки, 'plan' - перенос игр в коллекции/из них, 'struct' - создание или удаление коллекции.
 function Register-PendingCollChange {
+    $script:steamFilesDirty = $true
     $script:pendingCollVer = [int]$script:pendingCollVer + 1
     $script:collSnapCache = $null
     try { Set-SteamRestartNeeded } catch {}
@@ -55712,6 +64383,9 @@ function Show-SteamLibraryBrowser {
     # не меняет ClientSize и не запускает пересчёт колонок (это ломало сетку).
     try { Initialize-LibDlssNative } catch {}
     $dlg = New-Object System.Windows.Forms.Form
+    # Окно библиотеки в script-области: таймеры и обработчики библиотеки срабатывают и пока открыта карточка игры, а у карточки своя переменная $dlg
+    # (PowerShell ищет переменные по стеку вызовов), и пересчёт сетки брал бы размеры карточки.
+    $script:libMainDlg = $dlg
     $dlg.Add_HandleCreated({ param($s, $e); try { [FormPaintHelper]::DisableTransitions($s.Handle) } catch {} })
     Enable-SCScrollSkin $dlg
     $dlg.Text = (T 'lib_browser_title')
@@ -55833,7 +64507,7 @@ function Show-SteamLibraryBrowser {
     # высоту задать нельзя, поэтому он стоит без рамки внутри панели-рамки нужного размера.
     $pnlSearch = New-Object System.Windows.Forms.Panel
     $pnlSearch.Location = New-Object System.Drawing.Point(92, 12)   # 12..46 «Назад», 54..84 «Обновить», дальше поиск
-    $pnlSearch.Size = New-Object System.Drawing.Size(190, 30)
+    $pnlSearch.Size = New-Object System.Drawing.Size(236, 30)   # 160 + ширина двух кнопок с зазорами (2 x 38)
     $pnlSearch.BackColor = $steamUi.Input
     $pnlSearch.Cursor = [System.Windows.Forms.Cursors]::IBeam
     $txtSearch = New-Object System.Windows.Forms.TextBox
@@ -56009,6 +64683,8 @@ function Show-SteamLibraryBrowser {
     $dlg.Controls.Add($lblCapEmus)
     $lblCapWraps = & $newCapLbl (T 'lib_cap_wraps')
     $dlg.Controls.Add($lblCapWraps)
+    $lblCapFrames = & $newCapLbl (T 'lib_cap_frames')
+    $dlg.Controls.Add($lblCapFrames)
     $dlg.Controls.Add($lblCapUpscalers)
     $dlg.Controls.Add($lblCapSaves)
 
@@ -56050,6 +64726,7 @@ function Show-SteamLibraryBrowser {
     # Значок компактного режима (лоток со стрелкой вниз — бэкап, вверх — возврат); рисуется, только когда у кнопки нет текста.
     $paintSaveIcon = {
         param($btn, $e, [string]$kind)
+        if (([string]$btn.Name).StartsWith('lf_')) { return }
         if (([string]$btn.Text).Length -gt 0) { return }
         $pen = $null
         try {
@@ -56156,6 +64833,7 @@ function Show-SteamLibraryBrowser {
     # «Обновить апскейлеры»: значок «Библиотеки» (тот же, что на главной панели). Пока идёт работа, на кнопке крестик «Отменить» (Text не пуст).
     $btnUpdUp.Add_Paint({
         param($s, $e)
+        if (([string]$s.Name).StartsWith('lf_')) { return }
         if (([string]$s.Text).Length -gt 0) { return }
         try {
             $hot = $false
@@ -56168,6 +64846,251 @@ function Show-SteamLibraryBrowser {
         } catch {}
     })
     $btnRestoreUp.Add_Paint({ param($s, $e) & $paintSaveIcon $s $e 'undo' })
+
+    # ===== Сворачиваемые группы верхней панели: «Апскейлеры» и «Сохранения» =====
+    # Как на главном окне: на панели остаётся по одной кнопке на группу, по клику группа раскрывается в одну строку
+    # (поверх соседних кнопок). «Апскейлеры» раскрываются влево от своей кнопки. «Сохранения»: поиск остаётся слева от кнопки группы,
+    # бэкап и «Вернуть» встают справа от неё, чтобы ряд не накрывал кнопки врапперов (в узком окне без подписей все три справа). Пока идёт операция,
+    # ряд остаётся раскрытым (там кнопка «✕» отмены) и сам сворачивается после неё; клик мимо ряда тоже сворачивает.
+    $script:libFlyUps = $false          # группа раскрыта по клику
+    $script:libFlySaves = $false
+    $script:libFlyUpsOpen = $false      # группа реально раскрыта сейчас (с учётом идущей операции)
+    $script:libFlySavesOpen = $false
+    $script:libFlyKey = ''
+    $newLibGrpBtn = {
+        $b = New-Object System.Windows.Forms.Button
+        $b.Size = New-Object System.Drawing.Size(30, 30)
+        $b.Top = 12
+        $b.Anchor = 'Top,Right'
+        $b.FlatStyle = 'Flat'
+        $b.FlatAppearance.BorderColor = $steamUi.Border
+        $b.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(35,78,106)
+        $b.UseVisualStyleBackColor = $false
+        $b.BackColor = [System.Drawing.Color]::FromArgb(25,55,75)
+        $b.ForeColor = $steamUi.Muted
+        $b.Text = ''
+        $b.Cursor = [System.Windows.Forms.Cursors]::Hand
+        $b.TabStop = $false
+        $b.Enabled = $false
+        $b.Visible = $false
+        return $b
+    }
+    $btnUpsGrp = & $newLibGrpBtn
+    $btnUpsGrp.Left = $libToolCw - 12 - 30
+    $btnSavesGrp = & $newLibGrpBtn
+    $btnSavesGrp.Left = $libToolCw - 12 - 30 - 16 - 30
+    $dlg.Controls.Add($btnUpsGrp)
+    $dlg.Controls.Add($btnSavesGrp)
+    # Подложка раскрытого ряда: тёмная плашка с акцентной рамкой (как у раскрытых блоков главного окна).
+    $libFlyBack = New-Object System.Windows.Forms.Panel
+    $libFlyBack.Visible = $false
+    $libFlyBack.TabStop = $false
+    $libFlyBack.BackColor = [System.Drawing.Color]::FromArgb(14, 22, 31)
+    $libFlyBack.Add_Paint({
+        param($s, $e)
+        try {
+            $pn = New-Object System.Drawing.Pen($steamUi.Accent2)
+            try { $e.Graphics.DrawRectangle($pn, 0, 0, ([int]$s.Width - 1), ([int]$s.Height - 1)) } finally { $pn.Dispose() }
+        } catch {}
+    })
+    $dlg.Controls.Add($libFlyBack)
+    # Вид как у кнопок главного окна: фон Panel, рамка Border, наведение Selected/Accent2, те же значки.
+    $libGrpPaint = {
+        param($s, $e, [string]$kind)
+        try {
+            $g = $e.Graphics
+            $w = [int]$s.ClientSize.Width; $h = [int]$s.ClientSize.Height
+            $hot = $false
+            try { $hot = ($s.Enabled -and $s.ClientRectangle.Contains($s.PointToClient([System.Windows.Forms.Cursor]::Position))) } catch {}
+            $open = $false
+            if ($kind -eq 'saves') { $open = [bool]$script:libFlySavesOpen } elseif ($kind -eq 'ups') { $open = [bool]$script:libFlyUpsOpen }
+            $bg = if ($hot) { $steamUi.Selected } else { $steamUi.Panel }
+            $bb = New-Object System.Drawing.SolidBrush($bg)
+            try { $g.FillRectangle($bb, 0, 0, $w, $h) } finally { $bb.Dispose() }
+            $bc = if ($open) { $steamUi.Accent2 } else { $steamUi.Border }
+            $bp = New-Object System.Drawing.Pen($bc)
+            try { $g.DrawRectangle($bp, 0, 0, ($w - 1), ($h - 1)) } finally { $bp.Dispose() }
+            $col = if (-not $s.Enabled) { $steamUi.Muted } elseif ($hot -or $open) { $steamUi.Accent2 } else { $steamUi.Text }
+            $cx = [single]($w / 2.0); $cy = [single]($h / 2.0)
+            switch ($kind) {
+                'saves'  { Draw-MainSavesGlyph $g $cx $cy $col 'saves16' ([single]1) }
+                'scan'   { Draw-MainSavesGlyph $g $cx $cy $col 'scan16' ([single]1) }
+                'backup' { Draw-MainSavesGlyph $g $cx $cy $col 'backup16' ([single]1) }
+                'restore' { Draw-LibsUndoGlyph $g $cx $cy $col ([single]0.86) }
+                'ups'    { Draw-LibsGlyph $g $cx $cy $col ([single]16) }
+                'upd'    { Draw-LibsRefreshGlyph $g $cx $cy $col $false ([single]0.95) }
+                'rst'    { Draw-LibsUndoGlyph $g $cx $cy $col ([single]0.86) }
+            }
+        } catch {}
+    }
+    $btnSaveScan.Name = 'lf_scan'; $btnSaveBackup.Name = 'lf_backup'; $btnSaveRestore.Name = 'lf_restore'
+    $btnUpdUp.Name = 'lf_upd'; $btnRestoreUp.Name = 'lf_rst'
+    foreach ($fb in @($btnSaveScan, $btnSaveBackup, $btnSaveRestore, $btnUpdUp, $btnRestoreUp, $btnUpsGrp, $btnSavesGrp)) {
+        $fb.BackColor = $steamUi.Panel
+        $fb.FlatAppearance.MouseOverBackColor = $steamUi.Selected
+        $fb.FlatAppearance.BorderColor = $steamUi.Border
+    }
+    $btnSaveScan.Add_Paint({ param($s, $e) & $libGrpPaint $s $e 'scan' })
+    $btnSaveBackup.Add_Paint({ param($s, $e) & $libGrpPaint $s $e 'backup' })
+    $btnSaveRestore.Add_Paint({ param($s, $e) & $libGrpPaint $s $e 'restore' })
+    $btnUpdUp.Add_Paint({ param($s, $e) & $libGrpPaint $s $e 'upd' })
+    $btnRestoreUp.Add_Paint({ param($s, $e) & $libGrpPaint $s $e 'rst' })
+    $btnUpsGrp.Add_Paint({ param($s, $e) & $libGrpPaint $s $e 'ups' })
+    $btnSavesGrp.Add_Paint({ param($s, $e) & $libGrpPaint $s $e 'saves' })
+
+    # Синхронизация: кто раскрыт, где стоят кнопки ряда, доступна ли кнопка группы. Вызывается из раскладки и по таймеру.
+    $applyLibFly = {
+        param([bool]$checkMouse = $false)
+        try {
+            $isL = ([string]$script:libActiveTab -ne 'steam')
+            $upRun = [bool]($script:libUpdRunning -or $script:libRestoreRunning)
+            $svRun = [bool]$script:libSaveRunning
+            $upKids = @($btnUpdUp, $btnRestoreUp)
+            $svKids = @($btnSaveScan, $btnSaveBackup, $btnSaveRestore)
+            if ($isL) { $script:libFlyUps = $false; $script:libFlySaves = $false }
+            # Клик мимо кнопок группы сворачивает ряд (во время операции ряд не трогаем).
+            if ($checkMouse -and -not $isL -and -not $upRun -and -not $svRun -and ([bool]$script:libFlyUps -or [bool]$script:libFlySaves) -and ([System.Windows.Forms.Control]::MouseButtons -ne [System.Windows.Forms.MouseButtons]::None)) {
+                $mp = [System.Windows.Forms.Cursor]::Position
+                $inside = $false
+                foreach ($c in @($btnUpsGrp, $btnSavesGrp, $libFlyBack, $btnUpdUp, $btnRestoreUp, $btnSaveScan, $btnSaveBackup, $btnSaveRestore)) {
+                    if ($c.Visible -and $c.RectangleToScreen($c.ClientRectangle).Contains($mp)) { $inside = $true; break }
+                }
+                if (-not $inside) { $script:libFlyUps = $false; $script:libFlySaves = $false }
+            }
+            $runNow = ($upRun -or $svRun -or [bool]$script:libImportRunning)
+            $upEn = ((-not $runNow) -and ([bool]$btnUpdUp.Enabled -or [bool]$btnRestoreUp.Enabled))
+            $svEn = ((-not $runNow) -and ([bool]$btnSaveScan.Enabled -or [bool]$btnSaveBackup.Enabled -or [bool]$btnSaveRestore.Enabled))
+            if (-not $upEn) { $script:libFlyUps = $false }
+            if (-not $svEn) { $script:libFlySaves = $false }
+            $anyRun = ($upRun -or $svRun -or [bool]$script:libImportRunning)
+            if ($anyRun) { $script:libFlyUps = $false; $script:libFlySaves = $false }
+            $upsOpen = ((-not $isL) -and (-not $anyRun) -and [bool]$script:libFlyUps)
+            $svOpen = ((-not $isL) -and (-not $anyRun) -and (-not $upsOpen) -and [bool]$script:libFlySaves)
+            if ([bool]$btnUpsGrp.Visible -ne (-not $isL)) { $btnUpsGrp.Visible = (-not $isL) }
+            if ([bool]$btnSavesGrp.Visible -ne (-not $isL)) { $btnSavesGrp.Visible = (-not $isL) }
+            if ([bool]$btnUpsGrp.Enabled -ne $upEn) { $btnUpsGrp.Enabled = $upEn }
+            if ([bool]$btnSavesGrp.Enabled -ne $svEn) { $btnSavesGrp.Enabled = $svEn }
+            $btnUpsGrp.FlatAppearance.BorderColor = $(if ($upEn -or $upsOpen) { $steamUi.Accent2 } else { $steamUi.Border })
+            $btnSavesGrp.FlatAppearance.BorderColor = $(if ($svEn -or $svOpen) { $steamUi.Accent2 } else { $steamUi.Border })
+            # Апскейлеры раскрываются влево от кнопки группы (обновить, вернуть). Сохранения: поиск слева от кнопки группы, бэкап и «Вернуть» справа.
+            # Ширина обоих рядов постоянна. С подписями свободное место под них обеспечивает $layoutSaveButtons. В компактном виде (кнопки в ровном
+            # ряду) раскрытый ряд растёт только влево и отодвигает влево все кнопки, стоящие слева от него, - накрытых и спрятанных кнопок нет.
+            $cw = 30; $gp = 6
+            $svLeftN = $(if ([bool]$script:libCapsFit) { 1 } else { 3 })   # сколько кнопок ряда «Сохранения» стоит слева от кнопки группы
+            # Компактный вид: сдвиг кнопок слева от раскрытого ряда. Базовые положения запоминает $layoutSaveButtons. «Апскейлеры» - ряд из двух кнопок
+            # слева (76 px с подложкой): сдвигаются «Сохранения», враппер, эмулятор, рамки. «Сохранения» - три кнопки слева (112 px): враппер,
+            # эмулятор, рамки (сама кнопка группы стоит на месте). Закрыт ряд или есть подписи - все кнопки на базовых местах.
+            if ($null -ne $script:libBaseLeft -and (-not $isL)) {
+                $shSave = 0; $shLeft = 0
+                if (-not [bool]$script:libCapsFit) {
+                    # Порядок слева направо: Сохранения, Апскейлеры, Рамки, Эмулятор, Враппер. Оба ряда раскрываются влево, поэтому уступает место
+                    # только «Сохранения» (слева от «Апскейлеров»); кнопки справа стоят на базовых местах.
+                    if ($upsOpen) { $shSave = 2 * ($gp + $cw) + 4 }
+                }
+                $bl0 = $script:libBaseLeft
+                $moved = $false
+                foreach ($mv in @(@($btnSavesGrp, ([int]$bl0.Saves - $shSave)), @($btnSwapWrap, ([int]$bl0.Wrap - $shLeft)), @($btnSwapEmu, ([int]$bl0.Emu - $shLeft)), @($btnLibFrames, ([int]$bl0.Frames - $shLeft)))) {
+                    if ([int]$mv[0].Left -ne [int]$mv[1]) { $mv[0].Left = [int]$mv[1]; $moved = $true }
+                }
+                if ($moved) { try { $dlg.Invalidate((New-Object System.Drawing.Rectangle(0, 0, [int]$dlg.ClientSize.Width, 54)), $true) } catch {} }
+            }
+            if ($upsOpen) {
+                $x = [int]$btnUpsGrp.Left - $gp - $cw
+                $btnRestoreUp.Location = New-Object System.Drawing.Point($x, 12)
+                $btnUpdUp.Location = New-Object System.Drawing.Point(($x - $gp - $cw), 12)
+            }
+            if ($svOpen) {
+                $sx = [int]$btnSavesGrp.Left
+                $rx = $sx + $cw + $gp
+                if ($svLeftN -eq 3) {
+                    $btnSaveScan.Location = New-Object System.Drawing.Point(($sx - 3 * ($gp + $cw)), 12)
+                    $btnSaveBackup.Location = New-Object System.Drawing.Point(($sx - 2 * ($gp + $cw)), 12)
+                    $btnSaveRestore.Location = New-Object System.Drawing.Point(($sx - ($gp + $cw)), 12)
+                } elseif ($svLeftN -eq 1) {
+                    $btnSaveScan.Location = New-Object System.Drawing.Point(($sx - $gp - $cw), 12)
+                    $btnSaveBackup.Location = New-Object System.Drawing.Point($rx, 12)
+                    $btnSaveRestore.Location = New-Object System.Drawing.Point(($rx + $gp + $cw), 12)
+                } else {
+                    $btnSaveScan.Location = New-Object System.Drawing.Point($rx, 12)
+                    $btnSaveBackup.Location = New-Object System.Drawing.Point(($rx + $gp + $cw), 12)
+                    $btnSaveRestore.Location = New-Object System.Drawing.Point(($rx + 2 * ($gp + $cw)), 12)
+                }
+            }
+            foreach ($b in $upKids) { if ([bool]$b.Visible -ne $upsOpen) { $b.Visible = $upsOpen } }
+            foreach ($b in $svKids) { if ([bool]$b.Visible -ne $svOpen) { $b.Visible = $svOpen } }
+            $mode = $(if ($upsOpen) { 'u' } elseif ($svOpen) { 's' } else { '' })
+            $par = $(if ($mode -eq 'u') { $btnUpsGrp } else { $btnSavesGrp })
+            $key = $mode + '|' + [string]$par.Left + '|' + [string]$dlg.ClientSize.Width + '|' + [string]$svLeftN
+            if ($key -ne [string]$script:libFlyKey) {
+                $script:libFlyKey = $key
+                $oldB = $libFlyBack.Bounds
+                $wasV = [bool]$libFlyBack.Visible
+                if ($mode -ne '') {
+                    if ($mode -eq 'u') { $nL = 2; $nR = 0 } else { $nL = $svLeftN; $nR = 3 - $svLeftN }
+                    $bl = [int]$par.Left - $nL * ($gp + $cw) - 4
+                    $br = [int]$par.Left + [int]$par.Width + $nR * ($gp + $cw) + 4
+                    $libFlyBack.SetBounds($bl, 8, ($br - $bl), 38)
+                    $libFlyBack.Visible = $true
+                    $libFlyBack.BringToFront()
+                    foreach ($b in @($(if ($mode -eq 'u') { $upKids } else { $svKids }))) { $b.BringToFront() }
+                    $par.BringToFront()
+                    $libFlyBack.Invalidate()
+                } else {
+                    $libFlyBack.Visible = $false
+                }
+                # Ряд лежал поверх других кнопок панели: без перерисовки на его месте остаются артефакты.
+                if ($wasV) { try { $dlg.Invalidate($oldB, $true) } catch {} }
+                $script:libFlyUpsOpen = $upsOpen
+                $script:libFlySavesOpen = $svOpen
+                $btnUpsGrp.Invalidate()
+                $btnSavesGrp.Invalidate()
+            }
+            # Пока ряд раскрыт, подпись «Апскейлеры» скрыта всегда (а при раскрытых сохранениях ещё и «Сохранения»); остальные подписи прячутся, только если попадают под плашку ряда
+            # (иначе они видны из-под него). Раскладка и $updateSelectionUi могут снова показать все, поэтому проверяем при каждом проходе;
+            # после сворачивания раскладка вернёт все подписи сама.
+            if ($mode -ne '') {
+                $flyRect = $libFlyBack.Bounds
+                foreach ($cl in @($lblCapUpscalers, $lblCapSaves, $lblCapWraps, $lblCapEmus, $lblCapFrames)) {
+                    $under = $cl.Bounds.IntersectsWith($flyRect)
+                    # Раскрыты сохранения - подписи «Сохранения» и «Апскейлеры» скрыты; раскрыты апскейлеры - скрыта только «Апскейлеры», «Сохранения» остаётся (если не под плашкой).
+                    if ([object]::ReferenceEquals($cl, $lblCapUpscalers)) { $under = $true }
+                    elseif ([object]::ReferenceEquals($cl, $lblCapSaves) -and $mode -eq 's') { $under = $true }
+                    $want = ([bool]$script:libCapsFit -and (-not $under))
+                    if ([bool]$cl.Visible -ne $want) { $cl.Visible = $want }
+                }
+                $script:libCapsHidden = $true
+            } elseif ([bool]$script:libCapsHidden) {
+                $script:libCapsHidden = $false
+                try { & $layoutSaveButtons } catch {}
+            }
+        } catch {}
+    }
+    $btnUpsGrp.Add_Click({
+        try {
+            if ($script:libUpdRunning -or $script:libRestoreRunning -or $script:libSaveRunning) { return }
+            $script:libFlyUps = (-not [bool]$script:libFlyUps)
+            if ($script:libFlyUps) { $script:libFlySaves = $false }
+            & $applyLibFly
+        } catch {}
+    })
+    $btnSavesGrp.Add_Click({
+        try {
+            if ($script:libUpdRunning -or $script:libRestoreRunning -or $script:libSaveRunning) { return }
+            $script:libFlySaves = (-not [bool]$script:libFlySaves)
+            if ($script:libFlySaves) { $script:libFlyUps = $false }
+            & $applyLibFly
+        } catch {}
+    })
+    # Выбор действия сворачивает ряд. Этот обработчик добавлен раньше обработчиков самих действий, поэтому срабатывает до них;
+    # если действие запустило операцию, ряд остаётся раскрытым из-за кнопки «✕» (см. $applyLibFly).
+    foreach ($kb in @($btnUpdUp, $btnRestoreUp, $btnSaveScan, $btnSaveBackup, $btnSaveRestore)) {
+        $kb.Add_Click({ try { $script:libFlyUps = $false; $script:libFlySaves = $false; & $applyLibFly } catch {} })
+    }
+    $libFlyTimer = New-Object System.Windows.Forms.Timer
+    $libFlyTimer.Interval = 120
+    $libFlyTimer.Add_Tick({ try { & $applyLibFly $true } catch {} })
+    $libFlyTimer.Start()
+    $dlg.Add_FormClosed({ try { $libFlyTimer.Stop(); $libFlyTimer.Dispose() } catch {} })
 
     # ===== Фильтр игр на вкладке Steam =====
     # Кнопка стоит в свободном месте верхней панели (между счётчиком и «Обновить апскейлеры»).
@@ -56220,10 +65143,18 @@ function Show-SteamLibraryBrowser {
             $cy = [single]($h / 2.0)
             if ($kind -eq 'filter') {
                 # Значок фильтра как в Steam: три горизонтальные линии по центру, убывающие по длине (длинная, средняя, короткая).
-                $pen.Width = 1.6
-                $g.DrawLine($pen, ($cx - 8), ($cy - 5), ($cx + 8), ($cy - 5))
-                $g.DrawLine($pen, ($cx - 5), $cy, ($cx + 5), $cy)
-                $g.DrawLine($pen, ($cx - 2), ($cy + 5), ($cx + 2), ($cy + 5))
+                # Три полосы по 2 px на целой сетке (длины 16 / 10 / 4, шаг 5 px): без сглаживания, поэтому чёткие, как рамка врапперов.
+                $fb = New-Object System.Drawing.SolidBrush($col)
+                $oldSmF = $g.SmoothingMode
+                try {
+                    $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::None
+                    $fy = [int][Math]::Floor(($h - 12) / 2.0)
+                    $fl = @(16, 10, 4)
+                    for ($fi = 0; $fi -lt 3; $fi++) {
+                        $fx = [int][Math]::Floor(($w - $fl[$fi]) / 2.0)
+                        $g.FillRectangle($fb, $fx, ($fy + 5 * $fi), $fl[$fi], 2)
+                    }
+                } finally { $g.SmoothingMode = $oldSmF; $fb.Dispose() }
                 if ([bool]$script:libFilterActive) {
                     $br = New-Object System.Drawing.SolidBrush($steamUi.Accent2)
                     $g.FillEllipse($br, ($cx + 6), ($cy - 13), 6, 6)
@@ -56233,7 +65164,7 @@ function Show-SteamLibraryBrowser {
                 # Значок коллекций как в Steam: сетка 2x2, целочисленно центрированная на кнопке.
                 $br = New-Object System.Drawing.SolidBrush($col)
                 $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::None
-                $cell = 6; $gap = 2
+                $cell = 7; $gap = 2   # было 6: общий размер 16 px, как у остальных значков библиотеки
                 $tw = $cell * 2 + $gap
                 $x0 = [int][Math]::Floor(($w - $tw) / 2.0)
                 $y0 = [int][Math]::Floor(($h - $tw) / 2.0)
@@ -56250,7 +65181,7 @@ function Show-SteamLibraryBrowser {
                 }
             } elseif ($kind -eq 'emu') {
                 $emuDone = $false
-                try { $emuDone = [bool](Draw-EmuGlyphPixel $g $w $h $col) } catch { $emuDone = $false }
+                try { $emuDone = [bool](Draw-EmuGlyphPixel $g $w $h $col 18) } catch { $emuDone = $false }
                 if (-not $emuDone) {
                 # Упрощённый значок RetroArch (официальная марка Simple Icons):
                 # угловатый геймпад с «плечами», квадратной крестовиной слева и кнопками справа.
@@ -56306,14 +65237,14 @@ function Show-SteamLibraryBrowser {
                 # Врапперы: сплошной круг по центру кнопки в квадратной рамке (как на главной кнопке).
                 # Чётность диаметра и рамки совпадает с чётностью кнопки: всё на целых пикселях строго по центру.
                 $side = [Math]::Min($w, $h)
-                $dia = [int][Math]::Floor($side * 0.42)
+                $dia = [int][Math]::Floor($side * 0.28)   # было 0.42 (кружок 12, рамка 22 в кнопке 30): значок выбивался размером; теперь 8 / 16
                 if (($dia % 2) -ne ($w % 2)) { $dia-- }
                 if ($dia -lt 7) { $dia = 7 + ((7 + $w) % 2) }
                 $wcol = if ($btn.Enabled -and -not $hot) { [System.Drawing.Color]::White } else { $col }
                 $br = New-Object System.Drawing.SolidBrush($wcol)
                 try {
                     $g.FillEllipse($br, [single][Math]::Floor(($w - $dia) / 2.0), [single][Math]::Floor(($h - $dia) / 2.0), [single]$dia, [single]$dia)
-                    $sq = $dia + 10
+                    $sq = $dia + 8
                     if (($sq % 2) -ne ($w % 2)) { $sq++ }
                     if ($sq -gt ($side - 4)) { $sq = $side - 4; if (($sq % 2) -ne ($w % 2)) { $sq-- } }
                     if ($sq -ge ($dia + 4)) {
@@ -56330,26 +65261,94 @@ function Show-SteamLibraryBrowser {
                         } finally { $g.SmoothingMode = $oldSm }
                     }
                 } finally { $br.Dispose(); $br = $null }
+            } elseif ($kind -eq 'del') {
+                # Корзина «Удалить из библиотеки» (как в главном окне): при наведении синяя, при удержании Shift - красная
+                # (удаление ещё и папки игры с диска). Рисуется вокруг (0,0) с масштабом 0.9, чтобы по размеру встать рядом с остальными значками.
+                $dShift = $false
+                try { $dShift = (([System.Windows.Forms.Control]::ModifierKeys -band [System.Windows.Forms.Keys]::Shift) -eq [System.Windows.Forms.Keys]::Shift) } catch {}
+                if ($btn.Enabled -and $dShift) { $pen.Color = [System.Drawing.Color]::FromArgb(232, 96, 96) }
+                $pen.Width = 2.0
+                $g.TranslateTransform($cx, $cy)
+                $g.ScaleTransform([single]0.9, [single]0.9)
+                try {
+                    # Крышка и ручка.
+                    $g.DrawLine($pen, -9, -6, 9, -6)
+                    $g.DrawLine($pen, -3, -6, -3, -9)
+                    $g.DrawLine($pen, -3, -9, 3, -9)
+                    $g.DrawLine($pen, 3, -9, 3, -6)
+                    # Корпус (трапеция) и две риски.
+                    $g.DrawLine($pen, -7, -3, -6, 9)
+                    $g.DrawLine($pen, -6, 9, 6, 9)
+                    $g.DrawLine($pen, 6, 9, 7, -3)
+                    $g.DrawLine($pen, [single]-2.5, 0, [single]-2.5, 6)
+                    $g.DrawLine($pen, [single]2.5, 0, [single]2.5, 6)
+                } finally { $g.ResetTransform() }
+                # Значок-счётчик в правом верхнем углу: сколько игр будет удалено. При Shift - красный, как и корзина.
+                $dCnt = 0
+                try { $dCnt = [int]$script:libRemoveCount } catch {}
+                if ($btn.Enabled -and $dCnt -gt 0) {
+                    $bTxt = $(if ($dCnt -gt 99) { '99+' } else { [string]$dCnt })
+                    $bH = 13
+                    $bW = [Math]::Max($bH, (6 * $bTxt.Length + 5))
+                    $bX = $w - 2 - $bW
+                    $bY = 1
+                    $bf = $null; $bBr = $null; $bTb = $null; $bRing = $null; $bGp = $null; $bSf = $null
+                    $oldTr = $g.TextRenderingHint
+                    try {
+                        $bf = New-Object System.Drawing.Font('Segoe UI', 7, [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Point)
+                        $bColor = $(if ($dShift) { [System.Drawing.Color]::FromArgb(232, 96, 96) } else { $steamUi.Accent2 })
+                        $bBr = New-Object System.Drawing.SolidBrush($bColor)
+                        $bTb = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White)
+                        $bRing = New-Object System.Drawing.Pen($bg, 2)
+                        $bGp = New-Object System.Drawing.Drawing2D.GraphicsPath
+                        $bArc = [single]$bH
+                        $bGp.AddArc([single]$bX, [single]$bY, $bArc, $bArc, 90, 180)
+                        $bGp.AddArc([single]($bX + $bW - $bH), [single]$bY, $bArc, $bArc, 270, 180)
+                        $bGp.CloseFigure()
+                        # Кольцо цвета фона кнопки отделяет значок от крышки корзины.
+                        $g.DrawPath($bRing, $bGp)
+                        $g.FillPath($bBr, $bGp)
+                        $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::AntiAliasGridFit
+                        $bSf = New-Object System.Drawing.StringFormat
+                        $bSf.Alignment = [System.Drawing.StringAlignment]::Center
+                        $bSf.LineAlignment = [System.Drawing.StringAlignment]::Center
+                        $bRect = New-Object System.Drawing.RectangleF([single]$bX, [single]($bY + 0.5), [single]$bW, [single]$bH)
+                        $g.DrawString($bTxt, $bf, $bTb, $bRect, $bSf)
+                    } finally {
+                        try { $g.TextRenderingHint = $oldTr } catch {}
+                        foreach ($d in @($bf, $bBr, $bTb, $bRing, $bGp, $bSf)) { if ($null -ne $d) { try { $d.Dispose() } catch {} } }
+                    }
+                }
+            } elseif ($kind -eq 'frames') {
+                # Значок рамок рисует сам вызывающий код (Invoke-EditorDrawIcon 'coverframe', как в карточке): здесь только фон кнопки,
+                # иначе срабатывала бы ветка по умолчанию (скруглённый квадрат с крестом) и просвечивала под глифом.
             } else {
-                # Скруглённый квадрат ~15 px, строго по центру кнопки.
-                $sz = 15.0; $rd = 4.0
-                $x0 = $cx - $sz / 2.0; $y0 = $cy - $sz / 2.0
-                $path = New-Object System.Drawing.Drawing2D.GraphicsPath
-                $path.AddArc($x0, $y0, $rd, $rd, 180, 90)
-                $path.AddArc(($x0 + $sz - $rd), $y0, $rd, $rd, 270, 90)
-                $path.AddArc(($x0 + $sz - $rd), ($y0 + $sz - $rd), $rd, $rd, 0, 90)
-                $path.AddArc($x0, ($y0 + $sz - $rd), $rd, $rd, 90, 90)
-                $path.CloseFigure()
-                $g.DrawPath($pen, $path)
+                # «Выбрать все» / «Снять все»: квадрат 16x16 с рамкой 2 px на целых пикселях (тот же размер и толщина, что у рамки врапперов),
+                # внутри галочка или крестик линией 2 px. Раньше был скруглённый квадрат 15 px линией 1.8 на дробных координатах (мыльный).
+                $bq = 16
+                $bx = [int][Math]::Floor(($w - $bq) / 2.0)
+                $by = [int][Math]::Floor(($h - $bq) / 2.0)
+                $bt = 2
+                $bb2 = New-Object System.Drawing.SolidBrush($col)
+                $oldSmB = $g.SmoothingMode
+                try {
+                    $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::None
+                    $g.FillRectangle($bb2, $bx, $by, $bq, $bt)
+                    $g.FillRectangle($bb2, $bx, ($by + $bq - $bt), $bq, $bt)
+                    $g.FillRectangle($bb2, $bx, ($by + $bt), $bt, ($bq - 2 * $bt))
+                    $g.FillRectangle($bb2, ($bx + $bq - $bt), ($by + $bt), $bt, ($bq - 2 * $bt))
+                } finally { $g.SmoothingMode = $oldSmB; $bb2.Dispose() }
+                $pen.Width = 2.0
+                $mx = [single]($bx + $bq / 2.0); $my = [single]($by + $bq / 2.0)
                 if ($kind -eq 'selall') {
                     $g.DrawLines($pen, [System.Drawing.PointF[]]@(
-                        (New-Object System.Drawing.PointF(($cx - 3.5), ($cy + 0.2))),
-                        (New-Object System.Drawing.PointF(($cx - 1.0), ($cy + 3.0))),
-                        (New-Object System.Drawing.PointF(($cx + 3.8), ($cy - 3.0)))
+                        (New-Object System.Drawing.PointF(($mx - 3.0), ($my + 0.0))),
+                        (New-Object System.Drawing.PointF(($mx - 1.0), ($my + 2.5))),
+                        (New-Object System.Drawing.PointF(($mx + 3.0), ($my - 2.5)))
                     ))
                 } else {
-                    $g.DrawLine($pen, ($cx - 3.0), ($cy - 3.0), ($cx + 3.0), ($cy + 3.0))
-                    $g.DrawLine($pen, ($cx + 3.0), ($cy - 3.0), ($cx - 3.0), ($cy + 3.0))
+                    $g.DrawLine($pen, ($mx - 2.5), ($my - 2.5), ($mx + 2.5), ($my + 2.5))
+                    $g.DrawLine($pen, ($mx + 2.5), ($my - 2.5), ($mx - 2.5), ($my + 2.5))
                 }
             }
         } catch {
@@ -56362,7 +65361,7 @@ function Show-SteamLibraryBrowser {
 
     $btnFilter = New-Object System.Windows.Forms.Button
     $btnFilter.Size = New-Object System.Drawing.Size(30, 30)
-    $btnFilter.Location = New-Object System.Drawing.Point(290, 12)   # сразу за полем поиска (92..282) с зазором 8; кнопки 30×30
+    $btnFilter.Location = New-Object System.Drawing.Point(336, 12)   # сразу за полем поиска (92..328) с зазором 8; кнопки 30×30
     $btnFilter.Anchor = 'Top,Left'
     $btnFilter.FlatStyle = 'Flat'
     $btnFilter.FlatAppearance.BorderColor = $steamUi.Border
@@ -57001,9 +66000,10 @@ function Show-SteamLibraryBrowser {
             $paintItem = {
                 param($mi)
                 $on = [bool](& $isItemOn ([string]$mi.Tag))
-                # Выключенный пункт тоже «отмечен» (Indeterminate), чтобы рендерер рисовал в его колонке пустой квадрат-контур, а не пустое место.
-                $mi.CheckState = $(if ($on) { [System.Windows.Forms.CheckState]::Checked } else { [System.Windows.Forms.CheckState]::Indeterminate })
-                # Checked <-> Indeterminate для WinForms не меняет Checked, поэтому сам пункт не перерисовывается — перерисовываем явно.
+                # CheckState всегда Checked, чтобы WinForms гарантированно вызвал отрисовку колонки.
+                # Реальное состояние фильтра не меняется: оно хранится в libFilterOff/libFilterOnlyLibs.
+                $mi.AccessibleDefaultActionDescription = $(if ($on) { 'solid' } else { 'empty' })
+                $mi.CheckState = [System.Windows.Forms.CheckState]::Checked
                 try { $mi.Invalidate() } catch {}
                 $mi.Text = [string]$mi.AccessibleName
                 $mi.ForeColor = $steamUi.Text
@@ -57018,7 +66018,7 @@ function Show-SteamLibraryBrowser {
             }
             if ($null -eq $script:libFilterOff) { $script:libFilterOff = @{} }
             Initialize-SCFilterRenderer
-            $menu = New-Object System.Windows.Forms.ContextMenuStrip
+            $menu = (New-PanelCtxMenu)
             $menu.Name = 'scfilter'
             try {
                 [SCFilterRenderer]::Accent = $steamUi.Accent
@@ -57336,7 +66336,7 @@ function Show-SteamLibraryBrowser {
     $script:libCollClosedByBtnAt = 0
     $btnColl = New-Object System.Windows.Forms.Button
     $btnColl.Size = New-Object System.Drawing.Size(30, 30)
-    $btnColl.Location = New-Object System.Drawing.Point(328, 12)   # сразу за кнопкой «Фильтр» (290..320) с зазором 8
+    $btnColl.Location = New-Object System.Drawing.Point(374, 12)   # сразу за кнопкой «Фильтр» (336..366) с зазором 8
     $btnColl.Anchor = 'Top,Left'
     $btnColl.FlatStyle = 'Flat'
     $btnColl.FlatAppearance.BorderColor = $steamUi.Border
@@ -57411,7 +66411,7 @@ function Show-SteamLibraryBrowser {
                 return
             }
             Initialize-SCFilterRenderer
-            $cmenu = New-Object System.Windows.Forms.ContextMenuStrip
+            $cmenu = (New-PanelCtxMenu)
             $cmenu.Name = 'sccoll'
             try {
                 [SCFilterRenderer]::Accent = $steamUi.Accent
@@ -57420,9 +66420,7 @@ function Show-SteamLibraryBrowser {
             } catch {}
             $cmenu.BackColor = [System.Drawing.Color]::FromArgb(22, 28, 36)
             $cmenu.ForeColor = $steamUi.Text
-            $cmenu.Font = New-Object System.Drawing.Font('Segoe UI', 9)
-            $cmenu.ShowCheckMargin = $true
-            $cmenu.ShowImageMargin = $false
+            Initialize-SCContextChecklist $cmenu $null $false 18 $null 0 $false
             # Одиночный выбор: клик по пункту закрывает меню. Закрытие кликом по самой кнопке запоминаем (см. выше).
             $cmenu.Add_Closing({
                 param($snd, $ea)
@@ -57520,6 +66518,7 @@ function Show-SteamLibraryBrowser {
             })
             [void]$cmenu.Items.Add($miGrp)
             if ($colRows.Count -gt 0) { [void]$cmenu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)) }
+            $fcFrom = $cmenu.Items.Count
             foreach ($cr in $colRows) {
                 $n1 = 0
                 if ($cc.ContainsKey([string]$cr.Key)) { $n1 = [int]$cc[[string]$cr.Key] }
@@ -57530,6 +66529,12 @@ function Show-SteamLibraryBrowser {
             if ($colRows.Count -gt 0 -and ($noneCount -gt 0 -or [string]$script:libCollSel -eq $noneKey)) {
                 & $addCollItem $noneKey ((T 'lib_filter_coll_none') + '  (' + [string]$noneCount + ')')
             }
+            # Длинный список коллекций прокручивается колесом в окне из 18 пунктов, со стрелками; «Все коллекции», «Группировать» и «Создать коллекцию» стоят на месте.
+            try {
+                $fcScroll = @()
+                for ($fi = $fcFrom; $fi -lt $cmenu.Items.Count; $fi++) { $fcScroll += $cmenu.Items[$fi] }
+                if ($fcScroll.Count -gt 0) { Enable-MenuWheelScroll $cmenu 18 $fcScroll }
+            } catch {}
             # В самом низу, после разделителя: «Создать коллекцию» (без галочки, текст на уровне названий, справа «плюс» в одной колонке с «минусами»).
             [void]$cmenu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
             $miNew = New-Object System.Windows.Forms.ToolStripMenuItem
@@ -57607,9 +66612,165 @@ function Show-SteamLibraryBrowser {
     $lblAutoImport.Visible = $false
     $dlg.Controls.Add($lblAutoImport)
 
+    # Рамки лончера: на вкладке лончера (Epic, GOG, Ubisoft, EA, Battle.net, Xbox) - список наборов рамок. Выбор запоминается для
+    # лончера и применяется к новым играм (автоимпорт и карточка). «Без рамки» - рамка не накладывается. Уже добавленные не меняются.
+    $script:libLauncherFrameIds = @('')
+    $script:libLauncherFramesBusy = $false
+    $lblLauncherFrames = New-Object System.Windows.Forms.Label
+    $lblLauncherFrames.Text = (T 'emu_lbl_frames')
+    $lblLauncherFrames.Size = New-Object System.Drawing.Size(52, 30)
+    $lblLauncherFrames.Location = New-Object System.Drawing.Point(430, 12)
+    $lblLauncherFrames.TextAlign = [System.Drawing.ContentAlignment]::MiddleRight
+    $lblLauncherFrames.Font = New-Object System.Drawing.Font('Segoe UI', 9)
+    $lblLauncherFrames.ForeColor = $steamUi.Muted
+    $lblLauncherFrames.Visible = $false
+    $dlg.Controls.Add($lblLauncherFrames)
+
+    $pnlLauncherFrames = New-Object System.Windows.Forms.Panel
+    $pnlLauncherFrames.Size = New-Object System.Drawing.Size(180, 30)
+    $pnlLauncherFrames.Location = New-Object System.Drawing.Point(486, 12)
+    $pnlLauncherFrames.BackColor = $steamUi.Input
+    $pnlLauncherFrames.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+    $pnlLauncherFrames.Visible = $false
+    $dlg.Controls.Add($pnlLauncherFrames)
+
+    $cmbLauncherFrames = New-Object SmartExeComboBox
+    $cmbLauncherFrames.Dock = [System.Windows.Forms.DockStyle]::Fill
+    $cmbLauncherFrames.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
+    $cmbLauncherFrames.DrawMode = [System.Windows.Forms.DrawMode]::OwnerDrawFixed
+    $cmbLauncherFrames.CustomDropDown = $true
+    $cmbLauncherFrames.ItemHeight = 18
+    $cmbLauncherFrames.IntegralHeight = $false
+    $cmbLauncherFrames.MaxDropDownItems = 10
+    $cmbLauncherFrames.DropDownHeight = 288
+    $cmbLauncherFrames.DropDownWidth = 220
+    $cmbLauncherFrames.BackColor = $steamUi.Input
+    $cmbLauncherFrames.ForeColor = $steamUi.Text
+    $cmbLauncherFrames.Font = New-Object System.Drawing.Font('Segoe UI', 9)
+    $cmbLauncherFrames.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    try { $cmbLauncherFrames.BorderColor = $steamUi.Input } catch {}
+    $cmbLauncherFrames.Add_DrawItem({
+        param($sender, $e)
+        if ($e.Index -lt 0) { return }
+        $inEdit = (($e.State -band [System.Windows.Forms.DrawItemState]::ComboBoxEdit) -ne 0)
+        $isSel = ((($e.State -band [System.Windows.Forms.DrawItemState]::Selected) -ne 0) -and -not $inEdit)
+        $bg = if ($isSel) { $steamUi.Selected } else { $steamUi.Input }
+        $bgBrush = New-Object System.Drawing.SolidBrush($bg)
+        try {
+            $e.Graphics.FillRectangle($bgBrush, $e.Bounds)
+            $tx = 6
+            if (-not $inEdit) {
+                # В раскрытом списке - галочки как в списке коллекций (SCFilterRenderer.OnRenderItemCheck): выбранная рамка - синий
+                # квадрат с белой «птичкой», у остальных ничего не рисуется (как в списке коллекций).
+                $tx = 23
+                $cbSz = 14
+                $cb = New-Object System.Drawing.Rectangle(($e.Bounds.X + 6), ($e.Bounds.Y + [int][Math]::Floor(($e.Bounds.Height - $cbSz) / 2)), $cbSz, $cbSz)
+                $on = ([int]$e.Index -eq [int]$sender.SelectedIndex)
+                $g = $e.Graphics
+                if ($on) {
+                    $ckBrush = New-Object System.Drawing.SolidBrush($steamUi.Accent)
+                    $ckPen = New-Object System.Drawing.Pen([System.Drawing.Color]::White, 1.6)
+                    try {
+                        $g.FillRectangle($ckBrush, $cb)
+                        $g.DrawLine($ckPen, ($cb.X + 3), ($cb.Y + 7), ($cb.X + 6), ($cb.Y + 10))
+                        $g.DrawLine($ckPen, ($cb.X + 6), ($cb.Y + 10), ($cb.X + 11), ($cb.Y + 3))
+                    } finally { $ckBrush.Dispose(); $ckPen.Dispose() }
+                }
+            }
+            $rc = New-Object System.Drawing.Rectangle(($e.Bounds.X + $tx), $e.Bounds.Y, [Math]::Max(10, ($e.Bounds.Width - $tx - 2)), $e.Bounds.Height)
+            $fl = [System.Windows.Forms.TextFormatFlags]::Left -bor [System.Windows.Forms.TextFormatFlags]::VerticalCenter -bor [System.Windows.Forms.TextFormatFlags]::NoPrefix -bor [System.Windows.Forms.TextFormatFlags]::EndEllipsis
+            [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, [string]$sender.Items[$e.Index], $sender.Font, $rc, $steamUi.Text, $fl)
+        } finally { $bgBrush.Dispose() }
+    })
+    $pnlLauncherFrames.Controls.Add($cmbLauncherFrames)
+    $launcherFramesTip = New-Object System.Windows.Forms.ToolTip
+    $launcherFramesTipText = Get-WrappedTipText ([string](T 'lib_launcher_frames_tip'))
+    $launcherFramesTip.SetToolTip($lblLauncherFrames, $launcherFramesTipText)
+    $launcherFramesTip.SetToolTip($pnlLauncherFrames, $launcherFramesTipText)
+
+    $cmbLauncherFrames.Add_SelectedIndexChanged({
+        try {
+            if ($script:libLauncherFramesBusy) { return }
+            $ix = [int]$cmbLauncherFrames.SelectedIndex
+            $ids = @($script:libLauncherFrameIds)
+            if ($ix -lt 0 -or $ix -ge $ids.Count) { return }
+            $lTab = [string]$script:libActiveTab
+            $oldKit = [string](Get-LauncherFrameKit $lTab)
+            $newKit = [string]$ids[$ix]
+            Set-LauncherFrameKit $lTab $newKit
+            if ($oldKit -eq $newKit) { return }
+            # Набор сменился: предлагаем наложить его и на обложки игр этого лончера, уже добавленных в Steam.
+            $lMatched = New-Object System.Collections.Generic.List[object]
+            foreach ($le in @(Get-SteamLibraryEntries)) {
+                if ($null -eq $le -or [string]$le.Kind -ne 'shortcut') { continue }
+                $lid1 = ''
+                try { $lid1 = [string](Get-BulkEntryLauncherId $le) } catch {}
+                if ($lid1 -eq $lTab) { [void]$lMatched.Add($le) }
+            }
+            if ($lMatched.Count -eq 0) { return }
+            $kitTitle = (Get-EditorFrameText 'card_frame_none' 'Без рамки')
+            if ($newKit -eq [string]$script:LauncherBadgeKitId) { $kitTitle = (Get-EditorFrameText 'launcher_frame_badge' 'Значок лончера') }
+            elseif ($newKit -ne '') { $kk = Get-FrameKit $newKit; if ($null -ne $kk) { $kitTitle = [string]$kk.name } }
+            $askText = (Get-EditorFrameText 'lib_launcher_frames_apply_q' ('Применить выбранный вариант «{0}» к играм этого лончера, уже добавленным в библиотеку Steam ({1})?'))
+            $askText = $askText.Replace('{0}', $kitTitle).Replace('{1}', [string]$lMatched.Count)
+            if (-not (Show-ThemedConfirm $dlg $global:appTitle $askText)) { return }
+            $selApply = $newKit; if ($newKit -eq '') { $selApply = 'none' }
+            Invoke-BulkCoverFrames -Entries $lMatched.ToArray() -Sel $selApply -Owner $dlg
+        } catch {}
+    })
+
+    # Показывает список только на вкладке лончера, заполняет его наборами и выбирает сохранённый для этого лончера; ставит между
+    # счётчиком выбранных и переключателем «Автоимпорт». Если места мало, список прячется.
+    $refreshLauncherFrames = {
+        try {
+            $tabId = [string]$script:libActiveTab
+            if (@('epic', 'gog', 'ubisoft', 'ea', 'battlenet', 'xbox') -notcontains $tabId) {
+                $lblLauncherFrames.Visible = $false; $pnlLauncherFrames.Visible = $false
+                return
+            }
+            $left = [int]($lblCount.Left + $lblCount.Width + 12)
+            $right = [int]($toggleAuto.Left - 14)
+            $avail = $right - $left
+            if ($avail -lt 150) {
+                $lblLauncherFrames.Visible = $false; $pnlLauncherFrames.Visible = $false
+                return
+            }
+            $cw = [Math]::Min(200, $avail - 56)
+            $pnlLauncherFrames.Width = $cw
+            $pnlLauncherFrames.Left = $right - $cw
+            $lblLauncherFrames.Left = $pnlLauncherFrames.Left - 4 - $lblLauncherFrames.Width
+            # Вторым пунктом - «Значок»: на обложки новых игр лончера дорисовывается его значок (без рамки).
+            $ids = @('', [string]$script:LauncherBadgeKitId)
+            $names = @((Get-EditorFrameText 'card_frame_none' 'Без рамки'), (Get-EditorFrameText 'launcher_frame_badge' 'Значок лончера'))
+            try {
+                foreach ($fk in @(Get-FrameKitsSorted)) {
+                    if ([string]::IsNullOrWhiteSpace([string]$fk.v)) { continue }
+                    $ids += [string]$fk.id
+                    $names += [string]$fk.name
+                }
+            } catch {}
+            $script:libLauncherFrameIds = @($ids)
+            $savedKit = [string](Get-LauncherFrameKit $tabId)
+            $selIx = 0
+            if (-not [string]::IsNullOrWhiteSpace($savedKit)) {
+                $pos = [Array]::IndexOf([string[]]$ids, $savedKit)
+                if ($pos -ge 0) { $selIx = $pos }
+            }
+            $script:libLauncherFramesBusy = $true
+            try {
+                $cmbLauncherFrames.Items.Clear()
+                foreach ($nm in $names) { [void]$cmbLauncherFrames.Items.Add([string]$nm) }
+                $cmbLauncherFrames.SelectedIndex = $selIx
+            } finally { $script:libLauncherFramesBusy = $false }
+            $lblLauncherFrames.Visible = $true
+            $pnlLauncherFrames.Visible = $true
+        } catch {}
+    }
+    $dlg.Add_Resize({ try { & $refreshLauncherFrames } catch {} })
+
     $btnSelectAll = New-Object System.Windows.Forms.Button
     $btnSelectAll.Size = New-Object System.Drawing.Size(30, 30)
-    $btnSelectAll.Location = New-Object System.Drawing.Point(290, 12)
+    $btnSelectAll.Location = New-Object System.Drawing.Point(336, 12)
     $btnSelectAll.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $btnSelectAll.FlatAppearance.BorderColor = $steamUi.Border
     $btnSelectAll.FlatAppearance.BorderSize = 1
@@ -57630,7 +66791,7 @@ function Show-SteamLibraryBrowser {
     # на всех вкладках-лаунчерах.
     $btnDeselectAll = New-Object System.Windows.Forms.Button
     $btnDeselectAll.Size = New-Object System.Drawing.Size(30, 30)
-    $btnDeselectAll.Location = New-Object System.Drawing.Point(328, 12)
+    $btnDeselectAll.Location = New-Object System.Drawing.Point(374, 12)
     $btnDeselectAll.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $btnDeselectAll.FlatAppearance.BorderColor = $steamUi.Border
     $btnDeselectAll.FlatAppearance.BorderSize = 1
@@ -57690,6 +66851,61 @@ function Show-SteamLibraryBrowser {
     $btnSwapWrap.Add_Paint({ param($s, $e) & $paintLibIcon $s $e 'wrap' })
     $dlg.Controls.Add($btnSwapWrap)
 
+    # «Рамки обложек» - правее «Снять все» (вкладка Steam): меню рамки / значка / «Без рамки» для отмеченных ярлыков.
+    $btnLibFrames = New-Object System.Windows.Forms.Button
+    $btnLibFrames.Size = New-Object System.Drawing.Size(30, 30)
+    $btnLibFrames.Location = New-Object System.Drawing.Point(366, 12)
+    $btnLibFrames.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    $btnLibFrames.FlatAppearance.BorderColor = $steamUi.Border
+    $btnLibFrames.FlatAppearance.BorderSize = 1
+    $btnLibFrames.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(35,78,106)
+    $btnLibFrames.UseVisualStyleBackColor = $false
+    $btnLibFrames.BackColor = $steamUi.Panel2
+    $btnLibFrames.ForeColor = $steamUi.Text
+    $btnLibFrames.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $btnLibFrames.TabStop = $false
+    $btnLibFrames.Anchor = 'Top,Right'
+    $btnLibFrames.Text = ''
+    $btnLibFrames.AccessibleName = (T 'bulk_frames_tip')
+    $btnLibFrames.Enabled = $false
+    $btnLibFrames.Visible = $false
+    $btnLibFrames.Add_Paint({
+        param($s, $e)
+        & $paintLibIcon $s $e 'frames'
+        try {
+            $g = $e.Graphics
+            $hot = $false
+            try { $hot = ($s.Enabled -and $s.ClientRectangle.Contains($s.PointToClient([System.Windows.Forms.Cursor]::Position))) } catch {}
+            $col = if ([string]$s.Tag -eq 'on') { $steamUi.Accent2 } elseif (-not $s.Enabled) { [System.Drawing.Color]::FromArgb(110, $steamUi.Muted) } elseif ($hot) { $steamUi.Accent2 } else { $steamUi.Text }
+            Invoke-EditorDrawIcon $g 'coverframe' $col $s.ClientSize $false
+        } catch {}
+    })
+    $dlg.Controls.Add($btnLibFrames)
+
+    # «Удалить из библиотеки» (корзина) - левее группы «Рамки», без подписи, только подсказка. Работает как корзина главного окна:
+    # убирает отмеченные ярлыки из Steam; с зажатым Shift (корзина краснеет) удаляет ещё и папку игры с диска (сначала запускается деинсталлятор).
+    $btnLibRemove = New-Object System.Windows.Forms.Button
+    $btnLibRemove.Size = New-Object System.Drawing.Size(30, 30)
+    $btnLibRemove.Location = New-Object System.Drawing.Point(328, 12)
+    $btnLibRemove.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    $btnLibRemove.FlatAppearance.BorderColor = $steamUi.Border
+    $btnLibRemove.FlatAppearance.BorderSize = 1
+    $btnLibRemove.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(35,78,106)
+    $btnLibRemove.UseVisualStyleBackColor = $false
+    $btnLibRemove.BackColor = $steamUi.Panel2
+    $btnLibRemove.ForeColor = $steamUi.Text
+    $btnLibRemove.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $btnLibRemove.TabStop = $false
+    $btnLibRemove.Anchor = 'Top,Right'
+    $btnLibRemove.Text = ''
+    $btnLibRemove.AccessibleName = (T 'btn_remove_lib')
+    $btnLibRemove.Enabled = $false
+    $btnLibRemove.Visible = $false
+    $btnLibRemove.Add_Paint({ param($s, $e) & $paintLibIcon $s $e 'del' })
+    $dlg.Controls.Add($btnLibRemove)
+    $script:libRemoveTipText = ''
+    $script:libRemoveCount = 0
+
     # Тот же переключатель "автозаполнение карточек", что и на главном окне:
     # состояние общее ($script:batchAutoFillEnabled), меняется в обоих местах.
     $libToolTip = New-SCToolTip
@@ -57700,10 +66916,60 @@ function Show-SteamLibraryBrowser {
     $libToolTip.SetToolTip($btnColl, (T 'lib_filter_collections'))
     $libToolTip.SetToolTip($btnSelectAll, (T 'lib_select_all'))
     $libToolTip.SetToolTip($btnDeselectAll, (T 'lib_deselect_all'))
+    $libToolTip.SetToolTip($btnLibFrames, (T 'lib_cap_frames'))
+    $libToolTip.SetToolTip($btnSwapEmu, (T 'lib_cap_emus'))
+    $libToolTip.SetToolTip($btnSwapWrap, (T 'lib_cap_wraps'))
+    $libToolTip.SetToolTip($btnLibRemove, (T 'btn_remove_lib'))
     $libToolTip.SetToolTip($btnRestoreUp, (T 'lib_restore_tip'))
     $libToolTip.SetToolTip($btnSaveBackup, (T 'save_tip_backup'))
     $libToolTip.SetToolTip($btnSaveRestore, (T 'save_tip_restore'))
     $libToolTip.SetToolTip($btnSaveScan, (T 'save_scan_tip'))
+    $libToolTip.SetToolTip($btnSavesGrp, (T 'lib_cap_saves'))
+    $libToolTip.SetToolTip($btnUpsGrp, (T 'lib_cap_upscalers'))
+
+    # Подсказки неактивных кнопок. Обычная подсказка WinForms на отключённой кнопке не появляется (кнопка не получает мышь), поэтому по таймеру
+    # проверяем, стоит ли курсор над отключённой кнопкой окна библиотеки, и показываем её подсказку вручную (SCToolTip.ShowAt).
+    $script:libDisTipTool = $libToolTip
+    $script:libDisTipCtl = $null
+    $script:libDisTipSince = 0
+    $script:libDisTipShown = $false
+    $libDisTipTimer = New-Object System.Windows.Forms.Timer
+    $libDisTipTimer.Interval = 100
+    $libDisTipTimer.Add_Tick({
+        try {
+            $dd = $script:libMainDlg
+            $tp = $script:libDisTipTool
+            if ($null -eq $dd -or $null -eq $tp -or $dd.IsDisposed -or -not $dd.Visible) { return }
+            $hit = $null
+            if ([object]::ReferenceEquals([System.Windows.Forms.Form]::ActiveForm, $dd) -and [System.Windows.Forms.Control]::MouseButtons -eq [System.Windows.Forms.MouseButtons]::None) {
+                $top = $dd.GetChildAtPoint($dd.PointToClient([System.Windows.Forms.Cursor]::Position))
+                if ($top -is [System.Windows.Forms.Button] -and $top.Visible -and -not $top.Enabled -and -not [string]::IsNullOrEmpty([string]$tp.GetToolTip($top))) { $hit = $top }
+            }
+            if ($null -eq $hit) {
+                if ($null -ne $script:libDisTipCtl) { try { $tp.Hide($dd) } catch {} }
+                $script:libDisTipCtl = $null
+                $script:libDisTipShown = $false
+                return
+            }
+            if (-not [object]::ReferenceEquals($hit, $script:libDisTipCtl)) {
+                if ($null -ne $script:libDisTipCtl) { try { $tp.Hide($dd) } catch {} }
+                $script:libDisTipCtl = $hit
+                $script:libDisTipSince = [Environment]::TickCount
+                $script:libDisTipShown = $false
+                return
+            }
+            if (-not $script:libDisTipShown -and (([Environment]::TickCount - [int]$script:libDisTipSince) -ge 450)) {
+                $script:libDisTipShown = $true
+                $txt = [string]$tp.GetToolTip($hit)
+                # ToolTip.Show отсчитывает координаты от левого верхнего угла ОКНА (вместе с заголовком), а не клиентской области: считаем от курсора, как обычная подсказка (под курсором).
+                $cp = [System.Windows.Forms.Cursor]::Position
+                $px = [int]($cp.X - $dd.Left); $py = [int]($cp.Y + 20 - $dd.Top)
+                if ($null -ne $tp.GetType().GetMethod('ShowAt')) { $tp.ShowAt($txt, $dd, $px, $py, 8000) } else { $tp.Show($txt, $dd, $px, $py, 8000) }
+            }
+        } catch {}
+    })
+    $libDisTipTimer.Start()
+    $dlg.Add_FormClosed({ try { $libDisTipTimer.Stop(); $libDisTipTimer.Dispose() } catch {} })
     $toggleAuto.Add_Click({ $toggleAuto.Checked = -not $toggleAuto.Checked })
     $lblAutoImport.Add_Click({ $toggleAuto.Checked = -not $toggleAuto.Checked })
     $toggleAuto.Add_CheckedChanged({
@@ -57744,7 +67010,19 @@ function Show-SteamLibraryBrowser {
     $btnLibRefresh.Add_MouseEnter({ $script:libRefreshHover = $true; $btnLibRefresh.Invalidate() })
     $btnLibRefresh.Add_MouseLeave({ $script:libRefreshHover = $false; $btnLibRefresh.Invalidate() })
     # Значок обновления окна - тот же, что у кнопки обновления апскейлеров (две круговые стрелки).
-    $btnLibRefresh.Add_Paint({ param($s, $e) & $paintSaveIcon $s $e 'upd' })
+    $btnLibRefresh.Add_Paint({
+        param($s, $e)
+        try {
+            $hotR = $false
+            try { $hotR = ($s.Enabled -and $s.ClientRectangle.Contains($s.PointToClient([System.Windows.Forms.Cursor]::Position))) } catch {}
+            $bgR = if ($hotR) { $s.FlatAppearance.MouseOverBackColor } else { $s.BackColor }
+            $bbR = New-Object System.Drawing.SolidBrush($bgR)
+            try { $e.Graphics.FillRectangle($bbR, 1, 1, ([int]$s.ClientSize.Width - 2), ([int]$s.ClientSize.Height - 2)) } finally { $bbR.Dispose() }
+            $colR = if (-not $s.Enabled) { [System.Drawing.Color]::FromArgb(110, $steamUi.Muted) } elseif ($hotR) { $steamUi.Accent2 } else { $steamUi.Text }
+            # Тот же значок и размер (~16 px), что у «обновить апскейлеры» в группе справа.
+            Draw-LibsRefreshGlyph $e.Graphics ([single]($s.ClientSize.Width / 2.0)) ([single]($s.ClientSize.Height / 2.0)) $colR $false ([single]0.95)
+        } catch {}
+    })
     $dlg.Controls.Add($btnLibRefresh)
     $btnLibRefresh.BringToFront()
 
@@ -58496,6 +67774,7 @@ function Show-SteamLibraryBrowser {
     $script:libLastReflowKey = $null
     $libReflowNow = {
         try {
+            if ($null -ne $script:libMainDlg) { $dlg = $script:libMainDlg }
             if ($dlg.IsDisposed) { return }
             # Размеры окна и число плиток те же, что в прошлый раз, и сетка уже на всю ширину: пересчитывать нечего.
             # Раньше повторные события Resize (от формы, от панели прокрутки и от SizeChanged) гоняли полный пересчёт по кругу.
@@ -58570,7 +67849,7 @@ function Show-SteamLibraryBrowser {
 
     $lblLibStatus = New-Object System.Windows.Forms.Label
     $lblLibStatus.Location = New-Object System.Drawing.Point(0, 0)
-    $lblLibStatus.Size = New-Object System.Drawing.Size($pnlLibProgress.Width, 22)
+    $lblLibStatus.Size = New-Object System.Drawing.Size(($pnlLibProgress.Width - 104), 22)   # не заходит на кнопку «Отменить» справа
     $lblLibStatus.Anchor = 'Top,Left,Right'
     $lblLibStatus.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 10)
     $lblLibStatus.ForeColor = $steamUi.Text
@@ -58579,8 +67858,8 @@ function Show-SteamLibraryBrowser {
     $pnlLibProgress.Controls.Add($lblLibStatus)
 
     $libProgressBar = New-Object System.Windows.Forms.ProgressBar
-    $libProgressBar.Location = New-Object System.Drawing.Point(0, 26)
-    $libProgressBar.Size = New-Object System.Drawing.Size(($pnlLibProgress.Width - 40), 14)
+    $libProgressBar.Location = New-Object System.Drawing.Point(0, 22)
+    $libProgressBar.Size = New-Object System.Drawing.Size(($pnlLibProgress.Width - 150), 14)
     $libProgressBar.Anchor = 'Top,Left,Right'
     $libProgressBar.Style = [System.Windows.Forms.ProgressBarStyle]::Continuous
     # Скрыт, пока импорт не запущен (см. $showLibProgress).
@@ -58588,14 +67867,46 @@ function Show-SteamLibraryBrowser {
     $pnlLibProgress.Controls.Add($libProgressBar)
 
     $lblLibPercent = New-Object System.Windows.Forms.Label
-    $lblLibPercent.Location = New-Object System.Drawing.Point(($pnlLibProgress.Width - 36), 23)
-    $lblLibPercent.Size = New-Object System.Drawing.Size(36, 20)
+    $lblLibPercent.Location = New-Object System.Drawing.Point(($pnlLibProgress.Width - 146), 19)
+    $lblLibPercent.Size = New-Object System.Drawing.Size(42, 20)
     $lblLibPercent.Anchor = 'Top,Right'
     $lblLibPercent.Font = New-Object System.Drawing.Font('Segoe UI', 8)
     $lblLibPercent.ForeColor = $steamUi.Muted
-    $lblLibPercent.TextAlign = [System.Drawing.ContentAlignment]::MiddleRight
+    $lblLibPercent.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft   # процент вплотную к концу прогресс-бара
     $lblLibPercent.Text = ''
     $pnlLibProgress.Controls.Add($lblLibPercent)
+
+    # Единая кнопка «Отменить» в конце прогресс-бара: отменяет любое идущее действие (апскейлеры, сохранения, импорт).
+    # Видна вместе с баром; на кнопках самих действий крестика «✕» больше нет.
+    $btnLibCancel = New-Object System.Windows.Forms.Button
+    $btnLibCancel.Size = New-Object System.Drawing.Size(96, 22)
+    $btnLibCancel.Location = New-Object System.Drawing.Point(($pnlLibProgress.Width - 96), 18)
+    $btnLibCancel.Anchor = 'Top,Right'
+    $btnLibCancel.FlatStyle = 'Flat'
+    $btnLibCancel.FlatAppearance.BorderColor = $steamUi.Accent2
+    $btnLibCancel.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(35,78,106)
+    $btnLibCancel.UseVisualStyleBackColor = $false
+    $btnLibCancel.BackColor = [System.Drawing.Color]::FromArgb(25,55,75)
+    $btnLibCancel.ForeColor = $steamUi.Text
+    $btnLibCancel.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 9)
+    $btnLibCancel.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
+    $btnLibCancel.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $btnLibCancel.TabStop = $false
+    $btnLibCancel.Padding = New-Object System.Windows.Forms.Padding(0)
+    $btnLibCancel.Text = (T 'lib_import_cancel')
+    $pnlLibProgress.Controls.Add($btnLibCancel)
+    $btnLibCancel.BringToFront()
+    try { $libToolTip.SetToolTip($btnLibCancel, (T 'lib_import_cancel')) } catch {}
+    $btnLibCancel.Add_Click({
+        try {
+            if ($script:libUpdRunning) { $script:libUpdCancel = $true }
+            elseif ($script:libRestoreRunning) { $script:libRestoreCancel = $true }
+            elseif ($script:libSaveRunning) { $script:libSaveCancel = $true }
+            elseif ($script:libImportRunning) { $script:batchCardCancelRequested = $true }
+            else { return }
+            $lblLibStatus.Text = (T 'hd_cancelling')
+        } catch {}
+    })
 
     # Кнопки и переключатель автоимпорта живут в верхней строке окна; внизу — только статус и прогресс-бар.
     $dlg.Controls.Add($pnlLibProgress)
@@ -58648,6 +67959,7 @@ function Show-SteamLibraryBrowser {
 
     $syncLibRestart = {
         try {
+            if ($null -ne $script:libMainDlg) { $dlg = $script:libMainDlg }
             if ($dlg.IsDisposed) { return }
             # Пока идёт прогресс (импорт/апскейлеры) — оверлей скрыт (внизу уже полоса прогресса).
             $progressShown = ([int]$script:libBottomReserve -gt 0)
@@ -58669,6 +67981,7 @@ function Show-SteamLibraryBrowser {
     $showLibProgress = {
         param([bool]$show)
         try {
+            if ($null -ne $script:libMainDlg) { $dlg = $script:libMainDlg }
             # Нижний блок занимает место только пока идёт работа; в остальное время сетка игр тянется до низа окна.
             $wantReserve = if ($show) { 48 } else { 0 }
             if ([int]$script:libBottomReserve -ne $wantReserve) {
@@ -59262,6 +68575,8 @@ function Show-SteamLibraryBrowser {
         param($entry)
         try {
             if ($dlg.IsDisposed) { return }
+            try {
+            } catch {}
             $savedY = 0
             try { $savedY = -[int]$scroll.AutoScrollPosition.Y } catch { $savedY = 0 }
             if ($savedY -lt 0) { $savedY = 0 }
@@ -59392,7 +68707,7 @@ function Show-SteamLibraryBrowser {
                             $steamExeSwap = [string](Get-ItemProperty -Path 'HKCU:\Software\Valve\Steam' -Name 'SteamExe' -ErrorAction SilentlyContinue).SteamExe
                         }
                         if ([string]::IsNullOrWhiteSpace($steamExeSwap) -or -not (Test-Path -LiteralPath $steamExeSwap)) { $steamExeSwap = 'C:\Program Files (x86)\Steam\steam.exe' }
-                        if (Test-Path -LiteralPath $steamExeSwap) { Start-Process -FilePath $steamExeSwap }
+                        if (Test-Path -LiteralPath $steamExeSwap) { Start-Process -FilePath $steamExeSwap; $script:steamKilledByApp = $false; $script:steamFilesDirty = $false }
                     } catch {}
                 }
                 $dlg.UseWaitCursor = $false
@@ -59490,7 +68805,7 @@ function Show-SteamLibraryBrowser {
                             $steamExeSwap = [string](Get-ItemProperty -Path 'HKCU:\Software\Valve\Steam' -Name 'SteamExe' -ErrorAction SilentlyContinue).SteamExe
                         }
                         if ([string]::IsNullOrWhiteSpace($steamExeSwap) -or -not (Test-Path -LiteralPath $steamExeSwap)) { $steamExeSwap = 'C:\Program Files (x86)\Steam\steam.exe' }
-                        if (Test-Path -LiteralPath $steamExeSwap) { Start-Process -FilePath $steamExeSwap }
+                        if (Test-Path -LiteralPath $steamExeSwap) { Start-Process -FilePath $steamExeSwap; $script:steamKilledByApp = $false; $script:steamFilesDirty = $false }
                     } catch {}
                 }
                 $dlg.UseWaitCursor = $false
@@ -59508,19 +68823,20 @@ function Show-SteamLibraryBrowser {
             if ($skipped.Count -gt 0) { [void]$lines.Add((T 'rom_swap_skipped' @((@($skipped | Select-Object -First 8)) -join "`n"))) }
             if ($swapCancelled) { [void]$lines.Add((T 'steam_close_cancelled')) }
             $icon = if ($null -ne $swapRes -and [int]$swapRes.Failed -eq 0 -and $skipped.Count -eq 0) { [System.Windows.Forms.MessageBoxIcon]::Information } else { [System.Windows.Forms.MessageBoxIcon]::Warning }
-            Show-AppMessageBox($dlg, ($lines.ToArray() -join "`n`n"), $global:appTitle, $msgOk, $icon) | Out-Null
+            # Полный успех - без окна (как в главном окне); окно остаётся только для предупреждений и ошибок.
+            $allOkLib = ($null -ne $swapRes -and [int]$swapRes.Done -gt 0 -and [int]$swapRes.Failed -eq 0 -and $skipped.Count -eq 0 -and -not $swapCancelled)
+            if (-not $allOkLib) { Show-AppMessageBox($dlg, ($lines.ToArray() -join "`n`n"), $global:appTitle, $msgOk, $icon) | Out-Null }
         } catch {
             try { $dlg.UseWaitCursor = $false } catch {}
             Show-AppMessageBox($dlg, [string]$_.Exception.Message, $global:appTitle, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
         }
     }
 
-    # Пункты «Сменить враппер» (список врапперов со значками exe, галочка у текущего) и «Убрать враппер» в меню обычной игры.
+    # Список врапперов в библиотеке строится тем же общим чек-листом, что и в главном окне.
+    # Отличается только обработчик применения: библиотека обновляет свои плитки через $swapLibWrapper.
     $addWrapperMenuItems = {
         param($snd, $en)
         if ([string]$en.Kind -ne 'shortcut') { return }
-        $wps = @(@($global:launchWrappers) | Where-Object { $null -ne $_ } | Sort-Object -Property { [string]$_.Name } -CaseSensitive:$false)
-        if ($wps.Count -eq 0) { return }
         $targets = @($en)
         $thisKey = [string](& $getSteamEntryKey $en)
         if ($script:libSteamSelected.ContainsKey($thisKey)) {
@@ -59533,71 +68849,14 @@ function Show-SteamLibraryBrowser {
             }
             if ($sel.Count -gt 1) { $targets = @($sel.ToArray()) }
         }
-        $multi = ($targets.Count -gt 1)
-        $curIds = @{}
-        $wrappedCnt = 0
-        foreach ($t in $targets) {
-            $lw0 = $null
-            try { $lw0 = Find-LaunchWrapperForShortcut ([string]$t.Exe) ([string]$t.LaunchOptions) } catch {}
-            if ($null -ne $lw0) { $wrappedCnt++; $curIds[[string]$lw0.Wrapper.Id] = $true }
-        }
-        $curId = ''
-        if ($wrappedCnt -eq $targets.Count -and $curIds.Count -eq 1) { $curId = [string]@($curIds.Keys)[0] }
-
-        $bgMenu = [System.Drawing.Color]::FromArgb(22, 28, 36)
-        [void]$snd.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
-        $itSwap = New-Object System.Windows.Forms.ToolStripMenuItem
-        # Если ни у одной из игр враппера ещё нет - пункт называется «Выбрать враппер», иначе «Сменить враппер».
-        $swapKey = $(if ($wrappedCnt -eq 0) { 'lib_wrap_pick_menu' } else { 'lib_wrap_swap_menu' })
-        $itSwap.Text = $(if ($multi) { (T ($swapKey + '_sel') @($targets.Count)) } else { (T $swapKey) })
-        $itSwap.BackColor = $bgMenu
-        $itSwap.ForeColor = $steamUi.Text
-        & $setMenuIcon $itSwap 'wrap'
-        [void]$snd.Items.Add($itSwap)
-        $dd = $itSwap.DropDown
-        try { $dd.Renderer = $libRomMenu.Renderer } catch {}
-        $dd.BackColor = $bgMenu
-        $dd.ForeColor = $steamUi.Text
-        $dd.Font = $libRomMenu.Font
-        try { $dd.ShowCheckMargin = $true; $dd.ShowImageMargin = $true; $dd.ImageScalingSize = New-Object System.Drawing.Size(16, 16); Register-SCMenuAutoMargins $dd } catch {}
-        foreach ($wp in $wps) {
-            $mi = New-Object System.Windows.Forms.ToolStripMenuItem
-            $mi.Text = [string]$wp.Name
-            $mi.BackColor = $bgMenu
-            $mi.ForeColor = $steamUi.Text
-            $mi.Checked = ($curId -ne '' -and [string]$wp.Id -eq $curId)
-            $mi.Tag = [PSCustomObject]@{ Targets = @($targets); Wrapper = $wp }
-            try {
-                $ico = Get-EmulatorIconBitmap $wp
-                if ($null -ne $ico) { $mi.Image = $ico; $mi.ImageScaling = [System.Windows.Forms.ToolStripItemImageScaling]::SizeToFit }
-            } catch {}
-            $mi.Add_Click({
-                param($s2, $e2)
-                try { $tg = $s2.Tag; & $swapLibWrapper $tg.Targets $tg.Wrapper } catch {}
-            })
-            [void]$dd.Items.Add($mi)
-        }
-        # «Убрать враппер» - только если хотя бы одна из целевых игр сейчас запускается через враппер.
-        if ($wrappedCnt -gt 0) {
-            $itRm = New-Object System.Windows.Forms.ToolStripMenuItem
-            $itRm.Text = $(if ($multi) { (T 'lib_wrap_remove_menu_sel' @($targets.Count)) } else { (T 'lib_wrap_remove_menu') })
-            $itRm.BackColor = $bgMenu
-            $itRm.ForeColor = $steamUi.Text
-            $itRm.Tag = [PSCustomObject]@{ Targets = @($targets) }
-            try { $itRm.Image = (Get-WrapperRevertIconBitmap); $itRm.ImageScaling = [System.Windows.Forms.ToolStripItemImageScaling]::SizeToFit } catch {}
-            $itRm.Add_Click({
-                param($s2, $e2)
-                try { & $swapLibWrapper $s2.Tag.Targets $null } catch {}
-            })
-            [void]$snd.Items.Add($itRm)
-        }
+        Add-PanelCtxWrapperItems $snd @($targets) $swapLibWrapper
     }
 
     # «Удалить из библиотеки» в меню плитки (красная корзина). Работает по записям библиотеки (ярлыкам Non-Steam игр) и теми же
     # Remove-ShortcutsBatch / Clear-RemovedShortcutLeftovers, что кнопка главного окна: ярлык убирается из всех профилей Steam,
     # файлы игр на диске не трогаются. Если Steam запущен, он закрывается на время записи и потом запускается снова.
     $removeLibEntries = {
-        param($targets)
+        param($targets, [bool]$deleteFiles = $false)
         try {
             if ($script:libUpdRunning -or $script:libImportRunning -or $script:libRestoreRunning) { return }
             $msgOk = [System.Windows.Forms.MessageBoxButtons]::OK
@@ -59628,9 +68887,102 @@ function Show-SteamLibraryBrowser {
             }
             if ($plans.Count -eq 0) { return }
 
-            $ask = (T 'lib_remove_confirm' @($gameNames.Count)).Replace('\n', "`n")
-            $ans = Show-AppMessageBox($dlg, $ask, $global:appTitle, [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Warning)
+            # Shift: вместе с ярлыками удаляется и папка игры (как у корзины главного окна). Небезопасные папки из удаления исключаются.
+            $remainExes = New-Object System.Collections.Generic.List[string]
+            $folderList = New-Object System.Collections.Generic.List[string]
+            $folderSkipped = New-Object System.Collections.Generic.List[string]
+            $uninstProblems = New-Object System.Collections.Generic.List[string]
+            $uninstMap = @{}
+            if ($deleteFiles) {
+                foreach ($en in $allEntries) {
+                    try {
+                        if ([string]$en.Kind -ne 'shortcut' -or $null -eq $en.ShortcutRecord) { continue }
+                        $epk = ([string]$en.ShortcutRecord.FilePath).ToLowerInvariant() + '|' + [string]$en.AppId + '|' + [string]$en.Name + '|' + ([string]$en.LaunchOptions)
+                        if ($planned.ContainsKey($epk)) { continue }
+                        [void]$remainExes.Add([string]$en.Exe)
+                    } catch {}
+                }
+                $seenF = @{}
+                foreach ($pl in $plans) {
+                    $gf = ([string]$pl.GameFolder).Trim()
+                    if ([string]::IsNullOrWhiteSpace($gf)) { continue }
+                    $fk = $gf.TrimEnd('\', '/').ToLowerInvariant()
+                    if ($seenF.ContainsKey($fk)) { continue }
+                    $seenF[$fk] = $true
+                    if (Test-GameFolderSafeToDelete $gf @($remainExes.ToArray())) { [void]$folderList.Add($gf) } else { [void]$folderSkipped.Add($gf) }
+                }
+                if ($folderList.Count -eq 0) { $deleteFiles = $false }
+                # Игры, установленные инсталлятором (есть запись в реестре): для них сначала запускается деинсталлятор.
+                if ($deleteFiles) {
+                    foreach ($gf in $folderList) {
+                        try {
+                            $ue = Find-GameUninstallEntry $gf
+                            if ($null -ne $ue) { $uninstMap[$gf.TrimEnd('\', '/').ToLowerInvariant()] = $ue }
+                        } catch {}
+                    }
+                }
+            }
+            if ($deleteFiles) {
+                $shownF = (@($folderList | Select-Object -First 10)) -join "`n"
+                if ($folderList.Count -gt 10) { $shownF += "`n…" }
+                $ask = (T 'lib_remove_confirm_files' @($gameNames.Count, $shownF)).Replace('\n', "`n")
+                if ($uninstMap.Count -gt 0) {
+                    $unNames = (@($uninstMap.Values | ForEach-Object { [string]$_.Name } | Select-Object -First 6)) -join ', '
+                    $ask += "`n`n" + (T 'lib_remove_uninstall_note' @($unNames))
+                }
+            } else {
+                $ask = (T 'lib_remove_confirm' @($gameNames.Count)).Replace('\n', "`n")
+            }
+            # При удалении файлов с диска - тревожный красный значок (17), иначе обычное предупреждение.
+            $askIcon = $(if ($deleteFiles) { 17 } else { [int][System.Windows.Forms.MessageBoxIcon]::Warning })
+            $ans = Show-AppMessageBox($dlg, $ask, $global:appTitle, [System.Windows.Forms.MessageBoxButtons]::YesNo, $askIcon)
             if ($ans -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+
+            # Деинсталляторы игр: по очереди, с ожиданием завершения. Игры, у которых удаление не завершено, остаются в библиотеке, их файлы не трогаются.
+            if ($deleteFiles -and $uninstMap.Count -gt 0) {
+                $failedKeys = @{}
+                $prevEnabled = $true
+                try { $prevEnabled = [bool]$dlg.Enabled } catch {}
+                try {
+                    foreach ($uk in @($uninstMap.Keys)) {
+                        $ue = $uninstMap[$uk]
+                        try { $lblLibStatus.Text = (T 'lib_uninstall_wait' @([string]$ue.Name)) } catch {}
+                        try { $dlg.Enabled = $false } catch {}
+                        $ur = Invoke-GameUninstaller $ue
+                        try { $dlg.Enabled = $prevEnabled; $dlg.Activate() } catch {}
+                        if ([string]$ur.Status -eq 'done') { continue }
+                        if ([string]$ur.Status -eq 'unsure') {
+                            $ansU = Show-AppMessageBox($dlg, (T 'lib_uninstall_unsure' @([string]$ue.Name)), $global:appTitle, [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
+                            if ($ansU -eq [System.Windows.Forms.DialogResult]::Yes) { continue }
+                            $failedKeys[$uk] = $true
+                            [void]$uninstProblems.Add((T 'lib_uninstall_cancelled' @([string]$ue.Name)))
+                        } else {
+                            $failedKeys[$uk] = $true
+                            [void]$uninstProblems.Add((T 'lib_uninstall_start_fail' @([string]$ue.Name, [string]$ur.Message)))
+                        }
+                    }
+                } finally {
+                    try { $dlg.Enabled = $prevEnabled } catch {}
+                }
+                if ($failedKeys.Count -gt 0) {
+                    $keepPlans = New-Object System.Collections.Generic.List[object]
+                    foreach ($pl in $plans) {
+                        $pk2 = ([string]$pl.GameFolder).Trim().TrimEnd('\', '/').ToLowerInvariant()
+                        if (-not $failedKeys.ContainsKey($pk2)) { [void]$keepPlans.Add($pl) }
+                    }
+                    $plans = $keepPlans
+                    $keepFolders = New-Object System.Collections.Generic.List[string]
+                    foreach ($gf in $folderList) { if (-not $failedKeys.ContainsKey($gf.TrimEnd('\', '/').ToLowerInvariant())) { [void]$keepFolders.Add($gf) } }
+                    $folderList = $keepFolders
+                    if ($plans.Count -eq 0) {
+                        try { $lblLibStatus.Text = ($uninstProblems.ToArray() -join '  |  ') } catch {}
+                        try { Show-AppMessageBox($dlg, ($uninstProblems.ToArray() -join "`n`n"), $global:appTitle, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null } catch {}
+                        return
+                    }
+                }
+            }
+            $filesDeleted = 0
+            $filesFailed = New-Object System.Collections.Generic.List[string]
 
             $dlg.UseWaitCursor = $true
             [System.Windows.Forms.Application]::DoEvents()
@@ -59644,6 +68996,52 @@ function Show-SteamLibraryBrowser {
                 if (-not $rmCancelled) {
                     $rmRes = Remove-ShortcutsBatch @($plans.ToArray())
                     if ($null -ne $rmRes -and [int]$rmRes.Done -gt 0) { try { Clear-RemovedShortcutLeftovers @($rmRes.Removed.ToArray()) $allEntries } catch {} }
+                    # Shift: стираем папки игр, ярлыки которых удалены (папку, у которой удалены не все ярлыки, не трогаем).
+                    if ($deleteFiles -and $null -ne $rmRes -and [int]$rmRes.Done -gt 0) {
+                        $okFolders = @{}
+                        foreach ($gf in $folderList) { $okFolders[$gf.TrimEnd('\', '/').ToLowerInvariant()] = $gf }
+                        $folderAllRemoved = @{}
+                        foreach ($pl in $plans) {
+                            $fk = ([string]$pl.GameFolder).Trim().TrimEnd('\', '/').ToLowerInvariant()
+                            if (-not $okFolders.ContainsKey($fk)) { continue }
+                            $isRemoved = $false
+                            foreach ($re in $rmRes.Removed) { if ([object]::ReferenceEquals($pl.Entry, $re)) { $isRemoved = $true; break } }
+                            if (-not $folderAllRemoved.ContainsKey($fk)) { $folderAllRemoved[$fk] = $true }
+                            if (-not $isRemoved) { $folderAllRemoved[$fk] = $false }
+                        }
+                        # Прогресс удаления папок - в статусной строке библиотеки.
+                        $script:rmDelTotal = [Math]::Max(1, $folderAllRemoved.Count)
+                        $script:rmDelIdx = -1
+                        $script:rmDelName = ''
+                        $onDelProgress = {
+                            param([int64]$dn, [int64]$tt)
+                            try {
+                                $frac = $(if ($tt -gt 0) { [double]$dn / [double]$tt } else { 1.0 })
+                                $pctDel = [int][Math]::Floor(100.0 * ($script:rmDelIdx + $frac) / $script:rmDelTotal)
+                                $pctDel = [Math]::Max(1, [Math]::Min(99, $pctDel))
+                                $lblLibStatus.Text = (T 'lib_remove_files_progress' @($script:rmDelName, $pctDel))
+                                [System.Windows.Forms.Application]::DoEvents()
+                            } catch {}
+                        }
+                        foreach ($fk in @($folderAllRemoved.Keys)) {
+                            $gf = [string]$okFolders[$fk]
+                            $script:rmDelIdx++
+                            $script:rmDelName = [System.IO.Path]::GetFileName($gf.TrimEnd('\', '/'))
+                            if (-not [bool]$folderAllRemoved[$fk]) { [void]$folderSkipped.Add($gf); continue }
+                            # Деинсталлятор уже убрал папку целиком - считаем её удалённой.
+                            if (-not [System.IO.Directory]::Exists($gf)) { $filesDeleted++; continue }
+                            try {
+                                # Повторная проверка прямо перед удалением.
+                                if (-not (Test-GameFolderSafeToDelete $gf @($remainExes.ToArray()))) { [void]$folderSkipped.Add($gf); continue }
+                                & $onDelProgress 0 1
+                                Remove-GamePathPumped $gf $onDelProgress
+                                $filesDeleted++
+                            } catch {
+                                [void]$filesFailed.Add($gf + ' (' + [string]$_.Exception.Message + ')')
+                                try { Write-LauncherLog ('Remove folder: ' + $gf + ': ' + $_.Exception.Message) } catch {}
+                            }
+                        }
+                    }
                 }
             } finally {
                 if ($steamWasRunning -and (Get-SteamRestartMode) -eq 'auto') {
@@ -59653,7 +69051,7 @@ function Show-SteamLibraryBrowser {
                             $steamExeRm = [string](Get-ItemProperty -Path 'HKCU:\Software\Valve\Steam' -Name 'SteamExe' -ErrorAction SilentlyContinue).SteamExe
                         }
                         if ([string]::IsNullOrWhiteSpace($steamExeRm) -or -not (Test-Path -LiteralPath $steamExeRm)) { $steamExeRm = 'C:\Program Files (x86)\Steam\steam.exe' }
-                        if (Test-Path -LiteralPath $steamExeRm) { Start-Process -FilePath $steamExeRm }
+                        if (Test-Path -LiteralPath $steamExeRm) { Start-Process -FilePath $steamExeRm; $script:steamKilledByApp = $false; $script:steamFilesDirty = $false }
                     } catch {}
                 }
                 $dlg.UseWaitCursor = $false
@@ -59686,9 +69084,14 @@ function Show-SteamLibraryBrowser {
 
             $lines = New-Object System.Collections.Generic.List[string]
             if ($null -ne $rmRes -and [int]$rmRes.Done -gt 0) { [void]$lines.Add((T 'lib_remove_done' @($gameNames.Count))) }
+            if ($filesDeleted -gt 0) { [void]$lines.Add((T 'lib_remove_files_done' @($filesDeleted))) }
             $problems = New-Object System.Collections.Generic.List[string]
             if ($null -ne $rmRes -and [int]$rmRes.Failed -gt 0) { [void]$problems.Add((T 'lib_remove_fail' @([int]$rmRes.Failed, [string]$rmRes.Error))) }
             if ($rmCancelled) { [void]$problems.Add((T 'steam_close_cancelled')) }
+            # Папки, которые не удалось или нельзя было стереть, и сбои деинсталляторов - в окне (операция необратимая, молчать об этом нельзя).
+            foreach ($up in $uninstProblems) { [void]$problems.Add([string]$up) }
+            if ($filesFailed.Count -gt 0) { [void]$problems.Add((T 'lib_remove_files_fail' @($filesFailed.Count, ($filesFailed.ToArray() -join '; ')))) }
+            if ($deleteFiles) { foreach ($sk in $folderSkipped) { [void]$problems.Add((T 'lib_remove_files_skip' @($sk))) } }
             if ($problems.Count -gt 0) {
                 Show-AppMessageBox($dlg, ($problems.ToArray() -join "`n`n"), $global:appTitle, $msgOk, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
             }
@@ -59737,7 +69140,7 @@ function Show-SteamLibraryBrowser {
     $getLibMenuIcon = {
         param([string]$kind)
         if ($script:libMenuIconCache.ContainsKey($kind)) { return $script:libMenuIconCache[$kind] }
-        if ($kind -eq 'emu' -or $kind -eq 'coll' -or $kind -eq 'trash') {
+        if ($kind -eq 'emu' -or $kind -eq 'coll' -or $kind -eq 'trash' -or $kind -eq 'frame') {
             try { $eb = Get-PanelCtxMenuIcon $kind; if ($null -ne $eb) { $script:libMenuIconCache[$kind] = $eb; return $eb } } catch {}
         }
         $bmp = $null; $g = $null; $pe = $null; $fp = $null
@@ -59800,7 +69203,7 @@ function Show-SteamLibraryBrowser {
             if ($null -ne $ic) { $mi.Image = $ic; $mi.ImageScaling = [System.Windows.Forms.ToolStripItemImageScaling]::SizeToFit }
         } catch {}
     }
-    $libRomMenu = New-Object System.Windows.Forms.ContextMenuStrip
+    $libRomMenu = (New-PanelCtxMenu)
     try {
         Initialize-SCFilterRenderer
         [SCFilterRenderer]::Accent = $steamUi.Accent
@@ -59972,7 +69375,7 @@ function Show-SteamLibraryBrowser {
             if ($found.Count -eq 0) { $lblLibStatus.Text = ([string]$en.Name + ': ' + (T 'save_card_none')); return }
             if ($found.Count -eq 1) { Start-Process -FilePath 'explorer.exe' -ArgumentList ('"' + [string]$found[0].Path + '"'); return }
             # Несколько мест — короткое меню выбора у курсора.
-            $pick = New-Object System.Windows.Forms.ContextMenuStrip
+            $pick = (New-PanelCtxMenu)
             try { $pick.Renderer = $libRomMenu.Renderer } catch {}
             $pick.ShowCheckMargin = $false; $pick.ShowImageMargin = $false
             $pick.ImageScalingSize = New-Object System.Drawing.Size(16, 16)
@@ -60682,14 +70085,9 @@ function Show-SteamLibraryBrowser {
         }
         $dd = $itC.DropDown
         $script:libCollDrop = $dd
-        if (-not [bool]$direct) {
-            try { $dd.Renderer = $snd.Renderer } catch {}
-            $dd.BackColor = $bgC
-            $dd.ForeColor = $steamUi.Text
-            $dd.Font = $snd.Font
-            try { $dd.ShowCheckMargin = $true; $dd.ShowImageMargin = $false } catch {}
-        }
+        Initialize-SCContextChecklist $dd $snd $false 18 $null 0 $false
         $dd.Add_Closing({ param($s, $e) try { if ($e.CloseReason -eq [System.Windows.Forms.ToolStripDropDownCloseReason]::ItemClicked -and $null -ne $script:libCollDrop -and $script:libCollDrop.Visible -and $script:libCollDrop.Bounds.Contains([System.Windows.Forms.Cursor]::Position)) { $e.Cancel = $true } } catch {} })
+        $collFrom = $dd.Items.Count
         foreach ($sr in @($sortRows.ToArray() | Sort-Object -Property Ord, Low)) {
             $ck = [string]$sr.C.Key
             $n = [int]$cnt[$ck]
@@ -60764,6 +70162,12 @@ function Show-SteamLibraryBrowser {
             } catch { try { Write-LauncherLog ('collNone: ' + $_.Exception.Message) } catch {} }
         })
         [void]$dd.Items.Add($miN)
+        # Длинный список коллекций прокручивается колесом в окне из 18 пунктов, со стрелками; «Применить» стоит на месте.
+        try {
+            $collScroll = @()
+            for ($ci = $collFrom; $ci -lt $dd.Items.Count; $ci++) { $collScroll += $dd.Items[$ci] }
+            if ($collScroll.Count -gt 0) { Enable-MenuWheelScroll $dd 18 $collScroll }
+        } catch {}
         [void]$dd.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
         $itOk = New-Object System.Windows.Forms.ToolStripMenuItem((T 'coll_dlg_ok'))
         $itOk.BackColor = $bgC
@@ -60787,6 +70191,37 @@ function Show-SteamLibraryBrowser {
         [void]$dd.Items.Add($itOk)
     }
 
+    $addFramesMenuItem = {
+        param($snd, $en)
+        try {
+            $tg = @(& $getCtxCollTargets $en)
+            if ($tg.Count -eq 0) { return }
+            if (@(Get-BulkFrameTargets $tg).Count -eq 0) { return }
+            $txtF = $(if ($tg.Count -gt 1) { T 'lib_ctx_frames_sel' @($tg.Count) } else { T 'lib_ctx_frames' })
+            $itF = New-Object System.Windows.Forms.ToolStripMenuItem($txtF)
+            $itF.BackColor = [System.Drawing.Color]::FromArgb(22, 28, 36)
+            $itF.ForeColor = $steamUi.Text
+            & $setMenuIcon $itF 'frame'
+            [void]$snd.Items.Add($itF)
+            $ddF = $itF.DropDown
+            Initialize-SCContextChecklist $ddF $snd $false 18
+            # Как у кнопки «Рамки»: сбросить кэш обложек изменённых игр и полностью пересобрать плитки.
+            # refreshLibAfterEdit $null оставлял старые плитки (и старые картинки) без пересборки.
+            $rlAll = $refreshLibraryAll
+            $fSelSet = $script:libSteamSelected; $fSyncSel = $syncSteamTileSelection; $fUpdSel = $updateSelectionUi
+            $doneF = {
+                try {
+                    foreach ($enX in @($tg)) {
+                        try { $script:libCoverMemCache.Remove([string]$enX.AppId) } catch {}
+                    }
+                    try { $fSelSet.Clear(); & $fSyncSel; & $fUpdSel } catch {}
+                    try { & $rlAll } catch {}
+                } catch {}
+            }.GetNewClosure()
+            Fill-CtxFramesDropDown $ddF $tg $dlg $doneF
+        } catch { try { Write-LauncherLog ('addFramesMenuItem: ' + $_.Exception.Message) } catch {} }
+    }
+
     # Содержимое меню собираем ДО показа (а не в событии Opening): у ContextMenuStrip без пунктов Opening может не вызываться,
     # и меню не появлялось с первого раза. Результат сборки - в $script:libRomMenuBuilt.
     $buildRomMenu = {
@@ -60802,7 +70237,9 @@ function Show-SteamLibraryBrowser {
             if (-not $isRomEn) {
                 $snd.Items.Clear()
                 & $addLaunchMenuItem $snd $en
-                try { & $addCollMenuItem $snd $en; [void]$snd.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)) } catch {}
+                try { & $addCollMenuItem $snd $en } catch {}
+                try { & $addFramesMenuItem $snd $en } catch {}
+                if ($snd.Items.Count -gt 0) { [void]$snd.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)) }
                 & $addSaveMenuItems $snd $en $false
                 try { & $addUpscalerMenuItems $snd $en $true } catch {}
                 try { & $addWrapperMenuItems $snd $en } catch {}
@@ -60817,6 +70254,7 @@ function Show-SteamLibraryBrowser {
                 $snd.Items.Clear()
                 & $addLaunchMenuItem $snd $en
                 try { & $addCollMenuItem $snd $en } catch {}
+                try { & $addFramesMenuItem $snd $en } catch {}
                 try { & $addRemoveLibMenuItem $snd $en } catch {}
                 $script:libRomMenuBuilt = ($snd.Items.Count -gt 0)
                 return
@@ -60844,14 +70282,11 @@ function Show-SteamLibraryBrowser {
 
             $snd.Items.Clear()
             & $addLaunchMenuItem $snd $en
-            try { & $addCollMenuItem $snd $en; [void]$snd.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)) } catch {}
+            try { & $addCollMenuItem $snd $en } catch {}
+            try { & $addFramesMenuItem $snd $en } catch {}
             $styleDrop = {
                 param($dd)
-                try { $dd.Renderer = $libRomMenu.Renderer } catch {}
-                $dd.BackColor = [System.Drawing.Color]::FromArgb(22, 28, 36)
-                $dd.ForeColor = $steamUi.Text
-                $dd.Font = $libRomMenu.Font
-                try { $dd.ShowCheckMargin = $true; $dd.ShowImageMargin = $true; $dd.ImageScalingSize = New-Object System.Drawing.Size(16, 16); Register-SCMenuAutoMargins $dd } catch {}
+                Initialize-SCContextChecklist $dd $libRomMenu $true 18
             }
             $newItem = {
                 param([string]$text, $tag)
@@ -60887,24 +70322,24 @@ function Show-SteamLibraryBrowser {
                 # Текущее ядро RetroArch показываем галочкой только когда меню относится к одной игре.
                 $curCore = ''
                 if ($markCurrent -and $thisTargets.Count -eq 1) { $curCore = [string](Get-EntryRetroArchCore $en) }
-                # Какой эмулятор отмечать галочкой: у одной игры - её эмулятор; у нескольких отмеченных - общий, если он у всех один и тот же.
-                $markProfId = ''
-                if ($markCurrent) {
-                    if ($thisTargets.Count -eq 1) {
-                        if ($null -ne $curProf) { $markProfId = [string]$curProf.Id }
-                    } else {
-                        $idSet = @{}
-                        foreach ($tg0 in @($targets)) {
-                            $cp0 = $null
-                            try { $cp0 = Get-EntryEmulatorProfile $tg0 } catch {}
-                            if ($null -eq $cp0) { $idSet[''] = $true } else { $idSet[[string]$cp0.Id] = $true }
-                        }
-                        if ($idSet.Count -eq 1) { $markProfId = [string]@($idSet.Keys)[0] }
+                # Состояние каждого эмулятора для набора целей: сплошная галочка — у всех,
+                # приглушённая — у части, пустой квадрат — ни у одной игры.
+                $emuCounts = @{}
+                $targetTotal = @($targets).Count
+                foreach ($tg0 in @($targets)) {
+                    $cp0 = $null
+                    try { $cp0 = Get-EntryEmulatorProfile $tg0 } catch {}
+                    if ($null -ne $cp0) {
+                        $id0 = [string]$cp0.Id
+                        if ($emuCounts.ContainsKey($id0)) { $emuCounts[$id0] = [int]$emuCounts[$id0] + 1 }
+                        else { $emuCounts[$id0] = 1 }
                     }
                 }
                 foreach ($ep in $profiles) {
                     if ($skipProfileId -ne '' -and [string]$ep.Id -eq $skipProfileId) { continue }
-                    $isCur = ($markCurrent -and $markProfId -ne '' -and [string]$ep.Id -eq $markProfId)
+                    $emuCount = 0
+                    if ($emuCounts.ContainsKey([string]$ep.Id)) { $emuCount = [int]$emuCounts[[string]$ep.Id] }
+                    $isCur = ($markCurrent -and $emuCount -gt 0)
                     # Список ядер здесь НЕ читаем (сотни .info-файлов, при первом открытии это секунды): он грузится,
                     # когда пользователь выберет RetroArch. Здесь только проверяем, что рядом с exe есть папка cores.
                     $hasCores = $false
@@ -60923,10 +70358,18 @@ function Show-SteamLibraryBrowser {
                             if ($coreSet.Count -eq 1) { $epCore = [string]@($coreSet.Keys)[0] }
                         }
                         $mi = & $newItem ([string]$ep.Name + [string][char]0x2026) ([PSCustomObject]@{ Targets = @($targets); Profile = $ep; Core = ''; Picker = $true; CurCore = $epCore; Title = [string]$ep.Name })
-                        $mi.Checked = $isCur
                     } else {
                         $mi = & $newItem ([string]$ep.Name) ([PSCustomObject]@{ Targets = @($targets); Profile = $ep; Core = '' })
-                        $mi.Checked = $isCur
+                    }
+                    if ($markCurrent -and $targetTotal -gt 0) {
+                        if ($emuCount -ge $targetTotal) { Set-CollItemVisual $mi 'solid' }
+                        elseif ($emuCount -gt 0) { Set-CollItemVisual $mi 'prior' }
+                        else { Set-CollItemVisual $mi 'empty' }
+                        if ($emuCount -gt 0 -and $emuCount -lt $targetTotal) {
+                            $mi.Text = $mi.Text + '  (' + [string]$emuCount + '/' + [string]$targetTotal + ')'
+                        }
+                    } else {
+                        Set-CollItemVisual $mi 'empty'
                     }
                     try {
                         $ico = Get-EmulatorIconBitmap $ep
@@ -60973,12 +70416,13 @@ function Show-SteamLibraryBrowser {
     $btnSwapEmu.Add_Click({
         try {
             if ($script:libUpdRunning -or $script:libImportRunning -or $script:libRestoreRunning) { return }
+            if (Test-MenuButtonJustClosed $btnSwapEmu) { return }
             $swTargets = @(& $getSelectedRomEntries)
             if ($swTargets.Count -eq 0) { return }
             $swProfiles = @(@($global:emulatorProfiles) | Where-Object { $null -ne $_ } | Sort-Object -Property { [string]$_.Name } -CaseSensitive:$false)
             try { & $hideLibHoverCardNow } catch {}
             Initialize-SCFilterRenderer
-            $swMenu = New-Object System.Windows.Forms.ContextMenuStrip
+            $swMenu = (New-PanelCtxMenu)
             try {
                 [SCFilterRenderer]::Accent = $steamUi.Accent
                 [SCFilterRenderer]::Muted = $steamUi.Muted
@@ -60986,11 +70430,7 @@ function Show-SteamLibraryBrowser {
             } catch {}
             $swMenu.BackColor = [System.Drawing.Color]::FromArgb(22, 28, 36)
             $swMenu.ForeColor = $steamUi.Text
-            $swMenu.Font = New-Object System.Drawing.Font('Segoe UI', 9)
-            $swMenu.ShowCheckMargin = $true
-            $swMenu.ShowImageMargin = $true
-            $swMenu.ImageScalingSize = New-Object System.Drawing.Size(16, 16)
-            Register-SCMenuAutoMargins $swMenu
+            Initialize-SCContextChecklist $swMenu $null $true 18 $null 0 $false
 
             $swHdr = New-Object System.Windows.Forms.ToolStripLabel((T 'rom_swap_menu_sel' @($swTargets.Count)))
             $swHdr.ForeColor = $steamUi.Muted
@@ -61002,13 +70442,14 @@ function Show-SteamLibraryBrowser {
                 $swEmpty.Enabled = $false
                 [void]$swMenu.Items.Add($swEmpty)
             } else {
-                # Галочка у эмулятора, через который сейчас запущены ВСЕ отмеченные игры (если он один).
-                $swCurIds = @{}
+                # Сколько отмеченных игр сейчас запускается через каждый эмулятор: полная галочка - у всех, бледная «n/всего» - у части,
+                # пустой квадрат - ни у одной (как в коллекциях и рамках).
+                $swCnt = @{}
                 foreach ($t in $swTargets) {
-                    try { $cp = Get-EntryEmulatorProfile $t; if ($null -ne $cp) { $swCurIds[[string]$cp.Id] = $true } } catch {}
+                    try { $cp = Get-EntryEmulatorProfile $t; if ($null -ne $cp) { $kc = [string]$cp.Id; if ($swCnt.ContainsKey($kc)) { $swCnt[$kc] = [int]$swCnt[$kc] + 1 } else { $swCnt[$kc] = 1 } } } catch {}
                 }
-                $swCurId = ''
-                if ($swCurIds.Count -eq 1) { $swCurId = [string]@($swCurIds.Keys)[0] }
+                $swTotal = $swTargets.Count
+                $swFrom = $swMenu.Items.Count
                 foreach ($ep in $swProfiles) {
                     $hasCores = $false
                     try {
@@ -61017,34 +70458,50 @@ function Show-SteamLibraryBrowser {
                         }
                     } catch { $hasCores = $false }
                     $mi = New-Object System.Windows.Forms.ToolStripMenuItem
+                    $nSw = 0; if ($swCnt.ContainsKey([string]$ep.Id)) { $nSw = [int]$swCnt[[string]$ep.Id] }
                     $mi.Text = [string]$ep.Name + $(if ($hasCores) { [string][char]0x2026 } else { '' })
+                    if ($nSw -gt 0 -and $nSw -lt $swTotal) { $mi.Text = $mi.Text + '  (' + [string]$nSw + '/' + [string]$swTotal + ')' }
                     $mi.BackColor = [System.Drawing.Color]::FromArgb(22, 28, 36)
                     $mi.ForeColor = $steamUi.Text
-                    $mi.Checked = ($swCurId -ne '' -and [string]$ep.Id -eq $swCurId)
-                    $mi.Tag = [PSCustomObject]@{ Targets = @($swTargets); Profile = $ep; Picker = $hasCores }
+                    $modeSw = 'empty'
+                    if ($nSw -ge $swTotal -and $swTotal -gt 0) { $modeSw = 'solid' } elseif ($nSw -gt 0) { $modeSw = 'prior' }
+                    Set-SCMenuCheckVisual $mi $modeSw
+                    $mi.Tag = [PSCustomObject]@{ Pick = $true; BaseText = [string]$ep.Name + $(if ($hasCores) { [string][char]0x2026 } else { '' }); Targets = @($swTargets); Profile = $ep; Picker = $hasCores }
                     try {
                         $ico = Get-EmulatorIconBitmap $ep
                         if ($null -ne $ico) { $mi.Image = $ico; $mi.ImageScaling = [System.Windows.Forms.ToolStripItemImageScaling]::SizeToFit }
                     } catch {}
                     $mi.Add_Click({
                         param($s2, $e2)
-                        try {
-                            $tg = $s2.Tag
-                            $coreArg = ''
-                            if ($tg.Picker) {
-                                $cores = @(Get-RetroArchCoreDisplayList ([string]$tg.Profile.ExePath))
-                                if ($cores.Count -gt 0) {
-                                    $pick = Show-RetroArchCorePicker $dlg $cores '' ([string]$tg.Profile.Name)
-                                    if ($null -eq $pick) { return }
-                                    $coreArg = [string]$pick
-                                }
-                            }
-                            & $swapRomEmulator $tg.Targets $tg.Profile $coreArg
-                        } catch {}
+                        try { Set-PickMenuChoice $s2 } catch {}
                     })
                     [void]$swMenu.Items.Add($mi)
                 }
+                # Длинный список эмуляторов прокручивается колесом в окне из 18 пунктов, со стрелками; заголовок и «Применить» стоят на месте.
+                try {
+                    $swScroll = @()
+                    for ($si = $swFrom; $si -lt $swMenu.Items.Count; $si++) { $swScroll += $swMenu.Items[$si] }
+                    if ($swScroll.Count -gt 0) { Initialize-SCContextChecklist $swMenu $null $true 18 $swScroll }
+                } catch {}
+                Add-PickMenuApply $swMenu ({
+                    param($s2, $e2)
+                    try {
+                        $tg = $s2.Tag.Pending
+                        if ($null -eq $tg) { return }
+                        $coreArg = ''
+                        if ($tg.Picker) {
+                            $cores = @(Get-RetroArchCoreDisplayList ([string]$tg.Profile.ExePath))
+                            if ($cores.Count -gt 0) {
+                                $pick = Show-RetroArchCorePicker $dlg $cores '' ([string]$tg.Profile.Name)
+                                if ($null -eq $pick) { return }
+                                $coreArg = [string]$pick
+                            }
+                        }
+                        & $swapRomEmulator $tg.Targets $tg.Profile $coreArg
+                    } catch {}
+                })
             }
+            Register-MenuButtonToggle $swMenu $btnSwapEmu
             $swMenu.Show($btnSwapEmu, (New-Object System.Drawing.Point(0, $btnSwapEmu.Height)))
         } catch {}
     })
@@ -61053,13 +70510,14 @@ function Show-SteamLibraryBrowser {
     $btnSwapWrap.Add_Click({
         try {
             if ($script:libUpdRunning -or $script:libImportRunning -or $script:libRestoreRunning) { return }
+            if (Test-MenuButtonJustClosed $btnSwapWrap) { return }
             $wTargets = @(& $getSelectedWrapEntries)
             if ($wTargets.Count -eq 0) { return }
             $wps = @(@($global:launchWrappers) | Where-Object { $null -ne $_ } | Sort-Object -Property { [string]$_.Name } -CaseSensitive:$false)
             if ($wps.Count -eq 0) { return }
             try { & $hideLibHoverCardNow } catch {}
             Initialize-SCFilterRenderer
-            $wMenu = New-Object System.Windows.Forms.ContextMenuStrip
+            $wMenu = (New-PanelCtxMenu)
             try {
                 [SCFilterRenderer]::Accent = $steamUi.Accent
                 [SCFilterRenderer]::Muted = $steamUi.Muted
@@ -61067,45 +70525,56 @@ function Show-SteamLibraryBrowser {
             } catch {}
             $wMenu.BackColor = [System.Drawing.Color]::FromArgb(22, 28, 36)
             $wMenu.ForeColor = $steamUi.Text
-            $wMenu.Font = New-Object System.Drawing.Font('Segoe UI', 9)
-            $wMenu.ShowCheckMargin = $true
-            $wMenu.ShowImageMargin = $true
-            $wMenu.ImageScalingSize = New-Object System.Drawing.Size(16, 16)
-            Register-SCMenuAutoMargins $wMenu
 
             $wHdr = New-Object System.Windows.Forms.ToolStripLabel((T 'lib_wrap_swap_menu_sel' @($wTargets.Count)))
             $wHdr.ForeColor = $steamUi.Muted
             $wHdr.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 8.5)
             [void]$wMenu.Items.Add($wHdr)
 
-            # Галочка у враппера, через который сейчас запущены ВСЕ отмеченные игры (если он один).
-            $wCurIds = @{}
+            # Сколько отмеченных игр сейчас запускается через каждый враппер: полная галочка - у всех, бледная «n/всего» - у части, пустой квадрат - ни у одной.
+            $wCnt = @{}
             $wWrapped = 0
+            $wTotal = $wTargets.Count
             foreach ($t in $wTargets) {
                 $lw0 = $null
                 try { $lw0 = Find-LaunchWrapperForShortcut ([string]$t.Exe) ([string]$t.LaunchOptions) } catch {}
-                if ($null -ne $lw0) { $wWrapped++; $wCurIds[[string]$lw0.Wrapper.Id] = $true }
+                if ($null -ne $lw0) {
+                    $wWrapped++
+                    $kw = [string]$lw0.Wrapper.Id
+                    if ($wCnt.ContainsKey($kw)) { $wCnt[$kw] = [int]$wCnt[$kw] + 1 } else { $wCnt[$kw] = 1 }
+                }
             }
-            $wCurId = ''
-            if ($wWrapped -eq $wTargets.Count -and $wCurIds.Count -eq 1) { $wCurId = [string]@($wCurIds.Keys)[0] }
 
+            $wFrom = $wMenu.Items.Count
             foreach ($wp in $wps) {
                 $mi = New-Object System.Windows.Forms.ToolStripMenuItem
+                $nW = 0; if ($wCnt.ContainsKey([string]$wp.Id)) { $nW = [int]$wCnt[[string]$wp.Id] }
                 $mi.Text = [string]$wp.Name
+                if ($nW -gt 0 -and $nW -lt $wTotal) { $mi.Text = $mi.Text + '  (' + [string]$nW + '/' + [string]$wTotal + ')' }
                 $mi.BackColor = [System.Drawing.Color]::FromArgb(22, 28, 36)
                 $mi.ForeColor = $steamUi.Text
-                $mi.Checked = ($wCurId -ne '' -and [string]$wp.Id -eq $wCurId)
-                $mi.Tag = [PSCustomObject]@{ Targets = @($wTargets); Wrapper = $wp }
+                $modeW = 'empty'
+                if ($nW -ge $wTotal -and $wTotal -gt 0) { $modeW = 'solid' } elseif ($nW -gt 0) { $modeW = 'prior' }
+                Set-SCMenuCheckVisual $mi $modeW
+                $mi.Tag = [PSCustomObject]@{ Pick = $true; BaseText = [string]$wp.Name; Targets = @($wTargets); Wrapper = $wp }
                 try {
                     $ico = Get-EmulatorIconBitmap $wp
                     if ($null -ne $ico) { $mi.Image = $ico; $mi.ImageScaling = [System.Windows.Forms.ToolStripItemImageScaling]::SizeToFit }
                 } catch {}
                 $mi.Add_Click({
                     param($s2, $e2)
-                    try { $tg = $s2.Tag; & $swapLibWrapper $tg.Targets $tg.Wrapper } catch {}
+                    try { Set-PickMenuChoice $s2 } catch {}
                 })
                 [void]$wMenu.Items.Add($mi)
             }
+            # Длинный список врапперов прокручивается колесом в окне из 18 пунктов, со стрелками; «Убрать враппер» и «Применить» стоят на месте.
+            try {
+                $wScroll = @()
+                for ($wi = $wFrom; $wi -lt $wMenu.Items.Count; $wi++) { $wScroll += $wMenu.Items[$wi] }
+                if ($wScroll.Count -gt 0) { Initialize-SCContextChecklist $wMenu $null $true 18 $wScroll }
+                $wMenu.ShowCheckMargin = $true
+                $wMenu.ShowImageMargin = $true
+            } catch {}
             # «Убрать враппер» - только если хотя бы одна из отмеченных игр сейчас запускается через враппер.
             if ($wWrapped -gt 0) {
                 [void]$wMenu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
@@ -61113,16 +70582,54 @@ function Show-SteamLibraryBrowser {
                 $itRm.Text = (T 'lib_wrap_remove_menu_sel' @($wTargets.Count))
                 $itRm.BackColor = [System.Drawing.Color]::FromArgb(22, 28, 36)
                 $itRm.ForeColor = $steamUi.Text
-                $itRm.Tag = [PSCustomObject]@{ Targets = @($wTargets) }
+                $itRm.Tag = [PSCustomObject]@{ Pick = $true; BaseText = [string]$itRm.Text; Targets = @($wTargets); Wrapper = $null }
                 try { $itRm.Image = (Get-WrapperRevertIconBitmap); $itRm.ImageScaling = [System.Windows.Forms.ToolStripItemImageScaling]::SizeToFit } catch {}
+                Set-SCMenuCheckVisual $itRm 'empty'
                 $itRm.Add_Click({
                     param($s2, $e2)
-                    try { & $swapLibWrapper $s2.Tag.Targets $null } catch {}
+                    try { Set-PickMenuChoice $s2 } catch {}
                 })
                 [void]$wMenu.Items.Add($itRm)
             }
+            Add-PickMenuApply $wMenu ({
+                param($s2, $e2)
+                try { $p = $s2.Tag.Pending; if ($null -ne $p) { & $swapLibWrapper $p.Targets $p.Wrapper } } catch {}
+            })
+            Register-MenuButtonToggle $wMenu $btnSwapWrap
             $wMenu.Show($btnSwapWrap, (New-Object System.Drawing.Point(0, $btnSwapWrap.Height)))
         } catch {}
+    })
+
+    $btnLibFrames.Add_Click({
+        try {
+            if ($script:libUpdRunning -or $script:libImportRunning -or $script:libRestoreRunning) { return }
+            # Повторный клик по кнопке: меню уже закрылось само (клик вне меню) - заново не открываем.
+            if ($script:bulkFrameMenuClosedAt -and (([Environment]::TickCount - [int]$script:bulkFrameMenuClosedAt) -lt 400)) { $script:bulkFrameMenuClosedAt = 0; return }
+            $fTargets = @(@(& $getSelectedSteamEntries) | Where-Object { $null -ne $_ -and [string]$_.Kind -eq 'shortcut' })
+            if ($fTargets.Count -eq 0) { return }
+            try { & $hideLibHoverCardNow } catch {}
+            $rlAll = $refreshLibraryAll
+            $fSelSet = $script:libSteamSelected; $fSyncSel = $syncSteamTileSelection; $fUpdSel = $updateSelectionUi
+            # После применения выбор игр снимается (как по кнопке «Снять все»), затем плитки обновляются.
+            $fDone = {
+                try { $fSelSet.Clear(); & $fSyncSel; & $fUpdSel } catch {}
+                try { & $rlAll } catch {}
+            }.GetNewClosure()
+            Show-BulkFrameMenu $btnLibFrames $fTargets $dlg $fDone
+        } catch {}
+    })
+
+    $btnLibRemove.Add_Click({
+        try {
+            if ($script:libUpdRunning -or $script:libImportRunning -or $script:libRestoreRunning -or $script:libSaveRunning) { return }
+            # Shift при клике: удалить из библиотеки и саму папку игры с диска.
+            $delWithFiles = $false
+            try { $delWithFiles = (([System.Windows.Forms.Control]::ModifierKeys -band [System.Windows.Forms.Keys]::Shift) -eq [System.Windows.Forms.Keys]::Shift) } catch {}
+            $rmTargets = @(@(& $getSelectedSteamEntries) | Where-Object { $null -ne $_ -and [string]$_.Kind -eq 'shortcut' })
+            if ($rmTargets.Count -eq 0) { return }
+            & $removeLibEntries $rmTargets $delWithFiles
+        } catch {}
+        try { & $updateLibRemoveBtn } catch {}
     })
 
     # --- Всплывающая карточка как в Steam (header + бейдж + название) ---
@@ -61537,7 +71044,11 @@ function Show-SteamLibraryBrowser {
             $tf = [System.Windows.Forms.TextFormatFlags]::NoPadding -bor [System.Windows.Forms.TextFormatFlags]::SingleLine
             $huge = New-Object System.Drawing.Size(1000, 40)
             $ty = [int]($h - $bh + (($bh - $fL.Height) / 2))
-            [System.Windows.Forms.TextRenderer]::DrawText($g, 'DLSS', $fL, (New-Object System.Drawing.Point(8, $ty)), [System.Drawing.Color]::White, $tf)
+            # Формат "Название|версия": у игр без DLSS слева пишется название другого апскейлера.
+            $barLabel = 'DLSS'
+            $sepIx = $ver.IndexOf('|')
+            if ($sepIx -gt 0) { $barLabel = $ver.Substring(0, $sepIx); $ver = $ver.Substring($sepIx + 1) }
+            [System.Windows.Forms.TextRenderer]::DrawText($g, $barLabel, $fL, (New-Object System.Drawing.Point(8, $ty)), [System.Drawing.Color]::White, $tf)
             $vw = [System.Windows.Forms.TextRenderer]::MeasureText($ver, $fR, $huge, $tf).Width
             [System.Windows.Forms.TextRenderer]::DrawText($g, $ver, $fR, (New-Object System.Drawing.Point(([int]($w - $vw - 8)), $ty)), [System.Drawing.Color]::FromArgb(225, 228, 232), $tf)
         } catch {
@@ -61622,7 +71133,7 @@ function Show-SteamLibraryBrowser {
 
     # Фоновые таймеры окна библиотеки: пока открыта карточка игры, они приостанавливаются (см. Show-GameEditorDialog).
     $script:libBgTimers = @($libCoverTimer, $libTileFillTimer, $libMatTimer, $libLocalCoverTimer, $libDlssTimer, $script:libRomMenuWarm)
-    $dlg.Add_FormClosed({ $script:libBgTimers = $null })
+    $dlg.Add_FormClosed({ $script:libBgTimers = $null; $script:libMainDlg = $null })
 
     # Создаёт одну плитку для записи $entry (кладёт в $script:libTileAll, сама плитка — в $script:libLastTile).
     # Вынесено из buildTiles, чтобы одну и ту же сборку можно было вызывать и сразу, и порциями по таймеру.
@@ -62446,52 +71957,76 @@ function Show-SteamLibraryBrowser {
             $script:libSaveWide = $false
             # На вкладках лаунчеров (импорт) кнопок сохранений нет: прячем подпись и все три кнопки.
             if ($isL) {
-                foreach ($hc in @($btnSaveScan, $btnSaveBackup, $btnSaveRestore, $lblCapSaves)) { $hc.Visible = $false }
+                foreach ($hc in @($btnSaveScan, $btnSaveBackup, $btnSaveRestore, $lblCapSaves, $lblCapFrames, $btnLibRemove)) { $hc.Visible = $false }
+                try { & $applyLibFly } catch {}
                 return
             }
-            # Справа налево: [Апскейлеры], [Сохранения], [Враппер], [Эмулятор]. Подписи показываются у всех групп сразу или не показываются ни у одной:
+            # Слева направо: [Сохранения], [Апскейлеры], [Рамки], [Эмулятор], [Враппер], [Корзина]. Подписи показываются у всех групп сразу или не показываются ни у одной:
             # когда места не хватает, подписи исчезают разом, а блоки кнопок остаются отдельными, с видимыми промежутками.
             $w = 30
             foreach ($b in @($btnSaveScan, $btnSaveBackup, $btnSaveRestore)) { $b.Width = $w; $b.Visible = $true }
+            # Корзина - самая правая кнопка ряда, без подписи; группа «Апскейлеры» стоит левее неё (зазор 16).
+            $btnLibRemove.Left = [int]$dlg.ClientSize.Width - 12 - [int]$btnLibRemove.Width
+            $btnUpsGrp.Left = [int]$btnLibRemove.Left - 8 - 30
             $oldEmuRect = $btnSwapEmu.Bounds
             $oldWrapRect = $btnSwapWrap.Bounds
+            $oldFramesRect = $btnLibFrames.Bounds
+            $oldRemoveRect = $btnLibRemove.Bounds
             $capMinLeft = ([int]$lblCount.Left + [int]$lblCount.Width + 8)
             # Вариант с подписями: подпись стоит слева от кнопки своей группы.
-            $upCapLeft = [int]$btnUpdUp.Left - 6 - [int]$lblCapUpscalers.Width
-            $saveRestoreLeft = $upCapLeft - 16 - $w
-            $scanLeftC = $saveRestoreLeft - 2 * (8 + $w)
+            # Раскрытые ряды (см. $applyLibFly) имеют фиксированную ширину и не зависят от длины подписей: ряд «Апскейлеры» уходит влево на две
+            # кнопки, ряд «Сохранения» - на одну влево и две вправо. Подпись в другом языке может быть короче, поэтому промежутки между
+            # группами не меньше минимума, при котором раскрытый ряд (с подложкой) не накрывает соседние кнопки и подписи.
+            $flyStep = 36                               # кнопка 30 + зазор 6 внутри раскрытого ряда
+            $minUpSave = $w + 2 * $flyStep + 8          # от левого края кнопки «Сохранения» до левого края кнопки «Апскейлеры»
+            $minSaveLeft = $flyStep + 8                 # от правого края левого соседа до левого края кнопки «Сохранения»
+            $upCapLeft = [int]$btnUpsGrp.Left - 6 - [int]$lblCapUpscalers.Width
+            $saveRestoreLeft = [Math]::Min(($upCapLeft - 16 - $w), ([int]$btnUpsGrp.Left - $minUpSave))
+            $scanLeftC = $saveRestoreLeft
             $capSaveLeft = $scanLeftC - 6 - [int]$lblCapSaves.Width
-            $wrapLeftC = $capSaveLeft - 8 - [int]$btnSwapWrap.Width
+            $wrapLeftC = [Math]::Min(($capSaveLeft - 8), ($scanLeftC - $minSaveLeft)) - [int]$btnSwapWrap.Width
             $capWrapLeft = $wrapLeftC - 6 - [int]$lblCapWraps.Width
             $emuLeftC = $capWrapLeft - 8 - [int]$btnSwapEmu.Width
             $capEmuLeft = $emuLeftC - 6 - [int]$lblCapEmus.Width
-            $capsFit = ($capEmuLeft -ge $capMinLeft)
+            $framesLeftC = $capEmuLeft - 8 - [int]$btnLibFrames.Width
+            $capFramesLeft = $framesLeftC - 6 - [int]$lblCapFrames.Width
+            $capsFit = $false   # всегда компактный вид: подписи групп не показываются, их текст теперь в подсказках кнопок
             if ($capsFit) {
-                $saveRestoreLeft_ = $saveRestoreLeft; $scanLeft_ = $scanLeftC; $wrapLeft_ = $wrapLeftC; $emuLeft_ = $emuLeftC
+                $saveRestoreLeft_ = $saveRestoreLeft; $scanLeft_ = $scanLeftC; $wrapLeft_ = $wrapLeftC; $emuLeft_ = $emuLeftC; $framesLeft_ = $framesLeftC
             } else {
-                # Компактный вид: без подписей, группы разделены промежутком 16 px.
-                $gapG = 16
-                $saveRestoreLeft_ = [int]$btnUpdUp.Left - $gapG - $w
-                $scanLeft_ = $saveRestoreLeft_ - 2 * (8 + $w)
-                $wrapLeft_ = $scanLeft_ - $gapG - [int]$btnSwapWrap.Width
+                # Компактный вид: без подписей, все кнопки в один ровный ряд с одинаковым промежутком 16 px. Раскрытый ряд здесь накрывает соседей
+                # на время раскрытия (см. $applyLibFly: накрытые кнопки прячутся), а не раздвигает кнопки.
+                $gapG = 8   # как между кнопками слева (фильтр, коллекции, выбрать все)
+                # Слева направо: Сохранения, Апскейлеры, Рамки, Эмулятор, Враппер, Корзина (справа).
+                $wrapLeft_ = [int]$btnLibRemove.Left - $gapG - [int]$btnSwapWrap.Width
                 $emuLeft_ = $wrapLeft_ - $gapG - [int]$btnSwapEmu.Width
+                $framesLeft_ = $emuLeft_ - $gapG - [int]$btnLibFrames.Width
+                $btnUpsGrp.Left = $framesLeft_ - $gapG - 30
+                $saveRestoreLeft_ = [int]$btnUpsGrp.Left - $gapG - $w
+                $scanLeft_ = $saveRestoreLeft_
             }
-            $btnSaveRestore.Left = $saveRestoreLeft_
-            $btnSaveBackup.Left = $saveRestoreLeft_ - 8 - $w
-            $btnSaveScan.Left = $scanLeft_
+            $btnSavesGrp.Left = $scanLeft_   # положение трёх кнопок сохранений в раскрытом ряду считает $applyLibFly
             $btnSwapWrap.Top = 12
             $btnSwapWrap.Left = $wrapLeft_
             $btnSwapEmu.Top = 12
             $btnSwapEmu.Left = $emuLeft_
+            $btnLibFrames.Top = 12
+            $btnLibFrames.Left = $framesLeft_
+            $btnLibRemove.Top = 12
+            $lblCapFrames.Left = $capFramesLeft
             $lblCapUpscalers.Left = $upCapLeft
             $lblCapSaves.Left = $capSaveLeft
             $lblCapWraps.Left = $capWrapLeft
             $lblCapEmus.Left = $capEmuLeft
-            foreach ($cl in @($lblCapUpscalers, $lblCapSaves, $lblCapWraps, $lblCapEmus)) { $cl.Visible = $capsFit }
+            $script:libCapsFit = $capsFit
+            $script:libBaseLeft = @{ Saves = $scanLeft_; Wrap = $wrapLeft_; Emu = $emuLeft_; Frames = $framesLeft_ }
+            foreach ($cl in @($lblCapUpscalers, $lblCapSaves, $lblCapWraps, $lblCapEmus, $lblCapFrames)) { $cl.Visible = $capsFit }
             # WS_EX_COMPOSITED не всегда стирает прежнее место сдвинутой кнопки - перерисовываем старые области.
             try {
                 if ($oldEmuRect -ne $btnSwapEmu.Bounds -and $oldEmuRect.Width -gt 0) { $dlg.Invalidate($oldEmuRect) }
                 if ($oldWrapRect -ne $btnSwapWrap.Bounds -and $oldWrapRect.Width -gt 0) { $dlg.Invalidate($oldWrapRect) }
+                if ($oldFramesRect -ne $btnLibFrames.Bounds -and $oldFramesRect.Width -gt 0) { $dlg.Invalidate($oldFramesRect) }
+                if ($oldRemoveRect -ne $btnLibRemove.Bounds -and $oldRemoveRect.Width -gt 0) { $dlg.Invalidate($oldRemoveRect) }
             } catch {}
             if (-not $script:libSaveRunning) {
                 $btnSaveScan.Text = ''
@@ -62500,6 +72035,7 @@ function Show-SteamLibraryBrowser {
             }
             $btnSaveScan.Invalidate(); $btnSaveBackup.Invalidate(); $btnSaveRestore.Invalidate()
             try { $dlg.Invalidate((New-Object System.Drawing.Rectangle(0, 0, [int]$dlg.ClientSize.Width, 54)), $true) } catch {}
+            & $applyLibFly
         } catch {}
     }
     # Раскладка считается по ширине окна, а раньше пересчитывалась только при смене выбора игр: после растягивания/сужения окна
@@ -62523,6 +72059,28 @@ function Show-SteamLibraryBrowser {
                 if ([int]$pair[1] -gt 0) { $b.FlatAppearance.BorderColor = $steamUi.Accent2; $b.ForeColor = $steamUi.Text }
                 else { $b.FlatAppearance.BorderColor = $steamUi.Border; $b.ForeColor = $steamUi.Muted }
             }
+            try { & $applyLibFly } catch {}
+        } catch {}
+    }
+
+    # Корзина: активна, пока отмечен хотя бы один ярлык (лицензионные игры Steam из библиотеки не удаляются); подсказка показывает число игр,
+    # с зажатым Shift - текст про удаление с диска. Вызывается и при смене выбора, и таймером при нажатии/отпускании Shift.
+    $updateLibRemoveBtn = {
+        param($selList = $null)
+        try {
+            if ([string]$script:libActiveTab -ne 'steam') { return }
+            if ($null -eq $selList) { $selList = @(& $getSelectedSteamEntries) }
+            $delCnt = @(@($selList) | Where-Object { $null -ne $_ -and [string]$_.Kind -eq 'shortcut' }).Count
+            $delBusy = [bool]($script:libUpdRunning -or $script:libImportRunning -or $script:libRestoreRunning -or $script:libSaveRunning)
+            $delShiftNow = $false
+            try { $delShiftNow = (([System.Windows.Forms.Control]::ModifierKeys -band [System.Windows.Forms.Keys]::Shift) -eq [System.Windows.Forms.Keys]::Shift) } catch {}
+            $delTip = (T 'btn_remove_lib')
+            if ($delCnt -gt 0) { $delTip = $(if ($delShiftNow) { (T 'btn_remove_disk_tip' @($delCnt)) } else { (T 'btn_remove_lib_tip' @($delCnt)) }) }
+            if ($delTip -ne [string]$script:libRemoveTipText) { $script:libRemoveTipText = $delTip; $libToolTip.SetToolTip($btnLibRemove, $delTip) }
+            $script:libRemoveCount = $(if ($delBusy) { 0 } else { $delCnt })
+            $delEn = (($delCnt -gt 0) -and (-not $delBusy))
+            if ([bool]$btnLibRemove.Enabled -ne $delEn) { $btnLibRemove.Enabled = $delEn }
+            $btnLibRemove.Invalidate()
         } catch {}
     }
 
@@ -62534,7 +72092,9 @@ function Show-SteamLibraryBrowser {
             # раньше они тут включались и тут же скрывались, что давало мигание лишней кнопки.
             $btnSwapEmu.Visible = (-not $isL)
             $btnSwapWrap.Visible = (-not $isL)
-            if ($isL) { $lblCapEmus.Visible = $false; $lblCapWraps.Visible = $false }
+            $btnLibFrames.Visible = (-not $isL)
+            $btnLibRemove.Visible = (-not $isL)
+            if ($isL) { $lblCapEmus.Visible = $false; $lblCapWraps.Visible = $false; $lblCapFrames.Visible = $false }
             foreach ($c in @($lblAutoImport, $toggleAuto, $btnImport)) { $c.Visible = $isL }
             foreach ($c in @($btnUpdUp, $btnRestoreUp, $btnFilter, $btnColl, $lblCapUpscalers)) { $c.Visible = (-not $isL) }
             try { & $updateCollBtn } catch {}
@@ -62543,11 +72103,12 @@ function Show-SteamLibraryBrowser {
             $fdx = if ($btnFilter.Visible) { [int]($btnFilter.Width + 8) } else { 0 }
             # Выпадающий список коллекций стоит сразу за «Фильтром» — остальное сдвигается ещё на его ширину + зазор.
             if ($btnColl.Visible) { $fdx += [int]($btnColl.Width + 8) }
-            $btnSelectAll.Left = 290 + $fdx
+            $btnSelectAll.Left = 336 + $fdx
             $btnDeselectAll.Left = $btnSelectAll.Left + $btnSelectAll.Width + 8
             $lblCount.Left = $btnDeselectAll.Left + $btnDeselectAll.Width + 8
             $lblSelected.Visible = $false
             $lblCount.Width = 52
+            try { & $refreshLauncherFrames } catch {}
             & $updateSaveButtons
             if (-not $isL) {
                 $selS = @(& $getSelectedSteamEntries)
@@ -62593,15 +72154,21 @@ function Show-SteamLibraryBrowser {
                 try {
                     $romSel = @(& $getSelectedRomEntries $selS).Count
                     $btnSwapEmu.Enabled = (($romSel -gt 0) -and (@($global:emulatorProfiles).Count -gt 0))
-                    $swapTip = $(if ($romSel -gt 0) { (T 'rom_swap_menu_sel' @($romSel)) } else { (T 'rom_swap_menu') })
+                    $swapTip = (T 'lib_cap_emus')
                     if ([string]$script:libSwapTipText -ne $swapTip) { $script:libSwapTipText = $swapTip; $libToolTip.SetToolTip($btnSwapEmu, $swapTip) }
                 } catch {}
                 try {
                     $wrapSel = @(& $getSelectedWrapEntries $selS).Count
                     $btnSwapWrap.Enabled = (($wrapSel -gt 0) -and (@($global:launchWrappers).Count -gt 0))
-                    $wrapTip = $(if ($wrapSel -gt 0) { (T 'lib_wrap_swap_menu_sel' @($wrapSel)) } else { (T 'lib_wrap_swap_menu') })
+                    $wrapTip = (T 'lib_cap_wraps')
                     if ([string]$script:libWrapTipText -ne $wrapTip) { $script:libWrapTipText = $wrapTip; $libToolTip.SetToolTip($btnSwapWrap, $wrapTip) }
                 } catch {}
+                try {
+                    $frSel = @(@($selS) | Where-Object { $null -ne $_ -and [string]$_.Kind -eq 'shortcut' }).Count
+                    $btnLibFrames.Enabled = ($frSel -gt 0)
+                    $btnLibFrames.Invalidate()
+                } catch {}
+                try { & $updateLibRemoveBtn $selS } catch {}
                 return
             }
             # Счётчик и кнопка «Импорт» — по выбору во всех лаунчерах, а не только
@@ -63323,14 +72890,22 @@ function Show-SteamLibraryBrowser {
             try { $btnLibRefresh.Enabled = (-not $script:libImportRunning) } catch {}
         }
     }
-    $btnLibRefresh.Add_Click({ & $refreshLibraryAll })
+    # Кнопка «Обновить» и F5 - полный пересчёт библиотеки, как в главном окне: отмеченные игры (вкладка Steam и вкладки лаунчеров) сбрасываются.
+    # Сам $refreshLibraryAll выбор не трогает: его вызывают и после правок (рамки, коллекции), где отметки должны остаться.
+    $refreshLibraryClearing = {
+        if ($script:libRefreshing -or $script:libImportRunning -or $script:libUpdRunning -or $script:libRestoreRunning -or $script:libSaveRunning) { return }
+        try { if ($null -ne $script:libSteamSelected) { $script:libSteamSelected.Clear() } } catch {}
+        try { if ($null -ne $script:libSelected) { $script:libSelected.Clear() } } catch {}
+        & $refreshLibraryAll
+    }
+    $btnLibRefresh.Add_Click({ & $refreshLibraryClearing })
     try { $libToolTip.SetToolTip($btnLibRefresh, ((T 'btn_refresh') + ' (F5)')) } catch {}
     $dlg.KeyPreview = $true
     $dlg.Add_KeyDown({
         if ($_.KeyCode -eq [System.Windows.Forms.Keys]::F5) {
             $_.Handled = $true
             $_.SuppressKeyPress = $true
-            & $refreshLibraryAll
+            & $refreshLibraryClearing
         } elseif ($_.Control -and -not $_.Alt -and -not $_.Shift -and $_.KeyCode -eq [System.Windows.Forms.Keys]::A) {
             # Ctrl+A — «Выбрать все»: отмечает все игры, видимые сейчас (с учётом поиска и фильтров).
             # В строке поиска Ctrl+A по-прежнему выделяет текст.
@@ -63345,13 +72920,30 @@ function Show-SteamLibraryBrowser {
         }
     })
 
+    # Корзина краснеет сразу при нажатии Shift (даже без движения мыши): следим за клавишей и обновляем кнопку при её нажатии/отпускании.
+    $script:libDelShiftLast = $false
+    $libDelShiftTimer = New-Object System.Windows.Forms.Timer
+    $libDelShiftTimer.Interval = 80
+    $libDelShiftTimer.Add_Tick({
+        try {
+            if ($null -eq $btnLibRemove -or -not [bool]$btnLibRemove.Visible) { return }
+            $shNow = (([System.Windows.Forms.Control]::ModifierKeys -band [System.Windows.Forms.Keys]::Shift) -eq [System.Windows.Forms.Keys]::Shift)
+            if ($shNow -ne [bool]$script:libDelShiftLast) { $script:libDelShiftLast = $shNow; & $updateLibRemoveBtn }
+        } catch {}
+    })
+    $libDelShiftTimer.Start()
+    $dlg.Add_FormClosed({ try { $libDelShiftTimer.Stop(); $libDelShiftTimer.Dispose() } catch {} })
+
     $script:libImportRunning = $false
     $setLibImportLock = {
         param([bool]$locked)
         if ($locked) { try { Ensure-WindowEnabled $form } catch {} }
-        foreach ($c in @($txtSearch, $btnSelectAll, $btnDeselectAll, $btnSwapEmu, $btnSwapWrap, $toggleAuto, $lblAutoImport, $btnLibBack, $tabBar, $btnRestoreUp, $btnSaveScan, $btnSaveBackup, $btnSaveRestore, $btnFilter, $btnColl, $btnLibRefresh)) {
+        foreach ($c in @($txtSearch, $btnSelectAll, $btnDeselectAll, $btnLibFrames, $btnLibRemove, $btnSwapEmu, $btnSwapWrap, $toggleAuto, $lblAutoImport, $btnLibBack, $tabBar, $btnRestoreUp, $btnSaveScan, $btnSaveBackup, $btnSaveRestore, $btnFilter, $btnColl, $btnLibRefresh)) {
             try { $c.Enabled = (-not $locked) } catch {}
         }
+        # Список «Рамки»: Enabled=false у SmartExeComboBox отдаёт отрисовку Windows (белое поле и рамка поверх тёмной темы),
+        # поэтому на время импорта список не отключаем, а блокируем штатным Locked (ввод закрыт, рисуем сами).
+        try { $cmbLauncherFrames.Locked = $locked; $cmbLauncherFrames.Invalidate() } catch {}
     }
     # «Обновить апскейлеры»: во всех отмеченных играх заменяет найденные DLSS / FSR / XeSS / XeLL
     # на последние СКАЧАННЫЕ версии (из «Библиотек апскейлеров»). Что нашлось в игре — то и меняем;
@@ -63373,10 +72965,11 @@ function Show-SteamLibraryBrowser {
                     [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
                 return
             }
-            $implNote = ''
-            try { if (& $isImplicitAllSteam) { $implNote = ((T 'lib_all_note') + "`n`n") } } catch {}
-            $answer = [System.Windows.Forms.DialogResult]::Yes  # подтверждение убрано
-            if ($answer -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+            if (& $isImplicitAllSteam) {
+                $answer = Show-AppMessageBox($dlg, (T 'lib_upd_all_confirm' @($games.Count)), $global:appTitle,
+                    [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
+                if ($answer -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+            }
         } catch { return }
 
         $script:libUpdRunning = $true
@@ -63388,7 +72981,6 @@ function Show-SteamLibraryBrowser {
         $wasCancelled = $false
         try {
             & $setLibImportLock $true
-            $btnUpdUp.Text = [string][char]0x2715
             $btnUpdUp.Enabled = $true
             $libProgressBar.Minimum = 0
             $libProgressBar.Maximum = [Math]::Max(1, $games.Count)
@@ -63465,8 +73057,11 @@ function Show-SteamLibraryBrowser {
         try {
             $games = @(& $getRestorableSteamEntries)
             if ($games.Count -eq 0) { return }
-            $answer = [System.Windows.Forms.DialogResult]::Yes  # подтверждение убрано
-            if ($answer -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+            if (& $isImplicitAllSteam) {
+                $answer = Show-AppMessageBox($dlg, (T 'lib_restore_all_confirm' @($games.Count)), $global:appTitle,
+                    [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
+                if ($answer -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+            }
         } catch { return }
 
         $script:libRestoreRunning = $true
@@ -63479,7 +73074,6 @@ function Show-SteamLibraryBrowser {
         try {
             & $setLibImportLock $true
             $btnUpdUp.Enabled = $false
-            $btnRestoreUp.Text = [string][char]0x2715
             $btnRestoreUp.Enabled = $true
             $libProgressBar.Minimum = 0
             $libProgressBar.Maximum = [Math]::Max(1, $games.Count)
@@ -63587,7 +73181,6 @@ function Show-SteamLibraryBrowser {
         try {
             & $setLibImportLock $true
             $btnUpdUp.Enabled = $false
-            $btn.Text = $(if ($script:libSaveWide) { (T 'lib_import_cancel') } else { [string][char]0x2715 })
             $btn.Enabled = $true
             $libProgressBar.Minimum = 0
             $libProgressBar.Maximum = [Math]::Max(1, $games.Count)
@@ -63713,7 +73306,6 @@ function Show-SteamLibraryBrowser {
         try {
             & $setLibImportLock $true
             $btnUpdUp.Enabled = $false
-            $btn.Text = $(if ($script:libSaveWide) { (T 'lib_import_cancel') } else { [string][char]0x2715 })
             $btn.Enabled = $true
             $libProgressBar.Minimum = 0
             $libProgressBar.Maximum = [Math]::Max(1, $games.Count)
@@ -63879,7 +73471,6 @@ function Show-SteamLibraryBrowser {
 
             $script:libImportRunning = $true
             & $setLibImportLock $true
-            $btnImport.Text = (T 'lib_import_cancel')
             $btnImport.Enabled = $true
             $lblLibStatus.Text = ''
             $lblLibPercent.Text = ''
@@ -63906,9 +73497,17 @@ function Show-SteamLibraryBrowser {
                 & $setLibImportLock $false
             }
 
+            # Сразу убираем полосу прогресса и заново раскладываем сетку: дальнейшее обновление списков идёт синхронно,
+            # и без этого окно «замирало» с устаревшим статусом, кнопкой «Отменить» и недорисованной сеткой.
+            try { & $showLibProgress $false } catch {}
+            try { $script:libLastReflowKey = $null; & $libReflowNow } catch {}
+            try { $dlg.Invalidate($true); $dlg.Update() } catch {}
+            try { [System.Windows.Forms.Application]::DoEvents() } catch {}
+
             # Сразу перечитываем библиотеку Steam (shortcuts.vdf), чтобы новые
             # ярлыки были на вкладке Steam без перезапуска программы.
-            try { & $refreshSteamTabEntries } catch {}
+            try { $dlg.UseWaitCursor = $true } catch {}
+            try { & $refreshSteamTabEntries } catch {} finally { try { $dlg.UseWaitCursor = $false } catch {} }
 
             # Игры, реально попавшие в Steam, помечаем на плитках и снимаем с них выбор.
             foreach ($g in $gameArr) {
@@ -63946,6 +73545,7 @@ function Show-SteamLibraryBrowser {
             try { & $clearLibSteamSelectionAfterOp } catch {}
             & $updateSelectionUi
             try { & $showLibProgress $false } catch {}
+            try { $script:libLastReflowKey = $null; & $libReflowNow; $dlg.Invalidate($true); $dlg.Update() } catch {}
         } catch {
             $script:libImportRunning = $false
             try { & $setLibImportLock $false } catch {}
@@ -65215,6 +74815,9 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     $cmbEmulator.Add_SelectedIndexChanged({
         if ($emuProgrammaticSelect) { return }
         if ($cmbEmulator.SelectedIndex -lt 0 -or $cmbEmulator.SelectedIndex -ge $emuProfiles.Count) { return }
+        # Рамки из профиля выбранного эмулятора накладываются на обложки сразу.
+        try { Set-EditorEmulatorFrame ([string]$emuProfiles[$cmbEmulator.SelectedIndex].FrameKit) } catch {}
+        try { $ep9 = $emuProfiles[$cmbEmulator.SelectedIndex]; Set-EditorOwnerBadge (Get-EmulatorBadgeOwnerForProfile $ep9) ([string]$ep9.FrameKit -eq [string]$script:LauncherBadgeKitId) } catch {}
         & $updateGameCoreVisibility $true
         $romPathForArgs = try { & $getSelectedRomPath } catch { $gamePath }
         & $applyEmulatorArgsTemplate $emuProfiles[$cmbEmulator.SelectedIndex] $romPathForArgs
@@ -66429,11 +76032,14 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     $status.Add_TextChanged({ try { $statusTip.SetToolTip($status, [string]$status.Text) } catch {} })
 
     $slots = [ordered]@{}
-    $slots.Vertical = New-EditorCoverSlot $dlg (T 'slot_vertical') 20 (138+$romRowOffset+$langRowShift) 270 280
+    # Зазор между левой колонкой (Вертикальная, Горизонтальная) и правой (Фон и логотип, Иконка) - 10 px, как между рядами по вертикали.
+    # В компоновке с логотипом левая колонка шире на 5 px (275 вместо 270): правая колонка стоит на x 305, окно не меняется.
+    $coverColW = $(if ($script:LogoComposeEnabled) { 275 } else { 270 })
+    $slots.Vertical = New-EditorCoverSlot $dlg (T 'slot_vertical') 20 (138+$romRowOffset+$langRowShift) $coverColW 280
     if ($script:LogoComposeEnabled) {
         # Этап 1: Горизонтальная под Вертикальной, Hero растянут на место бывших «Горизонтальной» и «Hero».
         # Панель Logo скрыта, но остаётся в $slots: на ней держатся загрузка, значок источника, альтернативы и сохранение.
-        $slots.Horizontal = New-EditorCoverSlot $dlg (T 'slot_horizontal') 20 (428+$romRowOffset+$langRowShift) 270 170
+        $slots.Horizontal = New-EditorCoverSlot $dlg (T 'slot_horizontal') 20 (428+$romRowOffset+$langRowShift) $coverColW 170
         $slots.Hero = New-EditorCoverSlot $dlg (T 'slot_herologo') 305 (138+$romRowOffset+$langRowShift) 555 280
         $slots.Logo = New-EditorCoverSlot $dlg (T 'slot_logo') 20 (428+$romRowOffset+$langRowShift) 270 170
         $slots.Logo.Panel.Visible = $false
@@ -66448,7 +76054,60 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     # помещалась целиком и выглядела обрезанной по сравнению с другими слотами.
     # Окно иконки сужено до 234 px (сама миниатюра 125×125 не уменьшается — она по центру, как и раньше):
     # освободившееся место отдано сетке библиотек апскейлеров справа (см. $dlssGridLeft).
-    $slots.Icon = New-EditorCoverSlot $dlg $(if ($script:LogoComposeEnabled) { (T 'slot_icon') -replace '^5\.','4.' } else { (T 'slot_icon') }) 305 (428+$romRowOffset+$langRowShift) 234 170
+    # В компоновке с логотипом слот сужен до 202 px: правый край кнопки EXE (она в правом нижнем углу области картинки)
+    # приходится на 498, а левый край - на 472, т.е. строго под кнопкой «рамки Steam» в слоте «Фон и логотип»
+    # (305 + 1 + 166 = 472). Освободившиеся 32 px отданы сетке апскейлеров (см. $dlssGridLeft).
+    $iconSlotW = $(if ($script:LogoComposeEnabled) { 202 } else { 234 })
+    $slots.Icon = New-EditorCoverSlot $dlg $(if ($script:LogoComposeEnabled) { (T 'slot_icon') -replace '^5\.','4.' } else { (T 'slot_icon') }) 305 (428+$romRowOffset+$langRowShift) $iconSlotW 170
+    # Компоновка с логотипом: области картинки у горизонтальной обложки и иконки равны по высоте самой горизонтальной обложки
+    # (ширина области, пропорция 460x215), а панели подогнаны под них: отступ 8 px от кнопок, слева, справа и снизу - как у остальных слотов.
+    # Иконка получает ту же высоту, что и горизонтальная обложка.
+    if ($script:LogoComposeEnabled) {
+        $coverPicH = [int][Math]::Round(([int]$slots.Horizontal.Picture.Width) * 215.0 / 460.0)
+        $coverPanelH = 2 + [int]$slots.Horizontal.Picture.Top + $coverPicH + 8
+        foreach ($sl in @($slots.Horizontal, $slots.Icon)) {
+            $sl.Picture.Height = $coverPicH
+            $sl.Missing.Height = $coverPicH
+            $sl.Panel.Height = $coverPanelH
+        }
+    }
+    # Эти три слота подгоняют область картинки под саму картинку (Set-EditorSlotBoxFit): запоминаем отведённое место.
+    if ($script:LogoComposeEnabled) {
+        foreach ($fitSlot in @($slots.Vertical, $slots.Horizontal, $slots.Icon)) {
+            $fitSlot | Add-Member -NotePropertyName AvailX -NotePropertyValue ([int]$fitSlot.Picture.Left) -Force
+            $fitSlot | Add-Member -NotePropertyName AvailY -NotePropertyValue ([int]$fitSlot.Picture.Top) -Force
+            $fitSlot | Add-Member -NotePropertyName AvailW -NotePropertyValue ([int]$fitSlot.Picture.Width) -Force
+            $fitSlot | Add-Member -NotePropertyName AvailH -NotePropertyValue ([int]$fitSlot.Picture.Height) -Force
+            $fitSlot | Add-Member -NotePropertyName FitBox -NotePropertyValue $true -Force
+        }
+    }
+    # Точная отрисовка миниатюр вертикальной, горизонтальной обложки и иконки. Стандартный Zoom у PictureBox рисует картинку с
+    # подпиксельным сдвигом GDI+ и усечением размера: картинка оказывалась на 1 px левее/выше области (слева 7 px, справа 9 px вместо 8 и 8).
+    # Здесь размер округляется, картинка кладётся ровно в область, режим смещения пикселей Half и обёртка краёв TileFlipXY убирают сдвиг и размытый край.
+    foreach ($exactSlot in @($slots.Vertical, $slots.Horizontal, $slots.Icon)) {
+        $exactSlot.Picture.Add_Paint({
+            param($sender, $e)
+            try {
+                $img = $sender.Image
+                if ($null -eq $img -or $img.Width -le 0 -or $img.Height -le 0) { return }
+                $g = $e.Graphics
+                $cw = [int]$sender.ClientSize.Width; $ch = [int]$sender.ClientSize.Height
+                $ratio = [Math]::Min($cw / [double]$img.Width, $ch / [double]$img.Height)
+                $dw = [Math]::Min($cw, [int][Math]::Round($img.Width * $ratio))
+                $dh = [Math]::Min($ch, [int][Math]::Round($img.Height * $ratio))
+                $dx = [int][Math]::Floor(($cw - $dw) / 2)
+                $dy = [int][Math]::Floor(($ch - $dh) / 2)
+                $g.Clear($sender.BackColor)
+                $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+                $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::Half
+                $ia = New-Object System.Drawing.Imaging.ImageAttributes
+                try {
+                    $ia.SetWrapMode([System.Drawing.Drawing2D.WrapMode]::TileFlipXY)
+                    $g.DrawImage($img, (New-Object System.Drawing.Rectangle($dx, $dy, $dw, $dh)), 0, 0, $img.Width, $img.Height, [System.Drawing.GraphicsUnit]::Pixel, $ia)
+                } finally { $ia.Dispose() }
+            } catch {}
+        })
+    }
     # Для всех типов обложек фон карточки должен совпадать
     # с тёмным фоном области изображения внутри.
     $slots.Vertical.Panel.BackColor = $steamUi.Input
@@ -66461,6 +76120,8 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     foreach ($slotKey in @($slots.Keys)) {
         try { $slots[$slotKey] | Add-Member -NotePropertyName EditorState -NotePropertyValue $editorState -Force } catch {}
     }
+    # Выбор рамки (комплекта) в заголовках панелей 1 и 2.
+    try { Add-EditorFrameControls $slots $dlg } catch {}
     # Карточка рома: платформа для выбора обложки SteamGridDB. Считается в момент вызова
     # по ТЕКУЩЕМУ эмулятору и ром в карточке (см. Get-RomPlatformKeys), поэтому смена
     # эмулятора или рома учитывается при следующей загрузке/открытии вариантов.
@@ -66487,20 +76148,22 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
         }
         Show-EditorAlternativeCover $slots.Vertical (T 'slot_vertical')
     }
-    $slots.Vertical.Picture.Add_Click($onSlotVerticalClick)
+    # Выбор обложки - только по левой кнопке: правая открывает крупный просмотр (см. Add-EditorFrameControls).
+    $slots.Vertical.Picture.Add_MouseClick({ param($s, $e) if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Left) { & $onSlotVerticalClick } })
     # Если обложки в источнике нет, поверх Picture лежит заглушка Missing —
     # клик по ней тоже должен открывать альтернативы (в т.ч. из SGDB).
-    $slots.Vertical.Missing.Add_Click($onSlotVerticalClick)
+    $slots.Vertical.Missing.Add_MouseClick({ param($s, $e) if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Left) { & $onSlotVerticalClick } })
     $onSlotHorizontalClick = {
         if(($editorState.SearchSource -eq 'Steam' -or $editorState.SearchSource -eq 'SteamGridDB') -and @($slots.Horizontal.SgdbItems).Count -eq 0){
             [void](Prepare-EditorSgdbAlternativesUnified $slots.Horizontal (T 'slot_horizontal') ([string]$editorState.SearchSource) $txtId.Text.Trim() $txtTitle.Text.Trim() $status $txtId)
         }
         Show-EditorAlternativeCover $slots.Horizontal (T 'slot_horizontal')
     }
-    $slots.Horizontal.Picture.Add_Click($onSlotHorizontalClick)
+    # Выбор обложки - только по левой кнопке: правая открывает крупный просмотр (см. Add-EditorFrameControls).
+    $slots.Horizontal.Picture.Add_MouseClick({ param($s, $e) if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Left) { & $onSlotHorizontalClick } })
     # Если обложки в источнике нет, поверх Picture лежит заглушка Missing —
     # клик по ней тоже должен открывать альтернативы (в т.ч. из SGDB).
-    $slots.Horizontal.Missing.Add_Click($onSlotHorizontalClick)
+    $slots.Horizontal.Missing.Add_MouseClick({ param($s, $e) if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Left) { & $onSlotHorizontalClick } })
     $onSlotHeroClick = {
         if(($editorState.SearchSource -eq 'Steam' -or $editorState.SearchSource -eq 'SteamGridDB') -and @($slots.Hero.SgdbItems).Count -eq 0){
             [void](Prepare-EditorSgdbAlternativesUnified $slots.Hero (T 'slot_hero') ([string]$editorState.SearchSource) $txtId.Text.Trim() $txtTitle.Text.Trim() $status $txtId)
@@ -66559,8 +76222,8 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     # (прежней) и иконкой файла EXE - туда и обратно.
     $btnIconExe = New-Object System.Windows.Forms.Button
     $btnIconExe.Size = New-Object System.Drawing.Size(26, 24)
-    # Правый нижний угол рамки: правый край = правый край значка источника, нижний край = низ области иконки: отступы до рамки справа и снизу равны (8 px).
-    $btnIconExe.Location = New-Object System.Drawing.Point(([int]$slots.Icon.Picture.Right - 26), ([int]$slots.Icon.Picture.Bottom - 24))
+    # Строка заголовка слота, справа налево: [значок источника] [EXE] [лупа]. Места фиксированные, ничего не переставляется.
+    $btnIconExe.Location = New-Object System.Drawing.Point(([int]$slots.Icon.SourceBadge.Left - 4 - 26), 8)
     try { $slots.Icon | Add-Member -NotePropertyName ExeButton -NotePropertyValue $btnIconExe -Force } catch {}
     $btnIconExe.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $btnIconExe.FlatAppearance.BorderColor = $steamUi.Border
@@ -66647,6 +76310,20 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     $slots.Icon.Panel.Controls.Add($btnIconExe)
     $btnIconExe.BringToFront()
     }
+    # Лупа в строке заголовка слота иконки: левее значка источника (его место занято, даже когда сам значок скрыт),
+    # на той же линии, что лупы слотов 1 и 2. Не зависит от кнопки EXE, поэтому есть и у ROM-карточек.
+    try {
+        $slots.Icon | Add-Member -NotePropertyName IsIconSlot -NotePropertyValue $true -Force
+        $iconZoomTip = New-SCToolTip
+        $slots.Icon | Add-Member -NotePropertyName ZoomTip -NotePropertyValue $iconZoomTip -Force
+        # Лупа стоит левее кнопки EXE (зазор 4 px); если кнопки EXE нет (ROM-карточка) - левее значка источника.
+        # Положение фиксированное: появление и скрытие значка источника ничего не двигает.
+        $zoomRef = $slots.Icon.SourceBadge
+        if ($null -ne $btnIconExe) { $zoomRef = $btnIconExe }
+        $iconZoom = New-EditorZoomButton $slots.Icon.Panel ([int]$zoomRef.Left - 4 - 26) 8 $slots.Icon $iconZoomTip
+        $slots.Icon | Add-Member -NotePropertyName ZoomButton -NotePropertyValue $iconZoom -Force
+        try { $slots.Icon.Caption.AutoEllipsis = $true; $slots.Icon.Caption.Width = [math]::Max(40, [int]$iconZoom.Left - 10 - 4) } catch {}
+    } catch {}
     $cmbExe.Add_SelectedIndexChanged({
         try {
             # Уже добавленная игра: значок окна карточки = значок выбранного EXE (или программы, если EXE нет).
@@ -66926,7 +76603,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
             # Выпадающий список — тот же, что у кнопки коллекций в библиотеке (тот же рендерер, цвета и шрифт).
             # Отличие одно: в карточке коллекций может быть несколько, поэтому клик по пункту ставит/снимает галочку и список не закрывается.
             Initialize-SCFilterRenderer
-            $cmenu = New-Object System.Windows.Forms.ContextMenuStrip
+            $cmenu = (New-PanelCtxMenu)
             $cmenu.Name = 'sccoll'
             try {
                 [SCFilterRenderer]::Accent = $steamUi.Accent
@@ -67008,6 +76685,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
             [void]$cmenu.Items.Add($miNone)
             Update-CardCollMenuVisuals $cardColl $cmenu
             $cmenu.MinimumSize = New-Object System.Drawing.Size(220, 0)
+            try { Enable-MenuWheelScroll $cmenu 18 } catch {}
             # Кнопка стоит у правого края карточки — открываем список вниз и влево, чтобы он не выходил за окно.
             $cmenu.Show($btnCardColl, (New-Object System.Drawing.Point($btnCardColl.Width, $btnCardColl.Height)), [System.Windows.Forms.ToolStripDropDownDirection]::BelowLeft)
         } catch {
@@ -67158,6 +76836,47 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
                 if ($chkWrapper.Checked -and $cmbWrapper.SelectedIndex -lt 0 -and $cmbWrapper.Items.Count -gt 0) { $cmbWrapper.SelectedIndex = 0 }
             } catch {}
         }.GetNewClosure())
+        # Новая игра лончера: набор рамок этого лончера (вкладка лончера в библиотеке); у игры через враппер приоритет у враппера.
+        $cardLauncherKit = ''
+        if (-not $editMode -and (Test-IsLauncherEntry $LauncherEntry)) { try { $cardLauncherKit = [string](Get-LauncherFrameKit ([string]$LauncherEntry.Launcher)) } catch {} }
+        # Рамки из профиля выбранного враппера (как у эмулятора в карточке ROM): при выборе враппера или включении галочки набор
+        # накладывается сразу, при снятии галочки возвращается «Авто». Ручной выбор в меню рамок не трогается.
+        # Состояние для снятия рамки при выключении враппера: был ли враппер включён и стоял ли он в ярлыке при открытии карточки.
+        $wrapFrameState = @{ WasActive = $false; FromShortcut = $false }
+        $applyWrapperFrame = {
+            try {
+                $wKit = ''
+                $wOwner = ''
+                if ([bool]$chkWrapper.Checked -and -not $cmbWrapper.Locked -and $cmbWrapper.SelectedIndex -ge 0 -and $cmbWrapper.SelectedIndex -lt @($cardWrapperList).Count) {
+                    $wKit = [string]$cardWrapperList[$cmbWrapper.SelectedIndex].FrameKit
+                    # Враппер становится «владельцем» значка/рамки, только если в его профиле выбран набор рамок или «Значок».
+                    # «Без рамки» в профиле - враппер ничего не меняет (иначе включение галочки подтягивало значок враппера на обложку).
+                    if (-not [string]::IsNullOrWhiteSpace($wKit)) { $wOwner = 'wrap:' + [string]$cardWrapperList[$cmbWrapper.SelectedIndex].Id }
+                }
+                if ([string]::IsNullOrWhiteSpace($wKit)) { $wKit = $cardLauncherKit }
+                Set-EditorEmulatorFrame $wKit
+                if ($wOwner -ne '') {
+                    Set-EditorOwnerBadge $wOwner ($wKit -eq (Get-EditorBadgeKitIdValue))
+                } elseif (-not $editMode -and (Test-IsLauncherEntry $LauncherEntry)) {
+                    Set-EditorOwnerBadge ([string]$LauncherEntry.Launcher) ($cardLauncherKit -eq (Get-EditorBadgeKitIdValue))
+                } elseif (Test-EditorBadgeOwnerIsWrapper) { Set-EditorOwnerBadge '' $false }
+                # Редактирование: прочие владельцы значка (эмулятор, лончер), определённые по ярлыку, не трогаются.
+                # Враппер включён - запоминаем (первое включение при открытии карточки до загрузки обложек = враппер стоял в ярлыке).
+                $wrapNow = ([bool]$chkWrapper.Checked -and -not $cmbWrapper.Locked -and $cmbWrapper.SelectedIndex -ge 0 -and $cmbWrapper.SelectedIndex -lt @($cardWrapperList).Count)
+                if ($wrapNow) {
+                    if (-not $wrapFrameState.WasActive) { $wrapFrameState.FromShortcut = ($editMode -and $null -eq $editorState.Baseline) }
+                    $wrapFrameState.WasActive = $true
+                }
+                elseif ($wrapFrameState.WasActive -and -not [bool]$chkWrapper.Checked) {
+                    # Враппер выключен: значок/рамка враппера снимаются. Ручной выбор обычной рамки пользователя не трогается.
+                    $wrapFrameState.WasActive = $false
+                    $bFr = ''; try { $bFr = [string]$editorState.Baseline.Frames } catch {}
+                    Reset-EditorWrapperFrames ([bool]$wrapFrameState.FromShortcut) $bFr
+                }
+            } catch {}
+        }.GetNewClosure()
+        $cmbWrapper.Add_SelectedIndexChanged($applyWrapperFrame)
+        $chkWrapper.Add_CheckedChanged($applyWrapperFrame)
         # Режим «Wrappers» на главном экране: новая игра сразу идёт через активный враппер (при редактировании выбор восстанавливается из ярлыка).
         if ($script:wrappersModeEnabled -and -not $editMode) {
             try {
@@ -67168,6 +76887,45 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
             } catch {}
         }
     }
+
+    # Рамка лончера для новой игры накладывается сразу при открытии карточки (обложки подгрузятся позже и покажутся с рамкой).
+    try {
+        if (-not $editMode -and (Test-IsLauncherEntry $LauncherEntry)) {
+            $openLauncherKit = [string](Get-LauncherFrameKit ([string]$LauncherEntry.Launcher))
+            if (-not [string]::IsNullOrWhiteSpace($openLauncherKit)) { Set-EditorEmulatorFrame $openLauncherKit }
+            # Лончер известен всегда (пункт «Значок» в меню рамки); «Авто» рисует значок, только если на вкладке лончера выбран «Значок».
+            $bfs = $script:EditorFrameState
+            if ($null -ne $bfs) {
+                $bfs.Badge = [string]$LauncherEntry.Launcher
+                if ($openLauncherKit -eq [string]$script:LauncherBadgeKitId) {
+                    $bfs.BadgeAuto = $true
+                    foreach ($bk in @('v', 'h')) { try { Update-EditorFramePreview $bfs.Slots[$bk] } catch {} }
+                }
+            }
+        } elseif ($editMode -and $null -ne $existingShortcut -and $null -ne $script:EditorFrameState) {
+            # Уже добавленная игра лончера: лончер определяется по параметрам ярлыка. «Авто» значок не рисует (обложка с диска уже может быть со значком).
+            $editLid = [string](Get-BulkEntryLauncherId $existingShortcut)
+            if ($editLid -ne '') { $script:EditorFrameState.Badge = $editLid }
+            # Id игры: по нему карточка находит метку установленной рамки (набор, подгонка) независимо от того, откуда рамку поставили.
+            $script:EditorFrameState['ShortcutId'] = [string]$existingShortcut.ShortcutId
+            $script:EditorFrameState.InitV = $false; $script:EditorFrameState.InitH = $false
+            # БАГ-ФИКС: temp от ПРЕДЫДУЩЕЙ карточки ещё лежит на диске, а ShortcutId уже известен - любая проверка рамки (наведение на значок, подпись и т.д.) до Add_Shown читала бы чужой temp_p.jpg и теряла выбор рамки. Чистим сразу.
+            try { Clear-TempCoverFiles } catch {}
+        }
+    } catch {}
+
+    # Рамка, выбранная кнопкой «Рамки обложек» главного окна для новых игр: подставляется в карточку новой игры в обе панели
+    # (как выбор коллекций). Дальнейший ручной выбор рамки в карточке главнее. Игры лончеров из окна библиотеки не затрагиваются.
+    try {
+        if (-not $editMode -and $null -eq $existingShortcut -and -not $licensedMode -and $null -ne $script:EditorFrameState -and -not (Test-IsLauncherEntry $LauncherEntry)) {
+            $mfSel = [string](Get-MainFramesDefaultValid)
+            if ($mfSel -ne '') {
+                $mfSlot = $script:EditorFrameState.Slots['v']
+                if ($null -eq $mfSlot) { $mfSlot = $script:EditorFrameState.Slots['h'] }
+                if ($null -ne $mfSlot) { Set-EditorFrameSelection $mfSlot $mfSel }
+            }
+        }
+    } catch {}
 
     $alignCoverLangPanelRight = {
         try {
@@ -67297,10 +77055,21 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
         @{ Key = 'XESS11'; Title = 'XeSS DX11'; Tip = 'XeSS (DirectX 11)';           File = 'libxess_dx11.dll';         Name = 'EditorXessDx11Combo' },
         @{ Key = 'XELL';   Title = 'XeLL';      Tip = 'XeLL (Xe Low Latency)';       File = 'libxell.dll';              Name = 'EditorXellCombo' }
     )
-    $dlssGridLeft = 551          # слот «Иконка» заканчивается на 539 (305 + 234), зазор 12
-    $dlssColW     = 99           # внутри поля помещается полная версия вида «v310.7.129»
-    $dlssColGap   = 6            # 3 × 99 + 2 × 6 = 309 → правый край 860
+    $dlssGridLeft = 305 + $iconSlotW + 12   # слот «Иконка» заканчивается на 305 + $iconSlotW, зазор 12; правый край сетки всегда 860
+    $dlssColGap   = 6
     $dlssGridCols = 3
+    $dlssGridW    = 860 - $dlssGridLeft      # полная ширина сетки (при слоте 202: 341, при 234: 309)
+    # Ширина столбцов: всё место делится поровну, остаток (1-2 px) раздаётся первым столбцам.
+    # Внутри поля помещается полная версия вида «v310.7.129» (минимум 99 px).
+    $dlssColBase  = [int][Math]::Floor(($dlssGridW - ($dlssGridCols - 1) * $dlssColGap) / $dlssGridCols)
+    $dlssColRem   = ($dlssGridW - ($dlssGridCols - 1) * $dlssColGap) - $dlssColBase * $dlssGridCols
+    $dlssColWs = @(); $dlssColXs = @()
+    $dlssAccX = $dlssGridLeft
+    for ($ci = 0; $ci -lt $dlssGridCols; $ci++) {
+        $cw = $dlssColBase + $(if ($ci -lt $dlssColRem) { 1 } else { 0 })
+        $dlssColWs += $cw; $dlssColXs += $dlssAccX
+        $dlssAccX += $cw + $dlssColGap
+    }
     $dlssRowH     = 48           # поле 16 (подпись) + 24 (список) + 8 зазор; под сеткой остаётся место для двух кнопок
     $dlssTip = New-SCToolTip
     # Разметка элементов выпадающих списков: имя комбо -> массив 'dl' (скачана) / 'nodl' (не скачана) / 'cur' (версия из папки игры).
@@ -67326,7 +77095,9 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
         else {
             # Как в настройках: белый текст — версия скачана (или лежит в папке игры), серый — ещё нет,
             # зелёный — выбранная в списке версия. Под курсором подсвечивается только фон.
-            $bg = if ($isSelected) { $steamUi.Selected } else { $steamUi.Input }
+            # Само поле (ComboBoxEdit) никогда не подсвечиваем: подсветка остаётся только на пункте под курсором в списке (без двойного выделения).
+            $isEdit = (($e.State -band [System.Windows.Forms.DrawItemState]::ComboBoxEdit) -ne 0)
+            $bg = if ($isSelected -and -not $isEdit) { $steamUi.Selected } else { $steamUi.Input }
             $fg = $steamUi.Text
             try {
                 $mk = @($dlssMarks[[string]$sender.Name])
@@ -67384,7 +77155,9 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     $dlssTop = 428 + $romRowOffset + $langRowShift
     $dlssIdx = 0
     foreach ($def in $dlssFieldDefs) {
-        $dlssX = $dlssGridLeft + ($dlssIdx % $dlssGridCols) * ($dlssColW + $dlssColGap)
+        $dlssCol = $dlssIdx % $dlssGridCols
+        $dlssX = [int]$dlssColXs[$dlssCol]
+        $dlssColW = [int]$dlssColWs[$dlssCol]
         $dlssY = $dlssTop + [int][Math]::Floor($dlssIdx / $dlssGridCols) * $dlssRowH
         $lbl = New-Object System.Windows.Forms.Label
         $lbl.Text = [string]$def.Title
@@ -67454,14 +77227,16 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     # ----- Кнопки под сеткой: «Выбрать последние» и «Восстановить» -----
     # Работают только с выбором в выпадающих списках (замена файлов в папке игры — отдельный шаг).
     $dllBtnGap = 6
-    $dllBtnW = [int][Math]::Floor((3 * $dlssColW + 2 * $dlssColGap - $dllBtnGap) / 2)
-    $dllBtnY = $dlssTop + 2 * $dlssRowH + 40 + 6
+    $dllBtnW = [int][Math]::Floor(($dlssGridW - $dllBtnGap) / 2)
+    $dllBtnW2 = $dlssGridW - $dllBtnGap - $dllBtnW   # вторая кнопка добирает остаток до правого края (860)
+    # Нижний край кнопок стоит на нижней границе соседней панели «Иконка» (высота панели зависит от обложки, поэтому считаем от неё).
+    $dllBtnY = [int]$slots.Icon.Panel.Bottom - 26
     $newDllButton = {
-        param([string]$text, [int]$x)
+        param([string]$text, [int]$x, [int]$w)
         $b = New-Object System.Windows.Forms.Button
         $b.Text = $text
         $b.Location = New-Object System.Drawing.Point($x, $dllBtnY)
-        $b.Size = New-Object System.Drawing.Size($dllBtnW, 26)
+        $b.Size = New-Object System.Drawing.Size($w, 26)
         $b.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
         $b.FlatAppearance.BorderColor = $steamUi.Border
         $b.FlatAppearance.MouseOverBackColor = $steamUi.Selected
@@ -67476,8 +77251,8 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
         $dlg.Controls.Add($b)
         return $b
     }
-    $btnDllLatest = & $newDllButton (T 'upl_select_latest') $dlssGridLeft
-    $btnDllRestore = & $newDllButton (T 'card_dll_btn_restore') ($dlssGridLeft + $dllBtnW + $dllBtnGap)
+    $btnDllLatest = & $newDllButton (T 'upl_select_latest') $dlssGridLeft $dllBtnW
+    $btnDllRestore = & $newDllButton (T 'card_dll_btn_restore') ($dlssGridLeft + $dllBtnW + $dllBtnGap) $dllBtnW2
     $dlssTip.SetToolTip($btnDllLatest, (T 'card_dll_tip_latest'))
     $dlssTip.SetToolTip($btnDllRestore, (T 'card_dll_tip_restore'))
 
@@ -68739,7 +78514,7 @@ $cardSaveOk.Location = New-Object System.Drawing.Point(($cardSaveBtnsX - 24), 55
             }
             if ($found.Count -eq 0) { $status.Text = (T 'save_card_none'); return }
             if ($found.Count -eq 1) { Start-Process -FilePath 'explorer.exe' -ArgumentList ('"' + [string]$found[0].Path + '"'); return }
-            $menu = New-Object System.Windows.Forms.ContextMenuStrip
+            $menu = (New-PanelCtxMenu)
 $menu.ShowImageMargin = $false
             $menu.ShowCheckMargin = $false
             Initialize-SCFilterRenderer
@@ -68786,7 +78561,7 @@ $menu.ShowImageMargin = $false
             if ($eD.Button -ne [System.Windows.Forms.MouseButtons]::Right) { return }
             $gpM = & $getCardSaveParams
             $isDef = ($null -ne (Get-SaveDefined $gpM.Name $gpM.SteamAppId))
-            $menuD = New-Object System.Windows.Forms.ContextMenuStrip
+            $menuD = (New-PanelCtxMenu)
 $menuD.ShowImageMargin = $false
             $menuD.ShowCheckMargin = $false
             Initialize-SCFilterRenderer
@@ -69102,6 +78877,9 @@ $menuD.ShowImageMargin = $false
 
             $emuProgrammaticSelect = $true
             try { $cmbEmulator.SelectedIndex = $defaultIdx } finally { $emuProgrammaticSelect = $false }
+            # Рамки из профиля эмулятора, выбранного при открытии карточки (обложки подгрузятся позже и сразу покажутся с рамкой).
+            try { Set-EditorEmulatorFrame ([string]$emuProfiles[$defaultIdx].FrameKit) } catch {}
+            try { $ep8 = $emuProfiles[$defaultIdx]; Set-EditorOwnerBadge (Get-EmulatorBadgeOwnerForProfile $ep8) ([string]$ep8.FrameKit -eq [string]$script:LauncherBadgeKitId) } catch {}
 
             # Поле "Ядро" (если это RetroArch) — сразу видимо/заполнено, по
             # умолчанию ядром, сохранённым в самом профиле эмулятора; ниже,
@@ -69668,6 +79446,8 @@ $menuD.ShowImageMargin = $false
         # В режиме редактирования Copy-ExistingShortcutCoversToTemp ниже всё равно
         # перезапишет их обложками существующего ярлыка.
         Clear-TempCoverFiles
+        # Инициализацию выбора рамки делаем заново: до очистки она могла сработать на устаревшем temp.
+        try { if ($null -ne $script:EditorFrameState) { $script:EditorFrameState.InitV = $false; $script:EditorFrameState.InitH = $false } } catch {}
         # Игра уже в библиотеке (ярлык или лицензионная): всё читаем с диска, без обращения к сети.
         $offlineOpen = ($editMode -and ($licensedMode -or $null -ne $existingShortcut))
         $savedMeta = $null
@@ -70200,7 +79980,7 @@ $menuD.ShowImageMargin = $false
         try {
             $editorState.Baseline = [PSCustomObject]@{
                 Name = $txtTitle.Text.Trim(); Id = $txtId.Text.Trim(); Launch = $txtLaunchOptions.Text.Trim()
-                Exe = [string](& $getEditorExePathNow); Wrap = [string](& $getEditorWrapperId); Covers = [string](Get-EditorCoverFingerprint); Logo = [string](Get-EditorLogoSignature $editorState)
+                Exe = [string](& $getEditorExePathNow); Wrap = [string](& $getEditorWrapperId); Covers = [string](Get-EditorCoverFingerprint); Logo = [string](Get-EditorLogoSignature $editorState); Frames = [string](Get-EditorFrameSignature)
                 Emu = $(if ($IsRomEntry) { [string]$cmbEmulator.SelectedIndex } else { '' })
                 Rom = $(if ($IsRomEntry) { [string](& $getSelectedRomPath) } else { '' })
                 RomEntry = $(if ($IsRomEntry) { [string](& $getSelectedRomEntry) } else { '' })
@@ -70276,6 +80056,9 @@ $menuD.ShowImageMargin = $false
             if ((Get-EditorCoverFingerprint) -ne [string]$b.Covers) { return $true }
             # Изменение одного только положения/размера логотипа тоже считается изменением карточки.
             if ((Get-EditorLogoSignature $editorState) -ne [string]$b.Logo) { return $true }
+            # Смена рамки обложки (или подгонки под неё) — тоже изменение: при записи рамка накладывается заново.
+            $frSigNow = [string](Get-EditorFrameSignature)
+            if ($frSigNow -ne [string]$b.Frames) { return $true }
             if ($licensedMode) { return $false }
             if ($txtTitle.Text.Trim() -ne [string]$b.Name) { return $true }
             if ($txtId.Text.Trim() -ne [string]$b.Id) { return $true }
@@ -70545,6 +80328,10 @@ $menuD.ShowImageMargin = $false
                         $reason=if($global:lastShortcutError){[string]$global:lastShortcutError}else{(T 'reason_save_shortcut')}
                         throw $reason
                     }
+                    # shortcuts.vdf уже содержит новое состояние враппера. Сбрасываем снимки,
+                    # которые используют контекстное меню главного окна: иначе оно могло до 60 секунд
+                    # видеть старый Exe/LaunchOptions и показывать, что враппер всё ещё установлен.
+                    try { Invalidate-PanelCtxLibraryCaches } catch {}
                     # Exe/параметры могли измениться — переносим запомненную папку игры на новый ключ.
                     try { Move-GameFolderMapEntry ([string]$freshShortcut.Exe) ([string]$freshShortcut.LaunchOptions) ([string]$editExe) ([string]$editLaunch) '' } catch {}
                 }
@@ -70567,7 +80354,7 @@ $menuD.ShowImageMargin = $false
                             $newShortcutId=[string]$freshShortcutAfterSave.ShortcutId
                             Save-CoverSourcesMetadata $newShortcutId $slots ([string]$btnCoverLang.Tag.Lang) (New-CoverMetaExtra $editorState $btnCoverLang ([string]$txtId.Text.Trim()) ([string]$editorState.SearchSource)) | Out-Null
                             $oldShortcutId=[string]$existingShortcut.ShortcutId
-                            if(-not [string]::IsNullOrWhiteSpace($oldShortcutId) -and $oldShortcutId -ne $newShortcutId){ Remove-CoverSourcesMetadata $oldShortcutId }
+                            if(-not [string]::IsNullOrWhiteSpace($oldShortcutId) -and $oldShortcutId -ne $newShortcutId){ Remove-CoverSourcesMetadata $oldShortcutId; try { Clear-FramedCoverRecord $oldShortcutId; Clear-FramedCoverRecord ($oldShortcutId + 'h') } catch {} }
                         } catch {}
                     }
                 }
@@ -70677,7 +80464,7 @@ $menuD.ShowImageMargin = $false
                 } catch {}
             }
             if($hasCovers){
-                try { Copy-TempCoversDirectlyToGrid $newId $logoPosNew | Out-Null } catch {}
+                try { Copy-TempCoversDirectlyToGrid $newId $logoPosNew (Get-CoverFrameIdForShortcut ([string]$finalExe) ([string]$finalLaunch) '' ([string]$name) $(if ((-not $editMode) -and (Test-IsLauncherEntry $LauncherEntry)) { [string]$LauncherEntry.Launcher } else { '' })) | Out-Null } catch {}
                 try { Save-CoverSourcesMetadata ([string]$newId) $slots ([string]$btnCoverLang.Tag.Lang) (New-CoverMetaExtra $editorState $btnCoverLang ([string]$txtId.Text.Trim()) ([string]$editorState.SearchSource)) | Out-Null } catch {}
             } elseif ($null -ne $logoPosNew) {
                 try { [void](Set-SteamLogoPositionForAllProfiles ([string]$newId) $logoPosNew) } catch {}
@@ -72059,6 +81846,7 @@ function Move-SelectedGames($source) {
     $script:moveTaskNames = @{}
     $script:moveSteamDeferActive = $false
     $script:moveCardSaved = $false
+    $script:steamFilesDirty = $false
     $script:moveInProgress = $true
     $script:moveBtnBusy = $true
     try { $btnMoveGame.FlatAppearance.BorderColor = $steamUi.Accent2; $btnMoveGame.Invalidate(); $btnMoveGame.Update() } catch {}
@@ -72253,7 +82041,9 @@ function Move-SelectedGames($source) {
                 $script:moveSteamDeferActive = $false
                 $steamClosed = $false   # Steam при отложенной записи не закрывался, запуск ниже не нужен
                 $movedAny = ($null -ne $done -and @($done).Count -gt 0)
-                if (($script:moveCardSaved -or $movedAny) -and (Get-SteamRestartMode) -eq 'auto') {
+                $mvHasPending = $false
+                try { $mvHasPending = ([bool]$script:steamFilesDirty) -or ($script:pendingShortcutWrites.Count -gt 0) -or ($null -ne $script:pendingCollectionOps -and $script:pendingCollectionOps.Count -gt 0) } catch { $mvHasPending = ($script:moveCardSaved -or $movedAny) }
+                if ($mvHasPending -and (Get-SteamRestartMode) -eq 'auto') {
                     if (Test-SteamRunning) { Restart-SteamNow }
                     else {
                         [void](Apply-PendingSteamShortcutWrites)
@@ -72484,7 +82274,7 @@ function Update-MainLibraryButtonState {
         # Снимок состояния нижних кнопок до пересчёта: перерисовываем их, только если что-то реально изменилось (иначе кнопка моргает).
         $btnSigOf = {
             $parts = New-Object System.Collections.Generic.List[string]
-            foreach ($bb in @($btnAddToSteam, $btnSteamLibrary, $btnSwapEmuMain, $btnRestartSteam, $btnApplyColl)) {
+            foreach ($bb in @($btnAddToSteam, $btnSteamLibrary, $btnSwapEmuMain, $btnRestartSteam, $btnApplyColl, $btnApplyFrames)) {
                 $ic = ''
                 if ($bb -eq $btnSwapEmuMain -and $null -ne $script:steamSwapButtonIcon) { $ic = [string]$script:steamSwapButtonIcon.GetHashCode() }
                 [void]$parts.Add(([string][bool]$bb.Visible) + '|' + ([string][bool]$bb.Enabled) + '|' + [string]$bb.Tag + '|' + $ic)
@@ -72498,19 +82288,23 @@ function Update-MainLibraryButtonState {
         # в Steam. Именно это поведение было в рабочей версии до правок кнопки.
         $totalChecked = [int]$global:checkedC.Count + [int]$global:checkedD.Count
         $ready = [bool]$global:foldersReady
-        $btnMoveGame.Enabled = ($ready -and $totalChecked -ge 1)
+        # Пока выбран любой режим (апскейлеры, сохранения, ROMs, Wrappers), перенос игр недоступен.
+        $moveModeOn = ((Test-MainActionModeActive) -or [bool]$script:romsModeEnabled -or [bool]$script:wrappersModeEnabled)
+        $btnMoveGame.Enabled = ($ready -and $totalChecked -ge 1 -and -not $moveModeOn)
         # Подсказка кнопки переноса: сколько игр отмечено («Перенести игру (5)»). Меняем только при изменении текста.
         try {
             $moveTip = (T 'btn_move')
             if ($totalChecked -ge 1) { $moveTip = $moveTip + ' (' + [string]$totalChecked + ')' }
             if ($moveTip -ne [string]$script:moveTipText) { $script:moveTipText = $moveTip; $mainToolTip.SetToolTip($btnMoveGame, $moveTip) }
         } catch {}
-        # Кнопка «Коллекции» активна, пока отмечена хотя бы одна игра и не выбран режим апскейлеров/сохранений.
+        # Кнопка «Рамки обложек» активна, пока отмечена хотя бы одна игра и не выбран режим апскейлеров/сохранений.
+        try { $btnMainFrames.Enabled = ($ready -and $totalChecked -ge 1 -and -not (Test-MainActionModeActive)); $btnMainFrames.Invalidate() } catch {}
+        # Кнопка «Коллекции» активна без выбранных игр (редактор структуры); при выбранных играх сохраняется прежнее ограничение режимов.
         # В режимах апскейлеров и сохранений коллекции недоступны (действия взаимоисключающие).
         # Снятие всех отметок сбрасывает выбор коллекций для новых игр.
         try {
             $btnMainColl.Visible = $true
-            $btnMainColl.Enabled = ($ready -and $totalChecked -ge 1 -and -not (Test-MainActionModeActive))
+            $btnMainColl.Enabled = ($ready -and (($totalChecked -eq 0) -or -not (Test-MainActionModeActive)) -and -not $script:mainCollEditorBusy)
             Update-MainCollBorder
             $btnMainColl.Invalidate()
             Update-MainCollButtonLook
@@ -72527,6 +82321,20 @@ function Update-MainLibraryButtonState {
                 }
             }
         }
+
+        # Выбранный вариант рамки сбрасывается, когда не осталось отмеченных игр или выбрано действие с апскейлерами/сохранениями.
+        # Есть новые игры (их ещё нет в Steam): приоритет у добавления, как у коллекций - выбор рамки относится к ним, а ожидающая смена
+        # рамок уже добавленных игр отбрасывается. Выбор для новых игр живёт, пока не сняты все отметки (его читает и само добавление).
+        try {
+            $script:mainFramesHasNew = ($addableCount -ge 1)
+            if ([string]$script:mainFramesPending -ne '' -and ($totalChecked -eq 0 -or $addableCount -ge 1 -or (Test-MainActionModeActive))) { $script:mainFramesPending = '' }
+            if ([string]$script:mainFramesDefault -ne '' -and ($totalChecked -eq 0 -or (Test-MainActionModeActive))) { $script:mainFramesDefault = '' }
+            if (-not [bool]$script:bulkFrameMenuOpen) { Update-MainFramesButtonLook }
+        } catch {}
+        # «Сменить рамки (N)»: выбран вариант в меню рамок; N - отмеченные игры, уже добавленные в Steam (у остальных рамок нет).
+        $framesApplyN = [Math]::Max(0, ($totalChecked - $addableCount))
+        $framesApplyWanted = ($ready -and $framesApplyN -ge 1 -and [string]$script:mainFramesPending -ne '')
+        $framesShown = $false
 
         # «Удалить из библиотеки» (между панелями, на месте индикатора эмулятора/враппера): показывается, когда не выбрано ни одно
         # действие между панелями (ROMs, Wrappers, апскейлеры, сохранения, коллекции) и отмечены только уже добавленные игры.
@@ -72606,7 +82414,11 @@ function Update-MainLibraryButtonState {
             if (-not $libsApplyWanted) { $savesApplyWanted = [bool]$suRes.Wanted; $savesApplyN = [int]$suRes.N }
         } catch {}
         # Отмечены только уже добавленные игры и выбраны коллекции: «Библиотека» превращается в «Сменить коллекции».
-        $collApplyWanted = ($ready -and $totalChecked -ge 1 -and $addableCount -eq 0 -and @($script:mainCollPending.Keys).Count -gt 0)
+        # Накопленные создания/удаления коллекций (редактор) показывают кнопку и без отмеченных игр.
+        $collMemberWanted = ($ready -and $totalChecked -ge 1 -and $addableCount -eq 0 -and @($script:mainCollPending.Keys).Count -gt 0)
+        $collStructN = Get-MainCollStructCount
+        $collApplyWanted = ($ready -and ($collMemberWanted -or $collStructN -ge 1))
+        $collApplyN = $collStructN + $(if ($collMemberWanted) { $totalChecked } else { 0 })
         if ($libsApplyWanted) {
             $btnAddToSteam.Visible = $false
             $btnSteamLibrary.Visible = $false
@@ -72619,6 +82431,15 @@ function Update-MainLibraryButtonState {
             $btnRestartSteam.Visible = $false
             $btnSwapEmuMain.Visible = $false
             try { Set-MainSavesApplyButton $savesApplyN } catch {}
+        } elseif ($framesApplyWanted) {
+            $btnAddToSteam.Visible = $false
+            $btnSteamLibrary.Visible = $false
+            $btnRestartSteam.Visible = $false
+            $btnSwapEmuMain.Visible = $false
+            $btnApplyFrames.Tag = (T 'btn_change_frames' @($framesApplyN))
+            $btnApplyFrames.Visible = $true
+            $btnApplyFrames.Enabled = $true
+            $framesShown = $true
         } elseif ($ready -and $totalChecked -ge 1 -and $addableCount -ge 1) {
             $btnAddToSteam.Tag = (T 'btn_add_batch_n' @($addableCount))
             $btnAddToSteam.Visible = $true
@@ -72631,7 +82452,7 @@ function Update-MainLibraryButtonState {
             $btnSteamLibrary.Visible = $false
             $btnRestartSteam.Visible = $false
             $btnSwapEmuMain.Visible = $false
-            $btnApplyColl.Tag = (T 'btn_change_coll' @($totalChecked))
+            $btnApplyColl.Tag = (T 'btn_change_coll' @($collApplyN))
             $btnApplyColl.Visible = $true
             $btnApplyColl.Enabled = $true
             $collShown = $true
@@ -72659,9 +82480,10 @@ function Update-MainLibraryButtonState {
         try { if (-not $libsApplyWanted -and [bool]$btnApplyLibs.Visible) { $btnApplyLibs.Visible = $false } } catch {}
         try { if (-not $savesApplyWanted -and [bool]$btnApplySaves.Visible) { $btnApplySaves.Visible = $false } } catch {}
         try { if (-not $collShown -and [bool]$btnApplyColl.Visible) { $btnApplyColl.Visible = $false } } catch {}
-        try { if ((& $btnSigOf) -ne $btnSigBefore) { $btnAddToSteam.Invalidate(); $btnSteamLibrary.Invalidate(); $btnSwapEmuMain.Invalidate(); $btnRestartSteam.Invalidate(); $btnApplyColl.Invalidate() } } catch {}
+        try { if (-not $framesShown -and [bool]$btnApplyFrames.Visible) { $btnApplyFrames.Visible = $false } } catch {}
+        try { if ((& $btnSigOf) -ne $btnSigBefore) { $btnAddToSteam.Invalidate(); $btnSteamLibrary.Invalidate(); $btnSwapEmuMain.Invalidate(); $btnRestartSteam.Invalidate(); $btnApplyColl.Invalidate(); $btnApplyFrames.Invalidate() } } catch {}
     } catch {
-        try { $btnApplyLibs.Visible = $false; $btnApplySaves.Visible = $false } catch {}
+        try { $btnApplyLibs.Visible = $false; $btnApplySaves.Visible = $false; $btnApplyFrames.Visible = $false } catch {}
         try { if ($null -ne $btnMainRemoveLib) { $btnMainRemoveLib.Visible = $false } } catch {}
         try { $btnAddToSteam.Visible = $false; $btnSwapEmuMain.Visible = $false; $btnRestartSteam.Visible = $false; $btnSteamLibrary.Visible = $true } catch {}
     }
@@ -72954,6 +82776,19 @@ $script:panelCtxMenu = $null
 $script:panelCtxEntries = $null
 $script:panelCtxEntriesTick = 0
 
+# После редактирования карточки перечитываем текущее состояние ярлыка для контекстного меню.
+# Одновременно сбрасываем лёгкий индекс и временный разбор shortcuts.vdf: оба содержат Exe/LaunchOptions,
+# по которым определяется установленный враппер.
+function Invalidate-PanelCtxLibraryCaches {
+    try { $script:panelCtxEntries = $null } catch {}
+    try { $script:panelCtxEntriesTick = 0 } catch {}
+    try { $script:panelCtxRomMap = $null } catch {}
+    try { $script:panelCtxRomMapTick = -1 } catch {}
+    try { $script:shortcutLightIndexCache = @{} } catch {}
+    try { $script:mainSavesScCache = @{} } catch {}
+    try { $script:shortcutParseCache = $null } catch {}
+}
+
 function Set-PanelCtxStatus ([string]$Text) {
     try { $labelHeader.Text = $Text } catch {}
 }
@@ -73114,6 +82949,31 @@ function Get-PanelCtxMenuIcon ([string]$Kind) {
                 $g.FillRectangle($br, $x0, ($y0 + $cell + $gap), $cell, $cell)
                 $g.FillRectangle($br, ($x0 + $cell + $gap), ($y0 + $cell + $gap), $cell, $cell)
             }
+            'frame' {
+                # Тот же мотив, что Draw-FrameButtonGlyphPx / coverframe (четыре трапеции с диагональными стыками),
+                # но без антиалиасинга и на целых пикселях: в колонке 16x16 AA превращал тонкие полосы в «обрезанные» углы.
+                $g.ResetTransform()
+                $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::None
+                $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::None
+                $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::NearestNeighbor
+                $br = New-Object System.Drawing.SolidBrush($col)
+                # Квадрат 24x24 по центру 32x32 (отступ 4), толщина 6, диагональный зазор 2.
+                $ox = 4; $oy = 4; $N = 24; $T = 6; $d = 2; $inn = $N - $T
+                foreach ($c in @(
+                    @($d,0, ($N-$d),0, ($inn-$d),$T, ($T+$d),$T),
+                    @(0,$d, $T,($T+$d), $T,($inn-$d), 0,($N-$d)),
+                    @($N,$d, $N,($N-$d), $inn,($inn-$d), $inn,($T+$d)),
+                    @($d,$N, ($T+$d),$inn, ($inn-$d),$inn, ($N-$d),$N)
+                )) {
+                    $pts = [System.Drawing.Point[]]@(
+                        [System.Drawing.Point]::new(($ox + [int]$c[0]), ($oy + [int]$c[1])),
+                        [System.Drawing.Point]::new(($ox + [int]$c[2]), ($oy + [int]$c[3])),
+                        [System.Drawing.Point]::new(($ox + [int]$c[4]), ($oy + [int]$c[5])),
+                        [System.Drawing.Point]::new(($ox + [int]$c[6]), ($oy + [int]$c[7]))
+                    )
+                    $g.FillPolygon($br, $pts)
+                }
+            }
             'emu' {
                 # Геймпад: сплошной силуэт цвета текста, крестовина и две кнопки вырезаны прозрачным (читается и в 16x16).
                 $br = New-Object System.Drawing.SolidBrush($col)
@@ -73222,9 +83082,10 @@ function New-PanelCtxMenu {
         [SCFilterRenderer]::Muted = $steamUi.Muted
         $m.Renderer = (New-Object SCFilterRenderer)
     } catch {}
-    $m.BackColor = [System.Drawing.Color]::FromArgb(22, 28, 36)
+    $m.BackColor = [System.Drawing.Color]::FromArgb(13, 20, 28)
     $m.ForeColor = $steamUi.Text
     $m.Font = New-Object System.Drawing.Font('Segoe UI', 9)
+    $m.Padding = New-Object System.Windows.Forms.Padding(2, 3, 2, 3)
     $m.ShowCheckMargin = $false
     $m.ShowImageMargin = $true
     $m.ImageScalingSize = New-Object System.Drawing.Size(16, 16)
@@ -73926,12 +83787,12 @@ function Add-PanelCtxCollectionsItem {
     }
     $dd = $itC.DropDown
     $script:panelCollDrop = $dd
-    try { $dd.Renderer = $snd.Renderer } catch {}
-    $dd.BackColor = $bgC
-    $dd.ForeColor = $steamUi.Text
-    $dd.Font = $snd.Font
-    try { $dd.ShowCheckMargin = $true; $dd.ShowImageMargin = $false } catch {}
+    # Главное окно использует тот же контрол чек-листа, что и библиотека:
+    # одинаковый рендерер, поля галочек, шрифт и ограничение прокрутки.
+    # Прокрутку подключаем после добавления пунктов, чтобы закрепить «Применить» внизу.
+    Initialize-SCContextChecklist $dd $snd $false 18 $null 0 $false
     $dd.Add_Closing({ param($s, $e) try { if ($e.CloseReason -eq [System.Windows.Forms.ToolStripDropDownCloseReason]::ItemClicked -and $null -ne $script:panelCollDrop -and $script:panelCollDrop.Visible -and $script:panelCollDrop.Bounds.Contains([System.Windows.Forms.Cursor]::Position)) { $e.Cancel = $true } } catch {} })
+    $collFrom = $dd.Items.Count
     foreach ($sr in @($sortRows.ToArray() | Sort-Object -Property Ord, Low)) {
         $ck = [string]$sr.C.Key
         $n = [int]$cnt[$ck]
@@ -74006,6 +83867,13 @@ function Add-PanelCtxCollectionsItem {
         } catch { try { Write-LauncherLog ('collNone: ' + $_.Exception.Message) } catch {} }
     })
     [void]$dd.Items.Add($miN)
+    # Как и в библиотеке: прокручиваются только строки коллекций (включая «Без категории»),
+    # максимум 18 одновременно; разделитель и «Применить» остаются закреплёнными снизу.
+    try {
+        $collScroll = @()
+        for ($ci = $collFrom; $ci -lt $dd.Items.Count; $ci++) { $collScroll += $dd.Items[$ci] }
+        if ($collScroll.Count -gt 0) { Enable-MenuWheelScroll $dd 18 $collScroll }
+    } catch {}
     [void]$dd.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
     $itOk = New-Object System.Windows.Forms.ToolStripMenuItem((T 'coll_dlg_ok'))
     $itOk.BackColor = $bgC
@@ -74099,7 +83967,7 @@ function Invoke-PanelCtxWrapperSwap {
                         $steamExeSwap = [string](Get-ItemProperty -Path 'HKCU:\Software\Valve\Steam' -Name 'SteamExe' -ErrorAction SilentlyContinue).SteamExe
                     }
                     if ([string]::IsNullOrWhiteSpace($steamExeSwap) -or -not (Test-Path -LiteralPath $steamExeSwap)) { $steamExeSwap = 'C:\Program Files (x86)\Steam\steam.exe' }
-                    if (Test-Path -LiteralPath $steamExeSwap) { Start-Process -FilePath $steamExeSwap }
+                    if (Test-Path -LiteralPath $steamExeSwap) { Start-Process -FilePath $steamExeSwap; $script:steamKilledByApp = $false; $script:steamFilesDirty = $false }
                 } catch {}
             }
             $form.UseWaitCursor = $false
@@ -74128,23 +83996,130 @@ function Invoke-PanelCtxWrapperSwap {
     }
 }
 
+# Заполняет выпадающий список рамок (как у коллекций / Show-BulkFrameMenu): «Без рамки», «Значок»,
+# наборы с прокруткой 18 пунктов, «Менеджер рамок…», «Применить». $OnDone вызывается после успешного применения.
+function Fill-CtxFramesDropDown {
+    param($DropDown, $Targets, $Owner, $OnDone = $null)
+    $bg = [System.Drawing.Color]::FromArgb(22, 28, 36)
+    $tgAll = @($Targets | Where-Object { $null -ne $_ })
+    $targets = @(Get-BulkFrameTargets $tgAll)
+    if ($targets.Count -eq 0) {
+        $miEmpty = New-Object System.Windows.Forms.ToolStripMenuItem((Get-EditorFrameText 'card_frame_none' 'Без рамки'))
+        $miEmpty.BackColor = $bg; $miEmpty.ForeColor = $steamUi.Muted; $miEmpty.Enabled = $false
+        [void]$DropDown.Items.Add($miEmpty)
+        return
+    }
+    try { $DropDown.ShowCheckMargin = $true; $DropDown.ShowImageMargin = $false } catch {}
+    $profilesM = @(Get-ConfiguredSteamProfileDirectories)
+    $recsM = Read-FramedCoverRecords
+    $script:bulkOrigDirCache = [string](Get-FramesOrigDir)
+    $script:bulkKitMap = @{}
+    try { foreach ($kk in @(Read-FrameKits)) { $kid = [string]$kk.id; if (-not $script:bulkKitMap.ContainsKey($kid)) { $script:bulkKitMap[$kid] = @{ v = [string]$kk.v; h = [string]$kk.h } } } } catch {}
+    $statesM = New-Object System.Collections.Generic.List[object]
+    foreach ($t1 in $targets) {
+        [void]$statesM.Add(@{ v = (Get-BulkCoverState ([string]$t1.AppId) 'v' $profilesM $recsM); h = (Get-BulkCoverState ([string]$t1.AppId) 'h' $profilesM $recsM) })
+    }
+    $totalM = $targets.Count
+    $applySel = {
+        param($s2, $e2)
+        try {
+            $t = $s2.Tag
+            try { if ($null -ne $script:panelCtxMenu) { $script:panelCtxMenu.Close() } } catch {}
+            try {
+                $root = $s2.Owner
+                while ($null -ne $root -and $null -ne $root.OwnerItem) { $root = $root.OwnerItem.Owner }
+                if ($null -ne $root) { $root.Close() }
+            } catch {}
+            Invoke-BulkCoverFrames $t.Targets $t.Sel $t.Owner $t.Done
+        } catch {}
+    }
+    $addItem = {
+        param([string]$text, [string]$sel)
+        $mi = New-Object System.Windows.Forms.ToolStripMenuItem
+        $mi.AccessibleName = $text
+        $mi.BackColor = $bg; $mi.ForeColor = $steamUi.Text
+        $mi.Tag = [PSCustomObject]@{ BaseText = $text.Replace('&', '&&'); Sel = $sel; Targets = $targets; Owner = $Owner; Done = $OnDone }
+        $nM = 0
+        foreach ($stM in $statesM) { if (Test-BulkOptionMatches $sel $stM) { $nM++ } }
+        $shown = $text.Replace('&', '&&')
+        if ($nM -gt 0 -and $nM -lt $totalM) { $shown = $shown + '  (' + [string]$nM + '/' + [string]$totalM + ')' }
+        $mi.Text = $shown
+        $mode = 'empty'
+        if ($nM -ge $totalM -and $totalM -gt 0) { $mode = 'solid' } elseif ($nM -gt 0) { $mode = 'prior' }
+        Set-SCMenuCheckVisual $mi $mode
+        $mi.Add_Click($applySel)
+        [void]$DropDown.Items.Add($mi)
+    }
+    & $addItem (Get-EditorFrameText 'card_frame_none' 'Без рамки') 'none'
+    $hasLauncher = $false; $badgeKinds = @{}
+    foreach ($t0 in $targets) {
+        $bl0 = [string](Get-BulkEntryLauncherId $t0)
+        if ($bl0 -eq '') { continue }
+        $hasLauncher = $true
+        $bk0 = 'l'; if ($bl0 -like 'emu:*') { $bk0 = 'e' } elseif ($bl0 -like 'wrap:*') { $bk0 = 'w' }
+        $badgeKinds[$bk0] = $true
+    }
+    if ($hasLauncher) {
+        $badgeText = (Get-EditorFrameText 'frame_badge_any' 'Значок')
+        if ($badgeKinds.Count -eq 1) {
+            $bk1 = @($badgeKinds.Keys)[0]
+            $bid1 = 'launcher'; if ($bk1 -eq 'e') { $bid1 = 'emu:x' } elseif ($bk1 -eq 'w') { $bid1 = 'wrap:x' }
+            $badgeText = Get-BadgeMenuText $bid1
+        }
+        & $addItem $badgeText 'badge'
+    }
+    foreach ($k in @(Get-FrameKitsSorted)) {
+        $kmI = $script:bulkKitMap[[string]$k.id]
+        if ($null -eq $kmI -or ([string]$kmI.v -eq '' -and [string]$kmI.h -eq '')) { continue }
+        & $addItem ([string]$k.name) ([string]$k.id)
+    }
+    # Прокручивается весь список целиком (без закреплённых «Без рамки»/«Значок» сверху): иначе между ними и наборами
+    # появляется полоска-стрелка и визуальный зазор.
+    $script:bulkKitMap = $null; $script:bulkOrigDirCache = ''
+}
+
+function Add-PanelCtxFramesItem {
+    # Пункт «Рамки» под коллекциями: выпадающий список как у коллекций (стиль, галочки, прокрутка 18; клик сразу применяет).
+    param($Menu, $Targets, $Owner)
+    try {
+        $tg = @($Targets | Where-Object { $null -ne $_ })
+        if ($tg.Count -eq 0) { return }
+        if (@(Get-BulkFrameTargets $tg).Count -eq 0) { return }
+        $txt = $(if ($tg.Count -gt 1) { T 'lib_ctx_frames_sel' @($tg.Count) } else { T 'lib_ctx_frames' })
+        $it = New-Object System.Windows.Forms.ToolStripMenuItem($txt)
+        $it.BackColor = [System.Drawing.Color]::FromArgb(22, 28, 36)
+        $it.ForeColor = $steamUi.Text
+        Set-PanelCtxItemIcon $it 'frame'
+        [void]$Menu.Items.Add($it)
+        $dd = $it.DropDown
+        # Главное окно использует тот же готовый контрол списка рамок, что и контекстное меню библиотеки:
+        # общий рендерер, колонка чекбоксов и прокрутка с ограничением в 18 видимых наборов.
+        Initialize-SCContextChecklist $dd $Menu $false 18
+        Fill-CtxFramesDropDown $dd $tg $Owner $null
+    } catch { try { Write-LauncherLog ('Add-PanelCtxFramesItem: ' + $_.Exception.Message) } catch {} }
+}
+
 function Add-PanelCtxWrapperItems {
-    param($snd, $targetsIn)
+    param($snd, $targetsIn, $OnSwap = $null)
+    # Один и тот же построитель меню врапперов используется главным окном и библиотекой.
+    # $OnSwap позволяет библиотеке оставить свой прежний обработчик/обновление плиток; внешний вид списка общий.
     # Только обычные (не ROM) ярлыки: у ROM-игр запуск идёт через эмулятор.
     $targets = @(@($targetsIn) | Where-Object { $null -ne $_ -and [string]$_.Kind -eq 'shortcut' -and -not (Test-ShortcutIsRomEntry $_) })
     if ($targets.Count -eq 0) { return }
     $wps = @(@($global:launchWrappers) | Where-Object { $null -ne $_ } | Sort-Object -Property { [string]$_.Name } -CaseSensitive:$false)
     if ($wps.Count -eq 0) { return }
     $multi = ($targets.Count -gt 1)
-    $curIds = @{}
+    $wrapCounts = @{}
     $wrappedCnt = 0
     foreach ($t in $targets) {
         $lw0 = $null
         try { $lw0 = Find-LaunchWrapperForShortcut ([string]$t.Exe) ([string]$t.LaunchOptions) } catch {}
-        if ($null -ne $lw0) { $wrappedCnt++; $curIds[[string]$lw0.Wrapper.Id] = $true }
+        if ($null -ne $lw0) {
+            $wrappedCnt++
+            $wid0 = [string]$lw0.Wrapper.Id
+            if ($wrapCounts.ContainsKey($wid0)) { $wrapCounts[$wid0] = [int]$wrapCounts[$wid0] + 1 } else { $wrapCounts[$wid0] = 1 }
+        }
     }
-    $curId = ''
-    if ($wrappedCnt -eq $targets.Count -and $curIds.Count -eq 1) { $curId = [string]@($curIds.Keys)[0] }
 
     $bgMenu = [System.Drawing.Color]::FromArgb(22, 28, 36)
     [void]$snd.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
@@ -74157,42 +84132,54 @@ function Add-PanelCtxWrapperItems {
     Set-PanelCtxItemIcon $itSwap 'wrap'
     [void]$snd.Items.Add($itSwap)
     $dd = $itSwap.DropDown
-    try { $dd.Renderer = $snd.Renderer } catch {}
-    $dd.BackColor = $bgMenu
-    $dd.ForeColor = $steamUi.Text
-    $dd.Font = $snd.Font
-    try { $dd.ShowCheckMargin = $true; $dd.ShowImageMargin = $true; $dd.ImageScalingSize = New-Object System.Drawing.Size(16, 16); Register-SCMenuAutoMargins $dd } catch {}
+    # Единый чек-лист: те же квадраты, иконки, шрифт и прокрутка в главном окне и библиотеке (настраивается ниже, после наполнения списка).
+    $wScrollItems = @()
     foreach ($wp in $wps) {
         $mi = New-Object System.Windows.Forms.ToolStripMenuItem
         $mi.Text = [string]$wp.Name
         $mi.BackColor = $bgMenu
         $mi.ForeColor = $steamUi.Text
-        $mi.Checked = ($curId -ne '' -and [string]$wp.Id -eq $curId)
-        $mi.Tag = [PSCustomObject]@{ Targets = @($targets); Wrapper = $wp }
+        $nWrap = 0
+        if ($wrapCounts.ContainsKey([string]$wp.Id)) { $nWrap = [int]$wrapCounts[[string]$wp.Id] }
+        if ($nWrap -ge $targets.Count -and $targets.Count -gt 0) { Set-SCMenuCheckVisual $mi 'solid' }
+        elseif ($nWrap -gt 0) { Set-SCMenuCheckVisual $mi 'prior'; $mi.Text = $mi.Text + '  (' + [string]$nWrap + '/' + [string]$targets.Count + ')' }
+        else { Set-SCMenuCheckVisual $mi 'empty' }
         try {
             $ico = Get-EmulatorIconBitmap $wp
             if ($null -ne $ico) { $mi.Image = $ico; $mi.ImageScaling = [System.Windows.Forms.ToolStripItemImageScaling]::SizeToFit }
         } catch {}
+        $mi.Tag = [PSCustomObject]@{ Targets = @($targets); Wrapper = $wp; OnSwap = $OnSwap }
         $mi.Add_Click({
             param($s2, $e2)
-            try { $tg = $s2.Tag; Invoke-PanelCtxWrapperSwap $tg.Targets $tg.Wrapper } catch {}
+            try {
+                $tg = $s2.Tag
+                if ($null -ne $tg.OnSwap) { & $tg.OnSwap $tg.Targets $tg.Wrapper }
+                else { Invoke-PanelCtxWrapperSwap $tg.Targets $tg.Wrapper }
+            } catch {}
         })
         [void]$dd.Items.Add($mi)
+        $wScrollItems += $mi
     }
     # «Убрать враппер» - только если хотя бы одна из целевых игр сейчас запускается через враппер.
+    # Как в библиотеке: пункт стоит внутри списка врапперов, под разделителем, и не прокручивается вместе с ними.
     if ($wrappedCnt -gt 0) {
+        [void]$dd.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
         $itRm = New-Object System.Windows.Forms.ToolStripMenuItem
         $itRm.Text = $(if ($multi) { (T 'lib_wrap_remove_menu_sel' @($targets.Count)) } else { (T 'lib_wrap_remove_menu') })
         $itRm.BackColor = $bgMenu
         $itRm.ForeColor = $steamUi.Text
-        $itRm.Tag = [PSCustomObject]@{ Targets = @($targets) }
+        $itRm.Tag = [PSCustomObject]@{ Targets = @($targets); OnSwap = $OnSwap }
         try { $itRm.Image = (Get-WrapperRevertIconBitmap); $itRm.ImageScaling = [System.Windows.Forms.ToolStripItemImageScaling]::SizeToFit } catch {}
         $itRm.Add_Click({
             param($s2, $e2)
-            try { Invoke-PanelCtxWrapperSwap $s2.Tag.Targets $null } catch {}
+            try {
+                if ($null -ne $s2.Tag.OnSwap) { & $s2.Tag.OnSwap $s2.Tag.Targets $null }
+                else { Invoke-PanelCtxWrapperSwap $s2.Tag.Targets $null }
+            } catch {}
         })
-        [void]$snd.Items.Add($itRm)
+        [void]$dd.Items.Add($itRm)
     }
+    Initialize-SCContextChecklist $dd $snd $true 18 $wScrollItems
 }
 
 
@@ -74304,7 +84291,7 @@ function Invoke-PanelCtxRomSwap {
                         $steamExeSwap = [string](Get-ItemProperty -Path 'HKCU:\Software\Valve\Steam' -Name 'SteamExe' -ErrorAction SilentlyContinue).SteamExe
                     }
                     if ([string]::IsNullOrWhiteSpace($steamExeSwap) -or -not (Test-Path -LiteralPath $steamExeSwap)) { $steamExeSwap = 'C:\Program Files (x86)\Steam\steam.exe' }
-                    if (Test-Path -LiteralPath $steamExeSwap) { Start-Process -FilePath $steamExeSwap }
+                    if (Test-Path -LiteralPath $steamExeSwap) { Start-Process -FilePath $steamExeSwap; $script:steamKilledByApp = $false; $script:steamFilesDirty = $false }
                 } catch {}
             }
             $form.UseWaitCursor = $false
@@ -74335,32 +84322,30 @@ function Invoke-PanelCtxRomSwap {
 function Add-PanelCtxRomDropItems ($Parent, $Targets, [string]$SkipProfileId, [bool]$MarkCurrent, $Profiles, $CurProf, $Entry, $Menu) {
     $bgMenu = [System.Drawing.Color]::FromArgb(22, 28, 36)
     $dd = $Parent.DropDown
-    try { $dd.Renderer = $Menu.Renderer } catch {}
-    $dd.BackColor = $bgMenu
-    $dd.ForeColor = $steamUi.Text
-    $dd.Font = $Menu.Font
-    try { $dd.ShowCheckMargin = $true; $dd.ShowImageMargin = $true; $dd.ImageScalingSize = New-Object System.Drawing.Size(16, 16); Register-SCMenuAutoMargins $dd } catch {}
+    # Тот же общий чек-лист, что в библиотеке: галочки, колонка иконок и прокрутка.
+    Initialize-SCContextChecklist $dd $Menu $true 18
     $single = (@($Targets).Count -eq 1)
     $curCore = ''
     if ($MarkCurrent -and $single) { try { $curCore = [string](Get-EntryRetroArchCore $Entry) } catch {} }
     # Какой эмулятор отмечать галочкой: у одной игры - её эмулятор; у нескольких отмеченных - общий, если он у всех один и тот же.
-    $markProfId = ''
+    $emuCounts = @{}
+    $targetTotal = @($Targets).Count
     if ($MarkCurrent) {
-        if ($single) {
-            if ($null -ne $CurProf) { $markProfId = [string]$CurProf.Id }
-        } else {
-            $idSet = @{}
-            foreach ($tg0 in @($Targets)) {
-                $cp0 = $null
-                try { $cp0 = Get-EntryEmulatorProfile $tg0 } catch {}
-                if ($null -eq $cp0) { $idSet[''] = $true } else { $idSet[[string]$cp0.Id] = $true }
+        foreach ($tg0 in @($Targets)) {
+            $cp0 = $null
+            try { $cp0 = Get-EntryEmulatorProfile $tg0 } catch {}
+            if ($null -ne $cp0) {
+                $id0 = [string]$cp0.Id
+                if ($emuCounts.ContainsKey($id0)) { $emuCounts[$id0] = [int]$emuCounts[$id0] + 1 }
+                else { $emuCounts[$id0] = 1 }
             }
-            if ($idSet.Count -eq 1) { $markProfId = [string]@($idSet.Keys)[0] }
         }
     }
     foreach ($ep in $Profiles) {
         if ($SkipProfileId -ne '' -and [string]$ep.Id -eq $SkipProfileId) { continue }
-        $isCur = ($MarkCurrent -and $markProfId -ne '' -and [string]$ep.Id -eq $markProfId)
+        $emuCount = 0
+        if ($emuCounts.ContainsKey([string]$ep.Id)) { $emuCount = [int]$emuCounts[[string]$ep.Id] }
+        $isCur = ($MarkCurrent -and $emuCount -gt 0)
         $hasCores = $false
         try {
             if (Test-IsRetroArchProfile ([string]$ep.Name) ([string]$ep.ExePath)) {
@@ -74384,7 +84369,15 @@ function Add-PanelCtxRomDropItems ($Parent, $Targets, [string]$SkipProfileId, [b
             $mi.Text = [string]$ep.Name
             $mi.Tag = [PSCustomObject]@{ Targets = @($Targets); Profile = $ep; Core = ''; Picker = $false; CurCore = ''; Title = '' }
         }
-        $mi.Checked = $isCur
+        if ($MarkCurrent -and $targetTotal -gt 0) {
+            if ($emuCount -ge $targetTotal) { Set-CollItemVisual $mi 'solid' }
+            elseif ($emuCount -gt 0) { Set-CollItemVisual $mi 'prior'; $mi.Text = $mi.Text + '  (' + [string]$emuCount + '/' + [string]$targetTotal + ')' }
+            else { Set-CollItemVisual $mi 'empty' }
+        } else { Set-CollItemVisual $mi 'empty' }
+        try {
+            $ico = Get-EmulatorIconBitmap $ep
+            if ($null -ne $ico) { $mi.Image = $ico; $mi.ImageScaling = [System.Windows.Forms.ToolStripItemImageScaling]::SizeToFit }
+        } catch {}
         $mi.Add_Click({
             param($s2, $e2)
             try {
@@ -74401,10 +84394,6 @@ function Add-PanelCtxRomDropItems ($Parent, $Targets, [string]$SkipProfileId, [b
                 Invoke-PanelCtxRomSwap $tg.Targets $tg.Profile $coreArg
             } catch {}
         })
-        try {
-            $ico = Get-EmulatorIconBitmap $ep
-            if ($null -ne $ico) { $mi.Image = $ico; $mi.ImageScaling = [System.Windows.Forms.ToolStripItemImageScaling]::SizeToFit }
-        } catch {}
         [void]$dd.Items.Add($mi)
     }
 }
@@ -74480,10 +84469,9 @@ function Add-PanelCtxRomItems ($Menu, [string]$Name, [string]$Path, [string]$Sou
     } elseif ($null -ne $en) { [void]$targets.Add($en) }
     if ($targets.Count -eq 0) { return }
 
-    [void]$Menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
     try {
         Add-PanelCtxCollectionsItem $Menu @($targets.ToArray())
-        [void]$Menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
+        Add-PanelCtxFramesItem $Menu @($targets.ToArray()) $form
     } catch { try { Write-LauncherLog ('panelCtxRomColl: ' + $_.Exception.Message) } catch {} }
     try { Add-PanelCtxRomSwapItems $Menu @($targets.ToArray()) } catch { try { Write-LauncherLog ('panelCtxRomSwap: ' + $_.Exception.Message) } catch {} }
     try {
@@ -74560,7 +84548,7 @@ function Show-GamePanelContextMenu ($listBox, [string]$source, $e) {
         if ($ctxTargets.Count -gt 0) {
             try {
                 Add-PanelCtxCollectionsItem $menu @($ctxTargets)
-                [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
+                Add-PanelCtxFramesItem $menu @($ctxTargets) $form
             } catch { try { Write-LauncherLog ('panelCtxColl: ' + $_.Exception.Message) } catch {} }
         }
 
@@ -74789,10 +84777,11 @@ function Invoke-SmartBatchAdd ($selectedGames, [bool]$AutoFill = $true, $OwnerWi
     $script:batchProgressHook = $ProgressHook
     $script:batchCardCancelRequested = $false
     $script:batchCardSkipRequested = $false
-    $script:smartBatchActive = $true
     $script:quietRomActive = $false
     $global:editorLoadAbortRequested = $false
     $script:batchResults = [PSCustomObject]@{ Ok=0; AutoAdded=0; Skipped=0; Failed=0 }
+
+    $script:smartBatchActive = $true
 
     $steamPathProperty = $null
     try {
@@ -74921,9 +84910,9 @@ function Invoke-SmartBatchAdd ($selectedGames, [bool]$AutoFill = $true, $OwnerWi
             [System.Windows.Forms.Application]::DoEvents()
 
             if (Test-IsLauncherEntry $game) {
-                Show-GameEditorDialog $game.Name 'Steam' $game.Path $true $null $null $OwnerWin -IsRomEntry:$false -LauncherEntry $game
+                Show-GameEditorDialog $game.Name 'Steam' $game.Path ([bool](@($selectedGames).Count -gt 1)) $null $null $OwnerWin -IsRomEntry:$false -LauncherEntry $game
             } else {
-                Show-GameEditorDialog $game.Name $game.Source $game.Path $true $null $null $OwnerWin -IsRomEntry:$script:romsModeEnabled
+                Show-GameEditorDialog $game.Name $game.Source $game.Path ([bool](@($selectedGames).Count -gt 1)) $null $null $OwnerWin -IsRomEntry:$script:romsModeEnabled
             }
 
             if ($script:batchCardCancelRequested) { break }
@@ -74949,7 +84938,8 @@ function Invoke-SmartBatchAdd ($selectedGames, [bool]$AutoFill = $true, $OwnerWi
     } finally {
         try { End-BatchSteamDefer $steamPathProperty } catch {}
         [System.Windows.Forms.Application]::DoEvents()
-        Start-Sleep -Milliseconds 400
+        $swEnd = [System.Diagnostics.Stopwatch]::StartNew()
+        while ($swEnd.ElapsedMilliseconds -lt 400) { [System.Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 20 }
         Set-BatchProgressValue ([int](0))
         $script:batchStatusHook = $null
         $script:batchProgressHook = $null
@@ -75006,6 +84996,27 @@ $btnAddToSteam.Add_Click({
         return
     }
 
+    # Одна игра: без пакетного режима (без прогресс-бара, статуса «Карточка игры 1 из 1» и кнопки отмены пакета) -
+    # открываем обычную карточку добавления, Steam закрывает и запускает сама карточка.
+    if(-not $script:batchAutoFillEnabled -and @($selectedGames).Count -eq 1){
+        $singleGame=@($selectedGames)[0]
+        Move-FocusToSink $btnAddToSteam
+        $btnMoveGame.Enabled=$false;$btnRefreshLibrary.Enabled=$false;$btnAddToSteam.Enabled=$false
+        try{
+            if (Test-IsLauncherEntry $singleGame) {
+                Show-GameEditorDialog $singleGame.Name 'Steam' $singleGame.Path $false -IsRomEntry:$false -LauncherEntry $singleGame
+            } else {
+                Show-GameEditorDialog $singleGame.Name $singleGame.Source $singleGame.Path $false -IsRomEntry:$script:romsModeEnabled
+            }
+        }catch{$labelHeader.Text=(T 'hd_card_err' @([string]$_.Exception.Message))}
+        finally{
+            $btnMoveGame.Enabled=$true;$btnRefreshLibrary.Enabled=$true;$btnAddToSteam.Enabled=$true
+            $global:checkedC.Clear(); $global:checkedD.Clear()
+            Refresh-Panels
+        }
+        return
+    }
+
     if($script:batchAutoFillEnabled){
         # $btnAddToSteam намеренно остаётся Enabled=$true — он на время выполнения
         # исполняет роль кнопки отмены, см. перехват $script:batchInProgress в
@@ -75048,7 +85059,7 @@ $btnAddToSteam.Add_Click({
     try{
         $steamPathProperty=(Get-ItemProperty -Path 'HKCU:\Software\Valve\Steam' -Name 'SteamExe' -ErrorAction SilentlyContinue).SteamExe
         if([string]::IsNullOrEmpty($steamPathProperty)){$steamPathProperty='C:\Program Files (x86)\Steam\steam.exe'}
-        Begin-BatchSteamDefer
+        if(@($selectedGames).Count -gt 1){ Begin-BatchSteamDefer }
         [System.Windows.Forms.Application]::DoEvents()
 
         $manualTotal=[Math]::Max(1,@($selectedGames).Count)
@@ -75061,9 +85072,9 @@ $btnAddToSteam.Add_Click({
             $progressBarFolder.Value=[int][Math]::Max(1,[Math]::Min(100,[Math]::Floor(($i/$manualTotal)*100)))
             [System.Windows.Forms.Application]::DoEvents()
             if (Test-IsLauncherEntry $game) {
-                Show-GameEditorDialog $game.Name 'Steam' $game.Path $true -IsRomEntry:$false -LauncherEntry $game
+                Show-GameEditorDialog $game.Name 'Steam' $game.Path ([bool](@($selectedGames).Count -gt 1)) -IsRomEntry:$false -LauncherEntry $game
             } else {
-                Show-GameEditorDialog $game.Name $game.Source $game.Path $true -IsRomEntry:$script:romsModeEnabled
+                Show-GameEditorDialog $game.Name $game.Source $game.Path ([bool](@($selectedGames).Count -gt 1)) -IsRomEntry:$script:romsModeEnabled
             }
             if($script:batchCardCancelRequested){$labelHeader.Text=(T 'hd_batch_cancelled');break}
             $progressBarFolder.Value=[int][Math]::Max(1,[Math]::Min(100,[Math]::Floor((($i+1)/$manualTotal)*100)))
@@ -75118,7 +85129,7 @@ $btnSwapEmuMain.Add_Click({
 })
 
 # Правая кнопка по «Сменить эмулятор…»: вернуть отмеченным играм запуск напрямую через exe.
-$script:swapRevertMenu = New-Object System.Windows.Forms.ContextMenuStrip
+$script:swapRevertMenu = (New-PanelCtxMenu)
 $script:swapRevertMenu.ShowCheckMargin = $false; $script:swapRevertMenu.ShowImageMargin = $false
 try { Initialize-SCFilterRenderer; $script:swapRevertMenu.Renderer = (New-Object SCFilterRenderer); $script:swapRevertMenu.ForeColor = $steamUi.Text } catch {}
 $script:swapRevertItem = $script:swapRevertMenu.Items.Add('')
@@ -75178,7 +85189,11 @@ $btnSteamLibrary.Add_Click({
     try { Request-LibPreheat 2500 } catch {}
 })
 
-$form.Add_FormClosing({ Save-Configuration })
+$form.Add_FormClosing({
+    try { $listBoxC.SelectedIndex = -1; $listBoxD.SelectedIndex = -1 } catch {}
+    try { $listBoxC.ClearSelected(); $listBoxD.ClearSelected() } catch {}
+    Save-Configuration
+})
 
 # Ручной режим перезапуска: после закрытия Steam пользователем закрепляем записанное программой в shortcuts.vdf,
 # а пока Steam запущен — в свободной статусной строке напоминаем, что изменения ждут его закрытия.
