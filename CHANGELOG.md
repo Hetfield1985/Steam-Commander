@@ -6,6 +6,30 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [2.2.8] - 2026-11-17
+
+### Added
+* **Cover frames.** A frame (a template with a transparent window, taken from SteamGridDB or from your own file) is laid over the vertical cover when a game is saved. Originals are kept, so a frame can be changed or removed at any time.
+  * **Frame sets.** A set is a pair of frames, vertical and horizontal, or just one of them. It is created in a small window (search on SteamGridDB, a name, two thumbnails; a click on a thumbnail opens the cover picker). Templates are found by platform, with a *Only templates with a transparent area* check box. The *Frames* manager lists, edits and removes sets; templates no set uses any more are cleaned up.
+  * **Frame button in the game card** (in the vertical and horizontal cover slots): no frame, the launcher badge or a set, *Fit cover*, *Link panels* and the *Change position...* window (wheel = scale, drag = shift, *Enter* saves, *Esc* cancels, double click = centre).
+  * **Binding to emulators, wrappers and launchers.** The *Use frames* check box and a set are chosen in the settings of an emulator or a wrapper, and in the launcher tab of the Library. For a launcher the *Launcher badge* variant draws the launcher icon on the cover (top right on vertical covers, top left on horizontal ones). Games already in the library are changed only after a confirmation.
+  * **Frames for many games at once.** In the Library there is a *Frames* button and a context menu item for the ticked games (the same check list as the wrappers have), in the main window a frames button: with nothing ticked it sets the frame for new games, with games ticked the bottom button becomes *Change frames (N)*.
+* **Collections can be created and deleted in the main window.** With no game ticked the collections button opens an editor: names, a cross to delete and *Create collection...*. Changes are applied once with the *Change collections* button (Steam is closed one time for the write; in the manual restart mode they are queued).
+* **Upscaler libraries for the whole list.** With no games ticked the *Update libraries* and *Restore originals* buttons offer to do it for every game of the current list (with a confirmation that shows the number of games).
+* **Magnifier button for covers.** The *eye* of the cover picker and of the vertical / horizontal slots of the game card is replaced by a magnifier with a plus. The Background, Logo and Icon slots of the card get their own magnifier for a full-size preview. The Background and Logo magnifiers stand to the left of the *Change background* / *Change logo* buttons.
+* **Icon slot: the EXE button is in the slot header.** The row is now, from right to left: source badge, *EXE*, magnifier. Nothing moves when a badge appears or disappears. While the icon is taken from the EXE, a gray Steam or SteamGridDB badge (the source chosen at the top of the card) is shown in place of the empty space.
+* **The wrapper list has *Remove wrapper*** with the red icon, under a separator at the end of the list, the same as in the Library window (it was a separate item of the main menu).
+
+### Improved
+* **Interface polish.** Check lists of the context menus (wrappers, emulators, frames, collections) look and scroll the same in the main window and in the Library: squares and icons, the wheel with a window of 18 items and arrows, fixed *Apply* / *Remove* items. Buttons in the headers of the card slots got exact spacing and the groups of *Change logo* / *Change background* are separated so they do not blend together. Check marks and crosses of the Library are drawn sharper. Upscaler versions are shown with the same prefix everywhere (*DLSS v310.9.16*, *FSR v1.0.2.3802*, *XeSS v1.3.1*). A successful change or removal of a wrapper in the Library no longer shows a message window; warnings and errors are still shown.
+* **Lists redraw faster.** The `shortcuts.vdf` parse is kept between calls, the saves and backup flags of the rows are warmed up in the background and drawn from the cache, and an empty result is cached too, so the lists no longer recount every row on each redraw.
+
+### Changed
+* The texts of the cover frames are translated into all six languages.
+* Application version is now 2.2.8.
+
+---
+
 ## [2.2.7] - 2026-11-13
 
 ### Added
