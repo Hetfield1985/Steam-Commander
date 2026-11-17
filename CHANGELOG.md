@@ -6,6 +6,35 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [2.2.9] - 2026-11-18
+
+### Added
+* **Only one copy of the program can run.** A second launch no longer starts: it brings the window of the running copy to the front (restoring it if it is minimized), or shows an *already running* message if that window cannot be found yet. The check is the very first thing the script does, before the splash screen, so the second launch closes at once. A crashed copy releases the lock by itself.
+* **The splash screen shows the program cover.** The status text and the progress bar sit under the *COMMANDER* caption; if the picture cannot be decoded, the old plain splash screen is used.
+* **MIT license badge.** A green badge to the right of the GitHub link in the About window; the tooltip states the license in a few words. Translated into all six languages.
+* **Right click on a preview opens it full size.** The Background and Logo preview and the Icon slot of the game card now do the same as their magnifier; the icon is picked with the left button only.
+* **More frame templates.** The list of SteamGridDB collections used for frames grew from one to fifteen (templates by different authors, box, disc and banner collections), and collections can also be found by searching the site. Templates from the added collections are kept only if their thumbnail has a transparent area in the centre, so service pictures and ready-made game covers do not get into the list. The result of the check and the final template list are saved in `Frames\cache` (`sgdb_template_probe.txt`, `sgdb_template_list.json`), so the next launches do not check the thumbnails again.
+
+### Improved
+* **No more empty cover picker with loading animations.** When a game has covers on SteamGridDB but none of them has a transparent area, the picker used to open, spin its placeholders and only then say that nothing was found. The transparency is now checked before the window opens (the first pages of the site are loaded if needed); if nothing suitable exists, the choice of your own file opens at once, the same as for a game without covers.
+* **The panels of the main window no longer blink while the saves are searched.** The background count of the *Presence* / *Backup* flags used to redraw both lists as a whole every 100 ms, and the rows were seen repainting from top to bottom for the whole count. Now only the visible rows whose value has just been counted are redrawn.
+* **The frame cache does not pile up.** Ready previews with a frame, launcher badge previews and the temporary files of the bulk change used to stay in `Frames\cache` forever (hundreds of megabytes, including covers of games that are not in the library). The folder is now emptied at startup and when the program is closed; the previews are built again when needed. Finished covers in `config\grid` and the originals in `Frames\orig` are not touched, and neither are the two service files of the template list.
+* **Faster upscaler library search in the main window.** The folders of the panels are checked by 2-4 threads taking tasks from a common queue instead of one thread.
+* **The *Only with libraries* filter of the Library works while the search is running.** The list is updated as the results arrive (not more often than once in 2.5 s) and is recounted right after the first pass, without waiting for the long search of `.sc_orig` files.
+* **Single-choice menus are cleaner.** With one game, the lists of emulators, wrappers and frame sets show just a check mark at the current item, without empty squares; the squares stay for several games, where they show how many games have the item. *Change for all games* items show no check column at all.
+* **The favorite paths list.** The empty icon column is removed so a path starts at the left edge, exactly under the text of the path field; a second click on the arrow button closes the list.
+* **Library toolbar.** The *Import* button is shorter (*Import* instead of *Import to Steam*) and narrower, which leaves more room for the path field. The counter takes only the width it needs, the list of launcher frames can be wider and its drop-down is as wide as the field.
+* **The frame position window for vertical covers.** In a narrow window the slider was squeezed to a dot: the buttons now go to a separate row and the slider uses the full width. The hint is shorter and wraps to a second line when needed.
+* **Menu icons.** The red delete circle and the green *Create collection* circle are drawn on the pixel grid (12 px, no blurred edge), and *Create collection* stands in the same column as the delete circles.
+* **The frame set window shows the wait cursor** during the whole loading of the template list.
+
+### Changed
+* The check of template thumbnails is limited to 20 seconds (it was 30).
+* The detailed `Frames:` diagnostic lines are written to the log only when `$script:FrameLogEnabled` is switched on (off by default).
+* Application version is now 2.2.9.
+
+---
+
 ## [2.2.8] - 2026-11-17
 
 ### Added
