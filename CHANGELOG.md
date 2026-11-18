@@ -6,7 +6,7 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [2.2.10] - 2026-11-19
+## [2.3.0] - 2026-11-19
 
 ### Added
 * **Recommended frame templates in the emulator window.** The *Frames* list of the *Edit emulator* window now starts with starred (★) entries taken from the SteamGridDB platform list: the platform of the emulator (by profile name, core and extensions) and the entry of the emulator itself (*Dolphin (Emulator)*, RetroArch, ScummVM, EDuke32). A recommendation that has no frame set yet is grey with a green plus on the right; choosing it opens the frame set window with the name and the search already filled in, and after saving the new set is selected for this emulator and *Use frames* is switched on. Cancelling returns the previous item. Sets that already exist and match are starred too. Multi-platform emulators (RetroArch and similar) get only their own entry, not per-platform frames. The recommendations are recounted when the list is opened, in case the name, the extensions or the core were changed.
