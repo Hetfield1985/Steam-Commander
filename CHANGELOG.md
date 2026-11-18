@@ -6,6 +6,35 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [2.2.10] - 2026-11-19
+
+### Added
+* **Recommended frame templates in the emulator window.** The *Frames* list of the *Edit emulator* window now starts with starred (★) entries taken from the SteamGridDB platform list: the platform of the emulator (by profile name, core and extensions) and the entry of the emulator itself (*Dolphin (Emulator)*, RetroArch, ScummVM, EDuke32). A recommendation that has no frame set yet is grey with a green plus on the right; choosing it opens the frame set window with the name and the search already filled in, and after saving the new set is selected for this emulator and *Use frames* is switched on. Cancelling returns the previous item. Sets that already exist and match are starred too. Multi-platform emulators (RetroArch and similar) get only their own entry, not per-platform frames. The recommendations are recounted when the list is opened, in case the name, the extensions or the core were changed.
+* **Built-in frame template list.** The list of templates is now embedded in the program (compressed), so a new user gets the platform list and the first click on the search field instantly, before any file in `Frames\cache` exists.
+* **Background refresh of the template list.** Once per session, when the platform list is first opened, and only if the list file is missing or older than 3 days, the program checks SteamGridDB for new collections (*templates*, *template*, *frames*) in small steps by a timer (the first step 20 s after the click), checks their thumbnails for a transparent area and rewrites the list file. The window stays free between the steps; new platforms appear at the next launch. The file is not overwritten if some known collection did not answer or if the new list is noticeably shorter than the current one. A list of collections found useless by the scan is skipped by the search.
+* **New platforms and emulators.** *Nintendo Switch 2*, *PlayStation 3* and *PlayStation 4* are added as platforms (they have no file extensions, so they do not appear in the *Extensions* drop-down), and the emulators **Eglantine** (Switch 2) and **Nestopia** (NES / Famicom) are added to the known presets. RPCS3 now belongs to PlayStation 3 and shadPS4 to PlayStation 4 (before they had no platform).
+* **Clear button in the search field of the frame set window.** A red circle with a white cross at the end of the field clears it (as the red delete circles of the collections); while the field is empty the cross is grey and inactive.
+* **Developer option `$script:FrameDeepScan`** (off by default): a one-time deep scan used to build the embedded template list (any number of grids in a collection, up to 200 collections, up to 20 pages per collection, more search words). Must stay `$false` in a release.
+
+### Improved
+* **Loading animation on the cover slots of the frame set window.** While a cover is being downloaded (after a choice in the picker, after a file is picked, or when the covers of a new set are filled in), the thumbnail shows the same spinner as the game card; it disappears when the download is done or fails.
+* **The frame set name follows the chosen section.** The name is replaced every time a platform is picked (before it was filled only when the field was empty).
+* **A frame set created from the emulator window is bound to that emulator.** Its *Use for* item is ticked and locked, so the set cannot be left without a binding.
+* **The opening of the template list is faster.** An out-of-date list file is used at once (its age only starts the background refresh), and the search for new collections no longer delays the first click.
+* **Platform detection of frames is more exact.** *Nintendo Switch 2* is recognized before *Nintendo Switch* (a *Switch 2* is no longer taken for a Switch), *Super Nintendo Entertainment System* is no longer taken for NES, *PlayStation 2 / 3 / 4 / 5* are matched by the *Sony PlayStation N* spelling too, and *Xbox* no longer matches *Xbox 360*, *One*, *Series*, *Cloud* or *Game Pass*.
+* **The known emulators list is sorted alphabetically.**
+
+### Fixed
+* **The frame set made from a recommendation was not selected.** The result of saving could contain extra output of nested calls, so the new set was not found and *No frame* stayed selected; the set is now found reliably.
+* **A set without a vertical frame is hidden in the emulator's frame list,** except the one that was just created or is selected now.
+* **Choosing *No frame* is detected by the item id, not by the position,** so the *Remove frames* flag and the saved frame set of an emulator no longer depend on the order of the list; a recommendation that was not created is never saved as a frame set.
+* **Platforms without extensions no longer wipe the *Extensions* field** when picked in the platform drop-down.
+
+### Changed
+* The old frame list lifetime (7 days) is replaced by a 3-day refresh interval; an old file is no longer discarded.
+
+---
+
 ## [2.2.9] - 2026-11-18
 
 ### Added
