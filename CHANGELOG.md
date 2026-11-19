@@ -6,7 +6,31 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [2.3.0] - 2026-11-19
+## [2.3.1] - 2026-11-20
+
+### Added
+* **Check of Steam logo service files.** Earlier versions wrote a stub `{"appid":..,"Count":1}` into `config\librarycache\<id>.json`. Steam does not create such a file and, because of it, the logo of a game could disappear. Once, the program now finds these stubs in the configured Steam profiles and offers to replace them with a file in the Steam format. The logo position is taken from `config\grid\<id>.json`, so it is not lost; a file that Steam has already rewritten is not touched. If Steam is running, it is closed and started again. The result (fixed / failed) is shown in a message; if Steam is not configured or closing Steam was cancelled, the check is repeated at the next launch. The flag `libCacheStubCheckDone` is stored in the settings. Translated into all six languages.
+* **Red clear button in text fields.** The red circle with a white cross (as in the game card *Name* field) is now at the end of most text fields: the search fields of both panels, the library search (it replaces the old grey cross), the launch options and the name of the game card, the name, extensions and arguments in the emulator and wrapper windows, and the API key fields in the settings. The cross is grey and inactive while the field is empty, a click clears the field and returns the focus into it; the text no longer goes under the cross.
+* **Core submenu of RetroArch.** In the context menus of the panels and of the library, the RetroArch item opens a submenu with its cores on hover (instead of the *Name…* item that opened a separate window). The current core is checked, the first item is *core from profile arguments*; choosing a core applies it at once. The list is read once per session and cached, and the cores of all RetroArch profiles are preheated in the background by a timer, which waits while the lists are scrolled.
+
+### Improved
+* **Game card layout.** The *Saves* block is now a separate row under *Launch options*, in the same format as *Name* and *Launch* (label on the left, green check at x=91, buttons from x=115); the status text of the launch options stands to the right of the buttons. The status line and the cover slots are placed under it, and the card grows by 32 px. Cards of ROMs and the bulk edit have no saves row and keep their size.
+* **Collections button of the card** moved to the top row, to the right of *App ID* (next to the *Steam | SGDB* switch), at the same place in ordinary, ROM and licensed cards.
+* **Collections list is aligned with the button.** After it opens, its right edge is set to the right edge of the button, so the list no longer sticks out beyond the card when its size changes (scroll arrows, minimum width).
+* **The *App ID* field** is 66 px wide (the label is narrower by the same amount), so a long ID fits into the field and the label *SGDB ID* is not cut.
+* **Faster list of RetroArch cores.** The display names are taken from the `*_libretro.info` files in one pass over the folders (only the first 4 KB of each file is read) instead of a separate search for every core.
+* **The background refresh of the frame template list is gentler.** A step checks 10 thumbnails instead of 25, the interval between steps is 1.2 s instead of 0.4 s, and a step is postponed while a mouse button is pressed (dragging, selecting).
+
+### Fixed
+* **The logo of a game added to Steam disappeared.** When a shortcut was created, `config\librarycache\<id>.json` was written as the stub `{"appid":..,"Count":1}`, which Steam does not understand (it expects an array of pairs). Now a new file, or an old stub, is written as Steam does it (`[["achievements",{...}]]`); the logo position stays in `config\grid\<id>.json`.
+* **A failed refresh of the frame templates was repeated at every launch.** If the list file was not rewritten (a collection did not answer, the new list was shorter), the time of the attempt is now stored in `Frames\cache\sgdb_template_refresh.txt`, and the next attempt is not made earlier than after `$script:FrameListRefreshDays` days.
+
+### Changed
+* Application version is now 2.3.1.
+
+---
+
+## [2.2.10] - 2026-11-19
 
 ### Added
 * **Recommended frame templates in the emulator window.** The *Frames* list of the *Edit emulator* window now starts with starred (★) entries taken from the SteamGridDB platform list: the platform of the emulator (by profile name, core and extensions) and the entry of the emulator itself (*Dolphin (Emulator)*, RetroArch, ScummVM, EDuke32). A recommendation that has no frame set yet is grey with a green plus on the right; choosing it opens the frame set window with the name and the search already filled in, and after saving the new set is selected for this emulator and *Use frames* is switched on. Cancelling returns the previous item. Sets that already exist and match are starred too. Multi-platform emulators (RetroArch and similar) get only their own entry, not per-platform frames. The recommendations are recounted when the list is opened, in case the name, the extensions or the core were changed.
