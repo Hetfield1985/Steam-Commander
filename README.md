@@ -83,6 +83,10 @@ A frame is a template with a transparent window (taken from SteamGridDB or from 
   <img src="assets/screenshots/Frames.gif" width="700" alt="Cover frames for games and emulators">
 </p>
 
+<p align="center">
+  <img src="assets/screenshots/Frames2.gif" width="700" alt="Cover frames for games and emulators 2">
+</p>
+
 ### Import from launchers
 
 Epic Games, GOG Galaxy, Ubisoft Connect, EA App, Battle.net, Xbox. Imports the ticked games into Steam (manually or automatically); you can build the selection from several launchers at once and import it with one button. Covers are set up in the same way as for ordinary games. Games are started by the program's own quiet launcher: it makes sure the third-party launcher starts in quiet mode, moves focus to the game and closes the third-party launcher after you quit the game. It feels as if you were playing an ordinary Steam game.
