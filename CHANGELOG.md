@@ -6,6 +6,20 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [2.3.2] - 2026-11-20
+
+### Improved
+* **The long fields of the game card are 10 px shorter.** *Name*, *Launch* / *Emulator*, *ROM* and *Launch options* (with their drop-down lists) end at x=525. Everything to the right of them moved 10 px to the left with the same gaps: the *Steam | SGDB* switch, the folder and *Run* buttons, the *Core* / *File* fields, the multi-disc row and the *Wrapper* check box. The freed space goes to the *App ID* label.
+* **The wrapper field is stretched to the common right edge.** Since the collections button moved to the top row, the wrapper drop-down reaches x=860 (it stopped at 828 before). The *Core* and *File* fields of ROM cards are wider by the same 10 px and also end at x=860.
+
+### Fixed
+* **The *SGDB ID* label was wrapped onto two lines** in the cards of ROMs. The width of the label is now measured by its text (*App ID* / *SGDB ID*) and it grows to the left, so the text always stays on one line.
+
+### Changed
+* Application version is now 2.3.2.
+
+---
+
 ## [2.3.1] - 2026-11-20
 
 ### Added
