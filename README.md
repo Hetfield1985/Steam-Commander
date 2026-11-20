@@ -68,6 +68,21 @@ From the card you can start the game right away with the **Launch** button: it s
   <img src="assets/screenshots/sgdb_chooser.png" width="700" alt="SteamGridDB cover chooser: sorting and filters">
 </p>
 
+### Cover frames
+
+A frame is a template with a transparent window (taken from SteamGridDB or from your own file) that is laid over the vertical and horizontal covers when a game is saved. The originals are kept, so a frame can be changed or removed at any time.
+
+- **Frame sets.** A set is a pair of frames, vertical and horizontal, or just one of them. It is created in a small window: search on SteamGridDB by platform, a name and two thumbnails (a click on a thumbnail opens the cover picker). The *Only templates with a transparent area* check box leaves out ready-made covers and service pictures. The *Frames* manager lists, edits and removes sets.
+- **Recommended templates.** In the emulator window the list of frames starts with starred (★) templates for the emulator's platform. Choosing one opens the set window with the name and the search already filled in.
+- **Binding.** The *Use frames* tick and a set are chosen in the settings of an emulator or a wrapper and in the launcher tab of the Library. For a launcher you can also choose the *Launcher badge* variant: the launcher icon is drawn on the cover. Games that are already in the library are changed only after a confirmation.
+- **Many games at once.** The *Frames* button and the context menu item of the Library work with the ticked games. In the main window, with nothing ticked, the button sets the frame for new games; with games ticked it changes theirs.
+- **In the card.** The frame button in the cover slots offers *No frame*, the launcher badge or a set, *Fit cover*, *Link panels* and *Change position...* (wheel = scale, drag = shift, *Enter* saves, *Esc* cancels, double click = centre).
+- The list of templates is built into the program and is refreshed from SteamGridDB in the background, so the platform list is available at once.
+
+<p align="center">
+  <img src="assets/screenshots/Frames.gif" width="700" alt="Cover frames for games and emulators">
+</p>
+
 ### Import from launchers
 
 Epic Games, GOG Galaxy, Ubisoft Connect, EA App, Battle.net, Xbox. Imports the ticked games into Steam (manually or automatically); you can build the selection from several launchers at once and import it with one button. Covers are set up in the same way as for ordinary games. Games are started by the program's own quiet launcher: it makes sure the third-party launcher starts in quiet mode, moves focus to the game and closes the third-party launcher after you quit the game. It feels as if you were playing an ordinary Steam game.
@@ -123,7 +138,6 @@ Downloading and choosing versions of DLSS / FSR / XeSS / XeLL. Replacing the lib
 
 Two independent panels (any folders and drives). Search, sorting, folder size, an "already in Steam" mark with the game icon. Moving game and ROM folders between the panels with progress and automatic updating of the Steam shortcuts. Smart moving in both directions between folders and drives: tick games on both panels and press Space to find out whether such a move is possible and how much space is missing.
 
-- **Moving games.** The *Move game* button moves all ticked games and ROMs at once, in both directions. On the same drive the folder is simply renamed, while between drives a verified copy is made first and the original is deleted only afterwards, so the game stays intact if something fails. Games that do not fit (the target drive keeps a 1 GB reserve), that already exist in the target folder, or that contain symbolic links are skipped. Steam shortcuts (exe path, start folder, ROM path) and disc paths in m3u files are updated at the end for the games that really moved.
 - **Installed Steam games are marked too.** Folders of a Steam library (`steamapps\common`) get the "in library" tick and the icon Steam itself uses for the game.
 - **Right-click menu of a game.** *Launch* (or *Add to library* for a game that is not added yet), *Open folder*, *Collections*, saves, upscaler libraries, wrappers and *Remove from library*, with icons. If the game is ticked together with others, the action applies to all ticked games. ROM games have their own menu: *Launch*, *Open folder*, *Collections* and *Change emulator*.
 - **Favorite folders.** The star after the path field adds the current folder to favorites; the arrow at the end of the field opens the list (rename, move up / down, remove). The list is common for both panels.
