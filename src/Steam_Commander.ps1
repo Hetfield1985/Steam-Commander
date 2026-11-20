@@ -5917,7 +5917,7 @@ Set-SplashProgress 0.52
 # Единая версия приложения — используется в заголовке главного окна, в
 # подписи внизу окна настроек и в User-Agent HTTP-запросов. Меняйте только
 # здесь при выпуске новой версии.
-$global:appVersion = "2.3.1"
+$global:appVersion = "2.3.2"
 $global:appTitle = "Steam Commander"
 # Ссылки на исходный код и поддержку автора (окно «Поддержать» в настройках). Меняйте только здесь.
 $global:appRepoUrl = "https://github.com/Hetfield1985/Steam-Commander"
@@ -76553,7 +76553,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     # текстом строго по центру, рамку и фон теперь рисует Panel, а сам TextBox
     # лежит внутри неё без своей рамки и центрируется по вертикали вручную.
     $pnlTitle = New-Object System.Windows.Forms.Panel
-    $pnlTitle.Location='115,14'; $pnlTitle.Size='420,28'
+    $pnlTitle.Location='115,14'; $pnlTitle.Size='410,28'
     $pnlTitle.BackColor=$steamUi.Input; $pnlTitle.BorderStyle='FixedSingle'
     $dlg.Controls.Add($pnlTitle)
 
@@ -76572,7 +76572,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     # Items никогда не связаны с текстом, который пользователь редактирует.
     $titleResults = New-Object System.Windows.Forms.ListBox
     $titleResults.Location=New-Object System.Drawing.Point(115,43)
-    $titleResults.Size=New-Object System.Drawing.Size(420,180)
+    $titleResults.Size=New-Object System.Drawing.Size(410,180)
     $titleResults.BackColor=$steamUi.Input; $titleResults.ForeColor=$steamUi.Text
     $titleResults.BorderStyle=[System.Windows.Forms.BorderStyle]::FixedSingle
     $titleResults.Font=New-Object System.Drawing.Font('Segoe UI',9)
@@ -76617,7 +76617,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     # активный подсвечен, переключение — кликом по нужной половине. Контейнер
     # сохранил прежнее имя $searchSourceBtn (Visible/Enabled используются в других местах).
     $searchSourceBtn = New-Object System.Windows.Forms.Panel
-    $searchSourceBtn.Location = New-Object System.Drawing.Point(540,14)
+    $searchSourceBtn.Location = New-Object System.Drawing.Point(530,14)
     $searchSourceBtn.Size = New-Object System.Drawing.Size(159,28)
     $searchSourceBtn.BackColor = $steamUi.Panel
     $dlg.Controls.Add($searchSourceBtn)
@@ -76749,7 +76749,10 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     # одинаковая высота строки, фон, рамка и выделение.
     $titleCandidates=@(); $titleCandidateMap=@{}
 
-    $idLbl = New-Object System.Windows.Forms.Label; $idLbl.Text='App ID'; $idLbl.Location='706,14'; $idLbl.Size='50,28'; $idLbl.ForeColor=$steamUi.Muted; $idLbl.TextAlign=[System.Drawing.ContentAlignment]::MiddleRight; $dlg.Controls.Add($idLbl)
+    # Ширина подписи по самому длинному из текстов («App ID» / «SGDB ID») с запасом, чтобы она не переносилась на вторую строку.
+    $idLblW = 54
+    try { foreach ($idt in @('App ID','SGDB ID')) { $mw = [System.Windows.Forms.TextRenderer]::MeasureText($idt, $dlg.Font).Width + 6; if ($mw -gt $idLblW) { $idLblW = $mw } } } catch {}
+    $idLbl = New-Object System.Windows.Forms.Label; $idLbl.Text='App ID'; $idLbl.Location=(New-Object System.Drawing.Point((756 - $idLblW), 14)); $idLbl.Size=(New-Object System.Drawing.Size($idLblW, 28)); $idLbl.AutoSize=$false; $idLbl.ForeColor=$steamUi.Muted; $idLbl.TextAlign=[System.Drawing.ContentAlignment]::MiddleRight; $dlg.Controls.Add($idLbl)
     # Та же проблема и то же решение, что и у поля "Название" выше: однострочный
     # TextBox сам сжимает свою высоту под шрифт, поэтому рамку и фон рисует
     # Panel, а сам TextBox центрируется внутри неё вручную по вертикали.
@@ -76782,7 +76785,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     # Рамку рисует Panel (как у App ID / Название) — у самого ComboBox системная рамка снята.
     $pnlExe = New-Object System.Windows.Forms.Panel
     $pnlExe.Location = New-Object System.Drawing.Point(115, 50)
-    $pnlExe.Size = New-Object System.Drawing.Size(420, 28)
+    $pnlExe.Size = New-Object System.Drawing.Size(410, 28)
     $pnlExe.BackColor = $steamUi.Input
     $pnlExe.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
     $dlg.Controls.Add($pnlExe)
@@ -76869,7 +76872,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     })
 
     $btnBrowseExe = New-Object System.Windows.Forms.Button
-    $btnBrowseExe.Location = New-Object System.Drawing.Point(540,49)
+    $btnBrowseExe.Location = New-Object System.Drawing.Point(530,49)
     $btnBrowseExe.Size = New-Object System.Drawing.Size(90,28)
     Set-BrowseIconButton $btnBrowseExe
     $btnBrowseExe.FlatStyle='Flat'; $btnBrowseExe.FlatAppearance.BorderColor=$steamUi.Border
@@ -76886,7 +76889,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     # после этого свободно отредактировать текст вручную.
     $pnlEmulator = New-Object System.Windows.Forms.Panel
     $pnlEmulator.Location = New-Object System.Drawing.Point(115, 50)
-    $pnlEmulator.Size = New-Object System.Drawing.Size(420, 28)
+    $pnlEmulator.Size = New-Object System.Drawing.Size(410, 28)
     $pnlEmulator.BackColor = $steamUi.Input
     $pnlEmulator.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
     $pnlEmulator.Visible = $false
@@ -76937,7 +76940,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     # режиме ROMs: там прячутся $btnBrowseExe и путь к EXE.
     $lblCoreGame = New-Object System.Windows.Forms.Label
     $lblCoreGame.Text = ([string](T 'emu_lbl_core')).TrimEnd(':', [char]0xFF1A).Trim()
-    $lblCoreGame.Location = New-Object System.Drawing.Point(541, 50)
+    $lblCoreGame.Location = New-Object System.Drawing.Point(531, 50)
     # Подпись «Ядро» отодвинута от поля примерно на один символ: левый край прежний (541), правый 591 вместо 598.
     $lblCoreGame.Size = New-Object System.Drawing.Size(50, 28)
     $lblCoreGame.ForeColor = $steamUi.Muted
@@ -76946,8 +76949,8 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     $dlg.Controls.Add($lblCoreGame)
 
     $pnlCoreGame = New-Object System.Windows.Forms.Panel
-    $pnlCoreGame.Location = New-Object System.Drawing.Point(601, 50)
-    $pnlCoreGame.Size = New-Object System.Drawing.Size(259, 28)
+    $pnlCoreGame.Location = New-Object System.Drawing.Point(591, 50)
+    $pnlCoreGame.Size = New-Object System.Drawing.Size(269, 28)
     $pnlCoreGame.BackColor = $steamUi.Input
     $pnlCoreGame.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
     $pnlCoreGame.Visible = $false
@@ -77164,7 +77167,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
 
     $pnlRom = New-Object System.Windows.Forms.Panel
     $pnlRom.Location = New-Object System.Drawing.Point(115, 87)
-    $pnlRom.Size = New-Object System.Drawing.Size(420, 28)
+    $pnlRom.Size = New-Object System.Drawing.Size(410, 28)
     $pnlRom.BackColor = $steamUi.Input
     $pnlRom.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
     $pnlRom.Visible = $IsRomEntry
@@ -77206,7 +77209,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     })
 
     $btnBrowseRom = New-Object System.Windows.Forms.Button
-    $btnBrowseRom.Location = New-Object System.Drawing.Point(540, 86)
+    $btnBrowseRom.Location = New-Object System.Drawing.Point(530, 86)
     $btnBrowseRom.Size = New-Object System.Drawing.Size(90, 28)
     Set-BrowseIconButton $btnBrowseRom
     $btnBrowseRom.FlatStyle = 'Flat'; $btnBrowseRom.FlatAppearance.BorderColor = $steamUi.Border
@@ -77219,7 +77222,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     # когда выбранный в "ROM" архив содержит несколько ROM; сам архив в списке "ROM" - одним пунктом.
     $lblRomEntry = New-Object System.Windows.Forms.Label
     $lblRomEntry.Text = (T 'rom_lbl_entry')
-    $lblRomEntry.Location = New-Object System.Drawing.Point(542, 87)
+    $lblRomEntry.Location = New-Object System.Drawing.Point(532, 87)
     $lblRomEntry.Size = New-Object System.Drawing.Size(56, 28)
     $lblRomEntry.ForeColor = $steamUi.Muted
     $lblRomEntry.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
@@ -77231,9 +77234,9 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     $chkMultiDisc = New-Object System.Windows.Forms.CheckBox
     $chkMultiDisc.Text = (T 'rom_chk_multidisc')
     # Строка «галочка + кнопка дисков» занимает ровно ту же полосу, что «Ядро» строкой выше: слева - левый край подписи
-    # «Ядро:» (X=610), справа - правый край поля ($pnlCoreGame: 601 + 259 = 860). Ширина кнопки считается
+    # «Ядро:» (X=600), справа - правый край поля ($pnlCoreGame: 591 + 269 = 860). Ширина кнопки считается
     # по самому длинному тексту, галочка берёт остаток; зазор между ними 4 px.
-    $mdRowLeft = 610
+    $mdRowLeft = 600
     $mdRowRight = 860
     $mdRowGap = 4
     $getDiscsBtnText = {
@@ -77378,8 +77381,8 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     try { $cardSaveTip.SetToolTip($btnMultiDiscEdit, (T 'rom_btn_discs_tip')) } catch {}
 
     $pnlRomEntry = New-Object System.Windows.Forms.Panel
-    $pnlRomEntry.Location = New-Object System.Drawing.Point(601, 87)
-    $pnlRomEntry.Size = New-Object System.Drawing.Size(259, 28)
+    $pnlRomEntry.Location = New-Object System.Drawing.Point(591, 87)
+    $pnlRomEntry.Size = New-Object System.Drawing.Size(269, 28)
     $pnlRomEntry.BackColor = $steamUi.Input
     $pnlRomEntry.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
     $pnlRomEntry.Visible = $false
@@ -78028,7 +78031,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     # же способом, что и у поля "Название" — по клику/фокусу в самом поле,
     # без переключения на что-то отдельное.
     $pnlLaunchOptions = New-Object System.Windows.Forms.Panel
-    $pnlLaunchOptions.Location=New-Object System.Drawing.Point(115,(87+$romRowOffset)); $pnlLaunchOptions.Size='420,28'
+    $pnlLaunchOptions.Location=New-Object System.Drawing.Point(115,(87+$romRowOffset)); $pnlLaunchOptions.Size='410,28'
     $pnlLaunchOptions.BackColor=$steamUi.Input; $pnlLaunchOptions.BorderStyle='FixedSingle'
     $dlg.Controls.Add($pnlLaunchOptions)
 
@@ -78071,7 +78074,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     # списка, так и просто напечатать свои параметры вручную.
     $launchOptResults = New-Object System.Windows.Forms.ListBox
     $launchOptResults.Location = New-Object System.Drawing.Point(115, (87+$romRowOffset+28))
-    $launchOptResults.Size = New-Object System.Drawing.Size(420,24)
+    $launchOptResults.Size = New-Object System.Drawing.Size(410,24)
     $launchOptResults.BackColor=$steamUi.Input; $launchOptResults.ForeColor=$steamUi.Text
     $launchOptResults.BorderStyle=[System.Windows.Forms.BorderStyle]::FixedSingle
     $launchOptResults.Font=New-Object System.Drawing.Font('Consolas',8.6)
@@ -78998,7 +79001,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
         }
     })
 
-    # ===== Враппер запуска: галочка справа от поля «Параметры» (x 545..) и, при включении, выбор враппера правее (до 828 — правый край предпоследней кнопки блока «Сохранения»). =====
+    # ===== Враппер запуска: галочка справа от поля «Параметры» (x 535..) и, при включении, выбор враппера правее (до 860 — общий правый край). =====
     # Шаг 1 — только интерфейс: список врапперов пока заглушка (см. $wrapperNames), в ярлык ничего не пишется.
     # Галочка и выпадающий список оформлены как остальные элементы карточки: галочка — как «Мультидиск» (квадрат 14x14,
     # Accent, белая «птичка»), список — SmartExeComboBox с собственным выпадающим окном и той же прокруткой, что у «Эмулятор»/«Ядро».
@@ -79007,7 +79010,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
         $chkWrapper.Name = 'EditorWrapperCheck'
         $chkWrapper.Text = (T 'card_wrapper_chk')
         $chkWrapper.Font = New-Object System.Drawing.Font('Segoe UI', 9)
-        $chkWrapper.Location = New-Object System.Drawing.Point(545, (87 + $romRowOffset))
+        $chkWrapper.Location = New-Object System.Drawing.Point(535, (87 + $romRowOffset))
         $chkWrapper.Size = New-Object System.Drawing.Size(82, 28)
         $chkWrapper.AutoSize = $false
         $chkWrapper.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
@@ -79052,8 +79055,8 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
         $dlg.Controls.Add($chkWrapper)
 
         $pnlWrapper = New-Object System.Windows.Forms.Panel
-        $pnlWrapper.Location = New-Object System.Drawing.Point(629, (87 + $romRowOffset))
-        $pnlWrapper.Size = New-Object System.Drawing.Size(199, 28)
+        $pnlWrapper.Location = New-Object System.Drawing.Point(619, (87 + $romRowOffset))
+        $pnlWrapper.Size = New-Object System.Drawing.Size(241, 28)
         $pnlWrapper.BackColor = $steamUi.Input
         $pnlWrapper.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
         $pnlWrapper.Visible = $false
@@ -80629,7 +80632,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
 
     # Кнопка «Запуск» справа от кнопки выбора EXE (у ROM - справа от выбора ROM): тот же формат 28x28.
     $btnCardPlay = New-Object System.Windows.Forms.Button
-    $btnCardPlay.Location = New-Object System.Drawing.Point(572, $(if ($IsRomEntry) { 86 } else { 49 }))
+    $btnCardPlay.Location = New-Object System.Drawing.Point(562, $(if ($IsRomEntry) { 86 } else { 49 }))
     $btnCardPlay.Size = New-Object System.Drawing.Size(28, 28)
     $btnCardPlay.FlatStyle = 'Flat'; $btnCardPlay.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(76, 158, 92)
     $btnCardPlay.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(76, 158, 92)
