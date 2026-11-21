@@ -6,6 +6,20 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [2.3.3] - 2026-11-21
+
+### Improved
+* **Display scaling mode "GDI-scaled".** At start the program switches the process to the *GDI-scaled* DPI mode (the same as *System (Enhanced)* in the Windows compatibility settings; Windows 10 1809 and later). Text and controls are drawn crisper under display scaling above 100 %. The call is made before any window is created and is safe: on older systems it does nothing. To turn it off, delete the block at the top of the script.
+
+### Fixed
+* **The card of an already added game no longer changes its frames by itself.** Before, when the card of a game that is already in Steam was opened, the frame set of the selected emulator profile (and the launcher badge) was put on the covers at once, so the card did not show what is really set in Steam. Now the card of an existing game shows its current state without any changes. The frame set of a profile is applied to such games only after your confirmation when the emulator profile is saved, or in the card when you change the emulator or the frame yourself. For a new game nothing changes: the frames of the profile are applied when the card is opened.
+* **Launcher badge detection is made reliable.** The comparison of the chosen frame set with the launcher badge set in the emulator window, in the wrapper window and in the card now takes the id from one common function instead of reading the script variable directly, so the badge owner (`emu:` / `wrap:`) is assigned the same way everywhere.
+
+### Changed
+* Application version is now 2.3.3.
+
+---
+
 ## [2.3.2] - 2026-11-20
 
 ### Improved
