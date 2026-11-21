@@ -2,6 +2,12 @@
 $script:StartupSw = [System.Diagnostics.Stopwatch]::StartNew()
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
+# Режим DPI «GDI-scaled» (аналог «Система (расширенная)»): Windows 10 1809+. Должен выполняться до создания любого окна.
+# Вызов безопасен: на старых системах он просто ничего не делает. Отключить: удалить этот блок.
+try {
+    Add-Type -Namespace SCNative -Name Dpi -MemberDefinition '[DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(IntPtr c);'
+    [void][SCNative.Dpi]::SetProcessDpiAwarenessContext([IntPtr](-5))
+} catch {}
 
 # ---------------------------------------------------------------------------
 # Одна копия программы: второй запуск не стартует, а выводит на передний план уже открытое окно.
@@ -5917,7 +5923,7 @@ Set-SplashProgress 0.52
 # Единая версия приложения — используется в заголовке главного окна, в
 # подписи внизу окна настроек и в User-Agent HTTP-запросов. Меняйте только
 # здесь при выпуске новой версии.
-$global:appVersion = "2.3.2"
+$global:appVersion = "2.3.3"
 $global:appTitle = "Steam Commander"
 # Ссылки на исходный код и поддержку автора (окно «Поддержать» в настройках). Меняйте только здесь.
 $global:appRepoUrl = "https://github.com/Hetfield1985/Steam-Commander"
@@ -48640,7 +48646,7 @@ function Show-EmulatorEditDialog ($owner, $existing = $null) {
         }
         [void]$emuFrameKitIds.Add('')
         [void]$emuFrameKitNames.Add([string](Get-EditorFrameText 'card_frame_none' 'Без рамки'))
-        [void]$emuFrameKitIds.Add([string]$script:LauncherBadgeKitId)
+        [void]$emuFrameKitIds.Add([string](Get-EditorBadgeKitIdValue))
         [void]$emuFrameKitNames.Add([string](Get-EditorFrameText 'emu_frame_badge' 'Значок эмулятора'))
         try {
             foreach ($fk in $kits) {
@@ -49820,7 +49826,7 @@ function Add-WrappersManagerControls ($owner, $container) {
                     try { $upd.FramesRemove = $false } catch {}
                     if (($oldWk -ne $newWk -and -not [string]::IsNullOrWhiteSpace($newWk)) -or $wkRemove) {
                         $wkSel = $(if ([string]::IsNullOrWhiteSpace($newWk)) { 'none' } else { $newWk })
-                        $wkBadgeOwner = $(if ($newWk -eq [string]$script:LauncherBadgeKitId) { 'wrap:' + $selId } else { '' })
+                        $wkBadgeOwner = $(if ($newWk -eq [string](Get-EditorBadgeKitIdValue)) { 'wrap:' + $selId } else { '' })
                         $wkMatched = New-Object System.Collections.Generic.List[object]
                         $prevWk = [System.Windows.Forms.Cursor]::Current
                         try {
@@ -54998,7 +55004,7 @@ function Add-EmulatorsManagerControls ($owner, $container) {
                     try { $updatedProfile.FramesRemove = $false } catch {}
                     if (($oldFk -ne $newFk -and -not [string]::IsNullOrWhiteSpace($newFk)) -or $fkRemove) {
                         $fkSel = $(if ([string]::IsNullOrWhiteSpace($newFk)) { 'none' } else { $newFk })
-                        $fkBadgeOwner = $(if ($newFk -eq [string]$script:LauncherBadgeKitId) { 'emu:' + $selId } else { '' })
+                        $fkBadgeOwner = $(if ($newFk -eq [string](Get-EditorBadgeKitIdValue)) { 'emu:' + $selId } else { '' })
                         $fkMatched = New-Object System.Collections.Generic.List[object]
                         $prevFk = [System.Windows.Forms.Cursor]::Current
                         try {
@@ -81179,9 +81185,11 @@ $menuD.ShowImageMargin = $false
 
             $emuProgrammaticSelect = $true
             try { $cmbEmulator.SelectedIndex = $defaultIdx } finally { $emuProgrammaticSelect = $false }
-            # Рамки из профиля эмулятора, выбранного при открытии карточки (обложки подгрузятся позже и сразу покажутся с рамкой).
-            try { Set-EditorEmulatorFrame ([string]$emuProfiles[$defaultIdx].FrameKit) } catch {}
-            try { $ep8 = $emuProfiles[$defaultIdx]; Set-EditorOwnerBadge (Get-EmulatorBadgeOwnerForProfile $ep8) ([string]$ep8.FrameKit -eq [string]$script:LauncherBadgeKitId) } catch {}
+            # Новая игра: рамки из профиля эмулятора накладываются сразу при открытии карточки (обложки подгрузятся позже и сразу покажутся с рамкой).
+            # Уже добавленная игра ($editMode): карточка показывает то, что сейчас стоит в Steam, без вмешательств. Набор рамок профиля применяется
+            # к таким играм только после подтверждения при сохранении профиля эмулятора, а в карточке - когда пользователь сам сменит эмулятор или рамку.
+            if (-not $editMode) { try { Set-EditorEmulatorFrame ([string]$emuProfiles[$defaultIdx].FrameKit) } catch {} }
+            try { $ep8 = $emuProfiles[$defaultIdx]; Set-EditorOwnerBadge (Get-EmulatorBadgeOwnerForProfile $ep8) ((-not $editMode) -and ([string]$ep8.FrameKit -eq [string](Get-EditorBadgeKitIdValue))) } catch {}
 
             # Поле "Ядро" (если это RetroArch) — сразу видимо/заполнено, по
             # умолчанию ядром, сохранённым в самом профиле эмулятора; ниже,
