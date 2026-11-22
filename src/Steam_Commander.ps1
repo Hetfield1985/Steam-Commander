@@ -2,12 +2,6 @@
 $script:StartupSw = [System.Diagnostics.Stopwatch]::StartNew()
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
-# Режим DPI «GDI-scaled» (аналог «Система (расширенная)»): Windows 10 1809+. Должен выполняться до создания любого окна.
-# Вызов безопасен: на старых системах он просто ничего не делает. Отключить: удалить этот блок.
-try {
-    Add-Type -Namespace SCNative -Name Dpi -MemberDefinition '[DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(IntPtr c);'
-    [void][SCNative.Dpi]::SetProcessDpiAwarenessContext([IntPtr](-5))
-} catch {}
 
 # ---------------------------------------------------------------------------
 # Одна копия программы: второй запуск не стартует, а выводит на передний план уже открытое окно.
@@ -5923,7 +5917,7 @@ Set-SplashProgress 0.52
 # Единая версия приложения — используется в заголовке главного окна, в
 # подписи внизу окна настроек и в User-Agent HTTP-запросов. Меняйте только
 # здесь при выпуске новой версии.
-$global:appVersion = "2.3.3"
+$global:appVersion = "2.3.4"
 $global:appTitle = "Steam Commander"
 # Ссылки на исходный код и поддержку автора (окно «Поддержать» в настройках). Меняйте только здесь.
 $global:appRepoUrl = "https://github.com/Hetfield1985/Steam-Commander"
@@ -6296,6 +6290,7 @@ $script:I18n = @{
         sdet_btn_skip_all = 'Пропустить все'
         save_scan_pick_skipped = 'Не запомнено: выбор пропущен'
         save_card_found_tip = 'Сохранения этой игры найдены'
+        save_card_notfound_tip = 'Сохранения этой игры не найдены'
         save_card_created = 'Бэкап сохранений создан, файлов: {0}'
         save_card_same = 'Сохранения не менялись с последнего бэкапа'
         save_card_none = 'Сохранения этой игры не найдены'
@@ -7288,6 +7283,7 @@ $script:I18n = @{
         sdet_btn_skip_all = 'Skip all'
         save_scan_pick_skipped = 'Not stored: selection skipped'
         save_card_found_tip = 'Saves of this game were found'
+        save_card_notfound_tip = 'Saves of this game were not found'
         save_card_created = 'Saves backup created, files: {0}'
         save_card_same = 'Saves have not changed since the last backup'
         save_card_none = 'No saves found for this game'
@@ -8140,6 +8136,7 @@ $script:I18n = @{
         save_scan_already = '此前已定义'
         save_scan_noreg = '未保存：涉及注册表项'
         save_card_found_tip = '已找到此游戏的存档'
+        save_card_notfound_tip = '未找到此游戏的存档'
         save_card_created = '存档备份已创建，文件：{0}'
         save_card_same = '自上次备份以来存档无变化'
         save_card_none = '未找到此游戏的存档'
@@ -9131,6 +9128,7 @@ $script:I18n = @{
         save_scan_already = 'Ya definidas antes'
         save_scan_noreg = 'No guardado: hay claves del registro'
         save_card_found_tip = 'Se encontraron las partidas de este juego'
+        save_card_notfound_tip = 'No se encontraron las partidas de este juego'
         save_card_created = 'Copia de partidas creada, archivos: {0}'
         save_card_same = 'Las partidas no han cambiado desde la última copia'
         save_card_none = 'No se encontraron partidas de este juego'
@@ -10122,6 +10120,7 @@ $script:I18n = @{
         save_scan_already = 'Já definidos antes'
         save_scan_noreg = 'Não guardado: há chaves do registro'
         save_card_found_tip = 'Os saves deste jogo foram encontrados'
+        save_card_notfound_tip = 'Os saves deste jogo não foram encontrados'
         save_card_created = 'Backup de saves criado, arquivos: {0}'
         save_card_same = 'Os saves não mudaram desde o último backup'
         save_card_none = 'Nenhum save encontrado para este jogo'
@@ -11113,6 +11112,7 @@ $script:I18n = @{
         save_scan_already = 'Bereits zuvor festgelegt'
         save_scan_noreg = 'Nicht gespeichert: Registry-Schlüssel beteiligt'
         save_card_found_tip = 'Spielstände dieses Spiels gefunden'
+        save_card_notfound_tip = 'Spielstände dieses Spiels nicht gefunden'
         save_card_created = 'Spielstand-Backup erstellt, Dateien: {0}'
         save_card_same = 'Die Spielstände haben sich seit dem letzten Backup nicht geändert'
         save_card_none = 'Keine Spielstände für dieses Spiel gefunden'
@@ -21991,6 +21991,68 @@ function Get-EmulatorIconBitmap ($emu) {
     return (Save-EmulatorIconCache $emu)
 }
 
+# Песочные часы на время долгой работы без индикатора прогресса (например, пересборка плиток после применения).
+# Курсор возвращается в прежнее состояние в finally, даже если действие упало. DoEvents - чтобы часы успели показаться до начала работы.
+function Invoke-WithWaitCursor ($Owner, [scriptblock]$Action) {
+    $prevWait = $false
+    $okOwner = $false
+    try {
+        if ($null -ne $Owner -and -not $Owner.IsDisposed) {
+            $okOwner = $true
+            $prevWait = [bool]$Owner.UseWaitCursor
+            $Owner.UseWaitCursor = $true
+            [System.Windows.Forms.Cursor]::Current = [System.Windows.Forms.Cursors]::WaitCursor
+            [System.Windows.Forms.Application]::DoEvents()
+        }
+    } catch {}
+    try { & $Action }
+    finally {
+        try {
+            if ($okOwner -and -not $Owner.IsDisposed) {
+                $Owner.UseWaitCursor = $prevWait
+                if (-not $prevWait) {
+                    # Страховка: если во время работы окну записали «песочные часы» явным курсором (а не через UseWaitCursor),
+                    # они остались бы на всём окне и его панелях навсегда - сбрасываем в обычную стрелку.
+                    if ($Owner.Cursor -eq [System.Windows.Forms.Cursors]::WaitCursor) { $Owner.Cursor = [System.Windows.Forms.Cursors]::Default }
+                    [System.Windows.Forms.Cursor]::Current = [System.Windows.Forms.Cursors]::Default
+                }
+            }
+        } catch {}
+    }
+}
+
+# Убирает моргание текста при перерисовке (наведение курсора, смена выделения): включает двойную буферизацию элемента
+# (свойство DoubleBuffered у Control закрытое - через рефлексию). С -Composited ещё и WS_EX_COMPOSITED: все дочерние
+# окна панели (подписи, поля, кнопки) рисуются через общий буфер, а не по очереди поверх стёртого фона.
+function Enable-SmoothPaint ($Control, [switch]$Composited) {
+    try {
+        $fl = [System.Reflection.BindingFlags]::Instance -bor [System.Reflection.BindingFlags]::NonPublic
+        [System.Windows.Forms.Control].GetProperty('DoubleBuffered', $fl).SetValue($Control, $true, $null)
+    } catch {}
+    if ($Composited) {
+        try {
+            if ($Control.IsHandleCreated) { [Win32ScrollBarHelper]::SetComposited($Control.Handle) }
+            else { $Control.Add_HandleCreated({ param($s, $ev) try { [Win32ScrollBarHelper]::SetComposited($s.Handle) } catch {} }) }
+        } catch {}
+    }
+}
+
+# Рисует значок (16x16) в первой колонке таблиц эмуляторов/враперов в «Настройках» и возвращает сдвиг текста вправо.
+# Значки берутся из $global:mgrIconMap (Id профиля -> общий Bitmap из кэша, его не освобождать); нет значка - текст остаётся на месте.
+# Именно $global:, а не $script:: обработчики таблиц создаются через GetNewClosure(), и в них $script: указывает на другую область (там переменная пуста).
+$global:mgrIconMap = @{}
+function Draw-ManagerRowIcon ($Graphics, $Bounds, $Item) {
+    try {
+        $bmp = $global:mgrIconMap[[string]$Item.Tag]
+        if ($null -eq $bmp) { return 0 }
+        $oldMode = $Graphics.InterpolationMode
+        $Graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+        $Graphics.DrawImage($bmp, [int]($Bounds.X + 6), [int]($Bounds.Y + [Math]::Floor(($Bounds.Height - 16) / 2)), 16, 16)
+        $Graphics.InterpolationMode = $oldMode
+        return 22
+    } catch { return 0 }
+}
+
 # Обновляет иконку/название на индикаторе под текущий $global:activeEmulatorId
 # и его видимость под текущий $script:romsModeEnabled. Вызывается при
 # переключении тумблера ROMs, при выборе эмулятора (быстрый пик или
@@ -28220,7 +28282,7 @@ function Invoke-BulkCoverFrames {
         $profiles = @(Get-ConfiguredSteamProfileDirectories)
         if ($profiles.Count -eq 0) { return }
 
-        try { if ($null -ne $Owner) { $Owner.UseWaitCursor = $true }; [System.Windows.Forms.Application]::DoEvents() } catch {}
+        try { if ($null -ne $Owner) { $Owner.UseWaitCursor = $true }; [System.Windows.Forms.Cursor]::Current = [System.Windows.Forms.Cursors]::WaitCursor; [System.Windows.Forms.Application]::DoEvents() } catch {}
         # Диалоги подтверждения только что закрылись, а дальше UI-поток занят долгой работой с файлами и не обрабатывает WM_PAINT:
         # без принудительной перерисовки на окне (в т.ч. на таблице) остаются белые пятна на месте закрытых диалогов.
         try { if ($null -ne $Owner -and -not $Owner.IsDisposed) { $Owner.Refresh() } } catch {}
@@ -28286,7 +28348,8 @@ function Invoke-BulkCoverFrames {
             if (-not $clean) { $ic = [System.Windows.Forms.MessageBoxIcon]::Warning }
             Show-AppMessageBox($Owner, ($lines.ToArray() -join "`n`n"), $global:appTitle, $msgOk, $ic) | Out-Null
         }
-        if ($null -ne $OnDone -and $gamesDone -gt 0) { try { & $OnDone } catch {} }
+        # Сброс выбора и пересборка плиток после применения - долгая работа без прогресса: держим песочные часы до конца.
+        if ($null -ne $OnDone -and $gamesDone -gt 0) { Invoke-WithWaitCursor $Owner { try { & $OnDone } catch {} } }
         try { $Owner.Activate() } catch {}
     } catch {
         try { if ($null -ne $Owner) { $Owner.UseWaitCursor = $false } } catch {}
@@ -49641,6 +49704,7 @@ function Add-WrappersManagerControls ($owner, $container) {
     $listBottomGap = 13
 
     $lv = New-Object System.Windows.Forms.ListView
+    Enable-SmoothPaint $lv
     $lv.Location = New-Object System.Drawing.Point(0, 0)
     $lv.Size = New-Object System.Drawing.Size($container.ClientSize.Width, ($btnRowTop - $listBottomGap))
     $lv.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor `
@@ -49756,7 +49820,9 @@ function Add-WrappersManagerControls ($owner, $container) {
         $sf.LineAlignment = [System.Drawing.StringAlignment]::Center
         $sf.Trimming = [System.Drawing.StringTrimming]::EllipsisCharacter
         $sf.FormatFlags = [System.Drawing.StringFormatFlags]::NoWrap
-        $textRect = New-Object System.Drawing.RectangleF(($e.Bounds.X + 6), $e.Bounds.Y, ($e.Bounds.Width - 8), $e.Bounds.Height)
+        $icoShift = 0
+        if ($e.ColumnIndex -eq 0) { $icoShift = [int](Draw-ManagerRowIcon $e.Graphics $e.Bounds $e.Item) }
+        $textRect = New-Object System.Drawing.RectangleF(($e.Bounds.X + 6 + $icoShift), $e.Bounds.Y, ($e.Bounds.Width - 8 - $icoShift), $e.Bounds.Height)
         $e.Graphics.DrawString($e.SubItem.Text, $e.Item.Font, (New-Object System.Drawing.SolidBrush($steamUi.Text)), $textRect, $sf)
     })
 
@@ -49768,6 +49834,7 @@ function Add-WrappersManagerControls ($owner, $container) {
             [void]$item.SubItems.Add([string]$wp.ExePath)
             [void]$item.SubItems.Add([string]$wp.Args)
             $item.Tag = $wp.Id
+            try { $global:mgrIconMap[[string]$wp.Id] = (Get-EmulatorIconBitmap $wp) } catch { $global:mgrIconMap[[string]$wp.Id] = $null }
             [void]$lv.Items.Add($item)
         }
         $lv.Sort()
@@ -49796,6 +49863,7 @@ function Add-WrappersManagerControls ($owner, $container) {
             $new = Show-WrapperEditDialog $owner $null
             if ($new -ne $null) {
                 $global:launchWrappers = @($global:launchWrappers) + $new
+                try { [void](Save-EmulatorIconCache $new) } catch {}
                 Save-Configuration
                 & $reloadList
             }
@@ -49814,6 +49882,7 @@ function Add-WrappersManagerControls ($owner, $container) {
             $upd = Show-WrapperEditDialog $owner $cur
             if ($upd -ne $null) {
                 $global:launchWrappers = @($global:launchWrappers | ForEach-Object { if ([string]$_.Id -eq $selId) { $upd } else { $_ } })
+                try { [void](Save-EmulatorIconCache $upd) } catch {}
                 Save-Configuration
                 & $reloadList
                 # Сменили набор рамок: он сразу накладывается на обложки уже добавленных игр, запускаемых через этот враппер
@@ -51829,7 +51898,11 @@ function Test-SaveHasBackup ($Params) {
         $has = $false
         if ([System.IO.Directory]::Exists($dir)) {
             foreach ($f in [System.IO.Directory]::GetFiles($dir, '*.zip')) {
-                if (-not [System.IO.Path]::GetFileName($f).StartsWith('pre-restore_')) { $has = $true; break }
+                $fnB = [System.IO.Path]::GetFileNameWithoutExtension($f)
+                if ($fnB.StartsWith('pre-restore_')) { continue }
+                # Бэкап - только архив с именем-датой, как в Get-SaveBackupList (иначе кнопка «Вернуть» была активна при пустом списке).
+                $dtB = [datetime]::MinValue
+                if ([datetime]::TryParseExact($fnB, 'yyyy-MM-dd_HH-mm-ss', [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::None, [ref]$dtB)) { $has = $true; break }
             }
         }
         $script:saveHasBackupCache[$dir] = $has
@@ -54235,8 +54308,11 @@ function Add-UpscalerLibraryControls ($owner, $container) {
     $container.Controls.Add($status)
     $ctx.Status = $status
 
-    # --- Галочка «Обновлять при добавлении» — в строке кнопок, на месте прежнего статуса ---
-    $autoLeft = (140 + 8 + 112 + 8 + 28 + 10)
+    # --- Галочка «Обновлять при добавлении» — в начале строки, кнопки — в конце строки ---
+    # Строка: слева галочка с подписью, справа (по правому краю блока) кнопки «Выбрать последние», «Обновить все» и папка.
+    $autoLeft = 0
+    $btnsW = (140 + 8 + 112 + 8 + 28)
+    $btnsLeft = [int]($W - $btnsW)
     $chkAuto = New-Object System.Windows.Forms.Panel
     $chkAuto.Location = New-Object System.Drawing.Point($autoLeft, ($rowY + 3))
     $chkAuto.Size = New-Object System.Drawing.Size(22, 22)
@@ -54264,7 +54340,7 @@ function Add-UpscalerLibraryControls ($owner, $container) {
     $chkAutoLabel = New-Object System.Windows.Forms.Label
     $chkAutoLabel.Text = (T 'upl_auto_update')
     $chkAutoLabel.Location = New-Object System.Drawing.Point(($autoLeft + 26), $rowY)
-    $chkAutoLabel.Size = New-Object System.Drawing.Size(([Math]::Max(60, $W - ($autoLeft + 26))), 28)
+    $chkAutoLabel.Size = New-Object System.Drawing.Size(([Math]::Max(60, $btnsLeft - 8 - ($autoLeft + 26))), 28)
     $chkAutoLabel.ForeColor = $steamUi.Muted
     $chkAutoLabel.BackColor = $container.BackColor
     $chkAutoLabel.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
@@ -54284,11 +54360,11 @@ function Add-UpscalerLibraryControls ($owner, $container) {
     # Значение читает обработчик «Сохранить» окна настроек; до сохранения глобальная настройка не меняется.
     $script:upscalerAutoChk = $chkAuto
 
-    # --- Кнопки «Выбрать последние» и «Обновить все» — внизу слева, под плитками ---
+    # --- Кнопки «Выбрать последние» и «Обновить все» — внизу справа, под плитками ---
     $btnAll = New-Object System.Windows.Forms.Button
     $btnAll.Text = (T 'upl_update_all')
     $btnAll.Size = New-Object System.Drawing.Size(112, 28)
-    $btnAll.Location = New-Object System.Drawing.Point((140 + 8), $rowY)
+    $btnAll.Location = New-Object System.Drawing.Point(($btnsLeft + 140 + 8), $rowY)
     $btnAll.FlatStyle = 'Flat'
     $btnAll.FlatAppearance.BorderColor = $steamUi.Border
     $btnAll.BackColor = $steamUi.Panel
@@ -54302,12 +54378,12 @@ function Add-UpscalerLibraryControls ($owner, $container) {
 
     # Кнопка папки — сразу правее «Обновить все», той же высоты, что и остальные кнопки.
     $btnFolder.Size = New-Object System.Drawing.Size(28, 28)
-    $btnFolder.Location = New-Object System.Drawing.Point((140 + 8 + 112 + 8), $rowY)
+    $btnFolder.Location = New-Object System.Drawing.Point(($btnsLeft + 140 + 8 + 112 + 8), $rowY)
 
     $btnLatest = New-Object System.Windows.Forms.Button
     $btnLatest.Text = (T 'upl_select_latest')
     $btnLatest.Size = New-Object System.Drawing.Size(140, 28)
-    $btnLatest.Location = New-Object System.Drawing.Point(0, $rowY)
+    $btnLatest.Location = New-Object System.Drawing.Point($btnsLeft, $rowY)
     $btnLatest.FlatStyle = 'Flat'
     $btnLatest.FlatAppearance.BorderColor = $steamUi.Border
     $btnLatest.BackColor = $steamUi.Panel
@@ -54720,6 +54796,7 @@ function Add-EmulatorsManagerControls ($owner, $container) {
     $listBottomGap = 13
 
     $lv = New-Object System.Windows.Forms.ListView
+    Enable-SmoothPaint $lv
     $lv.Location = New-Object System.Drawing.Point(0, 0)
     $lv.Size = New-Object System.Drawing.Size($container.ClientSize.Width, ($btnRowTop - $listBottomGap))
     # Список снова растягивается на всю высоту колонки (кроме строки кнопок).
@@ -54837,7 +54914,9 @@ function Add-EmulatorsManagerControls ($owner, $container) {
         $sf.LineAlignment = [System.Drawing.StringAlignment]::Center
         $sf.Trimming = [System.Drawing.StringTrimming]::EllipsisCharacter
         $sf.FormatFlags = [System.Drawing.StringFormatFlags]::NoWrap
-        $textRect = New-Object System.Drawing.RectangleF(($e.Bounds.X + 6), $e.Bounds.Y, ($e.Bounds.Width - 8), $e.Bounds.Height)
+        $icoShift = 0
+        if ($e.ColumnIndex -eq 0) { $icoShift = [int](Draw-ManagerRowIcon $e.Graphics $e.Bounds $e.Item) }
+        $textRect = New-Object System.Drawing.RectangleF(($e.Bounds.X + 6 + $icoShift), $e.Bounds.Y, ($e.Bounds.Width - 8 - $icoShift), $e.Bounds.Height)
         $e.Graphics.DrawString($e.SubItem.Text, $e.Item.Font, (New-Object System.Drawing.SolidBrush($fg)), $textRect, $sf)
     })
 
@@ -54859,6 +54938,7 @@ function Add-EmulatorsManagerControls ($owner, $container) {
             [void]$item.SubItems.Add([string]$ep.Extensions)
             [void]$item.SubItems.Add([string]$ep.Args)
             $item.Tag = $ep.Id
+            try { $global:mgrIconMap[[string]$ep.Id] = (Get-EmulatorIconBitmap $ep) } catch { $global:mgrIconMap[[string]$ep.Id] = $null }
             [void]$lv.Items.Add($item)
         }
         # Сортировка (по умолчанию — по названию) должна сохраняться и после
@@ -55400,6 +55480,7 @@ function Show-ProgramSettingsDialog {
     $pnlRomsManager.Location = New-Object System.Drawing.Point($romsContentX, 81)
     $pnlRomsManager.Size = New-Object System.Drawing.Size($romsContentWidth, $romsPanelHeight)
     $pnlRomsManager.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Bottom
+    Enable-SmoothPaint $pnlRomsManager
     $dlg.Controls.Add($pnlRomsManager)
     Add-EmulatorsManagerControls $dlg $pnlRomsManager
 
@@ -55409,6 +55490,7 @@ function Show-ProgramSettingsDialog {
     $pnlWrappersManager.Size = $pnlRomsManager.Size
     $pnlWrappersManager.Anchor = $pnlRomsManager.Anchor
     $pnlWrappersManager.Visible = $false
+    Enable-SmoothPaint $pnlWrappersManager
     $dlg.Controls.Add($pnlWrappersManager)
     Add-WrappersManagerControls $dlg $pnlWrappersManager
 
@@ -55417,6 +55499,7 @@ function Show-ProgramSettingsDialog {
     $pnlFramesManager.Size = $pnlRomsManager.Size
     $pnlFramesManager.Anchor = $pnlRomsManager.Anchor
     $pnlFramesManager.Visible = $false
+    Enable-SmoothPaint $pnlFramesManager
     $dlg.Controls.Add($pnlFramesManager)
     Add-FramesManagerControls $dlg $pnlFramesManager
 
@@ -55501,6 +55584,8 @@ function Show-ProgramSettingsDialog {
     $wrapSection.Add_Click({ & $selectSettingsTab 1 }.GetNewClosure())
     $framesSection.Add_Click({ & $selectSettingsTab 2 }.GetNewClosure())
     & $selectSettingsTab 0
+    # После показа окна ещё раз переставляем вкладки и перерисовываем: активная вкладка на 1 px закрывает верхнюю границу таблицы.
+    $dlg.Add_Shown({ try { & $selectSettingsTab $tabState.Tab } catch {} }.GetNewClosure())
 
     $pnlSaves = New-Object System.Windows.Forms.Panel
     $pnlSaves.Location = New-Object System.Drawing.Point($romsContentX, $savesTop)
@@ -55513,6 +55598,7 @@ function Show-ProgramSettingsDialog {
     $pnlUpscalers.Location = New-Object System.Drawing.Point($romsContentX, $upscalerTop)
     $pnlUpscalers.Size = New-Object System.Drawing.Size($romsContentWidth, $upscalerHeight)
     $pnlUpscalers.Anchor = [System.Windows.Forms.AnchorStyles]::Bottom -bor [System.Windows.Forms.AnchorStyles]::Left
+    Enable-SmoothPaint $pnlUpscalers -Composited
     $dlg.Controls.Add($pnlUpscalers)
     try { Add-UpscalerLibraryControls $dlg $pnlUpscalers } catch { try { Write-LauncherLog ('Add-UpscalerLibraryControls: ' + $_.Exception.Message) } catch {} }
 
@@ -56367,6 +56453,7 @@ function Show-ProgramSettingsDialog {
     $dlg.Controls.Add($btnRestoreBackup)
 
     $lvBackups = New-Object System.Windows.Forms.ListView
+    Enable-SmoothPaint $lvBackups
     $lvBackups.Location = New-Object System.Drawing.Point(20, 601)
     $lvBackups.Size = New-Object System.Drawing.Size(500, 96)
     $lvBackups.View = [System.Windows.Forms.View]::Details
@@ -58025,6 +58112,30 @@ function Get-ConfidenceBadgeBitmap([bool]$confident) {
                 $g.FillEllipse($dotBrush, 7.9, 12.3, 2.2, 2.2)
                 $dotBrush.Dispose()
             }
+            $glyphPen.Dispose(); $pen.Dispose(); $brush.Dispose()
+        } finally { $g.Dispose() }
+        return $bmp
+    } catch { return $null }
+}
+
+# Красный кружок с белым крестиком (18x18, в стиле Get-ConfidenceBadgeBitmap): «не найдено».
+function Get-NotFoundBadgeBitmap {
+    try {
+        $size = 18
+        $bmp = New-Object System.Drawing.Bitmap $size, $size
+        $g = [System.Drawing.Graphics]::FromImage($bmp)
+        try {
+            $g.Clear([System.Drawing.Color]::Transparent)
+            $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+            $brush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 224, 82, 82))
+            $pen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(255, 176, 50, 50), 1.4)
+            $g.FillEllipse($brush, 1, 1, $size - 2, $size - 2)
+            $g.DrawEllipse($pen, 1, 1, $size - 2, $size - 2)
+            $glyphPen = New-Object System.Drawing.Pen([System.Drawing.Color]::White, 2.1)
+            $glyphPen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+            $glyphPen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+            $g.DrawLine($glyphPen, 6.0, 6.0, 12.0, 12.0)
+            $g.DrawLine($glyphPen, 12.0, 6.0, 6.0, 12.0)
             $glyphPen.Dispose(); $pen.Dispose(); $brush.Dispose()
         } finally { $g.Dispose() }
         return $bmp
@@ -70811,6 +70922,8 @@ function Show-SteamLibraryBrowser {
     # Позицию прокрутки сохраняем, чтобы список не прыгал в начало.
     $refreshLibAfterEdit = {
         param($entry)
+        # Пересборка плиток идёт без индикатора прогресса - на это время показываем песочные часы.
+        Invoke-WithWaitCursor $dlg {
         try {
             if ($dlg.IsDisposed) { return }
             try {
@@ -70828,6 +70941,7 @@ function Show-SteamLibraryBrowser {
             if (-not $incOk) { & $refreshSteamTabEntries }
             try { & $resetLibraryScroll $savedY } catch {}
         } catch {}
+        }
     }
 
     $openEntry = {
@@ -75116,6 +75230,9 @@ function Show-SteamLibraryBrowser {
         $script:libRefreshing = $true
         $btnLibRefresh.Enabled = $false
         $prevCursor = $dlg.Cursor
+        # Если на окне уже включён UseWaitCursor, getter Cursor возвращает «песочные часы» - их нельзя запоминать как прежний курсор:
+        # иначе в finally они записались бы окну явным значением и остались навсегда (над панелями без своего курсора).
+        if ($dlg.UseWaitCursor -or ($null -ne $prevCursor -and $prevCursor -eq [System.Windows.Forms.Cursors]::WaitCursor)) { $prevCursor = [System.Windows.Forms.Cursors]::Default }
         try {
             $dlg.Cursor = [System.Windows.Forms.Cursors]::WaitCursor
             $lblCount.Text = (T 'lib_loading')
@@ -80510,9 +80627,12 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     $cardSaveOk.Cursor = [System.Windows.Forms.Cursors]::Default
     $cardSaveOk.Location = New-Object System.Drawing.Point(91, ($savesRowY + 5))
     $cardSaveOk.Size = New-Object System.Drawing.Size(18, 18)
-    $cardSaveOk.Image = (Get-ConfidenceBadgeBitmap $true)
+    $cardSaveBmpOk = (Get-ConfidenceBadgeBitmap $true)
+    $cardSaveBmpNo = (Get-NotFoundBadgeBitmap)
+    $cardSaveOk.Image = $cardSaveBmpOk
     $cardSaveOk.Visible = $false
     $dlg.Controls.Add($cardSaveOk)
+    $cardSaveOk.BringToFront()
     $newCardSaveBtn = {
         param([string]$text, [int]$x, [string]$fontName)
         $b = New-Object System.Windows.Forms.Button
@@ -80803,8 +80923,24 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
                 }
             } catch {}
             $cardSaveFoundBox.Dirs = @($fdirs)
-            $cardSaveOk.Visible = ($fdirs.Count -gt 0 -or $foundRegF)
-            if ($fdirs.Count -gt 0 -or $foundRegF) { $cardSaveTip.SetToolTip($cardSaveOk, (T 'save_card_found_tip')) }
+            # Зелёная галочка - сохранения найдены; красный крестик - не найдены.
+            if ($fdirs.Count -gt 0 -or $foundRegF) {
+                $cardSaveOk.Image = $cardSaveBmpOk
+                $cardSaveTip.SetToolTip($cardSaveOk, (T 'save_card_found_tip'))
+            } else {
+                $cardSaveOk.Image = $cardSaveBmpNo
+                $cardSaveTip.SetToolTip($cardSaveOk, (T 'save_card_notfound_tip'))
+            }
+            $cardSaveOk.Visible = ($null -ne $cardSaveOk.Image)
+            # Сохранения не найдены - активен только поиск (лупа): папка, бэкап и восстановление недоступны.
+            $savesFoundNow = ($fdirs.Count -gt 0 -or $foundRegF)
+            $btnCardSaveOpen.Enabled = ($fdirs.Count -gt 0)
+            $btnCardSaveBackup.Enabled = $savesFoundNow
+            $btnCardSaveRestore.Enabled = ($savesFoundNow -and $hasBk)
+            foreach ($bSv in @(@($btnCardSaveOpen, $btnCardSaveOpen.Enabled), @($btnCardSaveBackup, $btnCardSaveBackup.Enabled), @($btnCardSaveRestore, $btnCardSaveRestore.Enabled))) {
+                if ([bool]$bSv[1]) { $bSv[0].FlatAppearance.BorderColor = $steamUi.Accent2; $bSv[0].ForeColor = $steamUi.Text }
+                else { $bSv[0].FlatAppearance.BorderColor = $steamUi.Border; $bSv[0].ForeColor = $steamUi.Muted }
+            }
         } catch {}
     }
     # Не $btnCardSaveBackup.Visible: до показа формы геттер Visible у дочернего контрола всегда $false (родитель ещё не видим),
@@ -86040,7 +86176,7 @@ function Invoke-PanelCtxCollections {
         if ($missing.Count -gt 0) { [void]$errors.Add((T 'coll_missing' @(($missing.ToArray() -join ', ')))) }
 
         # Состав прочитываем заново и перерисовываем плитки (на случай, если сейчас включён фильтр по коллекции).
-        try { Update-PanelCollections } catch {}
+        Invoke-WithWaitCursor $form { try { Update-PanelCollections } catch {} }
         $script:panelCtxEntries = $null
         if ($errors.Count -gt 0) {
             Show-AppMessageBox($form, (T 'coll_fail' @(($errors.ToArray() -join "`n"))), $global:appTitle, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
@@ -86289,7 +86425,7 @@ function Invoke-PanelCtxWrapperSwap {
         }
         $script:panelCtxEntries = $null
         # Перечитываем панели, чтобы отметки/значки игр соответствовали новому ярлыку (отметки игр сохраняются).
-        if ($null -ne $swapRes -and [int]$swapRes.Done -gt 0) { try { Refresh-Panels } catch {} }
+        if ($null -ne $swapRes -and [int]$swapRes.Done -gt 0) { Invoke-WithWaitCursor $form { try { Refresh-Panels } catch {} } }
         try { $form.Activate() } catch {}
 
         $lines = New-Object System.Collections.Generic.List[string]
@@ -86620,7 +86756,7 @@ function Invoke-PanelCtxRomSwap {
         $script:panelCtxEntries = $null
         # Колонка «Эмулятор» в файловых панелях строится при обновлении панелей, поэтому после смены эмулятора перечитываем их
         # (отметки игр при этом сохраняются).
-        if ($null -ne $swapRes -and [int]$swapRes.Done -gt 0) { try { Refresh-Panels } catch {} }
+        if ($null -ne $swapRes -and [int]$swapRes.Done -gt 0) { Invoke-WithWaitCursor $form { try { Refresh-Panels } catch {} } }
         try { $form.Activate() } catch {}
 
         $lines = New-Object System.Collections.Generic.List[string]
