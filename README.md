@@ -344,6 +344,7 @@ If the program turned out to be useful:
   <a href="https://donatty.com/vitalibabinok"><img src="https://img.shields.io/badge/Donatty-Support-orange?style=for-the-badge" alt="Donatty"></a>
   <a href="https://destream.net/live/VitaliBabinok"><img src="https://img.shields.io/badge/DeStream-Support-blueviolet?style=for-the-badge" alt="DeStream"></a>
   <a href="https://boosty.to/babinok/donate"><img src="https://img.shields.io/badge/Boosty-Support-f15f2c?style=for-the-badge" alt="Boosty"></a>
+  <a href="https://discord.gg/6VaruFWNzz"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
 </p>
 
 **USDT** (minimum 5 USDT):

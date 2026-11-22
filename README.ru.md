@@ -344,6 +344,7 @@ Steam Commander — неофициальный проект сообщества
   <a href="https://donatty.com/vitalibabinok"><img src="https://img.shields.io/badge/Donatty-Поддержать-orange?style=for-the-badge" alt="Donatty"></a>
   <a href="https://destream.net/live/VitaliBabinok"><img src="https://img.shields.io/badge/DeStream-Поддержать-blueviolet?style=for-the-badge" alt="DeStream"></a>
   <a href="https://boosty.to/babinok/donate"><img src="https://img.shields.io/badge/Boosty-Поддержать-f15f2c?style=for-the-badge" alt="Boosty"></a>
+  <a href="https://discord.gg/6VaruFWNzz"><img src="https://img.shields.io/badge/Discord-Вступить-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
 </p>
 
 **USDT** (минимум 5 USDT):
