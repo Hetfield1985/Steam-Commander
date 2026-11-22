@@ -16,6 +16,10 @@
 [![Download](https://img.shields.io/badge/Download-Steam%20Commander.exe-blue?style=for-the-badge)](https://github.com/Hetfield1985/Steam-Commander/releases/latest)
 
 <p align="center">
+  <a href="https://discord.gg/6VaruFWNzz"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
+</p>
+
+<p align="center">
   <a href="#support"><img src="https://img.shields.io/badge/Donate-Support%20the%20project-orange?style=for-the-badge" alt="Donate"></a>
 </p>
 
