@@ -6,17 +6,27 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [2.3.3] - 2026-11-21
+## [2.3.4] - 2026-11-22
+
+### Added
+* **Icons in the emulator and wrapper tables of the settings.** The *Name* column of both tables now starts with the icon of the program (16 px, the same icon as in the emulator / wrapper indicator and the pick lists), and the name moves to the right of it. If a program has no icon, the name stays at its place. The icon of a wrapper is refreshed when it is added or edited.
+* **Red cross in the *Saves* row of the game card.** If the saves of the game are not found, a red circle with a white cross now stands at the place of the green check (with the tooltip *Saves of this game were not found*); before, the place stayed empty. Translated into all six languages.
+* **Saves buttons are locked when no saves are found.** In the *Saves* row of the card, if the saves of the game are not found, only the search (magnifier) button stays active; the *Folder*, *Backup* and *Restore* buttons are inactive (greyed out) until saves are found. *Restore* also needs an existing backup, as before.
 
 ### Improved
-* **Display scaling mode "GDI-scaled".** At start the program switches the process to the *GDI-scaled* DPI mode (the same as *System (Enhanced)* in the Windows compatibility settings; Windows 10 1809 and later). Text and controls are drawn crisper under display scaling above 100 %. The call is made before any window is created and is safe: on older systems it does nothing. To turn it off, delete the block at the top of the script.
+* **Order of the *Upscaler libraries* bottom row in the settings is reversed.** The *Update on add* check box with its label is now at the start of the row, and the buttons *Select latest*, *Update all* and *Folder* are at the end of the row (aligned to the right edge of the block); before, the buttons were on the left and the check box after them.
 
 ### Fixed
+* **The hourglass cursor could stay on the panel of the library window after applying frames.** When the tiles were rebuilt while the hourglass was already on, the window remembered the hourglass itself as its "previous" cursor and put it back as a permanent one. It is now remembered as the normal arrow. The hourglass is also shown at once after pressing *Apply*, not only after the mouse moves.
+* **Hourglass cursor during long waits without a progress bar.** After applying frames to the selected games in the *Library / Import* window, the cursor now stays an hourglass until the tiles are rebuilt (before, it went back to the arrow right after the covers were written, while the window kept working). The same is done after changing the emulator or wrapper and after saving the card of a game in the library, after changing the emulator or wrapper in the main window, and after changing collections there.
+* **Text in the settings tables flickered**, especially when the cursor moved over them. The tables of emulators and wrappers and the list of backups were drawn without double buffering, and the upscaler tiles painted their child controls one after another over a cleared background. The tables and the panels with them now use double buffering, and the panel of the upscaler libraries is drawn through one common buffer. The settings tabs are redrawn after the window is shown, so no light strips are left at their edges.
+* **The *Restore* button of the saves row was active when there were no backups.** The check for a backup counted any `.zip` file in the game backup folder, while the list of backups accepts only archives named by date (`yyyy-MM-dd_HH-mm-ss`), so with a foreign archive in the folder the button was active but the list was empty. Both now use the same rule, and the button is inactive when there is no backup.
 * **The card of an already added game no longer changes its frames by itself.** Before, when the card of a game that is already in Steam was opened, the frame set of the selected emulator profile (and the launcher badge) was put on the covers at once, so the card did not show what is really set in Steam. Now the card of an existing game shows its current state without any changes. The frame set of a profile is applied to such games only after your confirmation when the emulator profile is saved, or in the card when you change the emulator or the frame yourself. For a new game nothing changes: the frames of the profile are applied when the card is opened.
+* **The green check in the *Saves* row of the game card was hidden.** The check mark between the *Saves* label and the folder button was placed under the label (the label covers x=20..110, the check stands at x=91), so it never showed even when saves were found. It is now brought to the front, like the check marks of the *Name* and *Launch* fields.
 * **Launcher badge detection is made reliable.** The comparison of the chosen frame set with the launcher badge set in the emulator window, in the wrapper window and in the card now takes the id from one common function instead of reading the script variable directly, so the badge owner (`emu:` / `wrap:`) is assigned the same way everywhere.
 
 ### Changed
-* Application version is now 2.3.3.
+* Application version is now 2.3.4.
 
 ---
 
