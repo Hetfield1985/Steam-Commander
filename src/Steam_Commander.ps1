@@ -5415,6 +5415,19 @@ public class SteamToggleSwitch : Control
     private bool _checked;
     public event EventHandler CheckedChanged;
 
+    private bool _muted;
+    // Приглушённый вид (как у недоступной кнопки): меняет только цвет, клики не блокирует.
+    public bool Muted
+    {
+        get { return _muted; }
+        set
+        {
+            if (_muted == value) return;
+            _muted = value;
+            Invalidate();
+        }
+    }
+
     public bool Checked
     {
         get { return _checked; }
@@ -5457,7 +5470,9 @@ public class SteamToggleSwitch : Control
 
         using (GraphicsPath track = new GraphicsPath())
         using (SolidBrush trackBrush = new SolidBrush(
-            _checked ? Color.FromArgb(30, 144, 230) : Color.FromArgb(65, 72, 82)))
+            // Вкл: зелёный логотипа (ModeOn 142,196,28); приглушённый — тёмно-зелёный; выкл — серый трек.
+            _muted ? (_checked ? Color.FromArgb(55, 78, 22) : Color.FromArgb(36, 42, 50))
+                   : (_checked ? Color.FromArgb(142, 196, 28) : Color.FromArgb(65, 72, 82))))
         {
             track.AddArc(0, 0, h, h, 90, 180);
             track.AddArc(w - h, 0, h, h, 270, 180);
@@ -5468,13 +5483,114 @@ public class SteamToggleSwitch : Control
         int knob = h - 4;
         int x = _checked ? (w - knob - 2) : 2;
         int y = 2;
-        using (SolidBrush knobBrush = new SolidBrush(Color.White))
+        using (SolidBrush knobBrush = new SolidBrush(_muted ? Color.FromArgb(145, 154, 164) : Color.White))
         {
             g.FillEllipse(knobBrush, x, y, knob, knob);
         }
     }
 }
 '@
+
+# Счётчик отмеченных игр, выступающий за правый верхний угол кнопки (окно «Библиотека/Импорт»). Это отдельный маленький элемент поверх кнопки:
+# внутри кнопки рисовать за её границы нельзя. Сквозной для мыши (WM_NCHITTEST -> HTTRANSPARENT): клики и наведение достаются кнопке под ним.
+try {
+    if (-not ('ScCountBadge' -as [type])) {
+        Add-Type -ReferencedAssemblies @('System.Drawing','System.Windows.Forms') -TypeDefinition @'
+using System;
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Drawing.Text;
+using System.Windows.Forms;
+
+public class ScCountBadge : Control
+{
+    private string _txt = "";
+    private Color _fill = Color.Gray;
+    private Color _ring = Color.Black;
+    private int _ph = 12;
+    private int _pw = 12;
+    private float _pt = 7f;
+    private Font _font;
+    public bool Want;
+    public int PillW { get { return _pw; } }
+
+    public ScCountBadge()
+    {
+        SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+        SetStyle(ControlStyles.Selectable, false);
+        TabStop = false;
+        Visible = false;
+    }
+
+    protected override void WndProc(ref Message m)
+    {
+        if (m.Msg == 0x84) { m.Result = (IntPtr)(-1); return; }   // HTTRANSPARENT
+        base.WndProc(ref m);
+    }
+
+    private static GraphicsPath Pill(float x, float y, float w, float h)
+    {
+        GraphicsPath p = new GraphicsPath();
+        float d = h;
+        p.AddArc(x, y, d, d, 90, 180);
+        p.AddArc(x + w - d, y, d, d, 270, 180);
+        p.CloseFigure();
+        return p;
+    }
+
+    // Значок: «таблетка» pillH px высотой; вокруг неё кольцо 1 px цвета фона (отделяет от кнопки и панели). Возвращает true, если что-то изменилось.
+    public bool SetBadge(string text, Color fill, Color ring, int pillH, float fontPt)
+    {
+        if (text == _txt && fill == _fill && ring == _ring && pillH == _ph && fontPt == _pt) return false;
+        bool geo = (text.Length != _txt.Length) || pillH != _ph || fontPt != _pt;
+        _txt = text; _fill = fill; _ring = ring; _ph = pillH;
+        if (fontPt != _pt || _font == null)
+        {
+            if (_font != null) _font.Dispose();
+            _font = new Font("Segoe UI", fontPt, FontStyle.Bold, GraphicsUnit.Point);
+        }
+        _pt = fontPt;
+        if (geo || Region == null)
+        {
+            _pw = (int)Math.Round(Math.Max((double)pillH, pillH * 0.43 * text.Length + pillH * 0.43));
+            Size = new Size(_pw + 2, _ph + 2);
+            GraphicsPath gp = Pill(0, 0, _pw + 2, _ph + 2);
+            Region old = Region;
+            Region = new Region(gp);
+            gp.Dispose();
+            if (old != null) old.Dispose();
+        }
+        Invalidate();
+        return true;
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        Graphics g = e.Graphics;
+        g.Clear(_ring);
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        using (GraphicsPath gp = Pill(1, 1, _pw, _ph))
+        using (SolidBrush b = new SolidBrush(_fill))
+        { g.FillPath(b, gp); }
+        g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
+        using (StringFormat sf = new StringFormat())
+        using (SolidBrush tb = new SolidBrush(Color.White))
+        {
+            sf.Alignment = StringAlignment.Center;
+            sf.LineAlignment = StringAlignment.Center;
+            g.DrawString(_txt, _font, tb, new RectangleF(1f, 1.5f, _pw, _ph), sf);
+        }
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing && _font != null) { _font.Dispose(); _font = null; }
+        base.Dispose(disposing);
+    }
+}
+'@ -ErrorAction Stop
+    }
+} catch {}
 
 
 Set-SplashProgress 0.32
@@ -5547,6 +5663,7 @@ public class GlobalClickDefocusFilter : IMessageFilter
 try {
     Add-Type -ReferencedAssemblies @('System.Windows.Forms', 'System.Drawing') -TypeDefinition @'
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -5558,6 +5675,7 @@ public class SCToolTip : ToolTip
     private struct RECT { public int Left, Top, Right, Bottom; }
     [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr hWnd, out RECT rc);
     [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
+    [DllImport("user32.dll")] private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr w, IntPtr l);
     private const uint SWP_NOSIZE = 0x0001, SWP_NOZORDER = 0x0004, SWP_NOACTIVATE = 0x0010;
     private static readonly PropertyInfo HandleProp =
         typeof(ToolTip).GetProperty("Handle", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
@@ -5584,6 +5702,125 @@ public class SCToolTip : ToolTip
         OwnerDraw = true;
         Popup += OnTipPopup;
         Draw += OnTipDraw;
+        try { _all.Add(new WeakReference(this)); EnsureDisTimer(); } catch { }
+    }
+
+    // Подсказки неактивных кнопок во всей программе. Обычная подсказка WinForms на отключённом элементе не появляется (он не получает мышь),
+    // поэтому один общий таймер смотрит, что находится под курсором в активном окне, и если это отключённый элемент с подсказкой
+    // (из любого SCToolTip) - показывает её вручную через ShowAt. Для включённых элементов ничего не делает: у них работает обычная подсказка.
+    private static readonly List<WeakReference> _all = new List<WeakReference>();
+    private static Timer _disTimer;
+    private static Control _disCtl;
+    private static SCToolTip _disTip;
+    private static Form _disForm;
+    private static int _disSince;
+    private static bool _disShown;
+
+    private static void EnsureDisTimer()
+    {
+        if (_disTimer != null) return;
+        _disTimer = new Timer();
+        _disTimer.Interval = 100;
+        _disTimer.Tick += DisTick;
+        _disTimer.Start();
+    }
+
+    private static string FindTip(Control c, out SCToolTip owner, out Control ownerCtl)
+    {
+        owner = null; ownerCtl = null;
+        for (Control x = c; x != null; x = x.Parent)
+        {
+            for (int i = _all.Count - 1; i >= 0; i--)
+            {
+                SCToolTip t = _all[i].Target as SCToolTip;
+                if (t == null) continue;
+                string s = null;
+                try { s = t.GetToolTip(x); } catch { }
+                if (!string.IsNullOrEmpty(s)) { owner = t; ownerCtl = x; return s; }
+            }
+            if (x is Form) break;
+        }
+        return null;
+    }
+
+    // Пока открыто любое меню программы, подсказки не показываются (иначе подсказка кнопки, из которой выпало меню, ложится поверх него),
+    // а уже показанная убирается сразу (TTM_POP). Как только открытых меню не осталось, подсказки включаются обратно.
+    private static readonly List<ToolStripDropDown> _openMenus = new List<ToolStripDropDown>();
+    private static bool _menuSuppressed;
+    private static void MenusChanged()
+    {
+        _openMenus.RemoveAll(delegate(ToolStripDropDown d) { return d == null || d.IsDisposed || !d.Visible; });
+        if (_openMenus.Count > 0)
+        {
+            _menuSuppressed = true;
+            Suppress = true;
+            HideDis();
+            for (int i = _all.Count - 1; i >= 0; i--)
+            {
+                SCToolTip t = _all[i].Target as SCToolTip;
+                if (t == null) continue;
+                try { IntPtr h = (HandleProp != null) ? (IntPtr)HandleProp.GetValue(t, null) : IntPtr.Zero; if (h != IntPtr.Zero) SendMessage(h, 0x41C, IntPtr.Zero, IntPtr.Zero); } catch { }
+            }
+        }
+        else if (_menuSuppressed)
+        {
+            _menuSuppressed = false;
+            Suppress = false;
+        }
+    }
+    public static void WatchMenu(ToolStripDropDown m)
+    {
+        if (m == null) return;
+        m.Opened += delegate { try { if (!_openMenus.Contains(m)) _openMenus.Add(m); MenusChanged(); } catch { } };
+        m.Closed += delegate { try { _openMenus.Remove(m); MenusChanged(); } catch { } };
+    }
+
+    private static void HideDis()
+    {
+        try { if (_disCtl != null && _disTip != null && _disForm != null && !_disForm.IsDisposed) _disTip.Hide(_disForm); } catch { }
+        _disCtl = null; _disTip = null; _disForm = null; _disShown = false;
+    }
+
+    private static void DisTick(object sender, EventArgs e)
+    {
+        try
+        {
+            if (_menuSuppressed) MenusChanged();
+            Form f = Form.ActiveForm;
+            Point cp = Cursor.Position;
+            Control hit = null;
+            if (f != null && !f.IsDisposed && f.Visible && !Suppress && Control.MouseButtons == MouseButtons.None)
+            {
+                Control cur = f;
+                while (true)
+                {
+                    Control ch = cur.GetChildAtPoint(cur.PointToClient(cp), GetChildAtPointSkip.Invisible);
+                    if (ch == null) break;
+                    cur = ch;
+                }
+                if (!object.ReferenceEquals(cur, f)) hit = cur;
+            }
+            SCToolTip owner = null; Control oc = null; string txt = null;
+            if (hit != null)
+            {
+                txt = FindTip(hit, out owner, out oc);
+                if (txt == null || oc.Enabled) txt = null;
+            }
+            if (txt == null) { if (_disCtl != null) HideDis(); return; }
+            if (!object.ReferenceEquals(oc, _disCtl))
+            {
+                if (_disCtl != null) HideDis();
+                _disCtl = oc; _disTip = owner; _disForm = f; _disSince = Environment.TickCount; _disShown = false;
+                return;
+            }
+            if (!_disShown && (Environment.TickCount - _disSince) >= 450)
+            {
+                _disShown = true;
+                // Show отсчитывает координаты от левого верхнего угла окна (вместе с заголовком): считаем от курсора, подсказка - под ним.
+                _disTip.ShowAt(txt, f, cp.X - f.Left, cp.Y + 20 - f.Top, 8000);
+            }
+        }
+        catch { }
     }
 
     private static int ScaledMaxWidth()
@@ -5724,28 +5961,70 @@ function taskkill.exe {
 # процессы - её потомки, и они завершаются как обычно. При ошибке - запасной вариант без /T (только steam.exe и
 # steamwebhelper.exe).
 function Get-SteamKillArgs {
+    # ЗАЩИТА ОТ СИНЕГО ЭКРАНА (CRITICAL_PROCESS_DIED): дерево строится по ParentProcessId, а Windows не проверяет, что
+    # родитель жив, и переиспользует PID. Раньше csrss/wininit/winlogon (их родитель smss давно завершён) могли попасть
+    # в «потомки» steam.exe и были убиты. Теперь: (1) потомок принимается, только если он создан ПОЗЖЕ родителя;
+    # (2) системные процессы никогда не попадают в список; (3) процесс должен быть в той же сессии, что и steam.exe
+    # (системные сервисы живут в сессии 0); (4) при любом сомнении - запасной вариант без дерева.
+    $protected = @('system','registry','smss.exe','csrss.exe','wininit.exe','winlogon.exe','services.exe','lsass.exe',
+        'lsaiso.exe','svchost.exe','fontdrvhost.exe','dwm.exe','explorer.exe','sihost.exe','taskhostw.exe',
+        'ctfmon.exe','runtimebroker.exe','searchhost.exe','startmenuexperiencehost.exe','shellexperiencehost.exe',
+        'audiodg.exe','spoolsv.exe','memcompression','secure system','dllhost.exe','conhost.exe','wudfhost.exe',
+        'powershell.exe','pwsh.exe','wmiprvse.exe')
     try {
         $all = @(Get-CimInstance -ClassName Win32_Process -ErrorAction Stop)
+        $byPid = @{}
+        foreach ($pr in $all) { $byPid[[int]$pr.ProcessId] = $pr }
         $kids = @{}
         foreach ($pr in $all) {
             $pp = [int]$pr.ParentProcessId
+            if ($pp -le 4) { continue }
+            $par = $byPid[$pp]
+            if ($null -eq $par) { continue }
+            # родитель обязан быть старше потомка, иначе это переиспользованный PID
+            if ($null -eq $par.CreationDate -or $null -eq $pr.CreationDate) { continue }
+            if ($par.CreationDate -gt $pr.CreationDate) { continue }
             if (-not $kids.ContainsKey($pp)) { $kids[$pp] = New-Object System.Collections.Generic.List[int] }
             $kids[$pp].Add([int]$pr.ProcessId)
         }
         $q = New-Object System.Collections.Generic.Queue[int]
         $kill = New-Object 'System.Collections.Generic.HashSet[int]'
+        $steamSessions = New-Object 'System.Collections.Generic.HashSet[int]'
         foreach ($pr in $all) {
-            if ([string]$pr.Name -ieq 'steam.exe' -and [int]$pr.ProcessId -ne [int]$PID) { [void]$kill.Add([int]$pr.ProcessId); $q.Enqueue([int]$pr.ProcessId) }
+            if ([string]$pr.Name -ieq 'steam.exe' -and [int]$pr.ProcessId -ne [int]$PID) {
+                [void]$kill.Add([int]$pr.ProcessId); $q.Enqueue([int]$pr.ProcessId)
+                [void]$steamSessions.Add([int]$pr.SessionId)
+            }
         }
         while ($q.Count -gt 0) {
             $c = $q.Dequeue()
-            if ($kids.ContainsKey($c)) { foreach ($k in $kids[$c]) { if ($k -ne [int]$PID -and $kill.Add($k)) { $q.Enqueue($k) } } }
+            if (-not $kids.ContainsKey($c)) { continue }
+            foreach ($k in $kids[$c]) {
+                if ($k -eq [int]$PID) { continue }
+                $kp = $byPid[$k]
+                if ($null -eq $kp) { continue }
+                $nm = ([string]$kp.Name).ToLowerInvariant()
+                if ($protected -contains $nm) { continue }
+                if ($k -le 4) { continue }
+                if (-not $steamSessions.Contains([int]$kp.SessionId)) { continue }
+                if ($kill.Add($k)) { $q.Enqueue($k) }
+            }
         }
         [void]$kill.Remove([int]$PID)
-        if ($kill.Count -eq 0) { return @() }
+        # финальная страховка: ни при каких условиях не передаём защищённые имена и PID<=4
+        $final = New-Object System.Collections.Generic.List[int]
+        foreach ($k in $kill) {
+            $kp = $byPid[$k]
+            if ($null -eq $kp) { continue }
+            $nm = ([string]$kp.Name).ToLowerInvariant()
+            if ($k -le 4) { continue }
+            if ($nm -ne 'steam.exe' -and ($protected -contains $nm)) { continue }
+            $final.Add($k)
+        }
+        if ($final.Count -eq 0) { return @() }
         $a = New-Object System.Collections.Generic.List[string]
         $a.Add('/F')
-        foreach ($k in $kill) { $a.Add('/PID'); $a.Add([string]$k) }
+        foreach ($k in $final) { $a.Add('/PID'); $a.Add([string]$k) }
         return $a.ToArray()
     } catch {
         return @('/F', '/IM', 'steam.exe', '/IM', 'steamwebhelper.exe')
@@ -5917,7 +6196,7 @@ Set-SplashProgress 0.52
 # Единая версия приложения — используется в заголовке главного окна, в
 # подписи внизу окна настроек и в User-Agent HTTP-запросов. Меняйте только
 # здесь при выпуске новой версии.
-$global:appVersion = "2.3.4"
+$global:appVersion = "2.3.5"
 $global:appTitle = "Steam Commander"
 # Ссылки на исходный код и поддержку автора (окно «Поддержать» в настройках). Меняйте только здесь.
 $global:appRepoUrl = "https://github.com/Hetfield1985/Steam-Commander"
@@ -6113,7 +6392,7 @@ $script:I18n = @{
         batch_auto_tip = 'При пакетном добавлении игры с уверенно определёнными названием и exe добавляются сразу, без карточки. Карточка откроется только для неоднозначных игр.'
         btn_add_batch = 'Добавить выбранные игры в библиотеку'
         btn_add_batch_n = 'Добавить новые игры в библиотеку ({0})'
-        btn_steam_library = 'Библиотека / Импорт / Сохранения / DLSS Swap'
+        btn_steam_library = 'Библиотека / Импорт'
         btn_swap_emulator = 'Сменить эмулятор на {0} ({1})'
         rom_swap_not_added = 'нет ярлыка в Steam'
         rom_swap_multi = 'несколько ярлыков в папке игры'
@@ -6163,6 +6442,7 @@ $script:I18n = @{
         lib_coll_group = 'Группировать по коллекциям'
         lib_filter_coll_none = 'Без категории'
         lib_filter_coll_fav = 'Избранное'
+        lib_filter_coll_vr = 'Библиотека VR'
         lib_filter_coll_hidden = 'Скрытые'
         lib_restore_tip = 'Вернуть в выбранных играх оригинальные DLL апскейлеров из копий (.sc_orig).'
         lib_restore_confirm = 'Вернуть оригинальные библиотеки апскейлеров в выбранных играх: {0}.'
@@ -6233,6 +6513,8 @@ $script:I18n = @{
         coll_close_steam = 'Чтобы изменить коллекции, программа закроет Steam и запустит его снова. Продолжить?'
         coll_new = 'Создать коллекцию'
         coll_del_menu = 'Удалить коллекцию'
+        coll_rename_title = 'Новое название коллекции'
+        coll_renamed = 'Коллекция «{0}» переименована в «{1}»'
         coll_new_title = 'Название коллекции'
         coll_new_exists = 'Коллекция с таким названием уже есть: {0}'
         coll_del_confirm = 'Удалить коллекцию «{0}»? Игры останутся в библиотеке.'
@@ -6241,6 +6523,7 @@ $script:I18n = @{
         coll_deleted = 'Коллекция «{0}» удалена'
         coll_struct_fail = 'Не удалось изменить файлы коллекций Steam'
         coll_struct_done = 'Коллекции обновлены: создано — {0}, удалено — {1}'
+        coll_struct_done3 = 'Коллекции обновлены: создано — {0}, удалено — {1}, переименовано — {2}'
         coll_new_tag = 'Новая'
         coll_done = 'Коллекции обновлены: игр — {0}, изменено коллекций — {1}'
         coll_queued = 'Изменения коллекций ждут перезапуска Steam: они запишутся по кнопке «Перезапустить Steam»'
@@ -6382,6 +6665,11 @@ $script:I18n = @{
         btn_restart_steam = 'Перезапустить Steam'
         btn_change_coll = 'Изменить коллекции ({0})'
         btn_change_frames = 'Сменить рамки ({0})'
+        btn_apply_all = 'Применить изменения ({0})'
+        apply_all_emu = 'Эмулятор: {0}'
+        apply_all_wrap = 'Враппер: {0}'
+        apply_all_frames = 'Рамки: {0}'
+        apply_all_coll = 'Коллекции: {0}'
         btn_coll_tip = 'Изменить коллекции отмеченных игр'
         btn_coll_tip_editor = 'Изменить коллекции'
         btn_libs_tip = 'Библиотеки апскейлеров отмеченных игр'
@@ -6551,6 +6839,12 @@ $script:I18n = @{
         card_dlss_sr = 'DLSS'
         card_dlss_rr = 'Реконструкция лучей DLSS'
         card_dlss_fg = 'Генерация кадров DLSS'
+        card_fsr_dx12 = 'FSR 3.1 DirectX 12'
+        card_fsr_vk = 'FSR 3.1 Vulkan'
+        card_xess = 'XeSS'
+        card_xess_fg = 'Генерация кадров XeSS'
+        card_xess_dx11 = 'XeSS (DX11)'
+        card_xell = 'XeLL'
         card_dll_not_found = 'Отсутствует'
         card_dll_ver_tip = 'Версии библиотеки: зелёные скачаны, серые — нет, белая — версии нет в библиотеке (из папки игры или исходная)'
         card_dll_btn_restore = 'Восстановить'
@@ -6880,6 +7174,7 @@ $script:I18n = @{
         rom_emu_none = 'Эмулятор не выбран'
         rom_core_tip = 'Ядро RetroArch по умолчанию для новых игр (сохраняется в профиле активного эмулятора).'
         rom_emu_pick_tip = 'Клик — выбрать активный эмулятор из списка, добавленного в Настройках.'
+        rom_core_icon_tip = 'Клик — выбрать эмулятор. Правая кнопка — выбрать ядро RetroArch (сохраняется в профиле).'
         btn_remove_lib = 'Удалить из библиотеки'
         btn_remove_lib_tip = 'Удалить из библиотеки отмеченные игры ({0}). Файлы на диске не затрагиваются. Shift — удалить и саму игру с диска (сначала запускается деинсталлятор).'
         btn_remove_disk_tip = 'Shift: ПОЛНОСТЬЮ удалить с диска отмеченные файлы и папки ({0}). Игры из библиотеки сначала убираются из неё. В Корзину файлы не попадают.'
@@ -7106,7 +7401,7 @@ $script:I18n = @{
         batch_auto_tip = 'When adding several games, those whose name and exe are detected with confidence are added directly, without the card. The card opens only for ambiguous games.'
         btn_add_batch = 'Add selected games to library'
         btn_add_batch_n = 'Add new games to library ({0})'
-        btn_steam_library = 'Library / Import / Saves / DLSS Swap'
+        btn_steam_library = 'Library / Import'
         btn_swap_emulator = 'Switch emulator to {0} ({1})'
         rom_swap_not_added = 'no shortcut in Steam'
         rom_swap_multi = 'several shortcuts in the game folder'
@@ -7156,6 +7451,7 @@ $script:I18n = @{
         lib_coll_group = 'Group by collections'
         lib_filter_coll_none = 'Uncategorized'
         lib_filter_coll_fav = 'Favorites'
+        lib_filter_coll_vr = 'VR Library'
         lib_filter_coll_hidden = 'Hidden'
         lib_restore_tip = 'Restore the original upscaler DLLs in the selected games from the copies (.sc_orig).'
         lib_restore_confirm = 'Restore the original upscaler libraries in the selected games: {0}.'
@@ -7226,6 +7522,8 @@ $script:I18n = @{
         coll_close_steam = 'To change collections the program will close Steam and start it again. Continue?'
         coll_new = 'Create collection'
         coll_del_menu = 'Delete collection'
+        coll_rename_title = 'New collection name'
+        coll_renamed = 'Collection “{0}” renamed to “{1}”'
         coll_new_title = 'Collection name'
         coll_new_exists = 'A collection with this name already exists: {0}'
         coll_del_confirm = 'Delete the collection “{0}”? The games will stay in your library.'
@@ -7234,6 +7532,7 @@ $script:I18n = @{
         coll_deleted = 'Collection “{0}” deleted'
         coll_struct_fail = 'Could not change the Steam collection files'
         coll_struct_done = 'Collections updated: {0} created, {1} deleted'
+        coll_struct_done3 = 'Collections updated: {0} created, {1} deleted, {2} renamed'
         coll_new_tag = 'New'
         coll_done = 'Collections updated: {0} games, {1} collections changed'
         coll_queued = 'Collection changes are queued: they will be written when you click "Restart Steam"'
@@ -7375,6 +7674,11 @@ $script:I18n = @{
         btn_restart_steam = 'Restart Steam'
         btn_change_coll = 'Change collections ({0})'
         btn_change_frames = 'Change frames ({0})'
+        btn_apply_all = 'Apply changes ({0})'
+        apply_all_emu = 'Emulator: {0}'
+        apply_all_wrap = 'Wrapper: {0}'
+        apply_all_frames = 'Frames: {0}'
+        apply_all_coll = 'Collections: {0}'
         btn_coll_tip = 'Change collections of the selected games'
         btn_coll_tip_editor = 'Change collections'
         btn_libs_tip = 'Upscaler libraries of the selected games'
@@ -7544,6 +7848,12 @@ $script:I18n = @{
         card_dlss_sr = 'DLSS'
         card_dlss_rr = 'DLSS Ray Reconstruction'
         card_dlss_fg = 'DLSS Frame Generation'
+        card_fsr_dx12 = 'FSR 3.1 DirectX 12'
+        card_fsr_vk = 'FSR 3.1 Vulkan'
+        card_xess = 'XeSS'
+        card_xess_fg = 'XeSS Frame Generation'
+        card_xess_dx11 = 'XeSS (DX11)'
+        card_xell = 'XeLL'
         card_dll_not_found = 'Missing'
         card_dll_ver_tip = 'Library versions: green = downloaded, gray = not downloaded, white = version not in the library (from the game folder or the original)'
         card_dll_btn_restore = 'Restore'
@@ -7873,6 +8183,7 @@ $script:I18n = @{
         rom_emu_none = 'No emulator selected'
         rom_core_tip = 'Default RetroArch core for new games (saved in the active emulator''s profile).'
         rom_emu_pick_tip = 'Click to choose the active emulator from the list added in Settings.'
+        rom_core_icon_tip = 'Click to choose the emulator. Right-click to choose a RetroArch core (saved in the profile).'
         btn_remove_lib = 'Remove from library'
         btn_remove_lib_tip = 'Remove the checked games from the library ({0}). Files on disk are not touched. Hold Shift to also delete the installed game from disk (its uninstaller is run first).'
         btn_remove_disk_tip = 'Shift: PERMANENTLY delete the checked files and folders from disk ({0}). Library games are removed from the library first. Nothing goes to the Recycle Bin.'
@@ -7981,7 +8292,7 @@ $script:I18n = @{
         batch_auto_tip = '批量添加时，名称和 exe 能明确识别的游戏会直接加入库中，不显示卡片；仅无法明确识别的游戏才会打开卡片。'
         btn_add_batch = '＋  将所选游戏添加到库'
         btn_add_batch_n = '＋  将新游戏添加到库（{0}）'
-        btn_steam_library = '游戏库 / 导入 / 存档 / DLSS Swap'
+        btn_steam_library = '游戏库 / 导入'
         btn_swap_emulator = '切换模拟器为 {0}（{1}）'
         rom_swap_not_added = 'Steam 中没有快捷方式'
         lib_browser_title = '游戏库/导入'
@@ -8022,6 +8333,7 @@ $script:I18n = @{
         lib_coll_group = '按分类分组'
         lib_filter_coll_none = '未分类'
         lib_filter_coll_fav = '收藏'
+        lib_filter_coll_vr = 'VR 库'
         lib_filter_coll_hidden = '隐藏'
         lib_restore_tip = '用副本（.sc_orig）还原所选游戏中的原始超分 DLL。'
         lib_restore_confirm = '还原所选游戏中的原始超分库：{0}。'
@@ -8375,6 +8687,12 @@ $script:I18n = @{
         card_dlss_sr = 'DLSS'
         card_dlss_rr = 'DLSS 光线重建'
         card_dlss_fg = 'DLSS 帧生成'
+        card_fsr_dx12 = 'FSR 3.1 DirectX 12'
+        card_fsr_vk = 'FSR 3.1 Vulkan'
+        card_xess = 'XeSS'
+        card_xess_fg = 'XeSS 帧生成'
+        card_xess_dx11 = 'XeSS (DX11)'
+        card_xell = 'XeLL'
         card_dll_not_found = '缺失'
         covlang_next = '更多区域（第 {0}/{1} 页）。点击切换。'
         covlang_no_appid = '封面区域：需要先填写游戏的 App ID。'
@@ -8588,6 +8906,7 @@ $script:I18n = @{
         rom_emu_none = '未选择模拟器'
         rom_core_tip = '新游戏默认使用的 RetroArch 核心（保存在当前模拟器的配置中）。'
         rom_emu_pick_tip = '点击以从“设置”中添加的列表里选择当前模拟器。'
+        rom_core_icon_tip = '单击选择模拟器。右键选择 RetroArch 核心（保存在配置中）。'
         rom_emu_list_empty = '模拟器列表为空。请在“设置”的“模拟器 (ROM)”部分添加模拟器。'
         rom_popup_hdr = '模拟器'
         confirm_yes = '是'
@@ -8717,6 +9036,11 @@ $script:I18n = @{
         save_scan_pick_skipped = '未保存：已跳过选择'
         btn_change_coll = '更改收藏集（{0}）'
         btn_change_frames = '更改封面边框（{0}）'
+        btn_apply_all = '应用更改（{0}）'
+        apply_all_emu = '模拟器：{0}'
+        apply_all_wrap = '包装器：{0}'
+        apply_all_frames = '封面边框：{0}'
+        apply_all_coll = '收藏集：{0}'
         btn_coll_tip = '更改所选游戏的收藏集'
         btn_libs_tip = '所选游戏的超分库'
         btn_libs_upd_tip = '更新超分库（DLSS / FSR / XeSS / XeLL）'
@@ -8973,7 +9297,7 @@ $script:I18n = @{
         batch_auto_tip = 'Al añadir varios juegos, los que tienen nombre y exe detectados con seguridad se añaden directamente, sin mostrar la ficha. La ficha solo se abre en los casos ambiguos.'
         btn_add_batch = '＋  Añadir juegos seleccionados a la biblioteca'
         btn_add_batch_n = '＋  Añadir juegos nuevos a la biblioteca ({0})'
-        btn_steam_library = 'Biblioteca / Importación / Partidas / DLSS Swap'
+        btn_steam_library = 'Biblioteca / Importación'
         btn_swap_emulator = 'Cambiar emulador a {0} ({1})'
         rom_swap_not_added = 'sin acceso directo en Steam'
         lib_browser_title = 'Biblioteca/Importación'
@@ -9014,6 +9338,7 @@ $script:I18n = @{
         lib_coll_group = 'Agrupar por colecciones'
         lib_filter_coll_none = 'Sin categoría'
         lib_filter_coll_fav = 'Favoritos'
+        lib_filter_coll_vr = 'Biblioteca VR'
         lib_filter_coll_hidden = 'Ocultos'
         lib_restore_tip = 'Restaura las DLL originales de escalado en los juegos seleccionados desde las copias (.sc_orig).'
         lib_restore_confirm = 'Restaurar las bibliotecas de escalado originales en los juegos seleccionados: {0}.'
@@ -9367,6 +9692,12 @@ $script:I18n = @{
         card_dlss_sr = 'DLSS'
         card_dlss_rr = 'Reconstrucción de rayos DLSS'
         card_dlss_fg = 'Generación de fotogramas DLSS'
+        card_fsr_dx12 = 'FSR 3.1 DirectX 12'
+        card_fsr_vk = 'FSR 3.1 Vulkan'
+        card_xess = 'XeSS'
+        card_xess_fg = 'Generación de fotogramas XeSS'
+        card_xess_dx11 = 'XeSS (DX11)'
+        card_xell = 'XeLL'
         card_dll_not_found = 'Ausente'
         covlang_next = 'Más regiones (página {0} de {1}). Haz clic para cambiar.'
         covlang_no_appid = 'Región de portadas: primero se necesita el App ID del juego.'
@@ -9580,6 +9911,7 @@ $script:I18n = @{
         rom_emu_none = 'Ningún emulador seleccionado'
         rom_core_tip = 'Núcleo de RetroArch predeterminado para juegos nuevos (se guarda en el perfil del emulador activo).'
         rom_emu_pick_tip = 'Haz clic para elegir el emulador activo de la lista añadida en Ajustes.'
+        rom_core_icon_tip = 'Clic — elegir emulador. Clic derecho — elegir núcleo de RetroArch (se guarda en el perfil).'
         rom_emu_list_empty = 'La lista de emuladores está vacía. Añade un emulador en la sección «Emuladores (ROMs)» de Ajustes.'
         rom_popup_hdr = 'Emuladores'
         confirm_yes = 'Sí'
@@ -9709,6 +10041,11 @@ $script:I18n = @{
         save_scan_pick_skipped = 'No guardado: selección omitida'
         btn_change_coll = 'Cambiar colecciones ({0})'
         btn_change_frames = 'Cambiar marcos ({0})'
+        btn_apply_all = 'Aplicar cambios ({0})'
+        apply_all_emu = 'Emulador: {0}'
+        apply_all_wrap = 'Wrapper: {0}'
+        apply_all_frames = 'Marcos: {0}'
+        apply_all_coll = 'Colecciones: {0}'
         btn_coll_tip = 'Cambiar las colecciones de los juegos seleccionados'
         btn_libs_tip = 'Bibliotecas de escalado de los juegos seleccionados'
         btn_libs_upd_tip = 'Actualizar las bibliotecas de escalado (DLSS / FSR / XeSS / XeLL)'
@@ -9965,7 +10302,7 @@ $script:I18n = @{
         batch_auto_tip = 'Ao adicionar vários jogos, os que têm nome e exe detectados com segurança são adicionados direto, sem mostrar a ficha. A ficha só abre nos casos ambíguos.'
         btn_add_batch = '＋  Adicionar jogos selecionados à biblioteca'
         btn_add_batch_n = '＋  Adicionar jogos novos à biblioteca ({0})'
-        btn_steam_library = 'Biblioteca / Importação / Saves / DLSS Swap'
+        btn_steam_library = 'Biblioteca / Importação'
         btn_swap_emulator = 'Trocar emulador para {0} ({1})'
         rom_swap_not_added = 'sem atalho no Steam'
         lib_browser_title = 'Biblioteca/Importação'
@@ -10006,6 +10343,7 @@ $script:I18n = @{
         lib_coll_group = 'Agrupar por coleções'
         lib_filter_coll_none = 'Sem categoria'
         lib_filter_coll_fav = 'Favoritos'
+        lib_filter_coll_vr = 'Biblioteca VR'
         lib_filter_coll_hidden = 'Ocultos'
         lib_restore_tip = 'Restaura as DLLs originais de upscaler nos jogos selecionados a partir das cópias (.sc_orig).'
         lib_restore_confirm = 'Restaurar as bibliotecas de upscaler originais nos jogos selecionados: {0}.'
@@ -10359,6 +10697,12 @@ $script:I18n = @{
         card_dlss_sr = 'DLSS'
         card_dlss_rr = 'Reconstrução de raios DLSS'
         card_dlss_fg = 'Geração de quadros DLSS'
+        card_fsr_dx12 = 'FSR 3.1 DirectX 12'
+        card_fsr_vk = 'FSR 3.1 Vulkan'
+        card_xess = 'XeSS'
+        card_xess_fg = 'Geração de quadros XeSS'
+        card_xess_dx11 = 'XeSS (DX11)'
+        card_xell = 'XeLL'
         card_dll_not_found = 'Ausente'
         covlang_next = 'Mais regiões (página {0} de {1}). Clique para alternar.'
         covlang_no_appid = 'Região das capas: primeiro é necessário o App ID do jogo.'
@@ -10572,6 +10916,7 @@ $script:I18n = @{
         rom_emu_none = 'Nenhum emulador selecionado'
         rom_core_tip = 'Core do RetroArch padrão para novos jogos (salvo no perfil do emulador ativo).'
         rom_emu_pick_tip = 'Clique para escolher o emulador ativo na lista adicionada em Configurações.'
+        rom_core_icon_tip = 'Clique — escolher emulador. Botão direito — escolher core do RetroArch (salvo no perfil).'
         rom_emu_list_empty = 'A lista de emuladores está vazia. Adicione um emulador na seção «Emuladores (ROMs)» das Configurações.'
         rom_popup_hdr = 'Emuladores'
         confirm_yes = 'Sim'
@@ -10701,6 +11046,11 @@ $script:I18n = @{
         save_scan_pick_skipped = 'Não salvo: seleção ignorada'
         btn_change_coll = 'Alterar coleções ({0})'
         btn_change_frames = 'Alterar molduras ({0})'
+        btn_apply_all = 'Aplicar alterações ({0})'
+        apply_all_emu = 'Emulador: {0}'
+        apply_all_wrap = 'Wrapper: {0}'
+        apply_all_frames = 'Molduras: {0}'
+        apply_all_coll = 'Coleções: {0}'
         btn_coll_tip = 'Alterar as coleções dos jogos selecionados'
         btn_libs_tip = 'Bibliotecas de upscaling dos jogos selecionados'
         btn_libs_upd_tip = 'Atualizar as bibliotecas de upscaling (DLSS / FSR / XeSS / XeLL)'
@@ -10957,7 +11307,7 @@ $script:I18n = @{
         batch_auto_tip = 'Beim Hinzufügen mehrerer Spiele werden Spiele mit sicher erkanntem Namen und exe direkt hinzugefügt, ohne Karte. Die Karte öffnet sich nur bei uneindeutigen Spielen.'
         btn_add_batch = '＋  Ausgewählte Spiele zur Bibliothek hinzufügen'
         btn_add_batch_n = '＋  Neue Spiele zur Bibliothek hinzufügen ({0})'
-        btn_steam_library = 'Bibliothek / Import / Spielstände / DLSS Swap'
+        btn_steam_library = 'Bibliothek / Import'
         btn_swap_emulator = 'Emulator wechseln zu {0} ({1})'
         rom_swap_not_added = 'keine Verknüpfung in Steam'
         lib_browser_title = 'Bibliothek/Import'
@@ -10998,6 +11348,7 @@ $script:I18n = @{
         lib_coll_group = 'Nach Sammlungen gruppieren'
         lib_filter_coll_none = 'Ohne Kategorie'
         lib_filter_coll_fav = 'Favoriten'
+        lib_filter_coll_vr = 'VR-Bibliothek'
         lib_filter_coll_hidden = 'Versteckt'
         lib_restore_tip = 'Stellt in den ausgewählten Spielen die originalen Upscaler-DLLs aus den Kopien (.sc_orig) wieder her.'
         lib_restore_confirm = 'Originale Upscaler-Bibliotheken in den ausgewählten Spielen wiederherstellen: {0}.'
@@ -11351,6 +11702,12 @@ $script:I18n = @{
         card_dlss_sr = 'DLSS'
         card_dlss_rr = 'DLSS Strahlenrekonstruktion'
         card_dlss_fg = 'DLSS Frame-Generierung'
+        card_fsr_dx12 = 'FSR 3.1 DirectX 12'
+        card_fsr_vk = 'FSR 3.1 Vulkan'
+        card_xess = 'XeSS'
+        card_xess_fg = 'XeSS Frame-Generierung'
+        card_xess_dx11 = 'XeSS (DX11)'
+        card_xell = 'XeLL'
         card_dll_not_found = 'Fehlt'
         covlang_next = 'Weitere Regionen (Seite {0} von {1}). Klicken zum Wechseln.'
         covlang_no_appid = 'Cover-Region: Zuerst wird die App-ID des Spiels benötigt.'
@@ -11564,6 +11921,7 @@ $script:I18n = @{
         rom_emu_none = 'Kein Emulator ausgewählt'
         rom_core_tip = 'Standard-RetroArch-Core für neue Spiele (wird im Profil des aktiven Emulators gespeichert).'
         rom_emu_pick_tip = 'Klicken, um den aktiven Emulator aus der in den Einstellungen angelegten Liste auszuwählen.'
+        rom_core_icon_tip = 'Klick — Emulator wählen. Rechtsklick — RetroArch-Core wählen (wird im Profil gespeichert).'
         rom_emu_list_empty = 'Die Emulatorliste ist leer. Füge in den Einstellungen im Bereich „Emulatoren (ROMs)“ einen Emulator hinzu.'
         rom_popup_hdr = 'Emulatoren'
         confirm_yes = 'Ja'
@@ -11693,6 +12051,11 @@ $script:I18n = @{
         save_scan_pick_skipped = 'Nicht gespeichert: Auswahl übersprungen'
         btn_change_coll = 'Sammlungen ändern ({0})'
         btn_change_frames = 'Rahmen ändern ({0})'
+        btn_apply_all = 'Änderungen anwenden ({0})'
+        apply_all_emu = 'Emulator: {0}'
+        apply_all_wrap = 'Wrapper: {0}'
+        apply_all_frames = 'Rahmen: {0}'
+        apply_all_coll = 'Sammlungen: {0}'
         btn_coll_tip = 'Sammlungen der ausgewählten Spiele ändern'
         btn_libs_tip = 'Upscaler-Bibliotheken der ausgewählten Spiele'
         btn_libs_upd_tip = 'Upscaler-Bibliotheken aktualisieren (DLSS / FSR / XeSS / XeLL)'
@@ -12795,16 +13158,10 @@ function Start-SizeCalc {
     $script:sizeCalcCancel = $false
     $script:sizeCalcBtnSwapped = $false
     try {
-        if (-not ($script:moveInProgress -or $script:batchInProgress -or $script:smartBatchActive -or $script:libImportRunning)) {
-            $script:sizeCalcBtnSwapped = $true
-            foreach ($bb in @($btnAddToSteam, $btnRestartSteam, $btnSwapEmuMain, $btnApplyColl, $btnApplyFrames, $btnApplyLibs, $btnApplySaves)) {
-                try { if ($null -ne $bb) { $bb.Visible = $false } } catch {}
-            }
-            $btnSteamLibrary.Tag = (T 'btn_cancel_sizes')
-            $btnSteamLibrary.Enabled = $true
-            $btnSteamLibrary.Visible = $true
-            $btnSteamLibrary.Invalidate()
-        }
+        # Отмена подсчёта — кнопка «Отменить» в конце прогресс-бара ($btnProgCancel); нижние кнопки не трогаем.
+        # Кнопка показывается только вместе с баром: на время подсчёта бар стоит на 1%.
+        $script:sizeCalcBarSet = $false
+        try { if ([int]$progressBarFolder.Value -eq 0) { $progressBarFolder.Value = 1; $script:sizeCalcBarSet = $true } } catch {}
     } catch {}
     return $true
 }
@@ -12812,6 +13169,7 @@ function Start-SizeCalc {
 # Конец подсчёта (в finally): кнопки возвращаются в состояние, которое диктуют отметки в панелях.
 function Stop-SizeCalc {
     $script:sizeCalcActive = $false
+    if ($script:sizeCalcBarSet) { $script:sizeCalcBarSet = $false; try { if ([int]$progressBarFolder.Value -le 1) { $progressBarFolder.Value = 0 } } catch {} }
     $script:sizeCalcCancel = $false
     if ($script:sizeCalcBtnSwapped) {
         $script:sizeCalcBtnSwapped = $false
@@ -13037,7 +13395,7 @@ function Register-InstalledGameIconInfo ([string]$gamePath, [string]$iconVal, [s
         $iconClean = ([string]$iconVal).Trim().Trim('"')
         $hasIcon = -not [string]::IsNullOrWhiteSpace($iconClean)
         # ROM: показываем только выбранную иконку (без подмены значком эмулятора/exe).
-        if ($iconOnly -and -not $hasIcon) { return }
+        if ($iconOnly -and -not $hasIcon -and [string]::IsNullOrWhiteSpace($exeVal) -and [string]::IsNullOrWhiteSpace($launchOpts)) { return }
         if ($global:installedGameIcons.ContainsKey($k)) {
             $old = $global:installedGameIcons[$k]
             # Уже есть запись с выбранной иконкой — не затираем; иначе заменяем только записью с иконкой.
@@ -16591,6 +16949,8 @@ $steamUi = [ordered]@{
     Muted = [System.Drawing.Color]::FromArgb(145,154,164)
     Accent = [System.Drawing.Color]::FromArgb(102,192,244)
     Accent2 = [System.Drawing.Color]::FromArgb(26,159,255)
+    # Зелёный логотипа / стрелок «Перенос» (COMMANDER): значок активных кнопок режимов (рамка остаётся Accent2).
+    ModeOn = [System.Drawing.Color]::FromArgb(142,196,28)
     Selected = [System.Drawing.Color]::FromArgb(38,76,108)
     Green = [System.Drawing.Color]::FromArgb(92,173,112)
 }
@@ -17041,31 +17401,9 @@ $script:mainCoreSuppress = $false
 # везде, где обновляется индикатор активного эмулятора (старт программы,
 # переключение тумблера ROMs, быстрый пик эмулятора, Настройки).
 function Update-MainCoreSelector {
-    try {
-        $active = Get-ActiveEmulatorProfile
-        $isRA = ($active -ne $null) -and (Test-IsRetroArchProfile ([string]$active.Name) ([string]$active.ExePath))
-        $showCore = [bool]$script:romsModeEnabled -and $isRA
-        $pnlMainCore.Visible = $showCore
-        if (-not $showCore) { return }
-
-        $script:mainCoreSuppress = $true
-        try {
-            $prevFileCore = [string]$active.Core
-            $cmbMainCore.Items.Clear()
-            [void]$cmbMainCore.Items.Add($script:mainCorePlaceholderText)
-            $script:mainCoreFileNames = @('')
-            $selIdx = 0
-            foreach ($c in @(Get-RetroArchCoreDisplayList ([string]$active.ExePath))) {
-                [void]$cmbMainCore.Items.Add([string]$c.DisplayName)
-                $script:mainCoreFileNames += [string]$c.FileCore
-                if (-not [string]::IsNullOrWhiteSpace($prevFileCore) -and `
-                    [string]::Equals([string]$c.FileCore, $prevFileCore, [System.StringComparison]::OrdinalIgnoreCase)) {
-                    $selIdx = $cmbMainCore.Items.Count - 1
-                }
-            }
-            $cmbMainCore.SelectedIndex = $selIdx
-        } finally { $script:mainCoreSuppress = $false }
-    } catch {}
+    # Выпадающий список ядер под панелями убран: ядро выбирается ПКМ по значку RetroArch
+    # (см. Show-MainRetroArchCoreMenu), а имя ядра пишется под иконкой.
+    try { $pnlMainCore.Visible = $false } catch {}
 }
 
 # Выбор ядра здесь сразу пишется в профиль активного эмулятора (то же поле
@@ -17192,7 +17530,7 @@ function New-MainPanelHeader($title, $path, $x, $width) {
 # Кнопка-звезда после поля пути: добавить текущую папку панели в избранное / убрать. Звезда рисуется вручную.
 function New-PanelFavButton ([int]$X, [string]$Panel) {
     $b = New-Object System.Windows.Forms.Button
-    $b.Location = New-Object System.Drawing.Point($X, 43)
+    $b.Location = New-Object System.Drawing.Point($X, 48)
     $b.Size = New-Object System.Drawing.Size(28, 26)
     $b.Text = ''
     $b.Padding = New-Object System.Windows.Forms.Padding(0)
@@ -17274,7 +17612,7 @@ function New-PathDropButton ($PathPanel, [string]$Panel) {
 
 $lblC = New-MainPanelHeader (T 'panel_extra') "" 20 490
 $pnlPathC = New-Object System.Windows.Forms.Panel
-$pnlPathC.Location = New-Object System.Drawing.Point(20, 43)
+$pnlPathC.Location = New-Object System.Drawing.Point(20, 48)
 $pnlPathC.Size = New-Object System.Drawing.Size(426, 26)
 $pnlPathC.BackColor = $steamUi.Input
 $pnlPathC.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
@@ -17391,7 +17729,7 @@ function Set-BrowseIconButton ($Button, [int]$Width = 28, [bool]$WithTip = $true
 
 # Кнопка "Обзор..." выровнена по одной строке с полем пути (как в Steam).
 $btnSelectC = New-Object System.Windows.Forms.Button
-$btnSelectC.Location = New-Object System.Drawing.Point(482, 43)
+$btnSelectC.Location = New-Object System.Drawing.Point(482, 48)
 $btnSelectC.Size = New-Object System.Drawing.Size(90, 26)
 Set-BrowseIconButton $btnSelectC
 $btnSelectC.FlatStyle = "Flat"
@@ -17403,7 +17741,7 @@ $btnSelectC.Cursor = [System.Windows.Forms.Cursors]::Hand
 $form.Controls.Add($btnSelectC)
 
 $txtSearchC = New-Object System.Windows.Forms.TextBox
-$txtSearchC.Location = New-Object System.Drawing.Point(20, 76)
+$txtSearchC.Location = New-Object System.Drawing.Point(20, 81)
 $txtSearchC.Size = New-Object System.Drawing.Size(490, 24)
 $txtSearchC.Font = New-Object System.Drawing.Font("Segoe UI", 9)
 $txtSearchC.BackColor = $steamUi.Input
@@ -17417,8 +17755,8 @@ Set-TextBoxCue $txtSearchC (T 'search_cue')
 # колонок входил в обрамление окна списка. Рисуется подложкой цвета границы, а
 # заголовок и список лежат внутри неё с отступом 1 px (собственная рамка списка убрана).
 $pnlFrameC = New-Object System.Windows.Forms.Panel
-$pnlFrameC.Location = New-Object System.Drawing.Point(20, 104)
-$pnlFrameC.Size = New-Object System.Drawing.Size(490, 467)
+$pnlFrameC.Location = New-Object System.Drawing.Point(20, 109)
+$pnlFrameC.Size = New-Object System.Drawing.Size(490, 462)
 $pnlFrameC.BackColor = $steamUi.Border
 $form.Controls.Add($pnlFrameC)
 $pnlFrameC.SendToBack()
@@ -17498,8 +17836,8 @@ public class ScPanelListBox : ListBox
 '@
 }
 $listBoxC = New-Object ScPanelListBox
-$listBoxC.Location = New-Object System.Drawing.Point(21, 127)
-$listBoxC.Size = New-Object System.Drawing.Size(488, 443)
+$listBoxC.Location = New-Object System.Drawing.Point(21, 132)
+$listBoxC.Size = New-Object System.Drawing.Size(488, 438)
 $listBoxC.SelectionMode = "One"
 $listBoxC.DrawMode = [System.Windows.Forms.DrawMode]::OwnerDrawFixed
 $listBoxC.ItemHeight = 27
@@ -17531,7 +17869,7 @@ $form.Controls.Add($lblEmptyC)
 
 $lblD = New-MainPanelHeader (T 'panel_main') "" 570 490
 $pnlPathD = New-Object System.Windows.Forms.Panel
-$pnlPathD.Location = New-Object System.Drawing.Point(570, 43)
+$pnlPathD.Location = New-Object System.Drawing.Point(570, 48)
 $pnlPathD.Size = New-Object System.Drawing.Size(426, 26)
 $pnlPathD.BackColor = $steamUi.Input
 $pnlPathD.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
@@ -17557,7 +17895,7 @@ $btnFavD = New-PanelFavButton 1000 'D'
 
 # Кнопка "Обзор..." выровнена по одной строке с полем пути (как в Steam).
 $btnSelectD = New-Object System.Windows.Forms.Button
-$btnSelectD.Location = New-Object System.Drawing.Point(1032, 43)
+$btnSelectD.Location = New-Object System.Drawing.Point(1032, 48)
 $btnSelectD.Size = New-Object System.Drawing.Size(90, 26)
 Set-BrowseIconButton $btnSelectD
 $btnSelectD.FlatStyle = "Flat"
@@ -17570,7 +17908,7 @@ $form.Controls.Add($btnSelectD)
 
 
 $txtSearchD = New-Object System.Windows.Forms.TextBox
-$txtSearchD.Location = New-Object System.Drawing.Point(570, 76)
+$txtSearchD.Location = New-Object System.Drawing.Point(570, 81)
 $txtSearchD.Size = New-Object System.Drawing.Size(490, 24)
 $txtSearchD.Font = New-Object System.Drawing.Font("Segoe UI", 9)
 $txtSearchD.BackColor = $steamUi.Input
@@ -17584,15 +17922,15 @@ Set-TextBoxCue $txtSearchD (T 'search_cue')
 # колонок входил в обрамление окна списка. Рисуется подложкой цвета границы, а
 # заголовок и список лежат внутри неё с отступом 1 px (собственная рамка списка убрана).
 $pnlFrameD = New-Object System.Windows.Forms.Panel
-$pnlFrameD.Location = New-Object System.Drawing.Point(570, 104)
-$pnlFrameD.Size = New-Object System.Drawing.Size(490, 467)
+$pnlFrameD.Location = New-Object System.Drawing.Point(570, 109)
+$pnlFrameD.Size = New-Object System.Drawing.Size(490, 462)
 $pnlFrameD.BackColor = $steamUi.Border
 $form.Controls.Add($pnlFrameD)
 $pnlFrameD.SendToBack()
 
 $listBoxD = New-Object ScPanelListBox
-$listBoxD.Location = New-Object System.Drawing.Point(571, 127)
-$listBoxD.Size = New-Object System.Drawing.Size(488, 443)
+$listBoxD.Location = New-Object System.Drawing.Point(571, 132)
+$listBoxD.Size = New-Object System.Drawing.Size(488, 438)
 $listBoxD.SelectionMode = "One"
 $listBoxD.DrawMode = [System.Windows.Forms.DrawMode]::OwnerDrawFixed
 $listBoxD.ItemHeight = 27
@@ -18322,6 +18660,11 @@ function Test-MainActionModeActive {
     return (([string]$script:mainLibsMode -ne '') -or ([string]$script:mainSavesMode -ne ''))
 }
 
+# Включён режим ROMs или Wrappers: доступны только их действия (смена эмулятора / враппера), остальные кнопки действий неактивны.
+function Test-MainRomWrapperModeActive {
+    return ([bool]$script:romsModeEnabled -or [bool]$script:wrappersModeEnabled)
+}
+
 # Идёт смена коллекций уже добавленных игр: в списке коллекций есть ожидающие изменения (внизу кнопка «Сменить коллекции»)
 # либо список коллекций открыли поверх выбранного действия с апскейлерами/сохранениями (флаг mainCollOnlyLibrary).
 $script:mainCollOnlyLibrary = $false
@@ -18467,8 +18810,8 @@ function Set-AllRowsChecked ([string]$source) {
 $pnlFrameC.SendToBack()
 $pnlFrameD.SendToBack()
 
-$script:sortHeaderLabelsC = New-SortHeaderRow 21 105 'C'
-$script:sortHeaderLabelsD = New-SortHeaderRow 571 105 'D'
+$script:sortHeaderLabelsC = New-SortHeaderRow 21 110 'C'
+$script:sortHeaderLabelsD = New-SortHeaderRow 571 110 'D'
 try { Update-AutoColWidths 'C'; Update-AutoColWidths 'D' } catch {}
 
 # Поиск — с той же задержкой в 350 мс, что и автопоиск обложек по названию
@@ -18494,11 +18837,175 @@ $txtSearchD.Add_TextChanged({ $searchTimerD.Stop(); $searchTimerD.Start() })
 
 $global:lastFocusedPanel = 'C'
 
+# Столбец кнопок между панелями: 10 слотов с шагом 50, от верха строки пути (y=43) до низа рамок списков (y=571).
+# Сохранения 43, Библиотеки 93, Рамки 143, Коллекции 193, Добавить 243, Перенести 293, Обновить 343, ROMs 393, Wrappers 443,
+# «Удалить из библиотеки» / индикатор эмулятора 493 (индикатор 78 px, низ 571).
+#
+# «Добавить новые игры в библиотеку» над «Перенести игру»: белый плюс Steam (скруглённый квадрат с вырезанным плюсом), как на нижней
+# кнопке добавления. Счётчик - сколько отмеченных игр ещё не добавлено в Steam. Работает независимо от нижней кнопки: при смешанном
+# выборе (новые + уже добавленные) добавляются только новые игры.
+$script:mainAddableCount = 0
+$script:addGamesTipText = ''
+
+# Значок «Добавить игру» из клиента Steam (SVG viewBox 12x12): скруглённый квадрат (радиус 1) с вырезанным плюсом.
+# Геометрия 1:1 из SVG-пути Steam. $Size - сторона квадрата в px: на кнопках 42x42 все значки 20x20 (коллекции, рамки, библиотеки, сохранения).
+# Один путь с заливкой Alternate: плюс - «дырка» в квадрате. Цвет задаёт вызывающий (как у остальных значков: Text / Muted).
+function Draw-SteamAddGameGlyph ($g, [single]$X, [single]$Y, [single]$Size, $Color) {
+    $k = [double]$Size / 12.0
+    $d = [single](2.0 * $k)                     # диаметр скругления: радиус 1 в системе 12x12
+    $s = [single](12.0 * $k)
+    $br = New-Object System.Drawing.SolidBrush($Color)
+    $path = New-Object System.Drawing.Drawing2D.GraphicsPath([System.Drawing.Drawing2D.FillMode]::Alternate)
+    $oldSmooth = $g.SmoothingMode
+    try {
+        $path.AddArc($X, $Y, $d, $d, [single]180, [single]90)
+        $path.AddArc(($X + $s - $d), $Y, $d, $d, [single]270, [single]90)
+        $path.AddArc(($X + $s - $d), ($Y + $s - $d), $d, $d, [single]0, [single]90)
+        $path.AddArc($X, ($Y + $s - $d), $d, $d, [single]90, [single]90)
+        $path.CloseFigure()
+        # Плюс из SVG: центр (6;6), перекладина 3.14274..8.85703, толщина 5.0475..6.95227 - ОДИН 12-угольник (две перекладины дали бы точку в центре).
+        $lo = 3.14274; $a = 5.0475; $b = 6.95227; $hi = 8.85703
+        $raw = @(@($hi,$b), @($b,$b), @($b,$hi), @($a,$hi), @($a,$b), @($lo,$b), @($lo,$a), @($a,$a), @($a,$lo), @($b,$lo), @($b,$a), @($hi,$a))
+        $pts = New-Object 'System.Drawing.PointF[]' 12
+        for ($i = 0; $i -lt 12; $i++) { $pts[$i] = [System.Drawing.PointF]::new([single]($X + $k * $raw[$i][0]), [single]($Y + $k * $raw[$i][1])) }
+        $path.StartFigure()
+        $path.AddPolygon($pts)
+        $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+        $g.FillPath($br, $path)
+    } finally { $g.SmoothingMode = $oldSmooth; $path.Dispose(); $br.Dispose() }
+}
+
+function Draw-MainAddCountBadge ($btn) {
+    $n = 0
+    try { if ($btn.Enabled -and [int]$script:mainAddableCount -gt 0) { $n = [int]$script:mainAddableCount } } catch { $n = 0 }
+    Set-LibCountBadge $btn $n $steamUi.Accent2 $null 3
+}
+
+# Перенос/обновление/пакетное добавление идут - кнопка недоступна; по окончании состояние берётся из последнего подсчёта (его освежает Update-MainLibraryButtonState).
+function Set-MainAddGamesButtonBusy ([bool]$Busy) {
+    try {
+        if ($null -eq $btnMainAddGames) { return }
+        $btnMainAddGames.Enabled = (-not $Busy -and [int]$script:mainAddableCount -ge 1)
+        $btnMainAddGames.Invalidate()
+    } catch {}
+}
+
+# Краткая зелёная вспышка значка после клика (~0.5 с); рамка — Accent2, как у активных кнопок.
+$script:mainBtnPulseUntil = @{}
+$script:mainBtnPulseTimer = $null
+function Test-MainBtnGreenPulse ($btn) {
+    try {
+        if ($null -eq $btn -or $btn.IsDisposed) { return $false }
+        if ($null -eq $script:mainBtnPulseUntil -or -not $script:mainBtnPulseUntil.ContainsKey($btn)) { return $false }
+        $until = [datetime]$script:mainBtnPulseUntil[$btn]
+        return ([datetime]::UtcNow -lt $until)
+    } catch { return $false }
+}
+function Clear-MainBtnGreenPulse ($btn) {
+    try {
+        if ($null -eq $btn -or $btn.IsDisposed) { return }
+        if ($null -ne $script:mainBtnPulseUntil -and $script:mainBtnPulseUntil.ContainsKey($btn)) {
+            $script:mainBtnPulseUntil.Remove($btn)
+        }
+        # Рамку не трогаем, если кнопка в «занятом» состоянии обновления (синяя рамка busy).
+        $busy = $false
+        try { if ([object]::ReferenceEquals($btn, $btnRefreshLibrary) -and [bool]$script:refreshBtnBusy) { $busy = $true } } catch {}
+        if (-not $busy) {
+            try { $btn.FlatAppearance.BorderColor = $steamUi.Border } catch {}
+        }
+        try { $btn.Invalidate() } catch {}
+    } catch {}
+}
+function Start-MainBtnGreenPulse ($btn, [int]$Ms = 500) {
+    try {
+        if ($null -eq $btn -or $btn.IsDisposed) { return }
+        if ($null -eq $script:mainBtnPulseUntil) { $script:mainBtnPulseUntil = @{} }
+        $script:mainBtnPulseUntil[$btn] = [datetime]::UtcNow.AddMilliseconds([Math]::Max(200, $Ms))
+        # Рамка как у активных кнопок (Accent2); зелёным «загорается» только значок.
+        try { $btn.FlatAppearance.BorderColor = $steamUi.Accent2; $btn.Invalidate() } catch {}
+        if ($null -eq $script:mainBtnPulseTimer -or $script:mainBtnPulseTimer.IsDisposed) {
+            $script:mainBtnPulseTimer = New-Object System.Windows.Forms.Timer
+            $script:mainBtnPulseTimer.Interval = 80
+            $script:mainBtnPulseTimer.Add_Tick({
+                try {
+                    $now = [datetime]::UtcNow
+                    $dead = New-Object System.Collections.ArrayList
+                    foreach ($k in @($script:mainBtnPulseUntil.Keys)) {
+                        try {
+                            $until = [datetime]$script:mainBtnPulseUntil[$k]
+                            if ($now -ge $until) { [void]$dead.Add($k) }
+                        } catch { [void]$dead.Add($k) }
+                    }
+                    foreach ($k in $dead) {
+                        try { Clear-MainBtnGreenPulse $k } catch {}
+                    }
+                    if ($script:mainBtnPulseUntil.Count -eq 0) {
+                        try { $script:mainBtnPulseTimer.Stop() } catch {}
+                    }
+                } catch {}
+            })
+        }
+        try { $script:mainBtnPulseTimer.Start() } catch {}
+    } catch {}
+}
+
+$btnMainAddGames = New-Object System.Windows.Forms.Button
+$btnMainAddGames.Text = ''
+$btnMainAddGames.Padding = New-Object System.Windows.Forms.Padding(0)
+$btnMainAddGames.Location = New-Object System.Drawing.Point(519, 243)
+$btnMainAddGames.Size = New-Object System.Drawing.Size(42, 42)
+$btnMainAddGames.FlatStyle = "Flat"
+$btnMainAddGames.FlatAppearance.BorderColor = $steamUi.Border
+$btnMainAddGames.FlatAppearance.MouseOverBackColor = $steamUi.Selected
+$btnMainAddGames.BackColor = $steamUi.Panel
+$btnMainAddGames.ForeColor = $steamUi.Text
+$btnMainAddGames.Cursor = [System.Windows.Forms.Cursors]::Hand
+$btnMainAddGames.TabStop = $false
+$btnMainAddGames.Enabled = $false
+$btnMainAddGames.AccessibleName = 'Add new games'
+$btnMainAddGames.Add_Paint({
+    param($sender, $e)
+    try {
+        $g = $e.Graphics
+        $pulse = $false
+        try { $pulse = [bool](Test-MainBtnGreenPulse $sender) } catch {}
+        $hot = $false
+        try { $hot = ($sender.Enabled -and $sender.ClientRectangle.Contains($sender.PointToClient([System.Windows.Forms.Cursor]::Position))) } catch {}
+        $col = if ($pulse) { $steamUi.ModeOn } elseif (-not $sender.Enabled) { $steamUi.Muted } elseif ($hot) { $steamUi.Accent2 } else { $sender.ForeColor }
+        # Значок «Добавить игру» из Steam (тот же, что на нижней кнопке), 20x20 px - как остальные значки на кнопках 42x42.
+        $box = 20.0
+        $px = [single][Math]::Floor(($sender.ClientSize.Width - $box) / 2.0)
+        $py = [single][Math]::Floor(($sender.ClientSize.Height - $box) / 2.0)
+        Draw-SteamAddGameGlyph $g $px $py ([single]$box) $col
+        Draw-MainAddCountBadge $sender
+    } catch {}
+})
+$btnMainAddGames.Add_Click({
+    try {
+        if (-not $btnMainAddGames.Enabled -or $script:batchInProgress -or $script:moveInProgress) { return }
+        try { Start-MainBtnGreenPulse $btnMainAddGames 500 } catch {}
+        Move-FocusToSink $btnMainAddGames
+        # Нижняя кнопка скрыта, когда на её месте другое действие (смена рамок, коллекций, эмулятора...). Для добавления временно показываем её
+        # как «Добавить»: на время пакета она служит кнопкой отмены. Когда пакет закончится, Update-MainLibraryButtonState вернёт нужную кнопку.
+        if (-not [bool]$btnAddToSteam.Visible) {
+            foreach ($ob in @($btnSteamLibrary, $btnRestartSteam, $btnSwapEmuMain, $btnApplyColl, $btnApplyFrames, $btnApplyLibs, $btnApplySaves)) {
+                try { if ($null -ne $ob) { $ob.Visible = $false } } catch {}
+            }
+            $btnAddToSteam.Tag = (T 'btn_add_batch_n' @([int]$script:mainAddableCount))
+            $btnAddToSteam.Visible = $true
+            $btnAddToSteam.Enabled = $true
+        }
+        # Дальше - то же добавление, что у нижней кнопки: берёт только игры, которых ещё нет в Steam (уже добавленные пропускает).
+        $btnAddToSteam.PerformClick()
+    } catch {}
+})
+$form.Controls.Add($btnMainAddGames)
+
 $script:moveBtnBusy = $false
 $btnMoveGame = New-Object System.Windows.Forms.Button
 $btnMoveGame.Text = ''
 $btnMoveGame.Padding = New-Object System.Windows.Forms.Padding(0)
-$btnMoveGame.Location = New-Object System.Drawing.Point(519, 280)
+$btnMoveGame.Location = New-Object System.Drawing.Point(519, 293)
 $btnMoveGame.Size = New-Object System.Drawing.Size(42, 42)
 $btnMoveGame.FlatStyle = "Flat"
 $btnMoveGame.FlatAppearance.BorderColor = $steamUi.Border
@@ -18515,6 +19022,8 @@ $btnMoveGame.Add_Paint({
         $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
         $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
         $busyM = [bool]$script:moveBtnBusy
+        $hotM = $false
+        try { $hotM = (($sender.Enabled -or $busyM) -and $sender.ClientRectangle.Contains($sender.PointToClient([System.Windows.Forms.Cursor]::Position))) } catch {}
         if ($busyM) {
             # Идёт перенос: кнопка отключена, но рисуется «активной» (синяя рамка и стрелки), как остальные кнопки.
             $bbM = New-Object System.Drawing.SolidBrush($sender.BackColor)
@@ -18524,7 +19033,8 @@ $btnMoveGame.Add_Paint({
         $w = [double]$sender.ClientSize.Width
         $cy = [double]$sender.ClientSize.Height / 2.0
         $aw = 7.0; $ah = 14.0; $m = 10.0
-        $arrowCol = if ($busyM) { [System.Drawing.Color]::FromArgb(255, $steamUi.Accent2) } else { [System.Drawing.Color]::FromArgb($alpha, 142, 196, 28) }
+        # Наведение — синий (как у остальных кнопок); в покое — зелёный логотипа; при переносе — синий «занято».
+        $arrowCol = if ($busyM -or $hotM) { [System.Drawing.Color]::FromArgb(255, $steamUi.Accent2) } else { [System.Drawing.Color]::FromArgb($alpha, 142, 196, 28) }
         $br = New-Object System.Drawing.SolidBrush($arrowCol)
         $left = [System.Drawing.PointF[]]@(
             (New-Object System.Drawing.PointF($m, $cy)),
@@ -18537,15 +19047,47 @@ $btnMoveGame.Add_Paint({
         $g.FillPolygon($br, $left)
         $g.FillPolygon($br, $right)
         $br.Dispose()
+        # Есть отмеченные игры: в правом верхнем углу счётчик (как на кнопках «Рамки обложек», «Библиотеки», «Сохранения»).
+        if (-not $busyM) { Draw-MainSelCountBadge $sender $g } else { Set-LibCountBadge $sender 0 $steamUi.Accent2 }
     } catch {}
 })
 $form.Controls.Add($btnMoveGame)
+
+# Значок «обновить» (две круговые стрелки без фона): ваша картинка, превращённая в маску (белый рисунок на прозрачном фоне, PNG 128x128 в base64)
+# и перекрашенная в цвет темы - как значок «вернуть» (Draw-RestoreClockCore). Рисуется по центру ($cx, $cy) квадратом $Size px цветом $col.
+$script:RefreshPngB64 = 'iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAO4ElEQVR42u1dabAcVRX+zswkkD1AZAt7CAWkii0BCRQhwYUilj8st1KhEDSyF2BVFAhVShFKgSoFMQhEIvoDLNBfyqJBkAQQEqJRQGTfkrBDyAJ5eTPz+aPPybt0eubNdPfMdPfcU9U185Ke7nvvd7Z77j3nAp48efLkyZMnT548efLkyZMnT548efLkyZMnT54KS1L0DpIUp5/SQp+pFwBQROgZIH9gl/Sf6iJST/jMkj6PyhB1zwDZA70EACJSi/j/CoDJAHYGsKtekwCMAjBSb6sC2ATgAwBvAHhbv69p8kwqg9EzQG+AL4dBV2Y4CMB0AEcAOArAPgD2BDCmzVdsBrBGrycArAawSkSej2hHbjWD5FHaQ6BPAHACgJMBzAFwiGMComy7a+OjxkOa+ApVAP8F8CCAewA8KiKbQpooV1pB8gi8/j0bwLcU+L1CP6kpyMMB2oozSOdZ5dA9rwL4M4Dfi8jDIa1QL7oD2RXgTdXr3+NIfo/kSn6SaiQH9bPOzlE99C6XlpM8neSYsJnylMDG6/eJJC8h+UoIjCgguknGDC7TvUDyfJKjPSMklHqSI3QwX3MGuNpj0JsxQ9X5+1mSZ6q5AsmyfffUmtR/juSqHAA/HCM8RPJ4rw2GB7+in7uQvCkEfJ35I5cRaiSvNrOQJU0gWVD5wXRe6iQ/A+BGncvbvLqUc96uaR8EwL8AXAxgmcYw2NcMQLJkARSSlwFYqG2qAqgUTMkNANgBwFIR+bzb975kAJJlEamRHAtgCYCvOnPuUsHAN6DXA5guIq9khQEqPQK/IiJVkpMB/BHAp1XqywUE34JKZQAXKfjlqDWGvtAADvhTAdwLYEpBVb6R9e0OEfmm9b8vnUBH7U8D8BcEq3TdAp/OZ9R6QDhknMbY1PU5awAcDuBDdf4ys3BU6QH4Ux3wax1sAxWAcBy/VWDd9YRSTIaoa/++IyIfZEn1d5UB1OGpkdwbwH0O+J0IihhwldDzB1UC1wJ4C8CG0FRzHIDdtW0TAIyIUOXSRptNs/1cRJZmEfyumAAn6DFa579HdUDtm7S74GxBsI7/DwCPIVjGXQdgY6P5t7Z1HIL9A9MAzARwnLZ5hwZz+0aSXwLwHwDHaH/7c3XQifD9QaNigylH3Kqhv5eRPI/klGYaiWQldJWa3D+V5IUkHxnm3bZIVSU5QPJIM3/oR3LAX9AB8N11gc0kbyY5IyzRCm5ZQZdmYVj7/xCDSOieY0kuIbkltETMUB/nu2PQj+Dbit5sZ+k2jZh+PRRjX0zy4AjQSyn2pRRmBpLTSP42pA0M/PsN/CRx//B+iDyBLyp1O5F8KUJik0i9MdHDJI9zGS5N0IdhBnfVcnZog8p7JPc1TdLv0n9LE1sZ19ZX1aRIN4FvxggkR5K8kuRWkqcltfuOKZpI8ip7X97APylF8E21vkZyTpbUY0gbHG6+Rkq+0/Xa73Ny4U84DtQIkk+mpPoN/Mc1jpC5gUiTGR0BOkX7PaBO7rTMawKn8eelJP3bnCpdNcy0FCQFx1H9u5Bco/7OVh2Dlc6MRrIq/UJyAsl1EdOjuDb/fpKj+mE+7aj+O0NjYIJwVWaFwJH+S1KQfvvtCkfyS30C/hkRMZO6szVuVuaEwZH+cSlIv/1ure4X6AfJN+GZQnKDjkGtwbi8SHJ8pkyB04GzEkq/cXqV5An9EElzA1ck/z7M+Nm/35qpsXG8/9WhSF1c1b+gX8Kojuq/rMVwuf3/VzKhHR3pP8GR4iTgP67qrcKCJ1I4YzdDvf1WtsCbeX2H5J49jzg6nfh1ggWfurOP/ug+sfsWLh9F8qk2YyYmLHf3VFM64Vhz/uJqAGOaJX2o+m+IKTh2/wU9ExhH+r+QIOpX1+sjkvv3wyKKM25zHTDrMR3mRFHCpANtNvoUDO3KaZdq+pzbReRlBHUA6gUGvxR8cBKAxRjKg5CYYz8awG9Uo0hX/SZnCvNUQg1Q1YUU6cNoX9JNMr2JEpq6IXlQgk6YM7OsT6J95SbRvqRL5bGihEkG3H47A8EGzzhq2zZJ3p6SScq06ted0VMAXIftN7EmNcWipmC8mhjpNAMYTdfPegzwKwh2794b8xm5mfIBKKmGWwJgPIZyDtKgkvpSBwC4Tn2ocsc5Wj/vjxn+tfsfcaeUPtqXij/QcpSwFJejNZ9/JID9Ql5pu+p/uX6WCwp+WXMhZwC4Ap1LiDE86wBuJLkngPpwflVcE2Bg765XHAaw+1cUOdqn9nhHALdhKBlGOsgABPApAIs1EaUjDGC0C4IKnO3aM0uXHkSQsVNU+19We3wNgkyjahc0XVnfM5fk+ap9Kp3SALuG1Hm7ZLl6SZ6RddU/F8AF6GwibBQT1ABcQ/JQbUepEwywW0zw7P41CGryFlX1u9G+bjq5Ni0cBeC2ZlHCUpMIX8PLedikhAzwtg5Uebj35owHLJy9CEGiqYW7idZqFrc7llGXqIk9GsCPNTN5O7wjVVILWayDCtjIBI0GgPX6rlqBpN/qIMwD8LVm45yitDciS3FfQPIBEXkgnKZeiejASAT58VubPLyijsbEhI0fQXKi87xmDuOAiGzOOPii4O8P4HIA72P4QtVjsH0tgnZoi16NyFLVr9UyfB9qO/kJ7nHU7HgAfwNwIIby4BvRjnrFpcFhfABTZ5sBnCgiL7uNzzAjjEFQT6DWghAtAfAltF8zwe6/GsBPWxCikQA2iMhApAkQEap6+FBTmx/owliNaFGLXKrgZ7LKRoQJ3dyqc0tyMOHrPhCR9UkCB27DazrIDwK40pFSNrk65cQYN98lIrfkBfxWHWlnW/dOCYNDW/V5I1pw3luaBtbVK78CwOMqpXVsf/iCIJ2pTdQzze6vA3CuzmFzFSgSETa6TNh0/HeLyQB2/zv6zHqzdzYym6UGMwBqA88A8FEPAjU2jZknIu8GzSpkfZ3ROk1MwgBvJ5qvNuDeuhY0fAbAD5zIUjfIwqW/FJF7tB21ggFv4O2VYCa1TQMkEdBSExVW1cFfBOBudRg7DYSFS58GMF9Vf62Akm/jfqgzru2upQiCo+7eTV0DhPwBATBPOU06aIvpaIAzRGRLgVW/0TExpdfuf1Ov9DWAmQIEYc03AJyDofXmTkl/GcCPRGRlQVW/21cAmBXT/hvYL4vIoG4365ygODtaFqdY9iVqd9BDRU8Lc3ZS7Uvy45jJNLbz51oXn06YgG0cqw3/PoAXVVLT0gRmzzYCOFOlvshVNW3M5yKIolZjaAB7xqqkM7SWGEDBEBHZCODbKQeCbD58oYi8qAGfwiaGOILzjQQBoJIG6J7o6hTdMQULU05quCupKsuJ+i9rVO7wBIdhWfLNk103lU4Is0zysYT+gBV9XEtyktYX6JfEkFsTCJDlEf6iJ0LjODGHaGJiNWZio3V+rjs4BQbfahUfoImw9YQaoHfjFlEOLm5q8w39oPpD5vO2hHUUrH6SFc+SXnfoT22aAuPgp7Q4QuGPVHUE5hjnBNQkdRRu6bnWdFTaHlqupNZCdrBlAm91KoEU3e67JetXpFBEi3YUbZbqA325zQJHl/Wh6r88Ifjma61Oox5xL6KEbrRP+qQIlI3NLKcGUtIiWvMy5TQ7U8NxJJ9vUCjCzMMGO8qlj6Z8k536SbWEU+Y1JMdmbqt8qFRcFKeb6j+zTwI+NlUe6xwmkUbp3PmZnTI3iRJW+y3ap5+jnNT5JBFTN2A2PrOJMo4pKGmxR6q3b6prUhqNz7LpcIRgHMmlKYXLTYDOznzALCJKONCJqFWmvODtwd/Hme4lBd98hn879YQl6yrQBuJsbfz1aah+Z3vzEWF122uV7xTMPInk6ylWATHpn5156W+gCRbqwUeJVL9jV0/TgV1oeYk9PjSq4nxfEOH3pAH+TbkCv4MRx/1Ivu8M0CrNdUM3GSHi2Ljj9Qg7pnBKStTZABNzGy5P2nALGOl316N2Jex3JA+LCL12+uDIg7VAdi0UqUvrYMw6yRP7XfoN/PkRdtVdUBnQ41xnRj3DdaBSODp2hp6HuLnBMbZpVfq6tF/C5cPZ/SMV4EYSFra3j5K8iOTUFiS61cOjp5C8gOTyYd6dFvh3dgt8ySj4gmDfWwVBFbHDMJTnHvkTbF95cwDAPxEcH/8ogmJUawFsarTnUJlgLIDJCJI2ZgI4FkE11HaOj49Dlu69EsBsBDn/7PTm2KwygFXZ+BmAi9Fe7nwNQ1VIwwO8HkHC6ZsANmBog2YJQV2E3RCka01o8HtBZ6p8WU7ESwBmicha3etf7zsN4ID/WQBLMZQrGCd5oo6hbeflGKDYb0sdHCsDfy2AOSLyfDdT4bMWTTMVPwHAagB7Y6iefuLHO59RW9rDKe/dGBvTbGsBnCwiT3e7DkLWPMySJqUuArAP2i+b0gqzZ4XprW8vAJirkl8RkWpXBzxjqr9K8lQESRPVDDJoKl0NO3y9Aj8z0mDHqKjUr8JQ2ZSibRpxK63cCeC7IrKxl+VvMjPAOt25GUH94cECgl/FUDHnBSLydQW/1Mss6KyoWDvh4koE1UenN5jb51XqbayfA3COFmws6Ty/yHmQbQd/QHI0yZ+EVtZqzB/VQpHCX5HcWftY8Yg3cASd78c6hynniRHCZyev0JjGdn301EAThIpHn07y2RAjVHMg8a9q6pwtaBU+A6pTQSEzC+eS/F/E4kmtx6CHT/18jeQPSU7wUp++WdiR5KmaXBIFRNycu3YPuY5ivFUkzwoDn3Wpl7yYBY0S1px/O04DRl8EsG/oJ24cP25V06j6+2FJfh3AfQDuALDM2qdMm4syN5IzbWALM9sGV9OkZyKouTMHwTLuiBYAbTQezRimBuAZBIW0/wpguYhsCGmrXNU3yq1Toj6ChIMoJA8EcBSAIxGs4++NYH1/bJuv2IRg6fh1jU6uBrBKRJ5rYKJyWdgq916poxUkKpaujLIXgvDyrgD20O9jHU0xAOBjAO8BeAtB/d33Aaxr8MyKBaryXs2scNMS0wx61ZNG2vR5Jdd8FKmEXeHnpXbIVcjGt+L8oWhge/LkyZMnT548efLkyZMnT548efLkyZMnT548eeoz+j8Uf+A0pf12/gAAAABJRU5ErkJggg=='
+$script:RefreshPngBmp = $null
+function Draw-RefreshPngIcon ($g, [single]$cx, [single]$cy, [single]$Size, $col) {
+    $ia = $null
+    try {
+        if ($null -eq $script:RefreshPngBmp) {
+            $ms = New-Object System.IO.MemoryStream (,[Convert]::FromBase64String([string]$script:RefreshPngB64))
+            try {
+                $tmp = [System.Drawing.Image]::FromStream($ms)
+                try { $script:RefreshPngBmp = New-Object System.Drawing.Bitmap($tmp) } finally { $tmp.Dispose() }
+            } finally { $ms.Dispose() }
+        }
+        $cm = New-Object System.Drawing.Imaging.ColorMatrix
+        $cm.Matrix00 = [single]($col.R / 255.0)
+        $cm.Matrix11 = [single]($col.G / 255.0)
+        $cm.Matrix22 = [single]($col.B / 255.0)
+        $cm.Matrix33 = [single]($col.A / 255.0)
+        $cm.Matrix44 = [single]1.0
+        $ia = New-Object System.Drawing.Imaging.ImageAttributes
+        $ia.SetColorMatrix($cm)
+        $ia.SetWrapMode([System.Drawing.Drawing2D.WrapMode]::TileFlipXY)
+        $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+        $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+        $dest = New-Object System.Drawing.Rectangle([int][Math]::Round($cx - $Size / 2.0), [int][Math]::Round($cy - $Size / 2.0), [int][Math]::Round($Size), [int][Math]::Round($Size))
+        $g.DrawImage($script:RefreshPngBmp, $dest, 0, 0, $script:RefreshPngBmp.Width, $script:RefreshPngBmp.Height, [System.Drawing.GraphicsUnit]::Pixel, $ia)
+    } catch {} finally { if ($ia) { $ia.Dispose() } }
+}
 
 $script:refreshBtnBusy = $false
 $btnRefreshLibrary = New-Object System.Windows.Forms.Button
 $btnRefreshLibrary.Text = ''
 $btnRefreshLibrary.Padding = New-Object System.Windows.Forms.Padding(0)
-$btnRefreshLibrary.Location = New-Object System.Drawing.Point(519, 330)
+$btnRefreshLibrary.Location = New-Object System.Drawing.Point(519, 343)
 $btnRefreshLibrary.Size = New-Object System.Drawing.Size(42, 42)
 $btnRefreshLibrary.FlatStyle = "Flat"
 $btnRefreshLibrary.FlatAppearance.BorderColor = $steamUi.Border
@@ -18554,7 +19096,7 @@ $btnRefreshLibrary.BackColor = $steamUi.Panel
 $btnRefreshLibrary.ForeColor = $steamUi.Text
 $btnRefreshLibrary.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 9)
 $btnRefreshLibrary.Cursor = [System.Windows.Forms.Cursors]::Hand
-# Значок «обновить» — тот же векторный (две дуги со стрелками), что и у кнопок обновления базы в Настройках.
+# Значок «обновить» — ваши стрелки (Draw-RefreshPngIcon), перекрашенные в цвет темы, как у остальных значков.
 $btnRefreshLibrary.Add_Paint({
     param($sender, $e)
     try {
@@ -18562,34 +19104,17 @@ $btnRefreshLibrary.Add_Paint({
         $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
         $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
         $busyR = [bool]$script:refreshBtnBusy
-        if ($busyR) {
-            # Идёт обновление панелей: кнопка отключена, но рисуется «активной» (синяя рамка и значок), как остальные кнопки.
+        $pulseR = $false
+        try { $pulseR = [bool](Test-MainBtnGreenPulse $sender) } catch {}
+        $hotR = $false
+        try { $hotR = (($sender.Enabled -or $busyR) -and $sender.ClientRectangle.Contains($sender.PointToClient([System.Windows.Forms.Cursor]::Position))) } catch {}
+        if ($busyR -or $pulseR) {
+            # Идёт обновление панелей / зелёная вспышка после клика: заливаем фон, рамку рисует FlatAppearance.
             $bbR = New-Object System.Drawing.SolidBrush($sender.BackColor)
             try { $g.FillRectangle($bbR, 1, 1, ($sender.ClientSize.Width - 2), ($sender.ClientSize.Height - 2)) } finally { $bbR.Dispose() }
         }
-        $col = if ($busyR) { $steamUi.Accent2 } elseif ($sender.Enabled) { $sender.ForeColor } else { $steamUi.Muted }
-        $cx = [single]($sender.ClientSize.Width / 2.0)
-        $cy = [single]($sender.ClientSize.Height / 2.0)
-        $r = [single]8.4          # значок крупнее, чем в 28-px кнопках (пропорционально 42-px кнопке)
-        $headSweep = 38.0
-        $headHalfW = 3.7
-        $arcSweep = 108.0
-        $pen = New-Object System.Drawing.Pen($col, [single]2.3)
-        $brush = New-Object System.Drawing.SolidBrush($col)
-        try {
-            $rect = New-Object System.Drawing.RectangleF(($cx - $r), ($cy - $r), (2 * $r), (2 * $r))
-            foreach ($startAngle in @(192.0, 12.0)) {
-                $g.DrawArc($pen, $rect, [single]$startAngle, [single]$arcSweep)
-                $endA = ($startAngle + $arcSweep) * [Math]::PI / 180.0
-                $tipA = ($startAngle + $arcSweep + $headSweep) * [Math]::PI / 180.0
-                $bx = $cx + $r * [Math]::Cos($endA); $by = $cy + $r * [Math]::Sin($endA)
-                $nx = [Math]::Cos($endA);            $ny = [Math]::Sin($endA)
-                $tipPt = New-Object System.Drawing.PointF([single]($cx + $r * [Math]::Cos($tipA)), [single]($cy + $r * [Math]::Sin($tipA)))
-                $p1 = New-Object System.Drawing.PointF([single]($bx + $nx * $headHalfW), [single]($by + $ny * $headHalfW))
-                $p2 = New-Object System.Drawing.PointF([single]($bx - $nx * $headHalfW), [single]($by - $ny * $headHalfW))
-                $g.FillPolygon($brush, [System.Drawing.PointF[]]@($p1, $tipPt, $p2))
-            }
-        } finally { $pen.Dispose(); $brush.Dispose() }
+        $col = if ($pulseR) { $steamUi.ModeOn } elseif ($busyR) { $steamUi.Accent2 } elseif (-not $sender.Enabled) { $steamUi.Muted } elseif ($hotR) { $steamUi.Accent2 } else { $sender.ForeColor }
+        Draw-RefreshPngIcon $g ([single]($sender.ClientSize.Width / 2.0)) ([single]($sender.ClientSize.Height / 2.0)) ([single]22) $col
     } catch {}
 })
 $form.Controls.Add($btnRefreshLibrary)
@@ -18625,9 +19150,10 @@ function Get-MainCollStructCount { try { return [int]$script:mainCollStructPendi
 $btnMainColl = New-Object System.Windows.Forms.Button
 $btnMainColl.Text = ''
 $btnMainColl.Padding = New-Object System.Windows.Forms.Padding(0)
-$btnMainColl.Location = New-Object System.Drawing.Point(519, 230)
+$btnMainColl.Location = New-Object System.Drawing.Point(519, 193)
 $btnMainColl.Size = New-Object System.Drawing.Size(42, 42)
 $btnMainColl.FlatStyle = "Flat"
+$btnMainColl.FlatAppearance.BorderSize = 1
 $btnMainColl.FlatAppearance.BorderColor = $steamUi.Border
 $btnMainColl.FlatAppearance.MouseOverBackColor = $steamUi.Selected
 $btnMainColl.BackColor = $steamUi.Panel
@@ -18644,7 +19170,9 @@ $btnMainColl.Add_Paint({
     try {
         $g = $e.Graphics
         $w = [int]$sender.ClientSize.Width; $h = [int]$sender.ClientSize.Height
-        $col = if (-not $sender.Enabled) { $steamUi.Muted } elseif ([string]$sender.Tag -eq 'on') { $steamUi.Accent2 } else { $steamUi.Text }
+        $hotC = $false
+        try { $hotC = ($sender.Enabled -and $sender.ClientRectangle.Contains($sender.PointToClient([System.Windows.Forms.Cursor]::Position))) } catch {}
+        $col = if (-not $sender.Enabled) { $steamUi.Muted } elseif ([string]$sender.Tag -eq 'on') { $steamUi.ModeOn } elseif ($hotC) { $steamUi.Accent2 } else { $steamUi.Text }
         $br = New-Object System.Drawing.SolidBrush($col)
         $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::None
         $cx = [int]($w / 2); $cy = [int]($h / 2)
@@ -18652,6 +19180,9 @@ $btnMainColl.Add_Paint({
         $g.FillRectangle($br, ($cx + 1), ($cy - 10), 9, 9)
         $g.FillRectangle($br, ($cx - 10), ($cy + 1), 9, 9)
         $g.FillRectangle($br, ($cx + 1), ($cy + 1), 9, 9)
+        # Есть отмеченные игры: в углу счётчик (без отметок кнопка открывает редактор коллекций).
+        $nC = $(if ($sender.Enabled -and -not (Test-MainActionModeActive)) { [int]$script:mainFramesSelCount } else { 0 })
+        Set-LibCountBadge $sender $nC $steamUi.Accent2
     } catch {} finally { if ($null -ne $br) { $br.Dispose() } }
 })
 $form.Controls.Add($btnMainColl)
@@ -18659,6 +19190,113 @@ $form.Controls.Add($btnMainColl)
 # Кнопка «Рамки обложек» (над «Сохранениями», y=80): меню выбора рамки / значка / «Без рамки» для отмеченных игр, уже добавленных в Steam.
 # Значок кнопок рамок: четыре трапеции вокруг окошка с диагональными просветами, на целочисленной сетке в пикселях: сторона $N px, толщина полосы $T px, просвет по диагонали $d px по X.
 # Центр - ($cx, $cy) в целых пикселях; внешний край и края окошка попадают на границы пикселей (как у значка коллекций 20x20).
+# Значок-счётчик в правом верхнем углу кнопки рамок: сколько игр выбрано (как у кнопки удаления из библиотеки).
+function Draw-FrameCountBadge ($g, [int]$W, [int]$Cnt, $ringCol, [int]$H = 12, [single]$FontPt = 6.5, [int]$Margin = 3) {
+    if ($Cnt -le 0) { return }
+    $bf = $null; $bBr = $null; $bTb = $null; $bRing = $null; $bGp = $null; $bSf = $null
+    $oldTr = $g.TextRenderingHint; $oldSm = $g.SmoothingMode
+    try {
+        $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+        $bTxt = $(if ($Cnt -gt 999) { '999+' } else { [string]$Cnt })
+        $bW = [Math]::Max($H, (($H * 0.43) * $bTxt.Length + ($H * 0.43)))
+        $bX = $W - $Margin - $bW
+        $bY = $Margin
+        $bf = New-Object System.Drawing.Font('Segoe UI', $FontPt, [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Point)
+        $bBr = New-Object System.Drawing.SolidBrush($steamUi.Accent2)
+        $bTb = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White)
+        $bRing = New-Object System.Drawing.Pen($ringCol, 2)
+        $bGp = New-Object System.Drawing.Drawing2D.GraphicsPath
+        $bArc = [single]$H
+        $bGp.AddArc([single]$bX, [single]$bY, $bArc, $bArc, 90, 180)
+        $bGp.AddArc([single]($bX + $bW - $H), [single]$bY, $bArc, $bArc, 270, 180)
+        $bGp.CloseFigure()
+        $g.DrawPath($bRing, $bGp)
+        $g.FillPath($bBr, $bGp)
+        $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::AntiAliasGridFit
+        $bSf = New-Object System.Drawing.StringFormat
+        $bSf.Alignment = [System.Drawing.StringAlignment]::Center
+        $bSf.LineAlignment = [System.Drawing.StringAlignment]::Center
+        $bRect = New-Object System.Drawing.RectangleF([single]$bX, [single]($bY + 0.5), [single]$bW, [single]$H)
+        $g.DrawString($bTxt, $bf, $bTb, $bRect, $bSf)
+    } catch {} finally {
+        try { $g.TextRenderingHint = $oldTr; $g.SmoothingMode = $oldSm } catch {}
+        foreach ($d in @($bf, $bBr, $bTb, $bRing, $bGp, $bSf)) { if ($null -ne $d) { try { $d.Dispose() } catch {} } }
+    }
+}
+
+# Счётчик на кнопках окна «Библиотека/Импорт» - отдельный элемент ScCountBadge, выступающий за правый верхний угол кнопки.
+# Одна «таблетка» на кнопку: $script:libBadgeByBtn[кнопка]. Показ, цвет и положение обновляются из Paint кнопки (Set-LibCountBadge),
+# а скрытие/сдвиг кнопки отслеживают события VisibleChanged/Move/Resize (Sync-LibBadgeGeom).
+$script:libBadgeByBtn = @{}
+function Sync-LibBadgeGeom ($btn) {
+    try {
+        $b = $script:libBadgeByBtn[$btn]
+        if ($null -eq $b) { return }
+        $par = $btn.Parent
+        $show = ([bool]$b.Want -and [bool]$btn.Visible -and $null -ne $par)
+        if (-not $show) { if ($b.Visible) { $b.Visible = $false }; return }
+        if (-not [object]::ReferenceEquals($b.Parent, $par)) { $par.Controls.Add($b) }
+        $ov = 3   # на сколько пикселей значок выступает за правый и верхний край кнопки (отрицательное - внутрь кнопки)
+        if ($null -ne $b.Tag) { $ov = [int]$b.Tag }
+        $nx = [int]($btn.Left + $btn.Width + $ov - [int]$b.PillW - 1)
+        $ny = [int]($btn.Top - $ov - 1)
+        if ($b.Left -ne $nx -or $b.Top -ne $ny) { $b.Location = New-Object System.Drawing.Point($nx, $ny) }
+        if (-not $b.Visible) { $b.Visible = $true; $b.BringToFront() }
+        elseif ($par.Controls.GetChildIndex($b) -gt $par.Controls.GetChildIndex($btn)) { $b.BringToFront() }
+    } catch {}
+}
+
+function Set-LibCountBadge ($btn, [int]$Cnt, $Fill, $Ring = $null, [int]$Ov = 3) {
+    try {
+        $b = $script:libBadgeByBtn[$btn]
+        if ($Cnt -le 0) {
+            if ($null -ne $b -and [bool]$b.Want) { $b.Want = $false; Sync-LibBadgeGeom $btn }
+            return
+        }
+        if ($null -eq $b) {
+            $b = New-Object ScCountBadge
+            $script:libBadgeByBtn[$btn] = $b
+            $btn.Add_VisibleChanged({ param($s, $e) Sync-LibBadgeGeom $s })
+            $btn.Add_Move({ param($s, $e) Sync-LibBadgeGeom $s })
+            $btn.Add_Resize({ param($s, $e) Sync-LibBadgeGeom $s })
+        }
+        if ($null -eq $Ring) { $Ring = $(if ($null -ne $btn.Parent) { $btn.Parent.BackColor } else { [System.Drawing.Color]::Black }) }
+        $txt = $(if ($Cnt -gt 999) { '999+' } else { [string]$Cnt })
+        $null = $b.SetBadge($txt, [System.Drawing.Color]$Fill, [System.Drawing.Color]$Ring, 12, [single]7.0)
+        $b.Want = $true
+        $b.Tag = $Ov
+        Sync-LibBadgeGeom $btn
+    } catch {}
+}
+
+# Ключи: ups, upd, rst (апскейлеры), saves, scan, backup, restore (сохранения), emu, wrap. Число берётся из $script:libBtnCounts[<ключ>].
+# Без отмеченных игр, на недоступной кнопке, при тексте на кнопке («Отменить») и во время операций счётчика нет.
+function Draw-LibBtnCountBadge ($btn, $g, [string]$key) {
+    $n = 0
+    try {
+        if ($btn.Enabled -and [string]$btn.Text -eq '' -and -not ($script:libUpdRunning -or $script:libRestoreRunning -or $script:libSaveRunning -or $script:libImportRunning) -and $null -ne $script:libBtnCounts -and $script:libBtnCounts.ContainsKey($key)) {
+            $n = [int]$script:libBtnCounts[$key]
+        }
+    } catch { $n = 0 }
+    # Кнопки раскрытого ряда стоят на подложке ряда: кольцо вокруг значка берём её цвета.
+    # Выступ у них 2 px (у остальных 3): значок целиком остаётся внутри рамки ряда и не закрывает её линию.
+    $ringC = $null; $ovK = 3
+    if ($key -in @('upd', 'rst', 'scan', 'backup', 'restore')) { $ringC = [System.Drawing.Color]::FromArgb(14, 22, 31); $ovK = 2 }
+    Set-LibCountBadge $btn $n $steamUi.Accent2 $ringC $ovK
+}
+
+# Счётчик отмеченных игр на кнопках главного окна. Выбрано действие апскейлеров/сохранений - счётчик только у него, у остальных кнопок его нет.
+function Draw-MainSelCountBadge ($btn, $g) {
+    $n = 0
+    try { if ($btn.Enabled -and [int]$script:mainFramesSelCount -gt 0) { $n = [int]$script:mainFramesSelCount } } catch { $n = 0 }
+    # Пока раскрыт боковой ряд, соседи стоят в 3 px от кнопки группы: значок прячем в угол кнопки, чтобы не наезжал на них.
+    $ovB = 3
+    try {
+        if (([object]::ReferenceEquals($btn, $btnMainLibs) -and [bool]$script:mainLibsFlyout) -or ([object]::ReferenceEquals($btn, $btnMainSaves) -and [bool]$script:mainSavesFlyout)) { $ovB = -2 }
+    } catch {}
+    Set-LibCountBadge $btn $n $steamUi.Accent2 $null $ovB
+}
+
 function Draw-FrameButtonGlyphPx ($g, [int]$cx, [int]$cy, $col, [int]$N = 20, [int]$T = 5, [single]$d = 0.9) {
     $br = $null; $gState = $null
     try {
@@ -18687,9 +19325,10 @@ function Draw-FrameButtonGlyphPx ($g, [int]$cx, [int]$cy, $col, [int]$N = 20, [i
 $btnMainFrames = New-Object System.Windows.Forms.Button
 $btnMainFrames.Text = ''
 $btnMainFrames.Padding = New-Object System.Windows.Forms.Padding(0)
-$btnMainFrames.Location = New-Object System.Drawing.Point(519, 180)
+$btnMainFrames.Location = New-Object System.Drawing.Point(519, 143)
 $btnMainFrames.Size = New-Object System.Drawing.Size(42, 42)
 $btnMainFrames.FlatStyle = "Flat"
+$btnMainFrames.FlatAppearance.BorderSize = 1
 $btnMainFrames.FlatAppearance.BorderColor = $steamUi.Border
 $btnMainFrames.FlatAppearance.MouseOverBackColor = $steamUi.Selected
 $btnMainFrames.BackColor = $steamUi.Panel
@@ -18702,8 +19341,13 @@ $btnMainFrames.Enabled = $false
 $btnMainFrames.Add_Paint({
     param($sender, $e)
     try {
-        $col = if ([string]$sender.Tag -eq 'on') { $steamUi.Accent2 } elseif ($sender.Enabled) { $steamUi.Text } else { $steamUi.Muted }
+        $hotF = $false
+        try { $hotF = ($sender.Enabled -and $sender.ClientRectangle.Contains($sender.PointToClient([System.Windows.Forms.Cursor]::Position))) } catch {}
+        $col = if (-not $sender.Enabled) { $steamUi.Muted } elseif ([string]$sender.Tag -eq 'on') { $steamUi.ModeOn } elseif ($hotF) { $steamUi.Accent2 } else { $steamUi.Text }
         Draw-FrameButtonGlyphPx $e.Graphics ([int]($sender.ClientSize.Width / 2)) ([int]($sender.ClientSize.Height / 2)) $col 20 5 0.9
+        # Есть отмеченные игры: в углу счётчик (без отметок кнопка открывает менеджер рамок).
+        $nM = $(if ($sender.Enabled -and -not (Test-MainActionModeActive)) { [int]$script:mainFramesSelCount } else { 0 })
+        Set-LibCountBadge $sender $nM $steamUi.Accent2
     } catch {}
 })
 # Выбранный в меню вариант рамки ('' - не выбран): ждёт нижней кнопки «Сменить рамки (N)». Значения: 'none' | 'badge' | id комплекта.
@@ -18720,6 +19364,10 @@ $script:framesApplyEnabledPrev = $false
 $script:mainFramesDefault = ''
 $script:mainFramesHasNew = $false      # есть ли среди отмеченных новые игры (выставляет Update-MainLibraryButtonState)
 $script:mainFramesTipSig = ''
+$script:mainFramesNoSel = $true
+$script:mainFramesSelCount = 0
+# Режимы ROMs / Wrappers: сколько отмеченных игр можно обработать в этом режиме (добавить в библиотеку, сменить эмулятор/враппер).
+$script:mainModeSelCount = 0
 
 # Название выбранного для новых игр варианта (для подсказки кнопки).
 function Get-MainFramesChoiceName ([string]$Sel) {
@@ -18790,10 +19438,11 @@ function Update-MainFramesButtonLook {
     # Подсказка: при новых играх - «Рамка обложек при добавлении» и название выбранного варианта. Пересчитывается только при смене
     # состояния (функция вызывается при каждой отметке игры, а имя комплекта читается из индекса рамок).
     try {
-        $sigF = [string]$hasNewF + '|' + [string]$script:mainFramesDefault + '|' + [string]$global:language
+        $sigF = [string]$hasNewF + '|' + [string]$script:mainFramesDefault + '|' + [string]$global:language + '|' + [string][bool]$script:mainFramesNoSel
         if ($sigF -ne [string]$script:mainFramesTipSig) {
             $script:mainFramesTipSig = $sigF
             $tipF = $(if ($hasNewF) { (T 'bulk_frames_tip_new') } else { (T 'bulk_frames_tip') })
+            if ([bool]$script:mainFramesNoSel) { $tipF = (Get-EditorFrameText 'card_frame_manage' 'Менеджер рамок…') }
             if ($defOn) {
                 $nmF = [string](Get-MainFramesChoiceName ([string]$script:mainFramesDefault))
                 if ($nmF -ne '') { $tipF = $tipF + ': ' + $nmF }
@@ -18818,9 +19467,8 @@ function Get-MainFramesTargets {
 function Set-MainFramesPending ([string]$Sel) {
     if ([string]$script:mainFramesPending -eq $Sel) { $script:mainFramesPending = '' }
     else {
+        # Выбор рамки накапливается вместе с эмулятором и коллекциями (нижняя кнопка «Применить изменения»).
         $script:mainFramesPending = $Sel
-        # Нижняя кнопка одна: выбор рамки сбрасывает выбор коллекций.
-        try { Clear-MainCollectionSelection } catch {}
     }
     Update-MainFramesButtonLook
     try { Update-MainLibraryButtonState } catch {}
@@ -18830,7 +19478,8 @@ $btnMainFrames.Add_Click({
     try {
         # Повторный клик по кнопке: меню уже закрылось само (клик вне меню) - заново не открываем.
         if ($script:bulkFrameMenuClosedAt -and (([Environment]::TickCount - [int]$script:bulkFrameMenuClosedAt) -lt 400)) { $script:bulkFrameMenuClosedAt = 0; return }
-        if (@(Get-CheckedGames).Count -eq 0) { return }
+        # Ни одна игра не отмечена: кнопка открывает менеджер рамок.
+        if (@(Get-CheckedGames).Count -eq 0) { Show-EditorFrameManagerDialog $form; return }
         $onClosedF = { try { Update-MainFramesButtonLook } catch {} }
         # Среди отмеченных есть игры, которых ещё нет в Steam: меню выбирает рамку для их обложек при добавлении (как «Коллекции»).
         # Добавленные игры в этом случае не меняются: приоритет у добавления.
@@ -18930,8 +19579,66 @@ function Draw-LibsGlyph ($g, [single]$cx, [single]$cy, $col, [single]$size) {
     }
 }
 
+# Значок «обновить апскейлеры»: шестерёнка (8 зубцов) с кружком и стрелкой вверх внутри. Рисуется кодом в цвете оформления
+# (контур шестерёнки и кружка - линией, стрелка - заливкой), центр - ($cx, $cy), размер при Scale = 1 около 22 px.
+# Толщина линий и стебель стрелки подгоняются под целые пиксели экрана, чтобы края не размывались.
+function Draw-LibsUpgradeGlyph ($g, [single]$cx, [single]$cy, $col, [single]$Scale = 1.0) {
+    $pen = $null; $hb = $null; $gp = $null; $gState = $null
+    try {
+        $gState = $g.Save()
+        $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+        $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+        $g.TranslateTransform($cx, $cy)
+        $g.ScaleTransform($Scale, $Scale)
+        $u = 1.0 / [double]$Scale   # единиц на один пиксель экрана
+        $pw = [Math]::Max(1.0, [Math]::Round(1.7 * [double]$Scale))   # толщина линии в пикселях экрана (целая)
+        $pen = New-Object System.Drawing.Pen($col, [single]($pw * $u))
+        $pen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+        $pen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+        $pen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Miter
+        $hb = New-Object System.Drawing.SolidBrush($col)
+        $ro = 10.4; $ri = 8.2
+        $pts = New-Object 'System.Collections.Generic.List[System.Drawing.PointF]'
+        $addPt = {
+            param([double]$rad, [double]$aDeg)
+            $a = $aDeg * [Math]::PI / 180.0
+            $pts.Add((New-Object System.Drawing.PointF([single]($rad * [Math]::Cos($a)), [single]($rad * [Math]::Sin($a)))))
+        }
+        for ($k = 0; $k -lt 8; $k++) {
+            $c = $k * 45.0 - 90.0
+            & $addPt $ri ($c - 14.0)
+            & $addPt $ro ($c - 10.0)
+            & $addPt $ro ($c + 10.0)
+            & $addPt $ri ($c + 14.0)
+            & $addPt $ri ($c + 22.5)
+        }
+        $gp = New-Object System.Drawing.Drawing2D.GraphicsPath
+        $gp.AddPolygon($pts.ToArray())
+        $g.DrawPath($pen, $gp)
+        $rc = 5.2
+        $g.DrawEllipse($pen, [single](-$rc), [single](-$rc), [single](2 * $rc), [single](2 * $rc))
+        # Стрелка вверх (заливка) строго по оси значка: стебель чётной ширины в пикселях экрана (края попадают на границы пикселей без сдвига).
+        $ox = 0.0; $sw = ([Math]::Max(2.0, 2.0 * [Math]::Round(([double]$Scale + 0.5)))) / 2.0 * $u
+        $g.FillPolygon($hb, [System.Drawing.PointF[]]@(
+            (New-Object System.Drawing.PointF([single]($ox), [single](-3.9))),
+            (New-Object System.Drawing.PointF([single]($ox + 3.4), [single](-0.5))),
+            (New-Object System.Drawing.PointF([single]($ox + $sw), [single](-0.5))),
+            (New-Object System.Drawing.PointF([single]($ox + $sw), [single]3.7)),
+            (New-Object System.Drawing.PointF([single]($ox - $sw), [single]3.7)),
+            (New-Object System.Drawing.PointF([single]($ox - $sw), [single](-0.5))),
+            (New-Object System.Drawing.PointF([single]($ox - 3.4), [single](-0.5)))))
+    } catch {} finally {
+        if ($null -ne $pen) { $pen.Dispose() }
+        if ($null -ne $hb) { $hb.Dispose() }
+        if ($null -ne $gp) { $gp.Dispose() }
+        if ($null -ne $gState) { try { $g.Restore($gState) } catch {} }
+    }
+}
+
 # Старые значки окна библиотеки: «обновить» (две круговые стрелки) и «вернуть» (одна стрелка против часовой). Центр — ($cx, $cy).
 function Draw-LibsRefreshGlyph ($g, [single]$cx, [single]$cy, $col, [bool]$Undo, [single]$Scale = 1.0) {
+    # «Обновить» теперь рисуется шестерёнкой со стрелкой вверх (Draw-LibsUpgradeGlyph); круговые стрелки остались только для $Undo.
+    if (-not $Undo) { Draw-LibsUpgradeGlyph $g $cx $cy $col $Scale; return }
     $pen = $null; $hb = $null; $gState = $null
     try {
         $gState = $g.Save()
@@ -18972,9 +19679,49 @@ function Draw-LibsRefreshGlyph ($g, [single]$cx, [single]$cy, $col, [bool]$Undo,
     }
 }
 
-# Значок «вернуть» - точная копия значка кнопки «Вернуть» в окне библиотеки (kind 'undo' в $paintSaveIcon): дуга против часовой со стрелкой и «часовыми» стрелками.
+# Значок «вернуть» (восстановление сохранений и возврат бэкапов апскейлеров): ваша картинка (две стрелки вокруг часов), превращённая в маску
+# (белый рисунок на прозрачном фоне, PNG в base64) и перекрашенная в цвет темы - как значки RetroArch (Draw-EmuGlyphPixel).
+# Рисуется в локальных координатах вызывающего (начало - центр значка), размер 21 единица. Цвет ($col) задаёт вызывающий:
+# обычный, акцентный при наведении, приглушённый у недоступной кнопки (с учётом его прозрачности).
+# Используется и в Draw-LibsUndoGlyph, и в $paintSaveIcon (окно библиотеки), чтобы значок везде был одинаковым.
+$script:RestoreIconB64 = 'iVBORw0KGgoAAAANSUhEUgAAAGcAAABnCAYAAAAdQVz5AAAQBUlEQVR42u2de5AcRR3HP5nsXWLeiUkOEgN6IeEhIhreCAEk8lIQUiC+UBHF4iGKUkQ0FGqBpqCoUlA08hIqGFEDlBEElBgBQRAJrxiIIDGQSAgJuZDce37+0b/Jzc11z8zu9u7t3vGt2rq7vd2Znv72r/v36l8PERHeRm2iUIdtfgdwJNAMTATGA6OAAAj1ZwewDdgMbABWAcvfJscvjgaOAmYpGVOAEWVcbyvwCrAaeAxYCjxVqw8/pMamtSnABcCHgX2AoSoJlUKoErYC+CNwxdvk9MWPgJOAXVM6kRhRyb/J+F4x310J3AZcPpjJORH4FvA+oDFDSqpJTgh0Ay3Aw8C3gWcHCzlnA1/SNWRUCimh5T2f5JCDpE4l6Vmd8v40UMk5U0mZDowDGhySkUaK7/UmL2ntwEbgaeDqapFUDXIOAC4EDgcmWTTE5OjOkop2YAvwhv5s0UV9GyA6RQ4HRgKjVdWepL8XckqZa1B0AmuB+4BLgdfrmZz5wOnATH3QoIiOCPX1si7ST6v6ew/QVUJbxgLHA/vrOrcnMDWHVNkkrFPb8zPgxnojZzxws0rLuIwRGlhskSeBZcBCYF0FB88s4DPAEUrWsBwSFW/vq8DtwHdViuuCnEbgAeDQHAs0OiWtBn4LXAds6gflaG/gy8BxwLQEUaHjO4FK8YPAAuBery0SkUq9ZojIA9Ib3fqKsElE7haRT4vIsAq2pZjXBBE5X0QeEZG3LG3vtjyHiMhKEfmyz7ZU+kF3sRAkItIiIveIyCdrhBDba7SInCcij4pIq9iRJGqdiHy7XshBRKaKyEOxB/iHiJwtIo01TEz8NUVE5qlkZJEjIrJFRK72ce9q2TnTgEW6uF+hmk694Sjgq/pzdIbW2QbcAXyqkgrBqkQjGnSxl4Rnu1Eb1aB2x9nA3YlrTaq0XVAlzAe+oAOukKLRtWsfnFIJckoVqXYl55cMXJwc8wsOT5GgdtXk5pRyk8AzMYMFdwDHqmN0e4oRPQz4UKnuniwvcNxSD3Nes0FH00DHJkww8G6glZ4obLIfhytBv/NBzk90QQtLbHSACR8PFpyqU3hHCkHDdO2ZVy4556pG1VpGg0cOsmnuXOAq9bml4XvqJiprWrscOAt4M/GZvNI0ahCuQ/PpiZ66nLgNwP3lkgOwWHX6Fyg+njKcwYnvAz/I+MzOwI/LJQf1DufVNOJKw2AlB+ASXYNc0d0A4wmfUy45UzCZMNS45AxRJWSSGsT9jfPUvnERNF6lLBWFHKNguoP95BoUb8iwCj74AZjg3S6YYNnO6k4ZFnOdtKg3Yg09eWqPVJGct4AvAg8Bkx1r9b7A+cA1pZBzoqp/hRLU6kbtrHZPDzsLExA7FNgD2EmVjoaM73VhgncbgOeVoGXA36tA0GrgMuCnlsEcqdfnAkswQTuLK8DtFV2c4X11xTlERJaJyCQPntkDROQGEVktIm1SPtpE5GURuVlEZlfJq/2njH68tNiQwRkist5xwQ4ReU5EfqPucdtnHhGR5jIeaA8RWaTBuO6MgF0aXIOqW0Q26zNMrzA507Sfuh1tWiUie9u+61IITtKpw4ZtKq6nAr/GJIsH9E7gaCzD1vmGaoif0oUzsGiDebVHl0YZYHIbTgH+iUl3qhTWYsLvLuwOfCLvtHa6iKxJkZpHE5//sYhsSIzM50TkkCJHWLNGR9PCwsn2dIrIKyJyp4jcpPftTJGaNKl7WESaKihBmyzSE+FJEXlvnmnt1pRpYb2IfM7ynQWxaVB0jTi2iIYfrB0rGWQk31upUdXoOh8SkWd0EGWRYbv+Wp1SK0HOTSKyzdGuVhG5KIuc94vIihSpWZZy80s1hi4qeXNzNnqOLtKSQ1Liv7c54vUfi0lyMeR0x8LMR1SIoDUpa8/SrDXns5gcZhveULUvzal3laqtw3OuOccDP8fsLgiLNJY3Ac9Y3v+9roMk1kHbNW0+sDEarzmwAuvPY2qH4bB7zkh76P3piY/HPxOqj+2ajJtfjcnKD1MUighHAFcC78Ee5g0yOtcXAotzd5zGX3wTdBnwmqPvpwKzXeQcDbzLoel0AE/kbMD1wDczJGEsJktyL/Jn/VMFkuIETdXY1nSP93hOvRahQ7PcPT7jxBt0mvqmbHgJuKuIRixSqXDhGuCQKnV0OXi/urB84o+YHQs2TAPm2h7ig7iDZCvxt+H1LA1FFCpIQujh2qG28WRtsy8sVNvHhiZiKcxBYqoJLA/fpqEDX/iCNsLmOA1qTHKifvm0GsQ+sFlnIls7G+IKWfTPj6uWYht164DHPTVsvs6rld7FXU7+Q2DxwM8CvuaxfU+o9mvz9k/W8MeOhszB7O93rTe+3O2n6UhMCzfUIkaWGNdy4W8xrc0mqbPjnXKQJUAW/e8FjU+UixNVGyzUGTHRiJ4BXOzpmg9qnMmGMZhUqh0dMwWzcdaGFz016Gsp0llrsK1/49U284V1jsE5ErNXaMc/hjlG8FbVy31gViw4FtaJ1MSlp0EN5hGervlfeqdSxfPRd6w5Y1Ok5vUU8SuWmBH0rk9Tj5iA2f3mA69aloswJiwEaqUPcVxggydy5jrU9FqXFpticJin66/H5DrY+mMHOe+OSU6yQW+kaBXF4AMMDDRikkt8YIMuGzYMBSZFerULWyhtW3kSe9YhETaloBCzB8vFJkxU2UVOU0Hn0cAx1bR4ashOVe7Ydh2VebeyxGcMURKG6+Jss+J9oIWe7KTAQs7EAulJ562eGjKsymvNYh0Q3QmCktO2JN4X1aDGqBLzPoukDPHUxu0Yb78NQ4ARhYzR1VGHizb4q5t2EyZ1tpAYXKNT1ou8aCV9V0JoKwRUbJZLf6FbX5XEPOweZB/r8NAMKZQgg70RNS41XRW+x5v0jb2Enqb7EbjTlgXoDNTQDB3TxGhPD7k1cQ8fktkUuTkqiGZM+m9SYn1gFD1J98k+6QZeC1TfdsFXDONlj+pt3J1yPnBRhYg5HrOVY2SF1uEJlmuHMXI2FLTjXKNhrF6k3EJBTwHvrYAdMhWTr3CS2gxDy7ymaAc1YvxoOyW0y0617H2ZF2NS1tPXC5gSiRJ74Lh4Tca4+cslZxm9q1n4cnwWtI2Tq6ARBrrWPOmRnNGO/miP/tiaIjlN9GTklIMbEw2oB8enbW1sIT3vuRhMjUlO0gnQEf/DpfWMwWSE+MD/qqBdVdKVg67Pf/EoOQ2We3ShSZFBrONsKnUD7lrPxWKpZTENS+yooIqExC365zxe/13YC85ux2Q77WjA4ylayG6eGnMhPfGLoEyC+sP78ArwC0/XnpGyXLRgwtg7OmkpfT2kUeNm4sfl34opS99WJ+tNXII6VeN80NP1Z6eQ8wamyOwOcu7AncSxK31rdZaKS3DnCteqxKAunF95vMdB9C1BE/XHJrSYa7yDNmMPIY/DHPrgA0/o6NuWQzOqBWKipMo/6wD26XlosNyvHZNb0Gf0rrT4jKIv74U7j7pYzNN7dWHfglFrGtoqTEK7L5yKe5vN68BfbeQsSnHlzMTs3fGBVzGu+I2O6S3sB2lxSe6bSozrjJ25FO8cPg138HENJhbVp2Pu1bk1tGhTk0jsHSkT1wG30FNIrpgOq6SRGe+XduBWzJYWF/bAuL+KKWG2O8YbbTsm4Pl4nyRH7Usp3oI9MLsDfOFizAalrgzloBIkZe2i61KX0wUZ13laFam15PMdLrAY9UFszX8izdC6Gfh3ir1zsedO+hK+q5j7wdMYZ2pWDsI6tQ8bMVsKs2aXU3E7O5/U6d5JznLSywrvlrKYlYJ27YS7qmj5hxmeh79h8gfyhAbWqzYXYBJCfocJa9twDvDOlGd8OKmQ2T64XBUD21aIqSpdPtGN2YJyTUqbfE1tYYY7aEmRNt1rMRID7fwrlYgk5seUh2Q7/kXfUs/O8ip3phRa2Cgi+1RoK/hcLXuSVS+gFGSdRXBeiW1+yHKvdYm6Amc6ilVE7/2wmNo356TUtenQWgWVqnTRKCJ35Szq0J2z0oerJkGbiCwXkUIZ7X3AMRjWadn8WVpnwVV/4GUtklHUWQZLMsqUnFXhgj4f0KIUbSmFiYohJ45tIvJXETnGQzvvSRkAW/TshrQBdkUpB02cHptibCN2TZWOVZklIgt1hHWUMa11avmUG0TkMI/tW1rEFJz83+q0ci5ZZxncEvMM2Haj/UYt3mpgIqZow+GYnd+7qHFsK4rXpcbcRrW6V2CCZH/HT2J+HHdhdu0l+yjaje3y2UWurAWuC2eRMwtz7FUzvVOb4hmQX8GUSKkmhqi3vAmTITSensMuojKSm1TrXEtlM1eXYLbDp5Fge/9hzHYSNwE5xPbihFh2JERzYwnluwbS67aUUl2u6a5NCzKlXjuP0bdAWY4wNCG671TJmcngxHaKTzTsJsdBgXkt8nPUm+wyEPdW723TICRnKz35F3m9HCMw53FP80FOdLJsO/ZqTiGmsNH1+MsSrRdsK0FyQkxdg99j6uuURQ5KzvKU74fAR1XDmzCIyGmltJSvUIlZogO7LHIAjiE9HTUi6A/4T78daOREaMYEOj9TLjlgCkrYzteJq9oHAXeqQ3OgoyWHqh44XhEm65o9v1xyUAVgi0MLCWMj4kbg2gFOzlv4yWQd5YucF4ETMIl28ZEwlN6FIMZiSnj9YwCT0+0pnBGQOCSj3HNCD1Hp2J30k9q7lNBr61yS5mNOck8eqdmE2WvTkrB7os4tyUPh4xDXPTGbjPZP8cFF+B8mTn4J9XWQ68eBr6uSswoTjq70flRvJ+xOxGSqHJvhY4rwDKYk/lV5LOV+xIEY3+Hh9ITn2zEO1Nn1Qk6E64DP0/dg08Dh9lihJC3GhGprBUdgzjk4UqfsBotmeh8m/6GjXsgBU1VpHmbbHg51O0iQ9II+7P2UeOCpJ23pGH19WF0rDRltX4pxba2tF3IiReFbapDayHF5GDZiSlbepxre41T2tN9RmLDIwcBHgP3ovYM8zGG4n4s5wKhuyAETc7lEJWmXFJJsU150YtTjwKNK1PM6QsupATBWJWIvzPFiB2MCd41kpwUnB9JKTMbQwnqa1pI4CnN+2Vx6F/oJHQ/tImyz2lUvYY7c+o+qtC1KZHtsUERnKYxXNbcZs2GpmZ4z3sggw0ZKFyaIdxtwA2azM/VMToTzdZo7FHcxpP4szJo2hYWYTU1/wWzYvb0aDaomOdGo/o6qofvoyC7kJMfH9vi0a9j+F9UdWIFx5i6samdVmZw4LlTNaDfMlogRZXSsD3Li2KpT6L8wLv1F/dFB/UlO3Kb4vC7ME1Wa+uOE3u30JIU8qov9qv7smFogJ44TVHnYF1ODOqqs1OB5DQp1ymrHRDJbVTO8FnPwak2g1shJ2iBnAMep2jtS16wg8TNrDYkeMPIei2p4K3TKur5WO6CWyXFhPzUcZ6j9NA0TFh+nErZVpeEtNWrXY3x5j6mBWzcPXI/kDBr8H0CzNfnA607yAAAAAElFTkSuQmCC'
+$script:RestoreIconBmp = $null
+function Draw-RestoreClockCore ($g, $pen, $col) {
+    $ia = $null
+    try {
+        if ($null -eq $script:RestoreIconBmp) {
+            $ms = New-Object System.IO.MemoryStream (,[Convert]::FromBase64String([string]$script:RestoreIconB64))
+            try {
+                $tmp = [System.Drawing.Image]::FromStream($ms)
+                try { $script:RestoreIconBmp = New-Object System.Drawing.Bitmap($tmp) } finally { $tmp.Dispose() }
+            } finally { $ms.Dispose() }
+        }
+        # Перекраска маски в цвет темы (с учётом прозрачности цвета).
+        $cm = New-Object System.Drawing.Imaging.ColorMatrix
+        $cm.Matrix00 = [single]($col.R / 255.0)
+        $cm.Matrix11 = [single]($col.G / 255.0)
+        $cm.Matrix22 = [single]($col.B / 255.0)
+        $cm.Matrix33 = [single]($col.A / 255.0)
+        $cm.Matrix44 = [single]1.0
+        $ia = New-Object System.Drawing.Imaging.ImageAttributes
+        $ia.SetColorMatrix($cm)
+        $s = 21.0
+        $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+        $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+        $l = -$s / 2.0
+        $pts = [System.Drawing.PointF[]]@(
+            (New-Object System.Drawing.PointF([single]$l, [single]$l)),
+            (New-Object System.Drawing.PointF([single]($l + $s), [single]$l)),
+            (New-Object System.Drawing.PointF([single]$l, [single]($l + $s))))
+        $src = New-Object System.Drawing.RectangleF(0, 0, [single]$script:RestoreIconBmp.Width, [single]$script:RestoreIconBmp.Height)
+        $g.DrawImage($script:RestoreIconBmp, $pts, $src, [System.Drawing.GraphicsUnit]::Pixel, $ia)
+    } catch {} finally {
+        if ($null -ne $ia) { $ia.Dispose() }
+    }
+}
+
 function Draw-LibsUndoGlyph ($g, [single]$cx, [single]$cy, $col, [single]$Scale = 1.0) {
-    $pen = $null; $hb = $null; $gState = $null
+    $pen = $null; $gState = $null
     try {
         $gState = $g.Save()
         $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
@@ -18983,22 +19730,11 @@ function Draw-LibsUndoGlyph ($g, [single]$cx, [single]$cy, $col, [single]$Scale 
         $pen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
         $pen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
         $pen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
-        $sc = [single](1.22 * $Scale)
-        $g.TranslateTransform([single]($cx - 0.8), [single]($cy - 0.5)); $g.ScaleTransform($sc, $sc)   # -0.8/-0.5 px: оптический центр значка (стрелка тянет форму вправо-вниз)
-        $q = { param($x, $y) New-Object System.Drawing.PointF([single]$x, [single]$y) }
-        $r = 6.6
-        $g.DrawArc($pen, [single](-$r), [single](-$r), [single](2 * $r), [single](2 * $r), [single]300, [single](-265))
-        $a = 35.0 * [Math]::PI / 180.0
-        $px = $r * [Math]::Cos($a); $py = $r * [Math]::Sin($a)
-        $nx = [Math]::Cos($a); $ny = [Math]::Sin($a)
-        $tx = [Math]::Sin($a); $ty = -[Math]::Cos($a)
-        $k = 4.6; $hw = 3.4
-        $hb = New-Object System.Drawing.SolidBrush($col)
-        $g.FillPolygon($hb, [System.Drawing.PointF[]]@((& $q ($px + $nx * $hw) ($py + $ny * $hw)), (& $q ($px + $tx * $k) ($py + $ty * $k)), (& $q ($px - $nx * $hw) ($py - $ny * $hw))))
-        $g.DrawLines($pen, [System.Drawing.PointF[]]@((& $q 0 -3.2), (& $q 0 0), (& $q 2.6 1.6)))
+        $sc = [single](1.05 * $Scale)
+        $g.TranslateTransform($cx, $cy); $g.ScaleTransform($sc, $sc)
+        Draw-RestoreClockCore $g $pen $col
     } catch {} finally {
         if ($null -ne $pen) { $pen.Dispose() }
-        if ($null -ne $hb) { $hb.Dispose() }
         if ($null -ne $gState) { try { $g.Restore($gState) } catch {} }
     }
 }
@@ -19017,9 +19753,10 @@ function New-MainLibsIconBitmap ([bool]$Undo) {
 $btnMainLibs = New-Object System.Windows.Forms.Button
 $btnMainLibs.Text = ''
 $btnMainLibs.Padding = New-Object System.Windows.Forms.Padding(0)
-$btnMainLibs.Location = New-Object System.Drawing.Point(519, 130)
+$btnMainLibs.Location = New-Object System.Drawing.Point(519, 93)
 $btnMainLibs.Size = New-Object System.Drawing.Size(42, 42)
 $btnMainLibs.FlatStyle = "Flat"
+$btnMainLibs.FlatAppearance.BorderSize = 1
 $btnMainLibs.FlatAppearance.BorderColor = $steamUi.Border
 $btnMainLibs.FlatAppearance.MouseOverBackColor = $steamUi.Selected
 $btnMainLibs.BackColor = $steamUi.Panel
@@ -19034,7 +19771,8 @@ $btnMainLibs.Add_Paint({
     try {
         $hot = $false
         try { $hot = ($sender.Enabled -and $sender.ClientRectangle.Contains($sender.PointToClient([System.Windows.Forms.Cursor]::Position))) } catch {}
-        $col = if (-not $sender.Enabled) { $steamUi.Muted } elseif ($hot -or [string]$sender.Tag -eq 'on' -or [bool]$script:mainLibsFlyout) { $steamUi.Accent2 } else { $steamUi.Text }
+        # Раскрытый блок или выбранное действие — зелёный (ModeOn), как у ROMs/Wrappers; наведение без раскрытия — синий.
+        $col = if (-not $sender.Enabled) { $steamUi.Muted } elseif ([string]$sender.Tag -eq 'on' -or [bool]$script:mainLibsFlyout) { $steamUi.ModeOn } elseif ($hot) { $steamUi.Accent2 } else { $steamUi.Text }
         # Действие выбрано: вместо общего значка группы показывается значок выбранного действия (как на боковой кнопке).
         $lcx = [single]($sender.ClientSize.Width / 2.0); $lcy = [single]($sender.ClientSize.Height / 2.0)
         switch ([string]$script:mainLibsMode) {
@@ -19042,6 +19780,8 @@ $btnMainLibs.Add_Paint({
             'rst'   { Draw-LibsUndoGlyph $e.Graphics $lcx $lcy $col ([single]1.1) }
             default { Draw-LibsGlyph $e.Graphics $lcx $lcy $col ([single]21) }
         }
+        # Счётчик только у выбранного действия (на общей кнопке его значок): без выбранного действия бейджа нет.
+        if ([string]$script:mainLibsMode -ne '') { Draw-MainSelCountBadge $sender $e.Graphics } else { Set-LibCountBadge $sender 0 $steamUi.Accent2 }
     } catch {}
 })
 $form.Controls.Add($btnMainLibs)
@@ -19051,7 +19791,7 @@ $script:mainLibsSubPaint = {
     try {
         $hot = $false
         try { $hot = ($sender.Enabled -and $sender.ClientRectangle.Contains($sender.PointToClient([System.Windows.Forms.Cursor]::Position))) } catch {}
-        $col = if (-not $sender.Enabled) { $steamUi.Muted } elseif ($hot -or [string]$sender.Tag -eq 'sel') { $steamUi.Accent2 } else { $steamUi.Text }
+        $col = if (-not $sender.Enabled) { $steamUi.Muted } elseif ([string]$sender.Tag -eq 'sel') { $steamUi.ModeOn } elseif ($hot) { $steamUi.Accent2 } else { $steamUi.Text }
         if ([string]$sender.Name -eq 'rst') { Draw-LibsUndoGlyph $e.Graphics ([single]($sender.ClientSize.Width / 2.0)) ([single]($sender.ClientSize.Height / 2.0)) $col ([single]1.1) }
         else { Draw-LibsRefreshGlyph $e.Graphics ([single]($sender.ClientSize.Width / 2.0)) ([single]($sender.ClientSize.Height / 2.0)) $col $false ([single]1.15) }
     } catch {}
@@ -19063,6 +19803,7 @@ function New-MainLibsSubButton ([string]$Name) {
     $b.Padding = New-Object System.Windows.Forms.Padding(0)
     $b.Size = New-Object System.Drawing.Size(42, 42)
     $b.FlatStyle = "Flat"
+    $b.FlatAppearance.BorderSize = 1
     $b.FlatAppearance.BorderColor = $steamUi.Border
     $b.FlatAppearance.MouseOverBackColor = $steamUi.Selected
     $b.BackColor = $steamUi.Panel
@@ -19166,6 +19907,7 @@ function Set-MainLibsFlyout ([bool]$Open) {
             $btnMainLibsUpd.BringToFront()
             $btnMainLibsRst.BringToFront()
             $btnMainLibs.BringToFront()
+            try { Sync-LibBadgeGeom $btnMainLibs } catch {}
             $script:mainLibsFlyTimer.Start()
         } else {
             $wasShown = ([bool]$btnMainLibsUpd.Visible -or [bool]$btnMainLibsRst.Visible)
@@ -19573,11 +20315,13 @@ function Update-MainLibsUi ($ready, [int]$totalChecked) {
     $btnMainLibs.Visible = $true
     # Кнопки доступны и без отмеченных игр: выбор действия лишь определяет, какие игры в панелях можно отмечать
     # (для «Обновить» - с библиотеками апскейлеров, для «Вернуть» - с копиями .sc_orig), остальные галочки неактивны.
-    $btnMainLibs.Enabled = ([bool]$ready -and -not [bool]$script:mainSavesBusy)
+    $btnMainLibs.Enabled = ([bool]$ready -and -not [bool]$script:mainSavesBusy -and -not (Test-MainRomWrapperModeActive))
     $btnMainLibsUpd.Enabled = [bool]$ready
     $btnMainLibsRst.Enabled = [bool]$ready
     if (-not [bool]$btnMainLibs.Enabled -and [bool]$script:mainLibsFlyout) { Set-MainLibsFlyout $false }
     $btnMainLibs.Tag = $(if ([string]$script:mainLibsMode -ne '') { 'on' } else { '' })
+    # Рамка Accent2 у главной кнопки при выбранном действии — как у ROMs/Wrappers/рамок/коллекций.
+    try { $btnMainLibs.FlatAppearance.BorderColor = $(if ([string]$btnMainLibs.Tag -eq 'on') { $steamUi.Accent2 } else { $steamUi.Border }) } catch {}
     # Состояние кнопок не изменилось с прошлого пересчёта - ничего не трогаем и не перерисовываем (иначе они мигают при каждом тике скана).
     $uiSig = ([string][bool]$btnMainLibs.Enabled + '|' + [bool]$btnMainLibsUpd.Enabled + '|' + [bool]$btnMainLibsRst.Enabled + '|' + [string]$script:mainLibsMode)
     $uiChanged = ($uiSig -ne [string]$script:mainLibsUiSig)
@@ -19606,8 +20350,7 @@ function Update-MainLibsUi ($ready, [int]$totalChecked) {
 # Нижняя главная кнопка в режиме «Обновить библиотеки (N)» / «Вернуть библиотеки (N)» (во время работы — «✕ Отменить»).
 function Set-MainLibsApplyButton ([int]$N) {
     $isRst = ([string]$script:mainLibsMode -eq 'rst')
-    if ($script:mainLibsBusy) { $newTag = ([string][char]0x2715 + ' ' + (T 'btn_libs_cancel')) }
-    elseif ($isRst) { $newTag = (T 'btn_libs_rst_n' @($N)) }
+    if ($isRst) { $newTag = (T 'btn_libs_rst_n' @($N)) }
     else { $newTag = (T 'btn_libs_upd_n' @($N)) }
     $newIcon = $(if ($isRst) { $script:libsRstButtonIcon } else { $script:libsUpdButtonIcon })
     # Перерисовка только при реальном изменении надписи или значка: состояние кнопок пересчитывается часто (в т.ч. по таймеру скана), без этого кнопка моргала.
@@ -19616,7 +20359,7 @@ function Set-MainLibsApplyButton ([int]$N) {
     $script:libsApplyIcon = $newIcon
     $btnApplyLibs.Visible = $true
     # Без подходящих отмеченных игр нижняя кнопка видна (показывает выбранное действие), но недоступна.
-    $btnApplyLibs.Enabled = ([bool]$script:mainLibsBusy -or $N -ge 1)
+    $btnApplyLibs.Enabled = (-not [bool]$script:mainLibsBusy -and $N -ge 1)
     if ($changed -or ([bool]$btnApplyLibs.Enabled -ne [bool]$script:libsApplyEnabledPrev)) { $btnApplyLibs.Invalidate() }
     $script:libsApplyEnabledPrev = [bool]$btnApplyLibs.Enabled
 }
@@ -19661,7 +20404,7 @@ function Invoke-MainLibsOperation ([string]$Mode) {
     $failLines = New-Object System.Collections.Generic.List[string]
     $wasCancelled = $false
     try {
-        try { $btnRefreshLibrary.Enabled = $false; $btnMoveGame.Enabled = $false; $btnMainLibs.Enabled = $false } catch {}
+        try { $btnRefreshLibrary.Enabled = $false; $btnMoveGame.Enabled = $false; $btnMainLibs.Enabled = $false; Set-MainAddGamesButtonBusy $true } catch {}
         try { Update-MainLibraryButtonState } catch {}
         $idx = 0
         try { $progressBarFolder.Value = 1 } catch {}
@@ -19786,8 +20529,107 @@ function Get-MainSavesKey ([string]$Path) {
     try { return ([string]$Path).Trim().TrimEnd('\').ToUpperInvariant() } catch { return '' }
 }
 
-# Значки кнопок: 'saves' - дискета (основная кнопка), 'backup' - лоток со стрелкой вниз, 'scan' - лупа.
+# Значки кнопок: 'saves' - дискета (основная кнопка), 'backup' - значок «Управление загрузками» из Steam (квадрат с вырезанной стрелкой), 'scan' - лупа.
 # «Вернуть» рисуется общей функцией Draw-LibsUndoGlyph (как у апскейлеров). Центр - ($cx, $cy).
+# Значок «Управление загрузками» из Steam: закрашенный скруглённый квадрат с вырезанными стрелкой вниз и лотком (оригинальный вектор 36x36,
+# заливка по правилу even-odd: стрелка и лоток - дырки). Цвет берётся из темы. $K - масштаб (1 = 36 px), центр - ($cx, $cy).
+function Draw-SteamDownloadGlyph ($g, [single]$cx, [single]$cy, $col, [double]$K) {
+    $br = $null; $gp = $null; $gState = $null
+    try {
+        $gState = $g.Save()
+        $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+        $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+        $g.TranslateTransform($cx, $cy)
+        $g.ScaleTransform([single]$K, [single]$K)
+        $g.TranslateTransform([single]-18, [single]-18)
+        $f = { param($x, $y) New-Object System.Drawing.PointF([single]$x, [single]$y) }
+        $gp = New-Object System.Drawing.Drawing2D.GraphicsPath([System.Drawing.Drawing2D.FillMode]::Alternate)
+        # Внешний скруглённый квадрат 36x36, радиус ~3.
+        $r = 3.005; $d = 2 * $r
+        $gp.StartFigure()
+        $gp.AddArc([single]0, [single]0, [single]$d, [single]$d, [single]180, [single]90)
+        $gp.AddArc([single](36 - $d), [single]0, [single]$d, [single]$d, [single]270, [single]90)
+        $gp.AddArc([single](36 - $d), [single](36 - $d), [single]$d, [single]$d, [single]0, [single]90)
+        $gp.AddArc([single]0, [single](36 - $d), [single]$d, [single]$d, [single]90, [single]90)
+        $gp.CloseFigure()
+        # Стрелка (дырка).
+        $gp.StartFigure()
+        $gp.AddPolygon([System.Drawing.PointF[]]@((& $f 20.0447 5.10424), (& $f 15.9546 5.10424), (& $f 15.9546 14.7327), (& $f 12.5024 11.2806), (& $f 9.61032 14.1727), (& $f 17.9997 22.562), (& $f 26.389 14.1727), (& $f 23.4969 11.2806), (& $f 20.0447 14.7328)))
+        # Лоток (дырка).
+        $gp.StartFigure()
+        $gp.AddPolygon([System.Drawing.PointF[]]@((& $f 9.19346 21.7984), (& $f 5.10338 21.7984), (& $f 5.10338 30.062), (& $f 30.8959 30.062), (& $f 30.8959 21.7984), (& $f 26.8058 21.7984), (& $f 26.8058 25.972), (& $f 9.19346 25.972)))
+        $br = New-Object System.Drawing.SolidBrush($col)
+        $g.FillPath($br, $gp)
+    } catch {} finally {
+        if ($null -ne $br) { $br.Dispose() }
+        if ($null -ne $gp) { $gp.Dispose() }
+        if ($null -ne $gState) { try { $g.Restore($gState) } catch {} }
+    }
+}
+
+# Лупа поиска (значок «Найти сохранения»): кольцо, ручка и блик на стекле (дуга и точка) - упрощённый вариант иконки поиска под размер кнопок.
+# Цвет берётся из темы. $Ox - смещение центра кольца от ($cx, $cy) по обеим осям, $R - радиус кольца, $H0..$H1 - начало и конец ручки (по диагонали),
+# $Lw - толщина линии кольца и ручки, $Gw - толщина блика. Все числа - в пикселях.
+function Draw-SearchGlyph ($g, [single]$cx, [single]$cy, $col, [single]$Ox, [single]$R, [single]$H0, [single]$H1, [single]$Lw, [single]$Gw) {
+    $pen = $null; $penG = $null
+    try {
+        $pen = New-Object System.Drawing.Pen($col, $Lw)
+        $pen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+        $pen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+        $penG = New-Object System.Drawing.Pen($col, $Gw)
+        $penG.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+        $penG.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+        $ccx = [single]($cx + $Ox); $ccy = [single]($cy + $Ox)
+        $g.DrawEllipse($pen, [single]($ccx - $R), [single]($ccy - $R), [single](2 * $R), [single](2 * $R))
+        $g.DrawLine($pen, [single]($cx + $H0), [single]($cy + $H0), [single]($cx + $H1), [single]($cy + $H1))
+        # Блик: короткая дуга вверху слева и точка правее неё (радиус - половина кольца).
+        $gr = [single](0.5 * $R)
+        $g.DrawArc($penG, [single]($ccx - $gr), [single]($ccy - $gr), [single](2 * $gr), [single](2 * $gr), [single]215, [single]55)
+        $g.DrawArc($penG, [single]($ccx - $gr), [single]($ccy - $gr), [single](2 * $gr), [single](2 * $gr), [single]284, [single]3)
+    } catch {} finally {
+        if ($null -ne $pen) { $pen.Dispose() }
+        if ($null -ne $penG) { $penG.Dispose() }
+    }
+}
+
+# Значок «Сохранения» (дискета): ваша картинка, превращённая в маску (белый рисунок на прозрачном фоне, PNG в base64) и перекрашенная
+# в цвет темы - так же, как значок «вернуть» (Draw-RestoreClockCore). Рисуется в локальных координатах вызывающего (начало - центр значка),
+# $s - размер стороны в единицах рисования.
+$script:SaveFloppyIconB64 = 'iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAIfElEQVR42u2dTYgcZRrHf091z+RjMrtmBWPi1Q04IMGPQyAfsoiIeAhC9rSC4FXjXkTBw657CZjbYhZyCixkT1lwPUgQ8aIJeNCYIGTXIdeY5JCwu4kZp3u6Hw/1vDOVSld3szvTH1P/PxRTU/1Z7/9Xz/PUW9Xva1TI3Q3IzKwT/+8GXgSeB/YBjwHzwAzSONUG7gDXgMvA58CnZnY9fGsAXTPzXi+2CvMzM+vG+gLwJvAK8Kjaeyp0A/gIOGlmV8qe9gXA3Rtm1nH3bcD7wO+BLfFwF/B4nVUBJI1cXlgMyGL7MvBn4H0zW0reVgJQMH8v8Dfg2XhoBWjI8KkCogM04/+vgd+Z2WIZAuth/tPAJxHuZfzmAeEG8LKZXSxCYMX84O6PA+eBXWF+c4gPGCRbh/fYzLIRtHHy8iZw0MyuJs8tVfvALHABeGqA+d1YmjrAJkor4WM2AIJvgQNAC+haIfR/ALwTpxUzfQqN4gfcjedbiVQrPPcXfQh14L8BlNUoGqxH+6T/Z4AdpQO0qkBP3p4ws3fdvZEiwF7guwJB1uOLWKGgOBOp4jqw1GdHfxnEPVR6j7T+74g4/6npUbse7bMN2A0cAl4FnunhWdHHFMGfBBZTAXjKc7X9QXVjabn7sehYGK4CcZ9399uF9/HS+m13n69thbbO7ePujfCoVfCtrOTxKYCmuz8CHA06Gn2IOWJm59zd3L1Z6BPoF+KG6SWciShUxxSwXu2T6riOmX3o7leBjysieiPe56i7/wF3fy2I6PSgZSX+HgvCZuPLDCIxnV3sHILwncXX1OTI35D2iYNzNtbfKnlYVPL6tQx4oVDglav9RuSov0Tob1f1KUsTEFZyb9rh1UngUnjYrSjoX8jIL+z0qhrTi05HH7LV3fw4wmwKILDw7HTJy2LKMGBfE9hT0ZnQDEouVLxJnYzPolHTldEG4L0urkyI0vc6Hx42KzqO9mTkl3TLAKQj/V70HtW2x261xyzvK5lz9zkz60TPaTapXzv+3gwP6dGHADCfDahEWwPO8zd9yA+jF9z9LPA98L27n3X3hXhsklPCUnhYeYah7tz+Yd/d/QngC+DhwsNHgd+4+yHgX1XX2qdBmaweWFAdD/OXC9Xzcmw7Pu2FsQDoH/q3A/vD9NlC9Twb2/a7+/YpSAUC4H/UVvK7oXqZa/HYVkWATRwM1uk5AkASAJIAkASAJAAkASAJAEkASAJAEgCSAJAEgCQAJAEwabJ1eo4AmFL9xNqdQGWlO4N+EgCb7bA387jP7x7wVRzlLdZuCWvFtq/M7F481wXAJlPc5vUecIu1O4PSnUC3gPem/SdtAqA6CnTj7z+Bw8DfyYdiuxbrh+MxpvWOYNAoH8OmgivAb919Lrb/GBEim2bzBcCQkaDw07Bk/KT/NEwAbEQ6SPm+PNaeAPg/6qxpSwmbrQ3GXQRuBbbUaXCI0hnG2H9XMK4IYOQ/Yd4O7Dezf7j7Fndv1cT/WTNbdvf90QbdcR2Mk5ACjrv7l2Z2q0YBYNndHyb/3aHXMQKk9OPAE8AX7v5H8l63Hze5+XPkvzf8U+y7jzMVbzQAaXyBnQNSwQJwNsxvT2OBOGTag3w8hrlYHxT6B/2+f+IBSCOM7KH3wIUpEqQh5+ZqkgI63D+se6/UaNw/wsf0nAVED1ozTpvOF2jv9z3S+HV1WBoD2n51jJ9SW07VaeDqKGMMPxaw1WQZVBin1Hh6iINnMgGILtSGmV0iH7OuEfld4wz2N78dbXXSzC5FG24YABtdA3Sj3/xt4NfAS7GTaWhzTUSxZnwamHMWOAe8nSZ8mroaoFgLxA6sAEeAD1mbayCrUcgftGTRJt1ooyPRZt2NvtFkw/sBoogxM2sDb7n7X8mHNT9EPsz5tpof/Uvkw+5/CZwxs29gdZyiDU+XI+kIShDkq/YNkHZyR5wXew3TQdrntpndXd0Yw9ON6hazkfUExg557GBmZivFHa99ERBD8I/6HoORdwXHDt53fb3uMjM3s5VxfHZz3Dsu+8cr3RQqACQBIAkASQBIAkASAJIAkASAJAAkASAJAEkASAJAEgCSAJAEgCQAJAEgCQBJAEgCQBIAkgCQBIAkACQBIAkASQBIAkASAJIAkASAJAAkASAJAEkASAJAEgCSAJAEgCQAJAEgCQBJAEgCQBIAkgCQBIAkACQBIAkAaXQAtPs8PosmdpxmbQsPq9TOgDvxT3EGrzSd23ZgV2mbNPlKXu0KD8v+Ja/vZMAPPQCAfO5aAw4oXUxtaj8QHpbnJExe/5ABl2ODV7zJ62k6U030OPkKj9IMra9XHLzJ78sZ8Blrs1iXAegATwFvmFkHmBEEE2/+THj1RnjX6QFA8vszc/dHgCvArypyRZrq9YiZnYsPSfPaa+bPycn5GdCJibpfAj6ObVlF/r8NLCRyTnmutj+obiwtdz/m7g2198RGgEZ41Cr4Vlby+BSAxRG9F/iugphETdr2NXAGOE8+7/2Smn7sp3q7gYPAq8CzPTzrFdGfBBbN3Rtm1nH3D4B3ol9gphdgsRTzyd14vikdjCXse3i1o7C9W1HTUfD2hJm96+6NFAGy6DC4EIXDCtUziyeCmvJgorRSiOBVjzeBb+P0sAV0LXJHZmZdd388QvuuARBQ0XcgjbfjhwHm3wQOmtnV5LkVC4hIBU8DnwCPxgsbqBdwauvCOA1sAjeAl83sYvL6vg6CML9hZheB56LYaxZ6knS0T5fxqSe3GV4+Vzb/gR6iAgSLwGHgBLBcAKEbRKkPYPIML3qTjF8ODw+b2WLZ/MrckfJDrC8AbwKvRFqQJl83gI+Ak2Z2pezpUMVDOjtIxLj7buBF4HlgH/AYMF9xyiiNTm3yK7rXyK/rfA58ambXU20HdM2sZ8T+GQX7H+RgzgYnAAAAAElFTkSuQmCC'
+$script:SaveFloppyIconBmp = $null
+function Draw-SaveFloppyCore ($g, $col, [single]$s) {
+    $ia = $null
+    try {
+        if ($null -eq $script:SaveFloppyIconBmp) {
+            $ms = New-Object System.IO.MemoryStream (,[Convert]::FromBase64String([string]$script:SaveFloppyIconB64))
+            try {
+                $tmp = [System.Drawing.Image]::FromStream($ms)
+                try { $script:SaveFloppyIconBmp = New-Object System.Drawing.Bitmap($tmp) } finally { $tmp.Dispose() }
+            } finally { $ms.Dispose() }
+        }
+        $cm = New-Object System.Drawing.Imaging.ColorMatrix
+        $cm.Matrix00 = [single]($col.R / 255.0)
+        $cm.Matrix11 = [single]($col.G / 255.0)
+        $cm.Matrix22 = [single]($col.B / 255.0)
+        $cm.Matrix33 = [single]($col.A / 255.0)
+        $cm.Matrix44 = [single]1.0
+        $ia = New-Object System.Drawing.Imaging.ImageAttributes
+        $ia.SetColorMatrix($cm)
+        $ia.SetWrapMode([System.Drawing.Drawing2D.WrapMode]::TileFlipXY)
+        $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+        $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+        $l = -$s / 2.0
+        $pts = [System.Drawing.PointF[]]@(
+            (New-Object System.Drawing.PointF([single]$l, [single]$l)),
+            (New-Object System.Drawing.PointF([single]($l + $s), [single]$l)),
+            (New-Object System.Drawing.PointF([single]$l, [single]($l + $s))))
+        $src = New-Object System.Drawing.RectangleF(0, 0, [single]$script:SaveFloppyIconBmp.Width, [single]$script:SaveFloppyIconBmp.Height)
+        $g.DrawImage($script:SaveFloppyIconBmp, $pts, $src, [System.Drawing.GraphicsUnit]::Pixel, $ia)
+    } catch {} finally {
+        if ($null -ne $ia) { $ia.Dispose() }
+    }
+}
+
 function Draw-MainSavesGlyph ($g, [single]$cx, [single]$cy, $col, [string]$Kind, [single]$Scale = 1.0) {
     $pen = $null; $gp = $null; $gState = $null
     try {
@@ -19796,80 +20638,32 @@ function Draw-MainSavesGlyph ($g, [single]$cx, [single]$cy, $col, [string]$Kind,
         $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
         $q = { param($x, $y) New-Object System.Drawing.PointF([single]$x, [single]$y) }
         if ($Kind -eq 'scan') {
-            $pen = New-Object System.Drawing.Pen($col, [single](1.8 * $Scale))
-            $pen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
-            $pen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
-            $r = 6.4 * $Scale
-            $g.DrawEllipse($pen, [single]($cx - 2.2 * $Scale - $r), [single]($cy - 2.2 * $Scale - $r), [single](2 * $r), [single](2 * $r))
-            $g.DrawLine($pen, [single]($cx + 2.4 * $Scale), [single]($cy + 2.4 * $Scale), [single]($cx + 8.2 * $Scale), [single]($cy + 8.2 * $Scale))
+            # Лупа с бликом (по иконке поиска): кольцо, ручка и блик на стекле. Размеры те же, что были у прежней лупы, линия 1.8 px * Scale.
+            Draw-SearchGlyph $g $cx $cy $col ([single](-2.2 * $Scale)) ([single](6.4 * $Scale)) ([single](2.4 * $Scale)) ([single](8.2 * $Scale)) ([single](1.8 * $Scale)) ([single](1.1 * $Scale))
         } elseif ($Kind -eq 'backup') {
-            $pen = New-Object System.Drawing.Pen($col, [single](1.8 * $Scale))
-            $pen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
-            $pen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
-            $pen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
-            $s = [double]$Scale
-            $g.DrawLines($pen, [System.Drawing.PointF[]]@((& $q ($cx - 8 * $s) ($cy + 1 * $s)), (& $q ($cx - 8 * $s) ($cy + 8 * $s)), (& $q ($cx + 8 * $s) ($cy + 8 * $s)), (& $q ($cx + 8 * $s) ($cy + 1 * $s))))
-            $g.DrawLine($pen, [single]$cx, [single]($cy - 8 * $s), [single]$cx, [single]($cy + 3 * $s))
-            $g.DrawLines($pen, [System.Drawing.PointF[]]@((& $q ($cx - 4 * $s) ($cy - 1 * $s)), (& $q $cx ($cy + 3 * $s)), (& $q ($cx + 4 * $s) ($cy - 1 * $s))))
+            # «Бэкап»: значок «Управление загрузками» из Steam. При Scale 1.15 (кнопки 42x42) размер 20x20 px, как у дискеты; остальные размеры пропорционально.
+            Draw-SteamDownloadGlyph $g $cx $cy $col ([double](20.0 / 36.0 * $Scale / 1.15))
         } elseif ($Kind -eq 'scan16') {
             # Лупа для кнопок 30x30 (окно библиотеки): кольцо диаметром 12 и ручка, общий габарит ~16 px, линия 1.6 px без масштабирования (в ряду с дискетой и лотком).
-            $pen = New-Object System.Drawing.Pen($col, 1.6)
-            $pen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
-            $pen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
-            $g.TranslateTransform([single][Math]::Round($cx), [single][Math]::Round($cy))
-            $g.DrawEllipse($pen, [single]-7.5, [single]-7.5, [single]12, [single]12)
-            $g.DrawLine($pen, [single]2.8, [single]2.8, [single]7.3, [single]7.3)
+            # Тот же значок лупы с бликом, без масштабирования: кольцо диаметром 12, линия 1.6 px, блик 1 px.
+            Draw-SearchGlyph $g ([single][Math]::Round($cx)) ([single][Math]::Round($cy)) $col ([single]-1.5) ([single]6) ([single]2.8) ([single]7.3) ([single]1.6) ([single]1.0)
         } elseif ($Kind -eq 'backup16') {
-            # «Бэкап» для кнопок 30x30 (окно библиотеки): лоток и стрелка вниз, 15x15, линии 1 px по центрам пикселей, как у дискеты saves16 рядом.
-            $cxi = [single][Math]::Round($cx); $cyi = [single][Math]::Round($cy)
-            $pen = New-Object System.Drawing.Pen($col, 1)
-            $g.TranslateTransform($cxi, $cyi)
-            $g.DrawLines($pen, [System.Drawing.PointF[]]@((& $q -6.5 1.5), (& $q -6.5 7.5), (& $q 7.5 7.5), (& $q 7.5 1.5)))
-            $g.DrawLine($pen, [single]0.5, [single]-7.5, [single]0.5, [single]3.5)
-            $g.DrawLines($pen, [System.Drawing.PointF[]]@((& $q -3.5 -0.5), (& $q 0.5 3.5), (& $q 4.5 -0.5)))
+            # «Бэкап» для кнопок 30x30 (окно библиотеки): значок «Управление загрузками» из Steam, 16x16 px, как у дискеты saves16 рядом.
+            Draw-SteamDownloadGlyph $g ([single][Math]::Round($cx)) ([single][Math]::Round($cy)) $col ([double](16.0 / 36.0))
         } elseif ($Kind -eq 'saves20') {
-            # Дискета для главной кнопки на целочисленной сетке: центр - целый пиксель, линии 2 px идут по целым координатам и попадают ровно в пиксели
-            # (в масштабе 1.15 с линией 1.4 px они ложились между пикселями и размывались). Внешний размер 20x20, как у остальных значков колонки.
+            # Дискета для главной кнопки: картинка пользователя, 20x20, центр - целый пиксель.
             $cxi = [single][Math]::Round($cx); $cyi = [single][Math]::Round($cy)
-            $pen = New-Object System.Drawing.Pen($col, 2)
-            $pen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
-            $pen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
-            $pen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
             $g.TranslateTransform($cxi, $cyi)
-            $gp = New-Object System.Drawing.Drawing2D.GraphicsPath
-            $gp.AddLines([System.Drawing.PointF[]]@((& $q -9 -9), (& $q 6 -9), (& $q 9 -6), (& $q 9 9), (& $q -9 9)))
-            $gp.CloseFigure()
-            $g.DrawPath($pen, $gp)
-            # Внутренние детали (шторка и этикетка) тоньше контура: линия 1 px по координатам x.5 (центры пикселей) - чёткая и не добавляет «белизны».
-            $pen2 = New-Object System.Drawing.Pen($col, 1)
-            try {
-                $g.DrawRectangle($pen2, [single]-4.5, [single]-9, [single]7, [single]4.5)
-                $g.DrawRectangle($pen2, [single]-4.5, [single]1.5, [single]9, [single]7.5)
-            } finally { $pen2.Dispose() }
+            Draw-SaveFloppyCore $g $col ([single]20)
         } elseif ($Kind -eq 'saves16') {
-            # Дискета для кнопок 30x30 (окно библиотеки): внешний размер 16x16, линии 1 px по координатам x.5 (центры пикселей) - чёткие, без масштаба.
+            # Дискета для кнопок 30x30 (окно библиотеки): картинка пользователя, 16x16, центр - целый пиксель.
             $cxi = [single][Math]::Round($cx); $cyi = [single][Math]::Round($cy)
-            $pen = New-Object System.Drawing.Pen($col, 1)
             $g.TranslateTransform($cxi, $cyi)
-            $gp = New-Object System.Drawing.Drawing2D.GraphicsPath
-            $gp.AddLines([System.Drawing.PointF[]]@((& $q -7.5 -7.5), (& $q 4.5 -7.5), (& $q 7.5 -4.5), (& $q 7.5 7.5), (& $q -7.5 7.5)))
-            $gp.CloseFigure()
-            $g.DrawPath($pen, $gp)
-            $g.DrawRectangle($pen, [single]-3.5, [single]-7.5, [single]6, [single]4)
-            $g.DrawRectangle($pen, [single]-4.5, [single]0.5, [single]9, [single]7)
+            Draw-SaveFloppyCore $g $col ([single]16)
         } else {
-            # Дискета - тот же значок, что у «Бэкап» в карточке игры и окне библиотеки.
-            $pen = New-Object System.Drawing.Pen($col, 1.4)
-            $pen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
-            $pen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
-            $pen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
+            # Дискета (общий значок «Сохранения»): картинка пользователя.
             $g.TranslateTransform($cx, $cy); $g.ScaleTransform($Scale, $Scale)
-            $gp = New-Object System.Drawing.Drawing2D.GraphicsPath
-            $gp.AddLines([System.Drawing.PointF[]]@((& $q -8 -8), (& $q 5 -8), (& $q 8 -5), (& $q 8 8), (& $q -8 8)))
-            $gp.CloseFigure()
-            $g.DrawPath($pen, $gp)
-            $g.DrawRectangle($pen, [single]-4, [single]-8, [single]7, [single]4.5)
-            $g.DrawRectangle($pen, [single]-5, [single]1.5, [single]10, [single]6.5)
+            Draw-SaveFloppyCore $g $col ([single]17)
         }
     } catch {} finally {
         if ($null -ne $pen) { $pen.Dispose() }
@@ -19893,9 +20687,10 @@ function New-MainSavesIconBitmap ([string]$Kind) {
 $btnMainSaves = New-Object System.Windows.Forms.Button
 $btnMainSaves.Text = ''
 $btnMainSaves.Padding = New-Object System.Windows.Forms.Padding(0)
-$btnMainSaves.Location = New-Object System.Drawing.Point(519, 80)
+$btnMainSaves.Location = New-Object System.Drawing.Point(519, 48)
 $btnMainSaves.Size = New-Object System.Drawing.Size(42, 42)
 $btnMainSaves.FlatStyle = "Flat"
+$btnMainSaves.FlatAppearance.BorderSize = 1
 $btnMainSaves.FlatAppearance.BorderColor = $steamUi.Border
 $btnMainSaves.FlatAppearance.MouseOverBackColor = $steamUi.Selected
 $btnMainSaves.BackColor = $steamUi.Panel
@@ -19910,7 +20705,8 @@ $btnMainSaves.Add_Paint({
     try {
         $hot = $false
         try { $hot = ($sender.Enabled -and $sender.ClientRectangle.Contains($sender.PointToClient([System.Windows.Forms.Cursor]::Position))) } catch {}
-        $col = if (-not $sender.Enabled) { $steamUi.Muted } elseif ($hot -or [string]$sender.Tag -eq 'on' -or [bool]$script:mainSavesFlyout) { $steamUi.Accent2 } else { $steamUi.Text }
+        # Раскрытый блок или выбранное действие — зелёный (ModeOn), как у ROMs/Wrappers; наведение без раскрытия — синий.
+        $col = if (-not $sender.Enabled) { $steamUi.Muted } elseif ([string]$sender.Tag -eq 'on' -or [bool]$script:mainSavesFlyout) { $steamUi.ModeOn } elseif ($hot) { $steamUi.Accent2 } else { $steamUi.Text }
         # Действие выбрано: вместо общего значка группы показывается значок выбранного действия (как на боковой кнопке).
         $scx = [single]($sender.ClientSize.Width / 2.0); $scy = [single]($sender.ClientSize.Height / 2.0)
         switch ([string]$script:mainSavesMode) {
@@ -19919,6 +20715,8 @@ $btnMainSaves.Add_Paint({
             'restore' { Draw-LibsUndoGlyph $e.Graphics $scx $scy $col ([single]1.1) }
             default   { Draw-MainSavesGlyph $e.Graphics $scx $scy $col 'saves20' ([single]1) }
         }
+        # Счётчик только у выбранного действия (на общей кнопке его значок): без выбранного действия бейджа нет.
+        if ([string]$script:mainSavesMode -ne '') { Draw-MainSelCountBadge $sender $e.Graphics } else { Set-LibCountBadge $sender 0 $steamUi.Accent2 }
     } catch {}
 })
 $form.Controls.Add($btnMainSaves)
@@ -19928,7 +20726,7 @@ $script:mainSavesSubPaint = {
     try {
         $hot = $false
         try { $hot = ($sender.Enabled -and $sender.ClientRectangle.Contains($sender.PointToClient([System.Windows.Forms.Cursor]::Position))) } catch {}
-        $col = if (-not $sender.Enabled) { $steamUi.Muted } elseif ($hot -or [string]$sender.Tag -eq 'sel') { $steamUi.Accent2 } else { $steamUi.Text }
+        $col = if (-not $sender.Enabled) { $steamUi.Muted } elseif ([string]$sender.Tag -eq 'sel') { $steamUi.ModeOn } elseif ($hot) { $steamUi.Accent2 } else { $steamUi.Text }
         $cx = [single]($sender.ClientSize.Width / 2.0); $cy = [single]($sender.ClientSize.Height / 2.0)
         switch ([string]$sender.Name) {
             'restore' { Draw-LibsUndoGlyph $e.Graphics $cx $cy $col ([single]1.1) }
@@ -19944,6 +20742,7 @@ function New-MainSavesSubButton ([string]$Name) {
     $b.Padding = New-Object System.Windows.Forms.Padding(0)
     $b.Size = New-Object System.Drawing.Size(42, 42)
     $b.FlatStyle = "Flat"
+    $b.FlatAppearance.BorderSize = 1
     $b.FlatAppearance.BorderColor = $steamUi.Border
     $b.FlatAppearance.MouseOverBackColor = $steamUi.Selected
     $b.BackColor = $steamUi.Panel
@@ -19988,6 +20787,7 @@ function Set-MainSavesFlyout ([bool]$Open) {
             $btnMainSavesRestore.BringToFront()
             $btnMainSavesScan.BringToFront()
             $btnMainSaves.BringToFront()
+            try { Sync-LibBadgeGeom $btnMainSaves } catch {}
             $script:mainSavesFlyTimer.Start()
         } else {
             $wasShown = ([bool]$btnMainSavesBackup.Visible -or [bool]$btnMainSavesRestore.Visible -or [bool]$btnMainSavesScan.Visible)
@@ -20345,13 +21145,15 @@ function Update-MainSavesUi ($ready, [int]$totalChecked) {
     $btnMainSaves.Visible = $true
     # Кнопки доступны и без отмеченных игр: выбор действия лишь определяет, какие игры в панелях можно отмечать
     # (только добавленные в библиотеку), остальные галочки неактивны.
-    $btnMainSaves.Enabled = ([bool]$ready -and -not $libsBusy)
+    $btnMainSaves.Enabled = ([bool]$ready -and -not $libsBusy -and -not (Test-MainRomWrapperModeActive))
     $btnMainSavesScan.Enabled = [bool]$ready
     $btnMainSavesBackup.Enabled = [bool]$ready
     $btnMainSavesRestore.Enabled = [bool]$ready
     $md = [string]$script:mainSavesMode
     if (-not [bool]$btnMainSaves.Enabled -and [bool]$script:mainSavesFlyout) { Set-MainSavesFlyout $false }
     $btnMainSaves.Tag = $(if ($md -ne '') { 'on' } else { '' })
+    # Рамка Accent2 у главной кнопки при выбранном действии — как у ROMs/Wrappers/рамок/коллекций.
+    try { $btnMainSaves.FlatAppearance.BorderColor = $(if ([string]$btnMainSaves.Tag -eq 'on') { $steamUi.Accent2 } else { $steamUi.Border }) } catch {}
     foreach ($pair in @(@($btnMainSavesBackup, 'backup'), @($btnMainSavesRestore, 'restore'), @($btnMainSavesScan, 'scan'))) {
         $b = $pair[0]
         $sel = ($md -eq [string]$pair[1])
@@ -20372,8 +21174,7 @@ function Update-MainSavesUi ($ready, [int]$totalChecked) {
 # Нижняя главная кнопка в режиме «Найти / Бэкап / Вернуть сохранения (N)» (во время работы — «✕ Отменить»).
 function Set-MainSavesApplyButton ([int]$N) {
     $md = [string]$script:mainSavesMode
-    if ($script:mainSavesBusy) { $newTag = ([string][char]0x2715 + ' ' + (T 'btn_libs_cancel')) }
-    elseif ($md -eq 'restore') { $newTag = (T 'btn_saves_restore_n' @($N)) }
+    if ($md -eq 'restore') { $newTag = (T 'btn_saves_restore_n' @($N)) }
     elseif ($md -eq 'scan') { $newTag = (T 'btn_saves_scan_n' @($N)) }
     else { $newTag = (T 'btn_saves_backup_n' @($N)) }
     $newIcon = $(if ($md -eq 'restore') { $script:savesRestoreButtonIcon } elseif ($md -eq 'scan') { $script:savesScanButtonIcon } else { $script:savesBackupButtonIcon })
@@ -20383,7 +21184,7 @@ function Set-MainSavesApplyButton ([int]$N) {
     $script:savesApplyIcon = $newIcon
     $btnApplySaves.Visible = $true
     # Без подходящих отмеченных игр нижняя кнопка видна (показывает выбранное действие), но недоступна.
-    $btnApplySaves.Enabled = ([bool]$script:mainSavesBusy -or $N -ge 1)
+    $btnApplySaves.Enabled = (-not [bool]$script:mainSavesBusy -and $N -ge 1)
     if ($changed -or ([bool]$btnApplySaves.Enabled -ne [bool]$script:savesApplyEnabledPrev)) { $btnApplySaves.Invalidate() }
     $script:savesApplyEnabledPrev = [bool]$btnApplySaves.Enabled
 }
@@ -20428,7 +21229,7 @@ function Invoke-MainSavesOperation ([string]$Mode, $OnlyGames = $null) {
     $wasCancelled = $false
     $idx = 0
     try {
-        try { $btnRefreshLibrary.Enabled = $false; $btnMoveGame.Enabled = $false; $btnMainSaves.Enabled = $false } catch {}
+        try { $btnRefreshLibrary.Enabled = $false; $btnMoveGame.Enabled = $false; $btnMainSaves.Enabled = $false; Set-MainAddGamesButtonBusy $true } catch {}
         if (-not $isScan) { $script:saveUiPump = $true; $script:saveUiPumpSw = $null }
         try { Update-MainLibraryButtonState } catch {}
         try { $progressBarFolder.Value = 1 } catch {}
@@ -20668,9 +21469,14 @@ function Update-CardCollMenuVisuals ($cardColl, $menu) {
             if ($sel.Count -eq 0) { $mode = $(if ([bool]$cardColl.Existing -and $ini.Count -eq 0 -and -not $touchedK.ContainsKey('__none__')) { 'prior' } else { 'solid' }) }
         } elseif ($sel.ContainsKey($k)) {
             # Бледная отметка — только у не тронутого пункта; снял и поставил обратно — сплошная.
-            $mode = $(if ($ini.ContainsKey($k) -and -not $touchedK.ContainsKey($k)) { 'prior' } else { 'solid' })
+            # col:__vr у лицензионных (только чтение из appinfo.vdf): всегда бледная «заданная раньше», не снимаемая.
+            if ($k -eq 'col:__vr' -and $ini.ContainsKey($k)) { $mode = 'prior' }
+            else { $mode = $(if ($ini.ContainsKey($k) -and -not $touchedK.ContainsKey($k)) { 'prior' } else { 'solid' }) }
         }
         Set-CollItemVisual $it $mode
+        if ($k -eq 'col:__vr' -and $ini.ContainsKey($k) -and $sel.ContainsKey($k)) {
+            try { $it.ForeColor = $steamUi.Muted } catch {}
+        }
     }
 }
 
@@ -20930,10 +21736,53 @@ function Invoke-MainCollEditorStructureChange([string]$op, [string]$ckey) {
             }
             $cid = New-SteamCollectionId
             [void]$script:mainCollStructPending.Add([PSCustomObject]@{ Op = 'create'; Key = ('col:' + $cid); Cid = $cid; Name = $cname })
+        } elseif ($op -eq 'rename') {
+            if (-not ([string]$ckey).StartsWith('col:')) { return }
+            $cid = ([string]$ckey).Substring(4)
+            if ($cid -eq 'favorite' -or $cid -eq 'hidden' -or $cid -eq '__vr') { return }
+            $snap = Read-SteamCollectionsSnapshot
+            # Текущие названия с учётом очереди: новые коллекции добавлены, помеченные на удаление убраны, переименованные — под новым названием.
+            $effective = @{}
+            foreach ($cl in @($snap.List)) { if ($null -ne $cl -and [string]$cl.Key -ne 'col:hidden') { $effective[[string]$cl.Key] = [string]$cl.Name } }
+            $createOp = $null; $renOp = $null; $isDel = $false
+            foreach ($so in @($script:mainCollStructPending.ToArray())) {
+                $sk = [string]$so.Key
+                if ($sk -eq [string]$ckey) {
+                    if ([string]$so.Op -eq 'delete') { $isDel = $true }
+                    elseif ([string]$so.Op -eq 'create') { $createOp = $so }
+                    elseif ([string]$so.Op -eq 'rename') { $renOp = $so }
+                }
+                if ([string]$so.Op -eq 'delete') { [void]$effective.Remove($sk) } else { $effective[$sk] = [string]$so.Name }
+            }
+            if ($isDel) { return }
+            $curName = [string]$effective[[string]$ckey]
+            if ([string]::IsNullOrWhiteSpace($curName)) { return }
+            $newName = Show-CollectionNameDialog $form $curName (T 'coll_rename_title')
+            if ([string]::IsNullOrWhiteSpace($newName)) { return }
+            $newName = ([string]$newName).Trim()
+            if ($newName -ceq $curName) { return }
+            $lowNew = $newName.ToLowerInvariant()
+            foreach ($ek in @($effective.Keys)) {
+                if ([string]$ek -ne [string]$ckey -and ([string]$effective[$ek]).Trim().ToLowerInvariant() -eq $lowNew) {
+                    Show-AppMessageBox($form, (T 'coll_new_exists' @($newName)), $global:appTitle, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
+                    return
+                }
+            }
+            if ($null -ne $createOp) { $createOp.Name = $newName }
+            elseif ($null -ne $renOp) {
+                $renOp.Name = $newName
+                if ($newName -ceq [string]$renOp.OldName) { [void]$script:mainCollStructPending.Remove($renOp) }
+            } else {
+                [void]$script:mainCollStructPending.Add([PSCustomObject]@{ Op = 'rename'; Key = [string]$ckey; Cid = $cid; Name = $newName; OldName = $curName })
+            }
         } elseif ($op -eq 'delete') {
             if (-not ([string]$ckey).StartsWith('col:')) { return }
             $cid = ([string]$ckey).Substring(4)
-            if ($cid -eq 'favorite' -or $cid -eq 'hidden') { return }
+            if ($cid -eq 'favorite' -or $cid -eq 'hidden' -or $cid -eq '__vr') { return }
+            # Если у коллекции было отложенное переименование — оно снимается (на удаление уходит прежнее название).
+            for ($ri = $script:mainCollStructPending.Count - 1; $ri -ge 0; $ri--) {
+                if ([string]$script:mainCollStructPending[$ri].Key -eq [string]$ckey -and [string]$script:mainCollStructPending[$ri].Op -eq 'rename') { $script:mainCollStructPending.RemoveAt($ri) }
+            }
             # Ещё не созданная коллекция или уже помеченная на удаление: крестик отменяет запись в очереди.
             $undone = $false
             for ($i = $script:mainCollStructPending.Count - 1; $i -ge 0; $i--) {
@@ -20996,6 +21845,27 @@ function Invoke-MainCollStructApply {
             }
         }
         $tagWork = @($tagByApp.Values | ForEach-Object { [PSCustomObject]@{ Entry = $_.Entry; NamesLower = @($_.NamesLower.ToArray()) } })
+        # Переименование: у ярлыков Non-Steam тег с прежним названием коллекции получает новое.
+        $renOps = @($ops | Where-Object { [string]$_.Op -eq 'rename' })
+        if ($renOps.Count -gt 0) {
+            $entriesForRen = @()
+            try { $entriesForRen = @(Get-SteamLibraryEntries) } catch { $entriesForRen = @() }
+            $tagRenList = New-Object System.Collections.Generic.List[object]
+            foreach ($rop in $renOps) {
+                $oldLowR = ([string]$rop.OldName).Trim().ToLowerInvariant()
+                foreach ($en in $entriesForRen) {
+                    if ($null -eq $en -or [string]$en.Kind -ne 'shortcut') { continue }
+                    $hasTagR = $false
+                    try {
+                        foreach ($tg in @(Get-ShortcutRecordTags $en.ShortcutRecord)) {
+                            if (([string]$tg).Trim().ToLowerInvariant() -eq $oldLowR) { $hasTagR = $true; break }
+                        }
+                    } catch {}
+                    if ($hasTagR) { [void]$tagRenList.Add([PSCustomObject]@{ Entry = $en; NamesLower = @($oldLowR); NewName = [string]$rop.Name }) }
+                }
+            }
+            $tagWork = @($tagWork) + @($tagRenList.ToArray())
+        }
 
         $running = $false
         try { $running = [bool](Test-SteamRunning) } catch {}
@@ -21032,6 +21902,8 @@ function Invoke-MainCollStructApply {
             if ($tagWork.Count -gt 0) {
                 $tagRes = Remove-ShortcutTagsBatch @($tagWork)
                 if ($null -ne $tagRes -and [string]$tagRes.Error) { [void]$errors.Add([string]$tagRes.Error) }
+                # Коллекция могла существовать только как тег ярлыков (в облачном файле её нет): тогда достаточно переименованных тегов.
+                if ($renOps.Count -gt 0 -and $null -ne $tagRes -and [int]$tagRes.Removed -gt 0) { $anyChanged = $true }
             }
         } finally {
             if ($steamWasRunning -and -not $manual) { try { Start-SteamIfAuto ([string](Get-ConfiguredSteamExePath)) } catch {} }
@@ -21051,9 +21923,10 @@ function Invoke-MainCollStructApply {
         } else {
             $nCreated = @($ops | Where-Object { [string]$_.Op -eq 'create' }).Count
             $nDeleted = @($ops | Where-Object { [string]$_.Op -eq 'delete' }).Count
+            $nRenamed = @($ops | Where-Object { [string]$_.Op -eq 'rename' }).Count
             $script:mainCollStructPending.Clear()
             $script:mainCollStructApplyOk = $true
-            $labelHeader.Text = $(if ($queueOnly) { (T 'coll_queued') } else { (T 'coll_struct_done' @($nCreated, $nDeleted)) })
+            $labelHeader.Text = $(if ($queueOnly) { (T 'coll_queued') } else { $(if ($nRenamed -gt 0) { T 'coll_struct_done3' @($nCreated, $nDeleted, $nRenamed) } else { T 'coll_struct_done' @($nCreated, $nDeleted) }) })
         }
     } catch {
         try { Write-LauncherLog ('mainCollStructApply: ' + $_.Exception.Message + ' | ' + [string]$_.ScriptStackTrace) } catch {}
@@ -21070,15 +21943,15 @@ function Invoke-MainCollStructApply {
 function Set-MainCollEditorRowLook ($it) {
     try {
         $key = [string]$it.Tag
-        $isDel = $false; $isCreate = $false
+        $isDel = $false; $isCreate = $false; $isRen = $false
         foreach ($so in @($script:mainCollStructPending.ToArray())) {
             if ([string]$so.Key -ne $key) { continue }
-            if ([string]$so.Op -eq 'delete') { $isDel = $true } elseif ([string]$so.Op -eq 'create') { $isCreate = $true }
+            if ([string]$so.Op -eq 'delete') { $isDel = $true } elseif ([string]$so.Op -eq 'create') { $isCreate = $true } elseif ([string]$so.Op -eq 'rename') { $isRen = $true }
         }
         if ([string]$it.AccessibleName -eq 'staged') {
             if (-not $isCreate) { $it.Visible = $false }
         } else {
-            $it.ForeColor = $(if ($isDel) { $steamUi.Muted } else { $steamUi.Text })
+            $it.ForeColor = $(if ($isDel) { $steamUi.Muted } elseif ($isRen) { $steamUi.Accent } else { $steamUi.Text })
             $it.AccessibleDefaultActionDescription = $(if ($isDel) { 'greyx' } else { '' })
         }
         if ($null -ne $it.Owner) { $it.Owner.Invalidate() }
@@ -21102,26 +21975,30 @@ function Show-MainCollEditorMenu {
             if ($null -eq $en) { continue }
             foreach ($key in @(Get-CollKeysForEntry $snap ([string]$en.AppId) ([string]$en.Kind) $en.ShortcutRecord)) {
                 $ks = [string]$key
-                if ($ks -eq 'col:hidden') { continue }
                 if ($counts.ContainsKey($ks)) { $counts[$ks] = [int]$counts[$ks] + 1 } else { $counts[$ks] = 1 }
             }
         }
-        # Такой же набор строк, как у редактора библиотеки: «Скрыто» не показываем, «Избранное» нельзя удалить.
+        # Такой же набор строк, как у редактора библиотеки: системные коллекции Steam (в том числе «Скрытые») видны, но не редактируются.
         # Накопленные изменения видны сразу: новая коллекция — «+» акцентным цветом, помеченная на удаление — приглушена (повторный клик по значку возвращает её).
         $rowsList = New-Object System.Collections.Generic.List[object]
-        foreach ($sr in @(@($snap.List) | Where-Object { $null -ne $_ -and [string]$_.Key -ne 'col:hidden' })) { [void]$rowsList.Add([PSCustomObject]@{ Key = [string]$sr.Key; Name = [string]$sr.Name; Staged = '' }) }
+        foreach ($sr in @(@($snap.List) | Where-Object { $null -ne $_ })) { [void]$rowsList.Add([PSCustomObject]@{ Key = [string]$sr.Key; Name = [string]$sr.Name; Staged = '' }) }
         $delKeys = @{}
+        $renNames = @{}
         foreach ($so in @($script:mainCollStructPending.ToArray())) {
             if ([string]$so.Op -eq 'create') { [void]$rowsList.Add([PSCustomObject]@{ Key = [string]$so.Key; Name = [string]$so.Name; Staged = 'create' }) }
             elseif ([string]$so.Op -eq 'delete') { $delKeys[[string]$so.Key] = $true }
+            elseif ([string]$so.Op -eq 'rename') { $renNames[[string]$so.Key] = [string]$so.Name }
         }
-        $rows = @($rowsList.ToArray() | Sort-Object -Property { [string]$_.Name } -CaseSensitive:$false)
+        # Переименованные (ещё не записанные в Steam) коллекции показываем под новым названием.
+        foreach ($rr in $rowsList) { if ($renNames.ContainsKey([string]$rr.Key)) { $rr.Name = [string]$renNames[[string]$rr.Key] } }
+        $rows = @(Sort-CollRows $rowsList.ToArray())
 
         Initialize-SCFilterRenderer
         [SCFilterRenderer]::Accent = $steamUi.Accent
         [SCFilterRenderer]::Muted = $steamUi.Muted
         [SCFilterRenderer]::HotItem = $null
         $menu = New-Object System.Windows.Forms.ContextMenuStrip
+        try { if ($null -ne ('SCToolTip' -as [type])) { [SCToolTip]::WatchMenu($menu) } } catch {}
         $menu.Name = 'maincoll_editor'
         $menu.Renderer = New-Object SCFilterRenderer
         $menu.BackColor = [System.Drawing.Color]::FromArgb(13, 20, 28)
@@ -21133,11 +22010,17 @@ function Show-MainCollEditorMenu {
         $menu.MinimumSize = New-Object System.Drawing.Size(220, 0)
         $script:mainCollEditorMenuCtl = $menu
         $script:mainCollEditorGlyphHit = $false
+        $script:mainCollEditorEditHit = $false
         $script:mainCollEditorAllowClose = $false
         $script:mainCollEditorGlyphHotItem = $null
+        $script:mainCollEditorGlyphHotZone = ''
 
+        $prevSteamRow = $false
         foreach ($cr in $rows) {
             $key = [string]$cr.Key
+            # Между системными коллекциями Steam и пользовательскими — разделитель.
+            if ($prevSteamRow -and -not (Test-CollSteamKey $key)) { [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)) }
+            $prevSteamRow = (Test-CollSteamKey $key)
             $n = 0
             if ($counts.ContainsKey($key)) { $n = [int]$counts[$key] }
             $mi = New-Object System.Windows.Forms.ToolStripMenuItem
@@ -21147,20 +22030,25 @@ function Show-MainCollEditorMenu {
             $mi.Text = $(if ($stagedCreate) { '(' + (T 'coll_new_tag') + ') ' + [string]$cr.Name } else { ([string]$cr.Name) + '  (' + [string]$n + ')' })
             $mi.Tag = $key
             $mi.BackColor = [System.Drawing.Color]::FromArgb(22, 28, 36)
-            $mi.ForeColor = $(if ($stagedDelete) { $steamUi.Muted } else { $steamUi.Text })
-            if ($key -ne 'col:favorite') {
+            $mi.ForeColor = $(if ($stagedDelete) { $steamUi.Muted } elseif ($renNames.ContainsKey($key)) { $steamUi.Accent } else { $steamUi.Text })
+            # Системные коллекции Steam (Избранное, Библиотека VR, Скрыто) не редактируются: без карандаша и крестика.
+            if (-not (Test-CollSteamKey $key)) {
                 $mi.AccessibleDescription = 'collrow'
                 $mi.ShowShortcutKeys = $true
-                $mi.ShortcutKeyDisplayString = [string][char]0x00D7
+                $mi.ShortcutKeyDisplayString = [string][SCFilterRenderer]::ShortcutMark
                 if ($stagedDelete) { $mi.AccessibleDefaultActionDescription = 'greyx' }   # помечена на удаление: серый крестик, остальные красные
                 # Крестик срабатывает сразу при нажатии (один клик — одно действие), меню остаётся открытым, строка тут же меняет вид.
                 $mi.Add_MouseDown({
                     param($snd, $ea)
                     try {
                         $script:mainCollEditorGlyphHit = $false
+                        $script:mainCollEditorEditHit = $false
                         if ($ea.Button -ne [System.Windows.Forms.MouseButtons]::Left) { return }
                         if ([string]$snd.AccessibleDescription -ne 'collrow') { return }
-                        if ($ea.X -lt ($snd.Width - [SCFilterRenderer]::GlyphZone)) { return }
+                        $zn = [string](Get-CollGlyphZoneAt $snd ([int]$ea.X))
+                        # Карандаш срабатывает по отпусканию кнопки (в Click): открывается окно названия.
+                        if ($zn -eq 'e') { $script:mainCollEditorEditHit = $true; return }
+                        if ($zn -ne 'x') { return }
                         $script:mainCollEditorGlyphHit = $true
                         Invoke-MainCollEditorStructureChange 'delete' ([string]$snd.Tag)
                         Set-MainCollEditorRowLook $snd
@@ -21171,6 +22059,22 @@ function Show-MainCollEditorMenu {
                 param($snd, $ea)
                 # Действие крестика уже выполнено при нажатии; клик по названию ничего не делает.
                 $script:mainCollEditorGlyphHit = $false
+                if (-not [bool]$script:mainCollEditorEditHit) { return }
+                $script:mainCollEditorEditHit = $false
+                try {
+                    Invoke-MainCollEditorStructureChange 'rename' ([string]$snd.Tag)
+                    # Список перестраивается заново, чтобы показать новое название: закрываем его (если диалог ещё не закрыл) и открываем снова.
+                    $script:mainCollEditorAllowClose = $true
+                    try { if ($null -ne $script:mainCollEditorMenuCtl) { $script:mainCollEditorMenuCtl.Close() } } catch {}
+                    $rt2 = New-Object System.Windows.Forms.Timer
+                    $rt2.Interval = 40
+                    $rt2.Add_Tick({
+                        param($ts, $te)
+                        try { $ts.Stop(); $ts.Dispose() } catch {}
+                        try { if ($null -eq $script:mainCollEditorMenuCtl) { Show-MainCollEditorMenu } } catch {}
+                    })
+                    $rt2.Start()
+                } catch {}
             })
             [void]$menu.Items.Add($mi)
         }
@@ -21220,13 +22124,17 @@ function Show-MainCollEditorMenu {
                 if ($null -eq $m -or $m.IsDisposed -or -not $m.Visible) { return }
                 $pt = $m.PointToClient([System.Windows.Forms.Control]::MousePosition)
                 $hotItem = $null
+                $hotZone = ''
                 $it = $m.GetItemAt($pt)
                 if ($null -ne $it -and [string]$it.AccessibleDescription -eq 'collrow') {
-                    if (($pt.X - $it.Bounds.X) -ge ($it.Width - [SCFilterRenderer]::GlyphZone)) { $hotItem = $it }
+                    $hotZone = [string](Get-CollGlyphZoneAt $it ([int]($pt.X - $it.Bounds.X)))
+                    if ($hotZone -ne '') { $hotItem = $it }
                 }
-                if (-not [object]::ReferenceEquals($hotItem, $script:mainCollEditorGlyphHotItem)) {
+                if (-not [object]::ReferenceEquals($hotItem, $script:mainCollEditorGlyphHotItem) -or $hotZone -ne [string]$script:mainCollEditorGlyphHotZone) {
                     $oldItem = $script:mainCollEditorGlyphHotItem
                     $script:mainCollEditorGlyphHotItem = $hotItem
+                    $script:mainCollEditorGlyphHotZone = $hotZone
+                    [SCFilterRenderer]::HotEdit = ($hotZone -eq 'e')
                     [SCFilterRenderer]::HotItem = $hotItem
                     $m.Cursor = $(if ($null -ne $hotItem) { [System.Windows.Forms.Cursors]::Hand } else { [System.Windows.Forms.Cursors]::Default })
                     if ($null -ne $oldItem) { $m.Invalidate($oldItem.Bounds) }
@@ -21238,9 +22146,12 @@ function Show-MainCollEditorMenu {
             try {
                 if ($null -ne $script:mainCollEditorHotTimer) { $script:mainCollEditorHotTimer.Stop(); $script:mainCollEditorHotTimer.Dispose(); $script:mainCollEditorHotTimer = $null }
                 $script:mainCollEditorGlyphHotItem = $null
+                $script:mainCollEditorGlyphHotZone = ''
                 $script:mainCollEditorGlyphHit = $false
+                $script:mainCollEditorEditHit = $false
                 $script:mainCollEditorAllowClose = $false
                 [SCFilterRenderer]::HotItem = $null
+                [SCFilterRenderer]::HotEdit = $false
                 $script:mainCollEditorMenuCtl = $null
                 Update-MainCollButtonLook
             } catch {}
@@ -21349,7 +22260,11 @@ $btnMainColl.Add_Click({
         $rows = New-Object System.Collections.Generic.List[object]
         foreach ($pr in @(Get-CollPickerItems $snap @())) { [void]$rows.Add($pr) }
         [void]$rows.Add([PSCustomObject]@{ Key = $script:mainCollNoneKey; Name = (T 'lib_filter_coll_none') })
+        $prevSteamPick = $false
         foreach ($row in $rows) {
+            # Между системными коллекциями Steam и пользовательскими — разделитель.
+            if ($prevSteamPick -and -not (Test-CollSteamKey ([string]$row.Key))) { [void]$cmenu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)) }
+            $prevSteamPick = (Test-CollSteamKey ([string]$row.Key))
             $mi = New-Object System.Windows.Forms.ToolStripMenuItem
             $mi.Text = ([string]$row.Name).Replace('&', '&&')
             $mi.AccessibleName = $mi.Text   # базовое название: к нему в списке дописывается счётчик «n/всего»
@@ -21378,7 +22293,6 @@ $btnMainColl.Add_Click({
                     }
                     # Выбор коллекций вытесняет выбранное действие с апскейлерами / сохранениями.
                     $script:mainLibsMode = ''; $script:mainSavesMode = ''
-                    $script:mainFramesPending = ''   # нижняя кнопка одна: выбор коллекций сбрасывает выбор рамки
                     try { Update-MainFramesButtonLook } catch {}
                     Update-MainCollMenuStates $m $script:mainCollMenuCtl
                     Update-MainCollButtonLook
@@ -21409,7 +22323,7 @@ $btnMainColl.Add_Click({
 
 $progressBarFolder = New-Object System.Windows.Forms.ProgressBar
 $progressBarFolder.Location = New-Object System.Drawing.Point(20, 633)
-$progressBarFolder.Size = New-Object System.Drawing.Size(1000, 14)
+$progressBarFolder.Size = New-Object System.Drawing.Size(890, 14)   # короче на 110 px: в конце бара процент и кнопка «Отменить» (как в окне библиотеки)
 $progressBarFolder.Style = [System.Windows.Forms.ProgressBarStyle]::Continuous
 # Скрыт, пока прогресс не используется; показывается/прячется таймером ниже.
 $progressBarFolder.Visible = $false
@@ -21422,14 +22336,49 @@ $form.Controls.Add($progressBarFolder)
 # известно только по тексту статусной строки ($labelHeader) — сейчас это
 # ещё и процент рядом с самим баром.
 $lblProgressPercent = New-Object System.Windows.Forms.Label
-$lblProgressPercent.Location = New-Object System.Drawing.Point(1024, 630)
-$lblProgressPercent.Size = New-Object System.Drawing.Size(36, 20)
+$lblProgressPercent.Location = New-Object System.Drawing.Point(914, 630)
+$lblProgressPercent.Size = New-Object System.Drawing.Size(42, 20)
 $lblProgressPercent.Font = New-Object System.Drawing.Font("Segoe UI", 8)
 $lblProgressPercent.ForeColor = $steamUi.Muted
-$lblProgressPercent.TextAlign = [System.Drawing.ContentAlignment]::MiddleRight
+$lblProgressPercent.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft   # процент вплотную к концу прогресс-бара (как в окне библиотеки)
 $lblProgressPercent.Text = ""
 $lblProgressPercent.Visible = $false
 $form.Controls.Add($lblProgressPercent)
+
+# Единая кнопка «Отменить» в конце прогресс-бара (оформление и размеры как $btnLibCancel в окне библиотеки): отменяет идущее действие
+# главного окна — пакетное добавление, обновление/возврат библиотек, поиск/бэкап/восстановление сохранений, подсчёт размеров.
+# Нижние большие кнопки больше не превращаются в «Отменить».
+$btnProgCancel = New-Object System.Windows.Forms.Button
+$btnProgCancel.Size = New-Object System.Drawing.Size(96, 22)
+$btnProgCancel.Location = New-Object System.Drawing.Point(964, 629)
+$btnProgCancel.FlatStyle = 'Flat'
+$btnProgCancel.FlatAppearance.BorderColor = $steamUi.Accent2
+$btnProgCancel.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(35,78,106)
+$btnProgCancel.UseVisualStyleBackColor = $false
+$btnProgCancel.BackColor = [System.Drawing.Color]::FromArgb(25,55,75)
+$btnProgCancel.ForeColor = $steamUi.Text
+$btnProgCancel.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 9)
+$btnProgCancel.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
+$btnProgCancel.Cursor = [System.Windows.Forms.Cursors]::Hand
+$btnProgCancel.TabStop = $false
+$btnProgCancel.Padding = New-Object System.Windows.Forms.Padding(0)
+$btnProgCancel.Text = (T 'lib_import_cancel')
+$btnProgCancel.Visible = $false
+$form.Controls.Add($btnProgCancel)
+$btnProgCancel.BringToFront()
+$btnProgCancel.Add_Click({
+    try {
+        if ($script:mainLibsBusy) { $script:mainLibsCancel = $true; $labelHeader.Text = (T 'hd_cancelling') }
+        elseif ($script:mainSavesBusy) { $script:mainSavesCancel = $true; $labelHeader.Text = (T 'hd_cancelling') }
+        elseif ($script:sizeCalcActive) { $script:sizeCalcCancel = $true; $labelHeader.Text = (T 'st_sizes_cancelled') }
+        elseif ($script:batchInProgress -or ($script:smartBatchActive -and -not $script:libImportRunning)) {
+            $script:batchCardCancelRequested = $true
+            # Идёт тихое добавление рома: прерываем его долгие операции (как раньше нижней кнопкой).
+            if ($script:quietRomActive) { $global:editorLoadAbortRequested = $true }
+            $labelHeader.Text = (T 'hd_cancelling')
+        }
+    } catch {}
+})
 
 # Бар выставляется из десятка разных мест по файлу напрямую через
 # ".Value = ...", поэтому вместо правки каждого места процент читается
@@ -21444,7 +22393,7 @@ $script:progressDoneSince = $null
 $progressPercentTimer.Add_Tick({
     try {
         $v = $progressBarFolder.Value
-        $lblProgressPercent.Text = if ($v -gt 0 -and $v -lt 100) { "$v%" } else { "" }
+        $lblProgressPercent.Text = if ($v -gt 0) { "$v%" } else { "" }
         $wantVisible = ($v -gt 0)
         if ($v -ge 100 -and -not $script:moveInProgress) {
             if ($null -eq $script:progressDoneSince) { $script:progressDoneSince = [DateTime]::UtcNow }
@@ -21460,6 +22409,11 @@ $progressPercentTimer.Add_Tick({
             $progressBarFolder.Visible = $wantVisible
             $lblProgressPercent.Visible = $wantVisible
         }
+        # «Отменить» в конце бара: пока идёт отменяемое действие (одиночное обновление библиотек из меню игры — без бара и без отмены).
+        $cancelable = ($wantVisible -and ([bool]$script:batchInProgress -or ([bool]$script:smartBatchActive -and -not [bool]$script:libImportRunning) -or [bool]$script:sizeCalcActive -or [bool]$script:mainLibsBusy -or [bool]$script:mainSavesBusy))
+        # Пока бар виден, кнопка стоит на месте всегда: если действие не отменяется (например, удаление папок игр), она неактивна, и справа от бара нет пустоты.
+        if ([bool]$btnProgCancel.Visible -ne $wantVisible) { $btnProgCancel.Visible = $wantVisible; if ($wantVisible) { $btnProgCancel.BringToFront() } }
+        if ([bool]$btnProgCancel.Enabled -ne $cancelable) { $btnProgCancel.Enabled = $cancelable }
     } catch {}
 })
 $progressPercentTimer.Start()
@@ -21612,7 +22566,9 @@ function Paint-MainModeIcon {
         $on = ([string]$btn.Tag -eq 'on')
         $col = if (-not $btn.Enabled) {
             [System.Drawing.Color]::FromArgb(110, $steamUi.Muted)
-        } elseif ($on -or $hot) {
+        } elseif ($on) {
+            $steamUi.ModeOn
+        } elseif ($hot) {
             $steamUi.Accent2
         } else {
             $steamUi.Text
@@ -21681,42 +22637,17 @@ function Paint-MainModeIcon {
             $g.DrawLine($pen, ($cx + 6), ($cy + 9), ($cx + 7), ($cy - 3))
             $g.DrawLine($pen, [single]($cx - 2.5), [single]$cy, [single]($cx - 2.5), [single]($cy + 6))
             $g.DrawLine($pen, [single]($cx + 2.5), [single]$cy, [single]($cx + 2.5), [single]($cy + 6))
-            # Значок-счётчик в правом верхнем углу: сколько игр будет удалено из библиотеки. При Shift - красный, как и корзина.
+            # Значок-счётчик у правого верхнего угла (выступает за кнопку): сколько игр будет удалено из библиотеки. При Shift - красный, как и корзина.
             $cnt = 0
             try { $cnt = [int]$script:removeLibCount } catch {}
-            if ($btn.Enabled -and $cnt -gt 0) {
-                $bTxt = $(if ($cnt -gt 99) { '99+' } else { [string]$cnt })
-                $bH = 14
-                $bW = [Math]::Max($bH, (6 * $bTxt.Length + 6))
-                $bX = $w - 3 - $bW
-                $bY = 3
-                $bf = $null; $bBr = $null; $bTb = $null; $bRing = $null; $bGp = $null; $bSf = $null
-                $oldTr = $g.TextRenderingHint
-                try {
-                    $bf = New-Object System.Drawing.Font('Segoe UI', 7.5, [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Point)
-                    $bColor = $(if ($delShift) { [System.Drawing.Color]::FromArgb(232, 96, 96) } else { $steamUi.Accent2 })
-                    $bBr = New-Object System.Drawing.SolidBrush($bColor)
-                    $bTb = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White)
-                    $bRing = New-Object System.Drawing.Pen($bg, 2)
-                    $bGp = New-Object System.Drawing.Drawing2D.GraphicsPath
-                    $bArc = [single]$bH
-                    $bGp.AddArc([single]$bX, [single]$bY, $bArc, $bArc, 90, 180)
-                    $bGp.AddArc([single]($bX + $bW - $bH), [single]$bY, $bArc, $bArc, 270, 180)
-                    $bGp.CloseFigure()
-                    # Кольцо цвета фона отделяет значок от крышки корзины.
-                    $g.DrawPath($bRing, $bGp)
-                    $g.FillPath($bBr, $bGp)
-                    $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::AntiAliasGridFit
-                    $bSf = New-Object System.Drawing.StringFormat
-                    $bSf.Alignment = [System.Drawing.StringAlignment]::Center
-                    $bSf.LineAlignment = [System.Drawing.StringAlignment]::Center
-                    $bRect = New-Object System.Drawing.RectangleF([single]$bX, [single]($bY + 0.5), [single]$bW, [single]$bH)
-                    $g.DrawString($bTxt, $bf, $bTb, $bRect, $bSf)
-                } finally {
-                    try { $g.TextRenderingHint = $oldTr } catch {}
-                    foreach ($d in @($bf, $bBr, $bTb, $bRing, $bGp, $bSf)) { if ($null -ne $d) { try { $d.Dispose() } catch {} } }
-                }
-            }
+            $nD = $(if ($btn.Enabled -and -not (Test-MainActionModeActive)) { $cnt } else { 0 })
+            $dFillM = $(if ($delShift) { [System.Drawing.Color]::FromArgb(232, 96, 96) } else { $steamUi.Accent2 })
+            try { Set-LibCountBadge $btn $nD $dFillM } catch {}
+        }
+        # Режимы ROMs / Wrappers: у включённого режима в правом верхнем углу счётчик отмеченных игр.
+        if ($kind -eq 'emu' -or $kind -eq 'wrap') {
+            $nR = $(if ($on -and $btn.Enabled) { [int]$script:mainModeSelCount } else { 0 })
+            try { Set-LibCountBadge $btn $nR $steamUi.Accent2 } catch {}
         }
     } catch {
     } finally {
@@ -21751,16 +22682,16 @@ function New-MainModeButton {
 $romsModeTooltipText = (T 'rom_mode_tip')
 $wrappersModeTooltipText = (T 'wrap_mode_tip')
 
-# Под «Обновить» (y=330, h=42 → низ 372): ROMs, затем Wrappers с зазором 8.
-$btnMainRomsMode = New-MainModeButton 519 382 'emu' $romsModeTooltipText
+# Под «Обновить» (y=343, h=42 → низ 385): ROMs (y=393), затем Wrappers (y=443) с зазором 8.
+$btnMainRomsMode = New-MainModeButton 519 393 'emu' $romsModeTooltipText
 $btnMainRomsMode.AccessibleName = 'ROMs'
-$btnMainWrappersMode = New-MainModeButton 519 432 'wrap' $wrappersModeTooltipText
+$btnMainWrappersMode = New-MainModeButton 519 443 'wrap' $wrappersModeTooltipText
 $btnMainWrappersMode.AccessibleName = 'Wrappers'
 
-# «Удалить из библиотеки» - на месте индикатора эмулятора/враппера (x=510..570, y=482). Скрыта по умолчанию; когда показывать,
+# «Удалить из библиотеки» - на месте индикатора эмулятора/враппера (x=510..570, y=493..571). Скрыта по умолчанию; когда показывать,
 # решает Update-MainLibraryButtonState (никакой режим между панелями не выбран, отмечены только добавленные игры).
 # Режимы ROMs/Wrappers показывают на этом же месте индикатор, поэтому кнопка и индикатор друг друга исключают.
-$btnMainRemoveLib = New-MainModeButton 519 482 'del' (T 'btn_remove_lib')
+$btnMainRemoveLib = New-MainModeButton 519 493 'del' (T 'btn_remove_lib')
 $btnMainRemoveLib.AccessibleName = 'RemoveFromLibrary'
 $btnMainRemoveLib.Visible = $true
 $btnMainRemoveLib.Enabled = $false   # неактивна, пока нечего удалять; скрывается только в режимах ROMs/Wrappers (Update-MainLibraryButtonState)
@@ -21775,7 +22706,7 @@ $script:delShiftTimer.Add_Tick({
     try {
         if ($null -eq $btnMainRemoveLib -or -not [bool]$btnMainRemoveLib.Visible) { return }
         $shNow = (([System.Windows.Forms.Control]::ModifierKeys -band [System.Windows.Forms.Keys]::Shift) -eq [System.Windows.Forms.Keys]::Shift)
-        if ($shNow -ne [bool]$script:delShiftLast) { $script:delShiftLast = $shNow; $btnMainRemoveLib.Invalidate(); try { Update-MainLibraryButtonState } catch {} }
+        if ($shNow -ne [bool]$script:delShiftLast) { $script:delShiftLast = $shNow; $btnMainRemoveLib.Refresh(); try { Update-MainLibraryButtonState } catch {} }
     } catch {}
 })
 $script:delShiftTimer.Start()
@@ -21805,6 +22736,8 @@ $toggleRomsMode = {
     if ($script:romsModeEnabled) {
         $script:mainLibsMode = ''
         $script:mainSavesMode = ''
+        # Режимы ROMs/Wrappers не сбрасывают выбор рамок и коллекций для новых игр (их можно выбирать вместе); сбрасывается только метка «коллекции поверх апскейлеров/сохранений».
+        $script:mainCollOnlyLibrary = $false
         try { Set-MainLibsFlyout $false } catch {}
         try { Set-MainSavesFlyout $false } catch {}
     }
@@ -21839,6 +22772,8 @@ $toggleWrappersMode = {
         }
         $script:mainLibsMode = ''
         $script:mainSavesMode = ''
+        # Режимы ROMs/Wrappers не сбрасывают выбор рамок и коллекций для новых игр (их можно выбирать вместе); сбрасывается только метка «коллекции поверх апскейлеров/сохранений».
+        $script:mainCollOnlyLibrary = $false
         try { Set-MainLibsFlyout $false } catch {}
         try { Set-MainSavesFlyout $false } catch {}
         if ($null -eq (Get-ActiveWrapperProfile) -and -not (Test-WrapperRevertActive)) {
@@ -21873,15 +22808,16 @@ try { Update-MainModeButtonLook } catch {}
 # в Настройках, без необходимости открывать диалог настроек целиком.
 # ---------------------------------------------------------------------------
 $pnlRomIndicator = New-Object System.Windows.Forms.Panel
-$pnlRomIndicator.Location = New-Object System.Drawing.Point(510, 482)
-$pnlRomIndicator.Size = New-Object System.Drawing.Size(60, 78)
+# Шире прежних 60 px: под иконкой «RetroArch» + имя ядра на следующей строке (без внутренних переносов).
+$pnlRomIndicator.Location = New-Object System.Drawing.Point(470, 493)
+$pnlRomIndicator.Size = New-Object System.Drawing.Size(140, 78)
 $pnlRomIndicator.BackColor = $form.BackColor
 $pnlRomIndicator.Cursor = [System.Windows.Forms.Cursors]::Hand
 $pnlRomIndicator.Visible = $false
 $form.Controls.Add($pnlRomIndicator)
 
 $picRomEmulatorIcon = New-Object System.Windows.Forms.PictureBox
-$picRomEmulatorIcon.Location = New-Object System.Drawing.Point(10, 2)
+$picRomEmulatorIcon.Location = New-Object System.Drawing.Point(50, 2)
 $picRomEmulatorIcon.Size = New-Object System.Drawing.Size(40, 40)
 $picRomEmulatorIcon.SizeMode = [System.Windows.Forms.PictureBoxSizeMode]::Zoom
 $picRomEmulatorIcon.BackColor = [System.Drawing.Color]::Transparent
@@ -21889,13 +22825,15 @@ $picRomEmulatorIcon.Cursor = [System.Windows.Forms.Cursors]::Hand
 $pnlRomIndicator.Controls.Add($picRomEmulatorIcon)
 
 $lblRomEmulatorName = New-Object System.Windows.Forms.Label
-$lblRomEmulatorName.Location = New-Object System.Drawing.Point(0, 44)
-$lblRomEmulatorName.Size = New-Object System.Drawing.Size(60, 32)
+$lblRomEmulatorName.Location = New-Object System.Drawing.Point(0, 42)
+$lblRomEmulatorName.Size = New-Object System.Drawing.Size(140, 36)
 $lblRomEmulatorName.TextAlign = [System.Drawing.ContentAlignment]::TopCenter
 $lblRomEmulatorName.ForeColor = $steamUi.Muted
-$lblRomEmulatorName.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 8)
+$lblRomEmulatorName.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 9.5)
 $lblRomEmulatorName.Text = (T 'rom_emu_none')
 $lblRomEmulatorName.Cursor = [System.Windows.Forms.Cursors]::Hand
+try { $lblRomEmulatorName.AutoEllipsis = $false } catch {}
+try { $lblRomEmulatorName.AutoSize = $false } catch {}
 $pnlRomIndicator.Controls.Add($lblRomEmulatorName)
 
 $mainToolTip.SetToolTip($cmbMainCore, (T 'rom_core_tip'))
@@ -22021,6 +22959,126 @@ function Invoke-WithWaitCursor ($Owner, [scriptblock]$Action) {
     }
 }
 
+# Таблица без моргания. Нативный ListView без визуальных стилей (comctl32 v5) не буферизуется сам: при движении курсора строка
+# стирается фоном и рисуется заново прямо на экране. Здесь таблица рисуется через WS_EX_COMPOSITED и через память
+# (WM_PRINTCLIENT в битмап, один BitBlt), фон окна не стирается (WM_ERASEBKGND).
+if (-not ('SCBufferedListView' -as [type])) {
+    try {
+        Add-Type -ReferencedAssemblies @('System.Drawing', 'System.Windows.Forms') -TypeDefinition @'
+using System;
+using System.Drawing;
+using System.Runtime.InteropServices;
+using System.Windows.Forms;
+
+public class SCBufferedListView : ListView
+{
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RECT { public int Left, Top, Right, Bottom; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct PAINTSTRUCT
+    {
+        public IntPtr hdc;
+        public int fErase;
+        public RECT rcPaint;
+        public int fRestore;
+        public int fIncUpdate;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 32)] public byte[] rgbReserved;
+    }
+
+    [DllImport("user32.dll")] private static extern IntPtr BeginPaint(IntPtr hWnd, out PAINTSTRUCT ps);
+    [DllImport("user32.dll")] private static extern bool EndPaint(IntPtr hWnd, ref PAINTSTRUCT ps);
+    [DllImport("user32.dll")] private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+    [DllImport("gdi32.dll")] private static extern IntPtr CreateCompatibleDC(IntPtr hdc);
+    [DllImport("gdi32.dll")] private static extern IntPtr CreateCompatibleBitmap(IntPtr hdc, int w, int h);
+    [DllImport("gdi32.dll")] private static extern IntPtr SelectObject(IntPtr hdc, IntPtr obj);
+    [DllImport("gdi32.dll")] private static extern bool DeleteObject(IntPtr obj);
+    [DllImport("gdi32.dll")] private static extern bool DeleteDC(IntPtr hdc);
+    [DllImport("gdi32.dll")] private static extern bool BitBlt(IntPtr dst, int x, int y, int w, int h, IntPtr src, int sx, int sy, int rop);
+
+    private const int WM_ERASEBKGND = 0x0014;
+    private const int WM_PAINT = 0x000F;
+    private const int WM_PRINTCLIENT = 0x0318;
+    private const int PRF_CLIENT = 0x00000004;
+    private const int SRCCOPY = 0x00CC0020;
+
+    public SCBufferedListView()
+    {
+        SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint, true);
+    }
+
+    // WS_EX_COMPOSITED: таблица вместе с заголовком колонок рисуется через общий буфер (работает и без визуальных стилей).
+    protected override CreateParams CreateParams
+    {
+        get
+        {
+            CreateParams cp = base.CreateParams;
+            cp.ExStyle |= 0x02000000;
+            return cp;
+        }
+    }
+
+    protected override void WndProc(ref Message m)
+    {
+        if (m.Msg == WM_ERASEBKGND)
+        {
+            m.Result = (IntPtr)1;   // фон не стираем: WM_PAINT ниже целиком закрашивает область в буфере
+            return;
+        }
+        if (m.Msg == WM_PAINT && IsHandleCreated)
+        {
+            PaintBuffered(ref m);
+            return;
+        }
+        base.WndProc(ref m);
+    }
+
+    private void PaintBuffered(ref Message m)
+    {
+        PAINTSTRUCT ps;
+        IntPtr hdc = BeginPaint(Handle, out ps);
+        if (hdc == IntPtr.Zero) { base.WndProc(ref m); return; }
+        IntPtr mem = IntPtr.Zero, bmp = IntPtr.Zero, old = IntPtr.Zero;
+        try
+        {
+            int w = ClientSize.Width, h = ClientSize.Height;
+            if (w > 0 && h > 0)
+            {
+                mem = CreateCompatibleDC(hdc);
+                bmp = CreateCompatibleBitmap(hdc, w, h);
+                if (mem != IntPtr.Zero && bmp != IntPtr.Zero)
+                {
+                    old = SelectObject(mem, bmp);
+                    using (Graphics g = Graphics.FromHdc(mem))
+                    using (SolidBrush b = new SolidBrush(BackColor))
+                        g.FillRectangle(b, 0, 0, w, h);
+                    SendMessage(Handle, WM_PRINTCLIENT, mem, (IntPtr)PRF_CLIENT);
+                    int x = ps.rcPaint.Left, y = ps.rcPaint.Top;
+                    int pw = ps.rcPaint.Right - x, ph = ps.rcPaint.Bottom - y;
+                    if (pw > 0 && ph > 0) BitBlt(hdc, x, y, pw, ph, mem, x, y, SRCCOPY);
+                }
+            }
+        }
+        catch { }
+        finally
+        {
+            if (mem != IntPtr.Zero && old != IntPtr.Zero) SelectObject(mem, old);
+            if (bmp != IntPtr.Zero) DeleteObject(bmp);
+            if (mem != IntPtr.Zero) DeleteDC(mem);
+            EndPaint(Handle, ref ps);
+        }
+        m.Result = IntPtr.Zero;
+    }
+}
+'@ -ErrorAction Stop
+    } catch {}
+}
+# Создаёт таблицу без моргания; если тип не удалось скомпилировать - обычный ListView (всё работает как раньше).
+function New-BufferedListView {
+    if ('SCBufferedListView' -as [type]) { return (New-Object SCBufferedListView) }
+    return (New-Object System.Windows.Forms.ListView)
+}
+
 # Убирает моргание текста при перерисовке (наведение курсора, смена выделения): включает двойную буферизацию элемента
 # (свойство DoubleBuffered у Control закрытое - через рефлексию). С -Composited ещё и WS_EX_COMPOSITED: все дочерние
 # окна панели (подписи, поля, кнопки) рисуются через общий буфер, а не по очереди поверх стёртого фона.
@@ -22060,9 +23118,11 @@ function Draw-ManagerRowIcon ($Graphics, $Bounds, $Item) {
 function Update-RomEmulatorIndicator {
     try {
         # В режиме Wrappers индикатор показывает активный враппер, иначе - активный эмулятор.
+        # Для RetroArch под иконкой: «RetroArch» + перенос + полное имя ядра (выбор ядра — ПКМ по значку; выпадающий список ядер убран).
         $wrapMode = [bool]$script:wrappersModeEnabled
         $active = $null
         if ($wrapMode) { $active = Get-ActiveWrapperProfile } else { $active = Get-ActiveEmulatorProfile }
+        $isRA = $false
         if ($wrapMode -and (Test-WrapperRevertActive)) {
             $lblRomEmulatorName.Text = (T 'pick_remove_wrapper')
             $picRomEmulatorIcon.Image = (Get-WrapperRevertIconBitmap)
@@ -22070,13 +23130,72 @@ function Update-RomEmulatorIndicator {
             $picRomEmulatorIcon.Image = $null
             $lblRomEmulatorName.Text = $(if ($wrapMode) { (T 'wrap_none') } else { (T 'rom_emu_none') })
         } else {
-            $lblRomEmulatorName.Text = [string]$active.Name
+            $isRA = (-not $wrapMode) -and (Test-IsRetroArchProfile ([string]$active.Name) ([string]$active.ExePath))
+            if ($isRA) {
+                $coreFile = [string]$active.Core
+                $coreDisp = ''
+                if (-not [string]::IsNullOrWhiteSpace($coreFile)) {
+                    # Имя из кеша списка ядер (без чтения .info с диска на каждый Refresh).
+                    try {
+                        foreach ($cx in @(Get-RetroArchCoreDisplayListCached ([string]$active.ExePath))) {
+                            if ([string]::Equals([string]$cx.FileCore, $coreFile, [System.StringComparison]::OrdinalIgnoreCase)) {
+                                $coreDisp = [string]$cx.DisplayName; break
+                            }
+                        }
+                    } catch {}
+                    if ([string]::IsNullOrWhiteSpace($coreDisp)) { $coreDisp = $coreFile }
+                }
+                if ([string]::IsNullOrWhiteSpace($coreDisp)) {
+                    $lblRomEmulatorName.Text = 'RetroArch'
+                } else {
+                    # Один перенос после RetroArch; имя ядра целиком на второй строке (без внутренних переносов).
+                    # Пробелы в имени ядра заменяем неразрывными (U+00A0), чтобы Label не переносил его сам.
+                    $coreOneLine = ([string]$coreDisp).Trim() -replace '\s+', [string][char]0x00A0
+                    $lblRomEmulatorName.Text = ('RetroArch' + "`n" + $coreOneLine)
+                }
+            } else {
+                $lblRomEmulatorName.Text = [string]$active.Name
+            }
             $icoBmp = $null
             try { $icoBmp = Get-EmulatorIconBitmap $active } catch { $icoBmp = $null }
             $picRomEmulatorIcon.Image = $icoBmp
         }
+        # Шрифт не меняем: панель индикатора расширяется под самую длинную строку (центр остаётся на месте),
+        # поэтому имя ядра целиком помещается в одну строку.
+        try {
+            $baseW = 140
+            $needW = $baseW
+            $lblRomEmulatorName.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 9.5)
+            if ($isRA) {
+                foreach ($ln in (([string]$lblRomEmulatorName.Text) -split "`n")) {
+                    $w = [System.Windows.Forms.TextRenderer]::MeasureText([string]$ln, $lblRomEmulatorName.Font, (New-Object System.Drawing.Size(2000, 40)), [System.Windows.Forms.TextFormatFlags]::NoPadding).Width + 10
+                    if ($w -gt $needW) { $needW = $w }
+                }
+            }
+            $centerX = 540
+            $pnlRomIndicator.SuspendLayout()
+            $pnlRomIndicator.Width = $needW
+            $pnlRomIndicator.Left = $centerX - [int]($needW / 2)
+            $lblRomEmulatorName.Left = 0
+            $lblRomEmulatorName.Width = $needW
+            $picRomEmulatorIcon.Left = [int](($needW - $picRomEmulatorIcon.Width) / 2)
+            # Область панели: иконка (узкая колонка) + широкая полоса под подпись, чтобы не перекрывать списки по бокам.
+            $rgn = New-Object System.Drawing.Region (New-Object System.Drawing.Rectangle(([int](($needW - $baseW) / 2)), 0, $baseW, 42))
+            $rgn.Union((New-Object System.Drawing.Rectangle(0, 42, $needW, ($pnlRomIndicator.Height - 42))))
+            $pnlRomIndicator.Region = $rgn
+            $pnlRomIndicator.ResumeLayout()
+        } catch {}
         $pnlRomIndicator.Visible = ([bool]$script:romsModeEnabled -or $wrapMode)
-        $indTip = $(if ($wrapMode) { (T 'wrap_pick_tip') } else { (T 'rom_emu_pick_tip') })
+        # Подсказка: для RetroArch — полное имя + как выбрать ядро (ПКМ); иначе обычная про выбор эмулятора.
+        $indTip = $(if ($wrapMode) { (T 'wrap_pick_tip') } elseif ($isRA) { (T 'rom_core_icon_tip') } else { (T 'rom_emu_pick_tip') })
+        if ($isRA) {
+            try {
+                $fullNm = ([string]$lblRomEmulatorName.Text).Replace([string][char]0x00A0, ' ')
+                if (-not [string]::IsNullOrWhiteSpace($fullNm)) { $indTip = $fullNm + [Environment]::NewLine + $indTip }
+            } catch {}
+            # Готовим меню ядер в фоне индикатора — ПКМ должен открывать его сразу.
+            try { Ensure-MainRaCoreMenu ([string]$active.ExePath) } catch {}
+        }
         foreach ($indCtl in @($pnlRomIndicator, $picRomEmulatorIcon, $lblRomEmulatorName)) { try { $mainToolTip.SetToolTip($indCtl, $indTip) } catch {} }
     } catch {}
     try { Update-MainCoreSelector } catch {}
@@ -22651,10 +23770,198 @@ function Show-RomEmulatorPickerPopup ([string]$Kind = 'emulator') {
     }
 }
 
-$showRomEmulatorQuickPick = { if ($script:wrappersModeEnabled) { Show-RomEmulatorPickerPopup 'wrapper' } else { Show-RomEmulatorPickerPopup } }
-$pnlRomIndicator.Add_Click($showRomEmulatorQuickPick)
-$picRomEmulatorIcon.Add_Click($showRomEmulatorQuickPick)
-$lblRomEmulatorName.Add_Click($showRomEmulatorQuickPick)
+# Контекстное меню выбора ядра RetroArch (ПКМ по значку на главном окне).
+# Стиль общий (SCFilterRenderer + прокрутка с лимитом высоты), как у остальных длинных меню.
+# ПКМ по значку RetroArch — меню ядер.
+# Сборка + Enable-MenuWheelScroll ДО Show (не в Opening): иначе лимит высоты не применяется
+# и Windows уводит огромный список к верхнему краю экрана.
+# Меню ядер готовится заранее (Ensure-MainRaCoreMenu), ПКМ только показывает — как раньше мгновенный ComboBox.
+function Ensure-MainRaCoreMenu {
+    param([string]$ExePath = '')
+    try {
+        if ([string]::IsNullOrWhiteSpace($ExePath)) {
+            $a = Get-ActiveEmulatorProfile
+            if ($null -eq $a) { return }
+            if (-not (Test-IsRetroArchProfile ([string]$a.Name) ([string]$a.ExePath))) { return }
+            $ExePath = [string]$a.ExePath
+        }
+        if ([string]::IsNullOrWhiteSpace($ExePath)) { return }
+
+        $cores = @()
+        try { $cores = @(Get-RetroArchCoreDisplayListCached $ExePath) } catch { $cores = @() }
+
+        if ($null -ne $script:mainRaCoreMenu -and -not $script:mainRaCoreMenu.IsDisposed -and
+            [string]$script:mainRaCoreMenuExe -eq $ExePath -and
+            [int]$script:mainRaCoreMenuCount -eq ($cores.Count + 1)) {
+            return
+        }
+
+        try { if ($null -ne $script:mainRaCoreMenu -and -not $script:mainRaCoreMenu.IsDisposed) { $script:mainRaCoreMenu.Dispose() } } catch {}
+
+        $menu = (New-PanelCtxMenu)
+        $menu.ShowCheckMargin = $true
+        $menu.ShowImageMargin = $false
+        try {
+            Initialize-SCFilterRenderer
+            [SCFilterRenderer]::Accent = $steamUi.Accent
+            [SCFilterRenderer]::Muted = $steamUi.Muted
+            $menu.Renderer = (New-Object SCFilterRenderer)
+        } catch {}
+
+        $menu.Add_ItemClicked({
+            param($s2, $e2)
+            try {
+                $it = $e2.ClickedItem
+                if ($null -eq $it -or -not ($it -is [System.Windows.Forms.ToolStripMenuItem])) { return }
+                if (-not $it.Enabled) { return }
+                $chosen = ''
+                try { $chosen = [string]$it.Tag } catch { $chosen = '' }
+                $active2 = Get-ActiveEmulatorProfile
+                if ($null -eq $active2) { return }
+                if ([string]::Equals([string]$active2.Core, $chosen, [System.StringComparison]::OrdinalIgnoreCase)) { return }
+                $activeId = [string]$active2.Id
+                $global:emulatorProfiles = @($global:emulatorProfiles | ForEach-Object {
+                    if ([string]$_.Id -eq $activeId) {
+                        $updated = $_.Clone()
+                        $updated.Core = $chosen
+                        $updated
+                    } else { $_ }
+                })
+                try { Save-Configuration } catch {}
+                try { Update-RomEmulatorIndicator } catch {}
+            } catch {}
+        })
+
+        $byTag = @{}
+        $bg = [System.Drawing.Color]::FromArgb(22, 28, 36)
+        try { $menu.SuspendLayout() } catch {}
+        try {
+            $miNone = New-Object System.Windows.Forms.ToolStripMenuItem((T 'rom_swap_core_profile'))
+            $miNone.BackColor = $bg
+            $miNone.ForeColor = $steamUi.Text
+            $miNone.Tag = ''
+            [void]$menu.Items.Add($miNone)
+            $byTag[''] = $miNone
+            foreach ($c in $cores) {
+                $fc = [string]$c.FileCore
+                $label = [string]$c.DisplayName
+                if ([string]::IsNullOrWhiteSpace($label)) { $label = $fc }
+                $mi = New-Object System.Windows.Forms.ToolStripMenuItem($label)
+                $mi.BackColor = $bg
+                $mi.ForeColor = $steamUi.Text
+                $mi.Tag = $fc
+                [void]$menu.Items.Add($mi)
+                if (-not $byTag.ContainsKey($fc)) { $byTag[$fc] = $mi }
+            }
+        } finally {
+            try { $menu.ResumeLayout($false) } catch {}
+        }
+
+        $maxH = 280
+        try {
+            $indY = [int]$pnlRomIndicator.PointToScreen([System.Drawing.Point]::Empty).Y
+            $waTop = [int]([System.Windows.Forms.Screen]::FromControl($pnlRomIndicator).WorkingArea.Top)
+            $maxH = [Math]::Max(160, [Math]::Min(280, $indY - $waTop - 8))
+        } catch {}
+        try { $menu.MaximumSize = New-Object System.Drawing.Size(0, $maxH) } catch {}
+        try { Enable-MenuWheelScroll $menu 12 $null $maxH $true } catch {}
+
+        # Сразу ограничиваем видимые пункты (не ждать Opening) — быстрый первый Show и верная высота.
+        try {
+            $idx = 0
+            foreach ($it in @($menu.Items)) {
+                if ($it -is [System.Windows.Forms.ToolStripLabel]) { continue }
+                if ($it -is [System.Windows.Forms.ToolStripMenuItem]) {
+                    $it.Visible = ($idx -lt 12)
+                    $idx++
+                }
+            }
+        } catch {}
+
+        $script:mainRaCoreMenu = $menu
+        $script:mainRaCoreMenuExe = $ExePath
+        $script:mainRaCoreMenuCount = [int]$menu.Items.Count
+        $script:mainRaCoreMenuByTag = $byTag
+        $script:mainRaCoreMenuMaxH = $maxH
+        $script:mainRaCoreMenuChecked = $null
+    } catch {}
+}
+
+function Show-MainRetroArchCoreMenu {
+    try {
+        if ($script:wrappersModeEnabled) { return }
+        $active = Get-ActiveEmulatorProfile
+        if ($null -eq $active) { return }
+        if (-not (Test-IsRetroArchProfile ([string]$active.Name) ([string]$active.ExePath))) { return }
+
+        Ensure-MainRaCoreMenu ([string]$active.ExePath)
+        $menu = $script:mainRaCoreMenu
+        if ($null -eq $menu -or $menu.IsDisposed) { return }
+
+        $curCore = [string]$active.Core
+        if ($null -eq $curCore) { $curCore = '' }
+
+        # Только снять старую галочку и поставить новую — без обхода сотен пунктов.
+        try {
+            $prev = $script:mainRaCoreMenuChecked
+            $map = $script:mainRaCoreMenuByTag
+            if ($null -ne $map) {
+                if ($null -ne $prev -and $map.ContainsKey([string]$prev) -and [string]$prev -ne $curCore) {
+                    try { Set-SCMenuCheckVisual $map[[string]$prev] 'none' } catch {}
+                }
+                if ($map.ContainsKey($curCore)) {
+                    try { Set-SCMenuCheckVisual $map[$curCore] 'mark' } catch {}
+                } elseif ($map.ContainsKey('')) {
+                    try { Set-SCMenuCheckVisual $map[''] $(if ([string]::IsNullOrWhiteSpace($curCore)) { 'mark' } else { 'none' }) } catch {}
+                }
+            }
+            $script:mainRaCoreMenuChecked = $curCore
+        } catch {}
+
+        $h = 280
+        try { if ($script:mainRaCoreMenuMaxH -gt 0) { $h = [int]$script:mainRaCoreMenuMaxH } } catch {}
+        try { $menu.MaximumSize = New-Object System.Drawing.Size(0, $h) } catch {}
+        try {
+            $topLeft = $pnlRomIndicator.PointToScreen([System.Drawing.Point]::Empty)
+            $x = [int]$topLeft.X
+            $y = [int]$topLeft.Y - $h
+            try {
+                $wa = [System.Windows.Forms.Screen]::FromControl($pnlRomIndicator).WorkingArea
+                if ($y -lt $wa.Top) { $y = $wa.Top }
+                if ($x -lt $wa.Left) { $x = $wa.Left }
+            } catch {}
+            $menu.Show($x, $y)
+        } catch {
+            $menu.Show($pnlRomIndicator, (New-Object System.Drawing.Point(0, 0)), [System.Windows.Forms.ToolStripDropDownDirection]::AboveRight)
+        }
+    } catch {}
+}
+
+# ЛКМ — пикер эмулятора. ПКМ — меню ядер (только RetroArch).
+$romIndicatorMouseUp = {
+    param($s, $e)
+    try {
+        if ($null -eq $e) { return }
+        if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Right) {
+            Show-MainRetroArchCoreMenu
+        }
+    } catch {}
+}
+$romIndicatorMouseDown = {
+    param($s, $e)
+    try {
+        if ($null -eq $e) { return }
+        if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Left) {
+            if ($script:wrappersModeEnabled) { Show-RomEmulatorPickerPopup 'wrapper' } else { Show-RomEmulatorPickerPopup }
+        }
+    } catch {}
+}
+foreach ($ctl in @($pnlRomIndicator, $picRomEmulatorIcon, $lblRomEmulatorName)) {
+    try { $ctl.ContextMenuStrip = $null } catch {}
+    try { $ctl.Add_MouseDown($romIndicatorMouseDown) } catch {}
+    try { $ctl.Add_MouseUp($romIndicatorMouseUp) } catch {}
+    try { $ctl.Add_Click({ }) } catch {}
+}
 
 # Центральная кнопка добавления — компактная и строго центрирована
 # относительно окна, а не растянута до шестерёнки.
@@ -22744,34 +24051,14 @@ $pnlBatchActions.Controls.Add($btnApplyColl)
 $btnApplyColl.Add_Click({
     try {
         if ($script:mainCollBusy -or $script:mainCollEditorBusy -or $script:moveInProgress -or $script:batchInProgress -or $script:smartBatchActive) { return }
-        Move-FocusToSink $btnApplyColl
-        $btnApplyColl.Enabled = $false
-        try {
-            # 1) Накопленные создания/удаления коллекций; не записались — остальное не трогаем, очередь остаётся для повтора.
-            $structOk = $true
-            if ((Get-MainCollStructCount) -gt 0) {
-                Invoke-MainCollStructApply
-                $structOk = [bool]$script:mainCollStructApplyOk
-            }
-            # 2) Накопленный состав коллекций у уже добавленных игр.
-            if ($structOk -and @($script:mainCollPending.Keys).Count -gt 0) {
-                $existing = @((Get-MainCollTargets).Existing)
-                if ($existing.Count -gt 0) {
-                    $snap = Read-SteamCollectionsSnapshot
-                    $changes = @{}
-                    foreach ($k in @($script:mainCollPending.Keys)) { $changes[[string]$k] = [string]$script:mainCollPending[$k] }
-                    Invoke-MainCollApplyExisting $snap $existing $changes
-                    if ($script:mainCollApplyOk) {
-                        $script:mainCollPending = @{}
-                        $script:mainCollOnlyLibrary = $false
-                        # Список коллекций закрываем, отметки с игр снимаем.
-                        try { if ($null -ne $script:mainCollMenuCtl) { $script:mainCollMenuCtl.Close() } } catch {}
-                        try { $global:checkedC.Clear(); $global:checkedD.Clear(); Refresh-Panels } catch {}
-                    }
-                }
-            }
-            Update-MainCollButtonLook
-        } finally { $btnApplyColl.Enabled = $true }
+        # Выбрано два действия или больше (эмулятор / враппер, рамки, коллекции): кнопка «Применить изменения».
+        if ($script:applyAllMode) {
+            Invoke-MainApplyAll
+        } else {
+            Move-FocusToSink $btnApplyColl
+            $btnApplyColl.Enabled = $false
+            try { Invoke-MainCollApplyPendingCore } finally { $btnApplyColl.Enabled = $true }
+        }
     } catch {
         try { Write-LauncherLog ('mainCollections apply: ' + $_.Exception.Message + ' | ' + [string]$_.ScriptStackTrace) } catch {}
     }
@@ -22928,11 +24215,57 @@ try {
     $gearBytes = [System.Convert]::FromBase64String($settingsGearBase64)
     $gearStream = New-Object System.IO.MemoryStream(,$gearBytes)
     $settingsIcon = [System.Drawing.Image]::FromStream($gearStream)
-    $btnSettings.BackgroundImage = $settingsIcon
-    $btnSettings.BackgroundImageLayout = [System.Windows.Forms.ImageLayout]::Center
 } catch {
     $settingsIcon = $null
 }
+# Как у остальных кнопок: в покое — Text, при наведении — Accent2 (синий). Рисуем шестерёнку маской, не статичной картинкой.
+$btnSettings.BackgroundImage = $null
+$btnSettings.Add_Paint({
+    param($sender, $e)
+    try {
+        $g = $e.Graphics
+        $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+        $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+        $hot = $false
+        try { $hot = ($sender.Enabled -and $sender.ClientRectangle.Contains($sender.PointToClient([System.Windows.Forms.Cursor]::Position))) } catch {}
+        $pulse = $false
+        try { $pulse = [bool](Test-MainBtnGreenPulse $sender) } catch {}
+        $col = if (-not $sender.Enabled) { $steamUi.Muted } elseif ($pulse) { $steamUi.ModeOn } elseif ($hot) { $steamUi.Accent2 } else { $steamUi.Text }
+        if ($null -ne $settingsIcon) {
+            $ia = $null
+            try {
+                $cm = New-Object System.Drawing.Imaging.ColorMatrix
+                $cm.Matrix00 = [single]($col.R / 255.0)
+                $cm.Matrix11 = [single]($col.G / 255.0)
+                $cm.Matrix22 = [single]($col.B / 255.0)
+                $cm.Matrix33 = [single]($col.A / 255.0)
+                $cm.Matrix44 = [single]1.0
+                $ia = New-Object System.Drawing.Imaging.ImageAttributes
+                $ia.SetColorMatrix($cm)
+                $ia.SetWrapMode([System.Drawing.Drawing2D.WrapMode]::TileFlipXY)
+                # Исходная иконка 40x40 — тот же размер, что при BackgroundImageLayout.Center.
+                $sz = 40
+                if ($sz -gt $sender.ClientSize.Width) { $sz = $sender.ClientSize.Width }
+                if ($sz -gt $sender.ClientSize.Height) { $sz = $sender.ClientSize.Height }
+                $dx = [int][Math]::Round(($sender.ClientSize.Width - $sz) / 2.0)
+                $dy = [int][Math]::Round(($sender.ClientSize.Height - $sz) / 2.0)
+                $dest = New-Object System.Drawing.Rectangle($dx, $dy, $sz, $sz)
+                $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+                $g.DrawImage($settingsIcon, $dest, 0, 0, $settingsIcon.Width, $settingsIcon.Height, [System.Drawing.GraphicsUnit]::Pixel, $ia)
+            } catch {} finally { if ($ia) { $ia.Dispose() } }
+        } else {
+            # fallback: простой круг-«шестерёнка» если картинка не загрузилась
+            $pen = New-Object System.Drawing.Pen($col, 1.6)
+            try {
+                $cx = $sender.ClientSize.Width / 2.0; $cy = $sender.ClientSize.Height / 2.0
+                $g.DrawEllipse($pen, [single]($cx - 8), [single]($cy - 8), 16, 16)
+                $g.DrawEllipse($pen, [single]($cx - 3), [single]($cy - 3), 6, 6)
+            } finally { $pen.Dispose() }
+        }
+    } catch {}
+})
+$btnSettings.Add_MouseEnter({ try { $btnSettings.Invalidate() } catch {} })
+$btnSettings.Add_MouseLeave({ try { $btnSettings.Invalidate() } catch {} })
 $btnSettings.Cursor = [System.Windows.Forms.Cursors]::Hand
 $btnSettings.TabStop = $false
 $btnSettings.AccessibleName = (T 'settings_title')
@@ -23477,6 +24810,12 @@ function Start-RetroArchCoreListPreheat {
                 if (-not [string]::IsNullOrWhiteSpace($p) -and -not $script:RaCoreListCache.ContainsKey($p)) {
                     try { [void](Get-RetroArchCoreDisplayListCached $p) } catch {}
                 }
+                try {
+                    $act = Get-ActiveEmulatorProfile
+                    if ($null -ne $act -and [string]::Equals([string]$act.ExePath, $p, [System.StringComparison]::OrdinalIgnoreCase)) {
+                        Ensure-MainRaCoreMenu $p
+                    }
+                } catch {}
                 $script:RaCorePreheatTimer.Interval = 200
                 $script:RaCorePreheatTimer.Start()
             } catch {}
@@ -25078,7 +26417,7 @@ function Show-ExeSelectionDialog ($exeList, $rootPath, $gameName) {
     $imageList.ImageSize = New-Object System.Drawing.Size(28, 28)
     $imageList.ColorDepth = [System.Windows.Forms.ColorDepth]::Depth32Bit
 
-    $lv = New-Object System.Windows.Forms.ListView
+    $lv = New-BufferedListView
     $lv.Location = "15, 45"; $lv.Size = "590, 245"
     $lv.View = [System.Windows.Forms.View]::Details
     $lv.FullRowSelect = $true; $lv.MultiSelect = $false; $lv.HideSelection = $false
@@ -25800,8 +27139,10 @@ function Invoke-MainRomEmulatorSwap {
 
         # Как после пакетного добавления: операция выполнена — отметки сняты, панели перерисованы,
         # Update-MainLibraryButtonState (внутри Refresh-Panels) возвращает кнопку «Библиотека Steam».
-        try { $global:checkedC.Clear(); $global:checkedD.Clear() } catch {}
-        try { Refresh-Panels } catch {}
+        if (-not $script:applyAllKeepChecks) {
+            try { $global:checkedC.Clear(); $global:checkedD.Clear() } catch {}
+            try { Refresh-Panels } catch {}
+        }
 
         $lines = New-Object System.Collections.Generic.List[string]
         if ($null -ne $swapRes -and [int]$swapRes.Done -gt 0) { [void]$lines.Add((T 'rom_swap_done' @([int]$swapRes.Done, [string]$newProfile.Name))) }
@@ -25942,8 +27283,10 @@ function Invoke-WrapperShortcutChanges ($plans, $skipped, [string]$doneKey, [str
         try { $form.UseWaitCursor = $false } catch {}
     }
     try { $form.Activate() } catch {}
-    try { $global:checkedC.Clear(); $global:checkedD.Clear() } catch {}
-    try { Refresh-Panels } catch {}
+    if (-not $script:applyAllKeepChecks) {
+        try { $global:checkedC.Clear(); $global:checkedD.Clear() } catch {}
+        try { Refresh-Panels } catch {}
+    }
     $lines = New-Object System.Collections.Generic.List[string]
     if ($null -ne $swapRes -and [int]$swapRes.Done -gt 0) { [void]$lines.Add((T $doneKey @([int]$swapRes.Done, $wrapName))) }
     if ($null -ne $swapRes -and [int]$swapRes.Failed -gt 0) { [void]$lines.Add((T 'rom_swap_fail' @([int]$swapRes.Failed, [string]$swapRes.Error))) }
@@ -27051,6 +28394,40 @@ function Set-VdfStringField ($entry, $key, $value) {
     $entry.Body.Children.Add([PSCustomObject]@{Key=$key;Type=0x01;Value=[string]$value})
 }
 
+# Приводит значение флага (bool / 0 / 1 / строка) к uint32 0 или 1 для поля OpenVR.
+function ConvertTo-OpenVRDword ($value) {
+    if ($value -eq $true -or [string]$value -eq "1" -or [string]$value -eq "True") { return [uint32]1 }
+    return [uint32]0
+}
+
+# Читает числовое (тип 0x02) поле записи ярлыка. Нет поля или оно не числовое -> $null.
+function Get-VdfDwordField ($entry, $key) {
+    $field = $entry.Body.Children | Where-Object { $_.Key -eq $key } | Select-Object -First 1
+    if ($field -eq $null -or $field.Type -ne 0x02) { return $null }
+    return [uint32]$field.Value
+}
+
+# Числовой аналог Set-VdfStringField: меняет поле типа 0x02 (uint32). Если поля нет - создаёт его типом 0x02
+# сразу после поля $afterKey (как пишет Steam: AllowOverlay -> OpenVR), иначе перед "tags", иначе в конец записи.
+function Set-VdfDwordField ($entry, $key, $value, $afterKey = $null) {
+    $field = $entry.Body.Children | Where-Object { $_.Key -eq $key } | Select-Object -First 1
+    if ($field -ne $null) {
+        if ($field.Type -ne 0x02) { throw (T 'vdf_bad_type_key' @($key)) }
+        $field.Value = [uint32]$value
+        return
+    }
+    $newNode = [PSCustomObject]@{Key=$key;Type=0x02;Value=[uint32]$value}
+    $children = $entry.Body.Children
+    $insertAt = -1
+    if ($afterKey) {
+        for ($i = 0; $i -lt $children.Count; $i++) { if ($children[$i].Key -eq $afterKey) { $insertAt = $i + 1; break } }
+    }
+    if ($insertAt -lt 0) {
+        for ($i = 0; $i -lt $children.Count; $i++) { if ($children[$i].Key -eq "tags" -and $children[$i].Type -eq 0x00) { $insertAt = $i; break } }
+    }
+    if ($insertAt -ge 0) { $children.Insert($insertAt, $newNode) } else { $children.Add($newNode) }
+}
+
 function Write-VdfChildrenBytes ($children) {
     $out = New-Object System.Collections.Generic.List[byte]
     foreach ($child in $children) {
@@ -27094,7 +28471,7 @@ function Write-VdfFileBytes ($rootChildren) {
     return ,$out.ToArray()
 }
 
-function Update-ExistingSteamShortcut ($shortcutRecord, $newName, $newExePath, $newStartDir, $newLaunchOptions) {
+function Update-ExistingSteamShortcut ($shortcutRecord, $newName, $newExePath, $newStartDir, $newLaunchOptions, $openVR = $null) {
     if ($shortcutRecord -eq $null) { $global:lastShortcutError=(T 'sc_not_found'); return $null }
     try {
         $filePath=[string]$shortcutRecord.FilePath
@@ -27129,6 +28506,9 @@ function Update-ExistingSteamShortcut ($shortcutRecord, $newName, $newExePath, $
         Set-VdfStringField $targetEntry "Exe" ('"' + [string]$newExePath + '"')
         Set-VdfStringField $targetEntry "StartDir" ('"' + [string]$newStartDir + '"')
         Set-VdfStringField $targetEntry "LaunchOptions" ([string]$newLaunchOptions)
+        # Метка библиотеки VR: $null (по умолчанию) = текущее значение OpenVR не трогаем (пересохранение пути/эмулятора
+        # его не сбрасывает); $true/$false или 1/0 = записать явно.
+        if ($null -ne $openVR) { Set-VdfDwordField $targetEntry "OpenVR" (ConvertTo-OpenVRDword $openVR) "AllowOverlay" }
 
         $iconField=$targetEntry.Body.Children | Where-Object { $_.Key -eq "icon" } | Select-Object -First 1
         $iconVal = ''
@@ -28618,20 +29998,13 @@ function Show-BulkFrameMenu {
             if ($kitItems.Count -gt 0) { Enable-MenuWheelScroll $menu 18 $kitItems 520 }
         } catch {}
         $script:bulkKitMap = $null; $script:bulkOrigDirCache = ''
-        [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
-        $miMng = New-Object System.Windows.Forms.ToolStripMenuItem
-        $miMng.Text = (Get-EditorFrameText 'card_frame_manage' 'Менеджер рамок…')
-        $miMng.BackColor = $bg; $miMng.ForeColor = $steamUi.Text
-        $miMng.Tag = $Owner
-        $miMng.Add_Click({ param($s2, $e2) try { Show-EditorFrameManagerDialog $s2.Tag } catch {} })
-        [void]$menu.Items.Add($miMng)
         if ($WithApply) {
             Add-PickMenuApply $menu ({
                 param($s2, $e2)
                 try { $p = $s2.Tag.Pending; if ($null -ne $p) { Invoke-BulkCoverFrames $p.Targets $p.Sel $p.Owner $p.Done } } catch {}
             })
         }
-        try { if ($null -ne $Anchor) { $Anchor.Tag = 'on'; $Anchor.FlatAppearance.BorderColor = $steamUi.Accent2; $Anchor.Invalidate() } } catch {}
+        try { if ($null -ne $Anchor) { $Anchor.Tag = 'on'; $Anchor.FlatAppearance.BorderColor = $steamUi.Accent2; $Anchor.Invalidate(); $Anchor.Update() } } catch {}
         # Контекстное меню: точка курсора. Главное окно ($WithApply = $false): справа от кнопки. Библиотека: под кнопкой.
         if ($null -ne $AtPoint) {
             $menu.Show([System.Drawing.Point]$AtPoint)
@@ -31512,6 +32885,15 @@ function Show-FrameKitDialog($owner, $Kit = $null, [string]$InitName = '', [stri
                     $rc = New-Object System.Drawing.Rectangle(($e.Bounds.X + 32), $e.Bounds.Y, ($e.Bounds.Width - 36), $e.Bounds.Height)
                     [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, [string]$ctx.TgtNames[$e.Index], $s.Font, $rc, $txt, $fl)
                 }
+                # Системные коллекции Steam отделяются от пользовательских линией под последней из них.
+                $kc = [string]$ctx.TgtKeys[$e.Index]
+                if ($kc.StartsWith('coll:col:') -and (Test-CollSteamKey $kc.Substring(5)) -and ($e.Index + 1 -lt $ctx.TgtKeys.Count)) {
+                    $nk = [string]$ctx.TgtKeys[$e.Index + 1]
+                    if ($nk.StartsWith('coll:col:') -and -not (Test-CollSteamKey $nk.Substring(5))) {
+                        $sp = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(110, 118, 130), 1)
+                        try { $e.Graphics.DrawLine($sp, ($e.Bounds.X + 6), ($e.Bounds.Bottom - 1), ($e.Bounds.Right - 6), ($e.Bounds.Bottom - 1)) } finally { $sp.Dispose() }
+                    }
+                }
             } catch {}
         }.GetNewClosure())
         $clb.Add_MouseMove({
@@ -32494,7 +33876,7 @@ function Add-FramesManagerControls ($owner, $container) {
     $btnRowTop = $container.ClientSize.Height - 10 - $btnH
     $listBottomGap = 13
 
-    $lv = New-Object System.Windows.Forms.ListView
+    $lv = New-BufferedListView
     # Двойная буферизация (свойство у Control закрытое): без неё OwnerDraw-таблица при пересборке списка и после долгой работы
     # на UI-потоке перерисовывается по частям, и на ней остаются белые пятна. Включаем до создания хэндла окна.
     try { [System.Windows.Forms.Control].GetProperty('DoubleBuffered', [System.Reflection.BindingFlags]'Instance,NonPublic').SetValue($lv, $true, $null) } catch {}
@@ -34446,7 +35828,7 @@ function Save-ExistingShortcutCoversToGrid ($shortcutRecord) {
     return $changed
 }
 
-function Add-ShortcutToSteam ($gameName, $exePath, $startDir, $launchOptions = "") {
+function Add-ShortcutToSteam ($gameName, $exePath, $startDir, $launchOptions = "", $openVR = $false) {
     # БАГ-ФИКС: раньше здесь передавался $startDir. Из карточки игры это папка
     # выбранного exe (например "...\Baldurs Gate 3\bin"), и проверка по имени
     # последней папки принимала за дубликат ЛЮБОЙ ярлык, чей exe лежит в папке с
@@ -34590,6 +35972,10 @@ function Add-ShortcutToSteam ($gameName, $exePath, $startDir, $launchOptions = "
 
             # AllowOverlay
             $fEntry.Add(0x02); $fEntry.AddRange([byte[]]([System.Text.Encoding]::UTF8.GetBytes("AllowOverlay"))); $fEntry.Add(0x00); $fEntry.AddRange([byte[]]@(1,0,0,0))
+
+            # OpenVR (метка «Добавить в библиотеку виртуальной реальности»), как у Steam: после AllowOverlay
+            $openVRByte = 0; if ($openVR -eq $true -or [string]$openVR -eq "1") { $openVRByte = 1 }
+            $fEntry.Add(0x02); $fEntry.AddRange([byte[]]([System.Text.Encoding]::UTF8.GetBytes("OpenVR"))); $fEntry.Add(0x00); $fEntry.AddRange([byte[]]@($openVRByte,0,0,0))
 
             # tags (пустой вложенный объект)
             $fEntry.Add(0x00); $fEntry.AddRange([byte[]]([System.Text.Encoding]::UTF8.GetBytes("tags"))); $fEntry.Add(0x00); $fEntry.Add(0x08)
@@ -40400,7 +41786,7 @@ function Show-SgdbFullPreview {
     $f.ForeColor = [System.Drawing.Color]::FromArgb(220,223,228)
     $f.Font = New-Object System.Drawing.Font("Segoe UI",9)
     $f.MinimumSize = New-Object System.Drawing.Size(360,260)
-    # Значок окна: источник загрузки обложки — SGDB или «папка» для своих файлов.
+    # Значок окна: SGDB — свой логотип; свои/локальные файлы — лупа (как кнопка просмотра в карточке), не папка.
     try {
         $previewFromSgdb = ($null -ne $item)
         if (-not $previewFromSgdb -and -not $isLocal) { $previewFromSgdb = $true }
@@ -40408,8 +41794,8 @@ function Show-SgdbFullPreview {
             $sgdbIco = Get-SteamGridDbFormIcon
             if ($null -ne $sgdbIco) { $f.Icon = $sgdbIco }
         } else {
-            $locIco = Get-LocalSourceFormIcon
-            if ($null -ne $locIco) { $f.Icon = $locIco }
+            $zoomIco = Get-ZoomFormIcon
+            if ($null -ne $zoomIco) { $f.Icon = $zoomIco }
         }
     } catch {}
     $scr = $null
@@ -43516,6 +44902,24 @@ function Get-LibSteamBadgeBitmap {
     return $script:libSteamBadgeBmp
 }
 
+# Значок VR-гарнитуры 22x22 (тот же, что SCDlssBar.DrawVr на плитках библиотеки).
+function Get-LibVrBadgeBitmap {
+    if (Test-LibIconBitmapAlive $script:libVrBadgeBmp) { return $script:libVrBadgeBmp }
+    try {
+        if (-not $script:libDlssNativeOk) { return $null }
+        $bmp = New-Object System.Drawing.Bitmap(22, 22, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+        $g = [System.Drawing.Graphics]::FromImage($bmp)
+        try {
+            $g.Clear([System.Drawing.Color]::Transparent)
+            [SCDlssBar]::DrawVr($g, 0, 0)
+        } finally { $g.Dispose() }
+        $script:libVrBadgeBmp = $bmp
+    } catch {
+        $script:libVrBadgeBmp = $null
+    }
+    return $script:libVrBadgeBmp
+}
+
 # Значки ВСЕХ поддерживаемых лаунчеров для кнопки «Библиотека/Импорт» — в порядке вкладок
 # библиотеки (после Steam): Epic, GOG, Ubisoft, EA, Battle.net, Xbox. Берутся из встроенных
 # ресурсов (см. $global:embeddedLauncherIconsB64), поиска по системе нет.
@@ -43577,17 +44981,17 @@ $drawSteamButtonContent = {
         $btn = $sender
         $g = $e.Graphics
         $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::ClearTypeGridFit
-        $icon = if ($btn -eq $btnAddToSteam) { $script:steamAddButtonIcon } elseif ($btn -eq $btnSwapEmuMain) { $script:steamSwapButtonIcon } elseif ($btn -eq $btnApplyColl) { $script:collButtonIcon } elseif ($btn -eq $btnApplyFrames) { $script:framesButtonIcon } elseif ($btn -eq $btnApplyLibs) { $script:libsApplyIcon } elseif ($btn -eq $btnApplySaves) { $script:savesApplyIcon } else { $script:steamLibraryButtonIcon }
+        $icon = if ($btn -eq $btnAddToSteam) { $script:steamAddButtonIcon } elseif ($btn -eq $btnSwapEmuMain) { $script:steamSwapButtonIcon } elseif ($btn -eq $btnApplyColl) { $(if ($script:applyAllMode) { $null } else { $script:collButtonIcon }) } elseif ($btn -eq $btnApplyFrames) { $script:framesButtonIcon } elseif ($btn -eq $btnApplyLibs) { $script:libsApplyIcon } elseif ($btn -eq $btnApplySaves) { $script:savesApplyIcon } else { $script:steamLibraryButtonIcon }
         $text = [string]$btn.Tag
         if ([string]::IsNullOrWhiteSpace($text)) { return }
         if ($btn -eq $btnSteamLibrary -and $script:sizeCalcBtnSwapped) { $icon = $null }   # «Отменить подсчёт» — без значка Steam
 
         $font = $btn.Font
-        # Плюс как у кнопки "Добавить игру" в Steam: скруглённый квадрат, плюс в нём вырезан.
+        # Значок как у кнопки "Добавить игру" в Steam (Draw-SteamAddGameGlyph): скруглённый квадрат, плюс в нём вырезан.
         $plus = ($btn -eq $btnAddToSteam -and -not $script:batchInProgress)
         $mainText = $text
 
-        $plusBox = 14
+        $plusBox = 16
         $plusSize = if ($plus) { [System.Drawing.SizeF]::new($plusBox, $plusBox) } else { [System.Drawing.SizeF]::new(0,0) }
         $textSize = $g.MeasureString($mainText, $font)
         $gap1 = if ($icon) { 7 } else { 0 }
@@ -43597,9 +45001,18 @@ $drawSteamButtonContent = {
         $parentIcon = $null
         if ($btn -eq $btnApplyLibs) { $parentIcon = $script:libsParentButtonIcon } elseif ($btn -eq $btnApplySaves) { $parentIcon = $script:savesParentButtonIcon }
         $parentW = if ($parentIcon) { 20 + 5 } else { 0 }
-        # Кнопка библиотеки: весь текст уже в Tag (Библиотека / Импорт / Сохранения / DLSS Swap).
-        # Значки лаунчеров не рисуем — один ровный текстовый блок по центру.
-        $totalW = $parentW + $iconW + $gap1 + $plusSize.Width + $gap2 + $textSize.Width
+        # Кнопка библиотеки: [значок Steam] Библиотека / Импорт [значки всех лончеров из вкладок библиотеки].
+        # Значки лончеров идут после текста; в режиме «Отменить подсчёт» (текст другой) их нет.
+        $launcherIcons = @()
+        if ($btn -eq $btnSteamLibrary -and -not $script:sizeCalcBtnSwapped -and $text -eq [string](T 'btn_steam_library')) {
+            if ($null -eq $script:libBtnLauncherIcons) {
+                try { $script:libBtnLauncherIcons = @(Get-LibraryButtonLauncherIcons) } catch { $script:libBtnLauncherIcons = @() }
+            }
+            $launcherIcons = @($script:libBtnLauncherIcons | Where-Object { $null -ne $_ })
+        }
+        $lnGap = 8; $lnStep = 20 + 4
+        $lnW = if ($launcherIcons.Count -gt 0) { $lnGap + ($launcherIcons.Count * $lnStep) - 4 } else { 0 }
+        $totalW = $parentW + $iconW + $gap1 + $plusSize.Width + $gap2 + $textSize.Width + $lnW
         # Координаты - целые пиксели: при дробной позиции значки (20x20) растушёвывались билинейной интерполяцией и выглядели мыльными.
         $x = [Math]::Round(($btn.ClientSize.Width - $totalW) / 2.0)
         $yIcon = [Math]::Round(($btn.ClientSize.Height - 20) / 2.0)
@@ -43619,38 +45032,18 @@ $drawSteamButtonContent = {
             if ($plus) {
                 $yPlus = [float](($btn.ClientSize.Height - $plusBox) / 2.0)
                 $px = [float]$x
-                $r = 3.0; $d = $r * 2; $s = [float]$plusBox
-                $path = New-Object System.Drawing.Drawing2D.GraphicsPath([System.Drawing.Drawing2D.FillMode]::Alternate)
-                try {
-                    # скруглённый квадрат
-                    $path.AddArc($px, $yPlus, $d, $d, 180, 90)
-                    $path.AddArc($px + $s - $d, $yPlus, $d, $d, 270, 90)
-                    $path.AddArc($px + $s - $d, $yPlus + $s - $d, $d, $d, 0, 90)
-                    $path.AddArc($px, $yPlus + $s - $d, $d, $d, 90, 90)
-                    $path.CloseFigure()
-                    # плюс 8x8 px, толщина 2 px — при Alternate-заливке получается "дыркой"
-                    $c = $s / 2.0
-                    # Плюс — ОДИН 12-угольник: две пересекающиеся перекладины при Alternate-заливке
-                    # дали бы закрашенную точку в центре (чётное/нечётное число вхождений).
-                    $cx = $px + $c; $cy = $yPlus + $c
-                    $plusPts = [System.Drawing.PointF[]]@(
-                        [System.Drawing.PointF]::new($cx - 1, $cy - 4), [System.Drawing.PointF]::new($cx + 1, $cy - 4),
-                        [System.Drawing.PointF]::new($cx + 1, $cy - 1), [System.Drawing.PointF]::new($cx + 4, $cy - 1),
-                        [System.Drawing.PointF]::new($cx + 4, $cy + 1), [System.Drawing.PointF]::new($cx + 1, $cy + 1),
-                        [System.Drawing.PointF]::new($cx + 1, $cy + 4), [System.Drawing.PointF]::new($cx - 1, $cy + 4),
-                        [System.Drawing.PointF]::new($cx - 1, $cy + 1), [System.Drawing.PointF]::new($cx - 4, $cy + 1),
-                        [System.Drawing.PointF]::new($cx - 4, $cy - 1), [System.Drawing.PointF]::new($cx - 1, $cy - 1)
-                    )
-                    $path.StartFigure()
-                    $path.AddPolygon($plusPts)
-                    $oldSmooth = $g.SmoothingMode
-                    $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
-                    $g.FillPath($brush, $path)
-                    $g.SmoothingMode = $oldSmooth
-                } finally { $path.Dispose() }
+                Draw-SteamAddGameGlyph $g $px $yPlus ([single]$plusBox) $brush.Color
                 $x += $plusSize.Width + $gap2
             }
             $g.DrawString($mainText, $font, $brush, [float]$x, [float]$yText)
+            if ($launcherIcons.Count -gt 0) {
+                $lx = [int][Math]::Round($x + $textSize.Width + $lnGap)
+                foreach ($li in $launcherIcons) {
+                    $g.InterpolationMode = $(if ($li.Width -eq 20 -and $li.Height -eq 20) { [System.Drawing.Drawing2D.InterpolationMode]::NearestNeighbor } else { [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic })
+                    $g.DrawImage($li, $lx, [int]$yIcon, 20, 20)
+                    $lx += $lnStep
+                }
+            }
         } finally { $brush.Dispose() }
     } catch {}
 }
@@ -43753,6 +45146,41 @@ function Get-LocalSourceFormIcon {
         } finally { try { $src.Dispose() } catch {} }
     } catch { $global:localSourceFormIcon = $null }
     return $global:localSourceFormIcon
+}
+
+# Иконка «лупа» для заголовка окна «Просмотр обложки» (та же фигурка, что на кнопке просмотра).
+# Тёмный непрозрачный цвет — на светлом заголовке Windows 11 значок читается; светлый был почти невидим.
+$global:zoomFormIcon = $null
+function Get-ZoomFormIcon {
+    if ($null -ne $global:zoomFormIcon) { return $global:zoomFormIcon }
+    try {
+        $bmp = New-Object System.Drawing.Bitmap 32, 32
+        $g = [System.Drawing.Graphics]::FromImage($bmp)
+        try {
+            $g.Clear([System.Drawing.Color]::Transparent)
+            $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+            $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+            # Тёмный, полностью непрозрачный — как типичные иконки заголовка Windows.
+            $col = [System.Drawing.Color]::FromArgb(255, 32, 36, 42)
+            $pen = New-Object System.Drawing.Pen($col, [single]2.6)
+            try {
+                $pen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+                $pen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+                $pen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
+                $g.DrawEllipse($pen, [single]3.5, [single]3.5, [single]16.5, [single]16.5)
+                $g.DrawLine($pen, [single]7.5, [single]11.75, [single]16.0, [single]11.75)
+                $g.DrawLine($pen, [single]11.75, [single]7.5, [single]11.75, [single]16.0)
+                $hp = New-Object System.Drawing.Pen($col, [single]3.2)
+                try {
+                    $hp.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+                    $hp.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+                    $g.DrawLine($hp, [single]17.5, [single]17.5, [single]26.5, [single]26.5)
+                } finally { $hp.Dispose() }
+            } finally { $pen.Dispose() }
+        } finally { $g.Dispose() }
+        try { $global:zoomFormIcon = [System.Drawing.Icon]::FromHandle($bmp.GetHicon()) } finally { $bmp.Dispose() }
+    } catch { $global:zoomFormIcon = $null }
+    return $global:zoomFormIcon
 }
 
 # Значок окна карточки из EXE выбранной игры (для уже добавленной игры).
@@ -45721,6 +47149,13 @@ function Set-EditorEmulatorFrame([string]$KitId) {
 function Show-EditorFrameManagerDialog($owner) {
     $f = $null
     try {
+        # Пока открыт менеджер — кнопка «Рамки» в активном виде (зелёный значок, синяя рамка), как у остальных режимов.
+        try {
+            $btnMainFrames.Tag = 'on'
+            $btnMainFrames.FlatAppearance.BorderColor = $steamUi.Accent2
+            $btnMainFrames.Invalidate()
+            $btnMainFrames.Update()
+        } catch {}
         $f = New-FramesDlgForm (Get-EditorFrameText 'frames_title' 'Рамки обложек') 640 430
         $pnl = New-Object System.Windows.Forms.Panel
         $pnl.Location = New-Object System.Drawing.Point(12, 12)
@@ -45730,7 +47165,10 @@ function Show-EditorFrameManagerDialog($owner) {
         $f.Controls.Add($pnl)
         Add-FramesManagerControls $f $pnl
         [void]$f.ShowDialog($owner)
-    } catch {} finally { try { if ($null -ne $f) { $f.Dispose() } } catch {} }
+    } catch {} finally {
+        try { if ($null -ne $f) { $f.Dispose() } } catch {}
+        try { Update-MainFramesButtonLook } catch {}
+    }
 }
 
 function New-EditorFrameMenuItem($menu, [string]$text, [bool]$checked, [scriptblock]$onClick) {
@@ -45750,15 +47188,16 @@ function New-EditorFrameMenuItem($menu, [string]$text, [bool]$checked, [scriptbl
 # Пока меню открыто, колесо над ним перехватывается, а в меню показывается «окно» из $Window пунктов, которое колесо сдвигает.
 # $Items - какие именно пункты прокручиваются (остальные, например «Без рамки» сверху и «Менеджер рамок» снизу, стоят на месте);
 # без $Items прокручиваются все пункты меню. Над прокручиваемой частью и под ней стоят тонкие полоски со стрелками ▲ ▼.
-function Enable-MenuWheelScroll($DropDown, [int]$Window = 18, $Items = $null, [int]$Height = 0) {
+function Enable-MenuWheelScroll($DropDown, [int]$Window = 18, $Items = $null, [int]$Height = 0, [bool]$Scrollbar = $false) {
     try {
-        if (-not ('SCMenuWheel10' -as [type])) {
+        if (-not ('SCMenuWheel11' -as [type])) {
             Add-Type -ReferencedAssemblies @('System.Drawing','System.Windows.Forms') -TypeDefinition @'
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
-public sealed class SCMenuWheel10 : IMessageFilter
+public sealed class SCMenuWheel11 : IMessageFilter
 {
     private readonly ToolStripDropDown dd;
     private int win;
@@ -45767,11 +47206,34 @@ public sealed class SCMenuWheel10 : IMessageFilter
     private List<ToolStripItem> items = null;
     private int top = 0;
     private bool dead = false;
-    private static readonly Dictionary<ToolStripDropDown, SCMenuWheel10> attached = new Dictionary<ToolStripDropDown, SCMenuWheel10>();
-    private SCMenuWheel10(ToolStripDropDown d, int w) { dd = d; win = w; }
+    private static readonly Dictionary<ToolStripDropDown, SCMenuWheel11> attached = new Dictionary<ToolStripDropDown, SCMenuWheel11>();
+    private SCMenuWheel11(ToolStripDropDown d, int w) { dd = d; win = w; }
     // Стрелки прокрутки: ▲ сверху показывается, когда выше есть скрытые пункты, ▼ снизу - когда ниже. Щелчок по стрелке сдвигает список.
     private ToolStripLabel up, down;
     private int n = 0;
+    // Режим полосы прокрутки (как в остальных списках программы): тонкий скруглённый ползунок справа, без стрелок.
+    // Рисуется рендерером меню (SCFilterRenderer) по данным из dd.Tag: {0x5C5C, x, y, ширина, длина, состояние 0/1/2}.
+    private bool bar = false, barHot = false, barDrag = false;
+    private int dragY = 0, dragTop = 0;
+    private const int BarZone = 11;
+    private bool BarOn() { return bar && n > win; }
+    private int TrackTop() { return dd.Padding.Top; }
+    private int TrackLen() { return Math.Max(1, dd.Height - dd.Padding.Top - dd.Padding.Bottom); }
+    private Rectangle ThumbRect()
+    {
+        int tl = TrackLen();
+        int len = Math.Max(24, (int)((long)tl * win / Math.Max(1, n)));
+        if (len > tl) len = tl;
+        int free = tl - len;
+        int y = TrackTop() + ((n - win) > 0 ? (int)Math.Round((double)free * top / (n - win)) : 0);
+        return new Rectangle(dd.Width - 10, y, 6, len);
+    }
+    private void UpdateBar()
+    {
+        if (!BarOn()) { if (dd.Tag is int[]) dd.Tag = null; return; }
+        Rectangle r = ThumbRect();
+        dd.Tag = new int[] { 0x5C5C, r.X, r.Y, r.Width, r.Height, barDrag ? 2 : (barHot ? 1 : 0) };
+    }
     // Приглушённый цвет стрелки: смесь цвета текста и фона меню.
     private Color Dim()
     {
@@ -45800,15 +47262,96 @@ public sealed class SCMenuWheel10 : IMessageFilter
         dd.SuspendLayout();
         for (int i = 0; i < n; i++) items[i].Visible = (i >= top && i < top + win);
         // Стрелки всегда занимают место (когда список длиннее окна), только цвет гаснет: размер меню при прокрутке не меняется.
-        if (up != null) { up.Visible = scroll; up.ForeColor = (scroll && top > 0) ? Dim() : dd.BackColor; }
-        if (down != null) { down.Visible = scroll; down.ForeColor = (scroll && top + win < n) ? Dim() : dd.BackColor; }
+        if (up != null) { up.Visible = scroll && !bar; up.ForeColor = (scroll && top > 0) ? Dim() : dd.BackColor; }
+        if (down != null) { down.Visible = scroll && !bar; down.ForeColor = (scroll && top + win < n) ? Dim() : dd.BackColor; }
         dd.ResumeLayout(true);
+        UpdateBar();
         dd.Invalidate();
     }
+    [DllImport("user32.dll")] private static extern IntPtr SetCapture(IntPtr hWnd);
+    [DllImport("user32.dll")] private static extern bool ReleaseCapture();
+
+    private void MoveThumbTo(int y)
+    {
+        int free = TrackLen() - ThumbRect().Height;
+        if (free <= 0) return;
+        int next = dragTop + (int)Math.Round((double)(y - dragY) * (n - win) / free);
+        if (next < 0) next = 0;
+        if (next > n - win) next = n - win;
+        if (next != top) { top = next; Apply(); }
+    }
+
+    private void EndThumbDrag(bool releaseCapture)
+    {
+        if (!barDrag) return;
+        barDrag = false;
+        if (releaseCapture) { try { ReleaseCapture(); } catch { } }
+        UpdateBar();
+        if (dd != null && !dd.IsDisposed) dd.Invalidate();
+    }
+
     public bool PreFilterMessage(ref Message m)
     {
-        if (dead || m.Msg != 0x020A || dd == null || !dd.Visible) return false;
-        if (!dd.Bounds.Contains(Control.MousePosition)) return false;
+        if (dead || dd == null || dd.IsDisposed || !dd.Visible) return false;
+
+        // Перетаскивание обрабатывается на уровне очереди сообщений, а не через
+        // ToolStrip.MouseMove: ToolStrip передаёт движение наведённому пункту меню,
+        // поэтому само выпадающее меню теряло MouseMove и ползунок переставал следовать
+        // за курсором. Захват HWND меню сохраняет поток WM_MOUSEMOVE/WM_LBUTTONUP.
+        if (barDrag)
+        {
+            if (m.Msg == 0x0200) // WM_MOUSEMOVE
+            {
+                MoveThumbTo(dd.PointToClient(Control.MousePosition).Y);
+                return true;
+            }
+            if (m.Msg == 0x0202) // WM_LBUTTONUP
+            {
+                MoveThumbTo(dd.PointToClient(Control.MousePosition).Y);
+                EndThumbDrag(true);
+                return true;
+            }
+            if ((m.Msg == 0x001F || m.Msg == 0x0215) && m.HWnd == dd.Handle) // WM_CANCELMODE / WM_CAPTURECHANGED именно для окна меню
+            {
+                EndThumbDrag(false);
+                return false;
+            }
+        }
+
+        Point pt = dd.PointToClient(Control.MousePosition);
+        bool overMenu = dd.Bounds.Contains(Control.MousePosition);
+
+        // ЛКМ по полосе: захватить мышь и начать drag либо прокрутить на страницу.
+        // Событие поглощается, чтобы ToolStrip не пытался выбрать пункт под полосой.
+        if (m.Msg == 0x0201 && overMenu && BarOn() && pt.X >= dd.Width - BarZone - 1) // WM_LBUTTONDOWN
+        {
+            Rectangle tr = ThumbRect();
+            if (pt.Y >= tr.Y && pt.Y < tr.Bottom)
+            {
+                barDrag = true;
+                dragY = pt.Y;
+                dragTop = top;
+                try { SetCapture(dd.Handle); } catch { }
+                UpdateBar();
+                dd.Invalidate();
+            }
+            else
+            {
+                top += (pt.Y < tr.Y ? -1 : 1) * Math.Max(1, win - 1);
+                Apply();
+            }
+            return true;
+        }
+
+        // Подсветка ползунка без зависимости от того, какой ToolStripItem находится под курсором.
+        if (m.Msg == 0x0200 && BarOn()) // WM_MOUSEMOVE
+        {
+            Rectangle tr = ThumbRect();
+            bool hot = overMenu && pt.X >= dd.Width - BarZone - 1 && pt.Y >= tr.Y && pt.Y < tr.Bottom;
+            if (hot != barHot) { barHot = hot; UpdateBar(); dd.Invalidate(); }
+        }
+
+        if (m.Msg != 0x020A || !overMenu) return false; // WM_MOUSEWHEEL
         int delta = (short)(((long)m.WParam >> 16) & 0xFFFF);
         if (delta == 0 || n <= win) return true;
         top += (delta > 0 ? -1 : 1) * 3 * Math.Max(1, Math.Abs(delta) / 120);
@@ -45817,9 +47360,14 @@ public sealed class SCMenuWheel10 : IMessageFilter
     }
     public static void Attach(ToolStripDropDown dd, ToolStripItem[] only, int win, int targetH)
     {
-        SCMenuWheel10 f = new SCMenuWheel10(dd, win);
+        Attach(dd, only, win, targetH, false);
+    }
+    public static void Attach(ToolStripDropDown dd, ToolStripItem[] only, int win, int targetH, bool scrollbar)
+    {
+        SCMenuWheel11 f = new SCMenuWheel11(dd, win);
+        f.bar = scrollbar;
         // Меню собирается заново при каждом показе (то же меню, новые пункты): прежняя привязка гасится, её стрелки убираются.
-        SCMenuWheel10 old;
+        SCMenuWheel11 old;
         if (attached.TryGetValue(dd, out old))
         {
             old.dead = true;
@@ -45827,6 +47375,14 @@ public sealed class SCMenuWheel10 : IMessageFilter
             if (old.down != null) dd.Items.Remove(old.down);
         }
         attached[dd] = f;
+        if (scrollbar)
+        {
+            // Справа резервируем полосу под ползунок (пункты её не перекрывают, клик по ней не выбирает пункт).
+            // Drag обрабатывается SCMenuWheel11 в IMessageFilter: MouseMove самого ToolStripDropDown
+            // не приходит, когда курсор находится над ToolStripMenuItem.
+            if (old == null || !old.bar) dd.Padding = new Padding(dd.Padding.Left, dd.Padding.Top, dd.Padding.Right + BarZone, dd.Padding.Bottom);
+            dd.MouseLeave += delegate { if (!f.barDrag && f.barHot) { f.barHot = false; f.UpdateBar(); dd.Invalidate(); } };
+        }
         int minW = 0;
         dd.Opening += delegate
         {
@@ -45880,14 +47436,14 @@ public sealed class SCMenuWheel10 : IMessageFilter
             if ((f.up.Visible && f.up.Bounds.Contains(pt)) || (f.down.Visible && f.down.Bounds.Contains(pt))) e.Cancel = true;
         };
         dd.Opened += delegate { if (!f.dead) Application.AddMessageFilter(f); };
-        dd.Closed += delegate { Application.RemoveMessageFilter(f); };
+        dd.Closed += delegate { f.EndThumbDrag(true); Application.RemoveMessageFilter(f); };
     }
 }
 '@
         }
         $arr = $null
         if ($null -ne $Items) { $arr = [System.Windows.Forms.ToolStripItem[]]@($Items) }
-        [SCMenuWheel10]::Attach($DropDown, $arr, $Window, $Height)
+        [SCMenuWheel11]::Attach($DropDown, $arr, $Window, $Height, $Scrollbar)
     } catch {}
 }
 
@@ -49703,7 +51259,7 @@ function Add-WrappersManagerControls ($owner, $container) {
     $btnRowTop = $container.ClientSize.Height - 10 - $btnH
     $listBottomGap = 13
 
-    $lv = New-Object System.Windows.Forms.ListView
+    $lv = New-BufferedListView
     Enable-SmoothPaint $lv
     $lv.Location = New-Object System.Drawing.Point(0, 0)
     $lv.Size = New-Object System.Drawing.Size($container.ClientSize.Width, ($btnRowTop - $listBottomGap))
@@ -50000,7 +51556,7 @@ public class ListViewColumnSorter : IComparer
 
 # ===================== БИБЛИОТЕКИ АПСКЕЙЛЕРОВ (DLSS / FSR / XeSS) В НАСТРОЙКАХ =====================
 # Блок под списком эмуляторов: те же девять DLL и та же сетка 3×3, что и в карточке игры
-# (DLSS / DLSS RR / DLSS FG / FSR DX12 / FSR VK / XeSS / XeSS FG / XeSS DX11 / XeLL).
+# (DLSS / DLSS FG / DLSS RR / FSR DX12 / FSR Vulkan / XeLL / XeSS / XeSS FG / XeSS DX11).
 # Каждая плитка — одна библиотека:
 #   • заголовок + статус («↑ v310.9.1» — есть новее, «✓ актуально», «↓ 43%» — идёт загрузка);
 #   • список СКАЧАННЫХ версий — выбор в нём и есть «выбранная по умолчанию» версия (её будет
@@ -50015,17 +51571,18 @@ public class ListViewColumnSorter : IComparer
 $script:upscalerManifestUrl = 'https://raw.githubusercontent.com/beeradmoore/dlss-swapper-manifest-builder/refs/heads/main/manifest.json'
 
 function Get-UpscalerDefs {
-    # Порядок и файлы — как в сетке карточки игры ($dlssFieldDefs). Manifest/Pat — ключи в манифесте.
+    # Порядок = сетка 3×3 в настройках: строки по вендорам (NVIDIA / AMD+XeLL / Intel), столбцы: базовая технология, генерация кадров или вариант API, прочее. Manifest/Pat — ключи в манифесте.
+    # Tip — полное название как в DLSS Swapper (локализованное).
     return @(
-        @{ Key = 'SR';     Title = 'DLSS';      Tip = (T 'card_dlss_sr'); File = 'nvngx_dlss.dll';          Manifest = @('dlss');          Pat = '^dlss$' },
-        @{ Key = 'RR';     Title = 'DLSS RR';   Tip = (T 'card_dlss_rr'); File = 'nvngx_dlssd.dll';         Manifest = @('dlss_d');        Pat = '^dlss_d$' },
-        @{ Key = 'FG';     Title = 'DLSS FG';   Tip = (T 'card_dlss_fg'); File = 'nvngx_dlssg.dll';         Manifest = @('dlss_g');        Pat = '^dlss_g$' },
-        @{ Key = 'FSR12';  Title = 'FSR DX12';  Tip = 'FSR 3.1 DirectX 12'; File = 'amd_fidelityfx_dx12.dll'; Manifest = @('fsr_31_dx12'); Pat = 'fsr.*dx12' },
-        @{ Key = 'FSRVK';  Title = 'FSR VK';    Tip = 'FSR 3.1 Vulkan';     File = 'amd_fidelityfx_vk.dll';   Manifest = @('fsr_31_vk');   Pat = 'fsr.*vk' },
-        @{ Key = 'XESS';   Title = 'XeSS';      Tip = 'XeSS';               File = 'libxess.dll';             Manifest = @('xess');        Pat = '^xess$' },
-        @{ Key = 'XESSFG'; Title = 'XeSS FG';   Tip = 'XeSS Frame Generation'; File = 'libxess_fg.dll';      Manifest = @('xess_fg');     Pat = 'xess.*fg' },
-        @{ Key = 'XESS11'; Title = 'XeSS DX11'; Tip = 'XeSS (DirectX 11)';  File = 'libxess_dx11.dll';       Manifest = @('xess_dx11');   Pat = 'xess.*dx11' },
-        @{ Key = 'XELL';   Title = 'XeLL';      Tip = 'XeLL (Xe Low Latency)'; File = 'libxell.dll';          Manifest = @('xell');        Pat = 'xell' }
+        @{ Key = 'SR';     Title = 'DLSS';      Tip = (T 'card_dlss_sr');  File = 'nvngx_dlss.dll';          Manifest = @('dlss');          Pat = '^dlss$' },
+        @{ Key = 'FG';     Title = 'DLSS FG';   Tip = (T 'card_dlss_fg');  File = 'nvngx_dlssg.dll';         Manifest = @('dlss_g');        Pat = '^dlss_g$' },
+        @{ Key = 'RR';     Title = 'DLSS RR';   Tip = (T 'card_dlss_rr');  File = 'nvngx_dlssd.dll';         Manifest = @('dlss_d');        Pat = '^dlss_d$' },
+        @{ Key = 'FSR12';  Title = 'FSR DX12';  Tip = (T 'card_fsr_dx12'); File = 'amd_fidelityfx_dx12.dll'; Manifest = @('fsr_31_dx12'); Pat = 'fsr.*dx12' },
+        @{ Key = 'FSRVK';  Title = 'FSR Vulkan'; Tip = (T 'card_fsr_vk');   File = 'amd_fidelityfx_vk.dll';   Manifest = @('fsr_31_vk');   Pat = 'fsr.*vk' },
+        @{ Key = 'XELL';   Title = 'XeLL';      Tip = (T 'card_xell');     File = 'libxell.dll';             Manifest = @('xell');        Pat = 'xell' },
+        @{ Key = 'XESS';   Title = 'XeSS';      Tip = (T 'card_xess');     File = 'libxess.dll';             Manifest = @('xess');        Pat = '^xess$' },
+        @{ Key = 'XESSFG'; Title = 'XeSS FG';   Tip = (T 'card_xess_fg');  File = 'libxess_fg.dll';          Manifest = @('xess_fg');     Pat = 'xess.*fg' },
+        @{ Key = 'XESS11'; Title = 'XeSS DX11'; Tip = (T 'card_xess_dx11'); File = 'libxess_dx11.dll';        Manifest = @('xess_dx11');   Pat = 'xess.*dx11' }
     )
 }
 
@@ -53409,8 +54966,35 @@ function Format-UpscalerVersion ([string]$Ver) {
     return 'v' + ((@($parts[0..($n - 1)])) -join '.')
 }
 
-function ConvertTo-UpscalerVersionObj ([string]$Ver) {
-    try { return [version]$Ver } catch { return [version]'0.0' }
+# Подпись версии библиотеки в списках. Как в DLSS Swapper: у FSR впереди версия FSR из манифеста,
+# в скобках — версия DLL: «v3.1.4 (v1.0.1.41314)». У остальных библиотек — «версия метка», как раньше.
+function Format-UpscalerItemText ([string]$Key, [string]$Ver, [string]$Label) {
+    $v = Format-UpscalerVersion $Ver
+    if ([string]::IsNullOrWhiteSpace($Label)) { return $v }
+    $l = $Label.Trim()
+    if (([string]$Key -in @('FSR12', 'FSRVK')) -and ($l -match '^[vV]?\d+(\.\d+)+$')) {
+        return ('v' + ($l -replace '^[vV]', '') + ' (' + $v + ')')
+    }
+    return ($v + ' ' + $l)
+}
+
+# Для FSR (и похожих) product version DLL (1.0.x) не совпадает с реальной версией библиотеки (3.1.x в label).
+# Поэтому для сортировки предпочитаем label, если он похож на номер версии; иначе — обычный Ver.
+function ConvertTo-UpscalerVersionObj ([string]$Ver, [string]$Label = '') {
+    $candidates = New-Object System.Collections.ArrayList
+    if (-not [string]::IsNullOrWhiteSpace($Label)) {
+        $l = $Label.Trim()
+        if ($l -match '^[vV]?(\d+(?:\.\d+)+)') { [void]$candidates.Add($Matches[1]) }
+        elseif ($l -match '(\d+(?:\.\d+){1,3})') { [void]$candidates.Add($Matches[1]) }
+    }
+    if (-not [string]::IsNullOrWhiteSpace($Ver)) {
+        $v = $Ver.Trim() -replace '^[vV]', ''
+        if ($v -match '^\d+(?:\.\d+)+') { [void]$candidates.Add($v) }
+    }
+    foreach ($c in $candidates) {
+        try { return [version]$c } catch {}
+    }
+    return [version]'0.0'
 }
 
 function Format-UpscalerSize ([long]$Bytes) {
@@ -53446,7 +55030,7 @@ function Get-UpscalerRemoteEntries ($Remote, $Def) {
         foreach ($rk in @($Remote.Keys)) { if ([string]$rk -match [string]$Def.Pat) { $list = @($Remote[$rk]); break } }
     }
     if ($null -eq $list) { return @() }
-    return @($list | Sort-Object -Property @{ Expression = { ConvertTo-UpscalerVersionObj ([string]$_.ver) }; Descending = $true })
+    return @($list | Sort-Object -Property @{ Expression = { ConvertTo-UpscalerVersionObj ([string]$_.ver) ([string]$_.label) }; Descending = $true })
 }
 
 function Get-UpscalerLocalVersions ([string]$Key, [string]$Dll) {
@@ -53459,14 +55043,13 @@ function Get-UpscalerLocalVersions ([string]$Key, [string]$Dll) {
             if (-not ([System.IO.File]::Exists($dllPath) -and [System.IO.File]::Exists($metaPath))) { continue }
             try { $m = ConvertFrom-Json -InputObject ([System.IO.File]::ReadAllText($metaPath, [System.Text.Encoding]::UTF8)) } catch { continue }
             $label = [string]$m.label
-            $disp = Format-UpscalerVersion ([string]$m.ver)
-            if (-not [string]::IsNullOrWhiteSpace($label)) { $disp += ' ' + $label }
+            $disp = Format-UpscalerItemText $Key ([string]$m.ver) $label
             $size = [long]0
             try { $size = (New-Object System.IO.FileInfo($dllPath)).Length } catch {}
             [void]$out.Add([PSCustomObject]@{
                 Id = [string][System.IO.Path]::GetFileName($d); Ver = [string]$m.ver; Label = $label
                 Display = $disp; Dir = $d; Path = $dllPath; Size = $size
-                Num = (ConvertTo-UpscalerVersionObj ([string]$m.ver))
+                Num = (ConvertTo-UpscalerVersionObj ([string]$m.ver) $label)
             })
         }
     }
@@ -53834,11 +55417,10 @@ function Add-UpscalerLibraryControls ($owner, $container) {
             $seen[$eid] = $true
             $lv = $null
             if ($localById.ContainsKey($eid)) { $lv = $localById[$eid] }
-            $txt = Format-UpscalerVersion ([string]$en.ver)
-            if (-not [string]::IsNullOrWhiteSpace([string]$en.label)) { $txt += ' ' + [string]$en.label }
+            $txt = Format-UpscalerItemText $key ([string]$en.ver) ([string]$en.label)
             [void]$raw.Add([PSCustomObject]@{
                 Id = $eid; Text = $txt; Downloaded = ($null -ne $lv); Entry = $en; Local = $lv
-                Num = (ConvertTo-UpscalerVersionObj ([string]$en.ver)); Ord = $ord
+                Num = (ConvertTo-UpscalerVersionObj ([string]$en.ver) ([string]$en.label)); Ord = $ord
             })
             $ord++
         }
@@ -53899,7 +55481,7 @@ function Add-UpscalerLibraryControls ($owner, $container) {
             # «Актуально» — только если версией по умолчанию выбрана самая последняя версия.
             $best = $null
             if ($defId -ne '' -and $localById.ContainsKey($defId)) { $best = $localById[$defId] }
-            $latestNum = ConvertTo-UpscalerVersionObj ([string]$latest.ver)
+            $latestNum = ConvertTo-UpscalerVersionObj ([string]$latest.ver) ([string]$latest.label)
             if ($null -eq $best) {
                 $stText = $glyphDown + ' ' + (Format-UpscalerVersion ([string]$latest.ver)); $stColor = $steamUi.Accent
             } elseif ($best.Num -lt $latestNum) {
@@ -53910,6 +55492,7 @@ function Add-UpscalerLibraryControls ($owner, $container) {
         }
         $t.Status.Text = $stText
         $t.Status.ForeColor = $stColor
+        try { $tip.SetToolTip($t.Status, $stText) } catch {}
 
         # Строка-пояснение под списком — про выбранную в списке версию.
         $info = ''
@@ -54066,8 +55649,20 @@ function Add-UpscalerLibraryControls ($owner, $container) {
         $lblName = New-Object System.Windows.Forms.Label
         $lblName.Text = [string]$def.Title
         $lblName.Location = New-Object System.Drawing.Point(0, 4)
-        $lblName.Size = New-Object System.Drawing.Size(([Math]::Min(70, ($tileW - 96))), 18)
         $lblName.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 9)
+        # Название важнее статуса: отмеряем ширину текста, статус забирает остаток справа.
+        # Раньше статус резервировал 96 px — «FSR Vulkan» / «XeSS DX11» не влезали.
+        $nameNeed = 70
+        try {
+            $nameNeed = [System.Windows.Forms.TextRenderer]::MeasureText(
+                [string]$def.Title, $lblName.Font,
+                (New-Object System.Drawing.Size(1000, 18)),
+                [System.Windows.Forms.TextFormatFlags]::NoPadding
+            ).Width + 4
+        } catch {}
+        $statusMin = 22
+        $nameW = [int][Math]::Min($nameNeed, [Math]::Max(50, $tileW - $statusMin))
+        $lblName.Size = New-Object System.Drawing.Size($nameW, 18)
         $lblName.ForeColor = $steamUi.Text
         $lblName.BackColor = $container.BackColor
         $lblName.AutoEllipsis = $true
@@ -54075,8 +55670,8 @@ function Add-UpscalerLibraryControls ($owner, $container) {
         $tip.SetToolTip($lblName, ([string]$def.Tip + ' (' + [string]$def.File + ')'))
 
         $lblStatus = New-Object System.Windows.Forms.Label
-        $lblStatus.Location = New-Object System.Drawing.Point(($tileW - 96), 4)
-        $lblStatus.Size = New-Object System.Drawing.Size(96, 18)
+        $lblStatus.Location = New-Object System.Drawing.Point($nameW, 4)
+        $lblStatus.Size = New-Object System.Drawing.Size(([Math]::Max(18, $tileW - $nameW)), 18)
         $lblStatus.Font = New-Object System.Drawing.Font('Segoe UI', 8)
         $lblStatus.ForeColor = $steamUi.Muted
         $lblStatus.BackColor = $container.BackColor
@@ -54436,7 +56031,7 @@ function Add-UpscalerLibraryControls ($owner, $container) {
                 if ($entries.Count -eq 0) { continue }
                 $latest = $entries[0]
                 $loc = @($ctx.Tiles[[string]$df.Key].Local)
-                $latestNum = ConvertTo-UpscalerVersionObj ([string]$latest.ver)
+                $latestNum = ConvertTo-UpscalerVersionObj ([string]$latest.ver) ([string]$latest.label)
                 # Скачиваем, если на диске нет версии не ниже последней.
                 if ($loc.Count -gt 0 -and $loc[0].Num -ge $latestNum) { continue }
                 [void]$jobs.Add((& $ctx.BuildJob $df $latest))
@@ -54795,7 +56390,7 @@ function Add-EmulatorsManagerControls ($owner, $container) {
     # кнопок было одинаковым по обе стороны.
     $listBottomGap = 13
 
-    $lv = New-Object System.Windows.Forms.ListView
+    $lv = New-BufferedListView
     Enable-SmoothPaint $lv
     $lv.Location = New-Object System.Drawing.Point(0, 0)
     $lv.Size = New-Object System.Drawing.Size($container.ClientSize.Width, ($btnRowTop - $listBottomGap))
@@ -55201,7 +56796,12 @@ function Show-ProgramSettingsDialog {
     # после закрытия (см. $dlg.ShowDialog() ниже). При самом первом запуске
     # (когда настройки открываются автоматически ещё до $form.ShowDialog())
     # главное окно ещё не видно — тогда прятать/показывать его не нужно.
-    $mainFormWasVisible = ($form -ne $null) -and $form.Visible
+    # Вызов из окна «Библиотека/Импорт» ($script:settingsOwnerOverride = окно библиотеки): главное окно в этот момент уже прозрачное и стоит
+    # за библиотекой, поэтому его не прячем, не показываем и не «проявляем» - настройки открываются обычным модальным окном поверх библиотеки.
+    $settingsOwnerForm = $script:settingsOwnerOverride
+    $settingsFromLib = $false
+    try { $settingsFromLib = ($null -ne $settingsOwnerForm) -and (-not $settingsOwnerForm.IsDisposed) } catch {}
+    $mainFormWasVisible = (-not $settingsFromLib) -and ($form -ne $null) -and $form.Visible
     # Бесшовный переход (как у библиотеки): главное окно не прячем, а настройки открываем поверх него —
     # окно настроек строится невидимым (Opacity = 0), затем в Add_Shown появляется ровно по центру главного,
     # а главное становится прозрачным (но остаётся владельцем и единственной кнопкой на панели задач).
@@ -55217,11 +56817,22 @@ function Show-ProgramSettingsDialog {
     $dlg.Add_HandleCreated({ param($s, $e); try { [FormPaintHelper]::DisableTransitions($s.Handle) } catch {} })
     Enable-SCScrollSkin $dlg
     $dlg.Text = (T 'settings_title')
-    $dlg.StartPosition = 'CenterScreen'
+    $dlg.StartPosition = $(if ($settingsFromLib) { 'CenterParent' } else { 'CenterScreen' })
     $dlg.FormBorderStyle = 'FixedSingle'
     $dlg.MaximizeBox = $false
     # Без бесшовного режима у окна своя кнопка на панели задач — обычное сворачивание; в бесшовном режиме см. Enable-SCOwnerMinimize ниже.
-    $dlg.MinimizeBox = (-not $settingsSeamless)
+    # Из библиотеки: без своей кнопки на панели задач и без сворачивания (владелец - окно библиотеки).
+    $dlg.MinimizeBox = ((-not $settingsSeamless) -and (-not $settingsFromLib))
+    if ($settingsFromLib) {
+        $dlg.ShowInTaskbar = $false
+        # Как в бесшовном режиме: окно строится невидимым и появляется только после полной отрисовки (см. Add_Shown),
+        # иначе на первых кадрах поля и кнопки мигают белыми прямоугольниками.
+        $dlg.Opacity = 0
+        try {
+            $dbFlagsL = [System.Reflection.BindingFlags]::Instance -bor [System.Reflection.BindingFlags]::NonPublic
+            [System.Windows.Forms.Control].GetProperty('DoubleBuffered', $dbFlagsL).SetValue($dlg, $true, $null)
+        } catch {}
+    }
     try { if ($null -ne $form -and $null -ne $form.Icon) { $dlg.Icon = $form.Icon } } catch {}
     if ($settingsSeamless) {
         # Одна кнопка программы на панели задач; пустой кадр не показываем — окно появляется после построения.
@@ -56452,7 +58063,7 @@ function Show-ProgramSettingsDialog {
     $btnRestoreBackup.Visible = $false
     $dlg.Controls.Add($btnRestoreBackup)
 
-    $lvBackups = New-Object System.Windows.Forms.ListView
+    $lvBackups = New-BufferedListView
     Enable-SmoothPaint $lvBackups
     $lvBackups.Location = New-Object System.Drawing.Point(20, 601)
     $lvBackups.Size = New-Object System.Drawing.Size(500, 96)
@@ -57368,6 +58979,10 @@ function Show-ProgramSettingsDialog {
             try { Invoke-PaintNow $dlg } catch {}
             $dlg.Opacity = 1
             try { $form.Opacity = 0; $form.UseWaitCursor = $false } catch {}
+        } elseif ($settingsFromLib) {
+            # Из библиотеки главное окно не трогаем: окно уже отрисовано (Invoke-PaintNow выше) - просто проявляем его.
+            try { Invoke-PaintNow $dlg } catch {}
+            $dlg.Opacity = 1
         }
         try {
             $txtKey.SelectionLength = 0
@@ -57524,7 +59139,7 @@ function Show-ProgramSettingsDialog {
     }
     try { Initialize-FormForSmallScreen -Form $dlg -Owner $(if ($settingsSeamless) { $form } else { $null }) } catch {}
     try {
-        if ($settingsSeamless) { try { Enable-SCCascadeClose $dlg $true } catch {}; $dlg.ShowDialog($form) | Out-Null } else { $dlg.ShowDialog() | Out-Null }
+        if ($settingsSeamless) { try { Enable-SCCascadeClose $dlg $true } catch {}; $dlg.ShowDialog($form) | Out-Null } elseif ($settingsFromLib) { $dlg.ShowDialog($settingsOwnerForm) | Out-Null } else { $dlg.ShowDialog() | Out-Null }
     } finally {
         if ($settingsSeamless) {
             # Страховка: если окно не дошло до Add_Shown (ошибка при показе) — главное окно не должно остаться невидимым.
@@ -64116,6 +65731,107 @@ public static class SCDlssBar
     static SolidBrush br = new SolidBrush(Color.FromArgb(185, 0, 0, 0));
     static TextFormatFlags tf = TextFormatFlags.NoPadding | TextFormatFlags.SingleLine;
 
+    static System.Drawing.Drawing2D.GraphicsPath RoundRectPath(float x, float y, float w, float h, float r)
+    {
+        System.Drawing.Drawing2D.GraphicsPath p = new System.Drawing.Drawing2D.GraphicsPath();
+        float d = r * 2;
+        p.AddArc(x, y, d, d, 180, 90);
+        p.AddArc(x + w - d, y, d, d, 270, 90);
+        p.AddArc(x + w - d, y + h - d, d, d, 0, 90);
+        p.AddArc(x, y + h - d, d, d, 90, 90);
+        p.CloseFigure();
+        return p;
+    }
+
+    // Значок VR-гарнитуры: контур из верхней панели клиента Steam (SVG-путь в системе координат 36x36, команды M L H V C Z).
+    const string VrPathData = "M33 13.3C33.0114 12.2663 32.7021 11.2545 32.1147 10.4038C31.5273 9.5532 30.6907 8.90553 29.72 8.54998C25.9132 7.45272 21.9604 6.94682 18 7.04998C14.0396 6.94682 10.0868 7.45272 6.28 8.54998C5.30932 8.90553 4.4727 9.5532 3.88531 10.4038C3.29791 11.2545 2.98862 12.2663 3 13.3L0 14.05V20.05L3 20.81C3.08508 22.0931 3.51701 23.3289 4.24968 24.3857C4.98235 25.4424 5.98826 26.2803 7.16 26.81L10.16 28.08C10.7695 28.3298 11.4453 28.3671 12.0785 28.1856C12.7117 28.0042 13.2654 27.6147 13.65 27.08C14.1242 26.3803 14.779 25.8222 15.5449 25.4648C16.3108 25.1074 17.1592 24.964 18 25.05C18.8449 24.9722 19.6951 25.1256 20.4595 25.4937C21.224 25.8619 21.874 26.4309 22.34 27.14C22.7246 27.6747 23.2782 28.0642 23.9115 28.2456C24.5447 28.4271 25.2205 28.3898 25.83 28.14L28.83 26.87C30.0017 26.3403 31.0076 25.5024 31.7403 24.4457C32.473 23.3889 32.9049 22.1531 32.99 20.87L35.99 20.11V14.11L33 13.3ZM22.16 13C20.9452 12.7243 19.7054 12.5735 18.46 12.55C16.9073 12.5083 15.3555 12.6595 13.84 13L13.16 10.08C14.925 9.68481 16.7318 9.50682 18.54 9.54998C19.988 9.57538 21.4292 9.75302 22.84 10.08L22.16 13Z";
+    static System.Drawing.Drawing2D.GraphicsPath vrPath;
+
+    static float ReadSvgNum(string d, ref int pos)
+    {
+        while (pos < d.Length && (d[pos] == ' ' || d[pos] == ',')) pos++;
+        int st = pos;
+        if (pos < d.Length && (d[pos] == '-' || d[pos] == '+')) pos++;
+        while (pos < d.Length && (char.IsDigit(d[pos]) || d[pos] == '.')) pos++;
+        return float.Parse(d.Substring(st, pos - st), System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    static System.Drawing.Drawing2D.GraphicsPath GetVrPath()
+    {
+        if (vrPath != null) return vrPath;
+        System.Drawing.Drawing2D.GraphicsPath gp = new System.Drawing.Drawing2D.GraphicsPath(System.Drawing.Drawing2D.FillMode.Alternate);
+        string d = VrPathData;
+        int pos = 0;
+        char cmd = 'M';
+        float cx = 0f, cy = 0f;
+        bool open = false;
+        while (pos < d.Length)
+        {
+            char ch = d[pos];
+            if (ch == ' ' || ch == ',') { pos++; continue; }
+            if (char.IsLetter(ch))
+            {
+                cmd = ch; pos++;
+                if (cmd == 'Z' || cmd == 'z') { if (open) gp.CloseFigure(); open = false; }
+                continue;
+            }
+            if (cmd == 'M')
+            {
+                float mx = ReadSvgNum(d, ref pos), my = ReadSvgNum(d, ref pos);
+                gp.StartFigure(); cx = mx; cy = my; open = true; cmd = 'L';
+            }
+            else if (cmd == 'L')
+            {
+                float lx = ReadSvgNum(d, ref pos), ly = ReadSvgNum(d, ref pos);
+                gp.AddLine(cx, cy, lx, ly); cx = lx; cy = ly;
+            }
+            else if (cmd == 'H')
+            {
+                float hx = ReadSvgNum(d, ref pos);
+                gp.AddLine(cx, cy, hx, cy); cx = hx;
+            }
+            else if (cmd == 'V')
+            {
+                float vy = ReadSvgNum(d, ref pos);
+                gp.AddLine(cx, cy, cx, vy); cy = vy;
+            }
+            else if (cmd == 'C')
+            {
+                float x1 = ReadSvgNum(d, ref pos), y1 = ReadSvgNum(d, ref pos);
+                float x2 = ReadSvgNum(d, ref pos), y2 = ReadSvgNum(d, ref pos);
+                float x3 = ReadSvgNum(d, ref pos), y3 = ReadSvgNum(d, ref pos);
+                gp.AddBezier(cx, cy, x1, y1, x2, y2, x3, y3); cx = x3; cy = y3;
+            }
+            else pos++;
+        }
+        vrPath = gp;
+        return vrPath;
+    }
+
+    // Значок VR 22x22: тёмная скруглённая подложка и светлый контур гарнитуры Steam по центру.
+    public static void DrawVr(Graphics g, int x, int y)
+    {
+        System.Drawing.Drawing2D.SmoothingMode oldSm = g.SmoothingMode;
+        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        try
+        {
+            using (System.Drawing.Drawing2D.GraphicsPath bg = RoundRectPath(x, y, 22, 22, 5))
+            using (SolidBrush bb = new SolidBrush(Color.FromArgb(215, 16, 20, 26)))
+                g.FillPath(bb, bg);
+            float sc = 0.54f;
+            System.Drawing.Drawing2D.GraphicsState st = g.Save();
+            try
+            {
+                g.TranslateTransform(x + 11f - 18f * sc, y + 11f - 17.7f * sc);
+                g.ScaleTransform(sc, sc);
+                using (SolidBrush lb = new SolidBrush(Color.FromArgb(255, 238, 241, 245)))
+                    g.FillPath(lb, GetVrPath());
+            }
+            finally { g.Restore(st); }
+        }
+        finally { g.SmoothingMode = oldSm; }
+    }
+
     public static void Draw(Graphics g, int w, int h, string ver)
     {
         if (ver == null) return;
@@ -64358,6 +66074,13 @@ public class SCDlssPicture : PictureBox
 {
     public string DlssText;
     public int CheckState;   // 0 — без галочки, 1 — не выбрано, 2 — выбрано (см. SCDlssBar.DrawCheck)
+    // Скрытая в Steam игра: обложка чёрно-белая и затемнена, плитка обведена пунктиром — как у игр лончеров, которые уже в Steam
+    // (полоса DLSS и галочка выбора остаются яркими, плитка по-прежнему полностью рабочая).
+    public bool Gray;
+    bool cacheGray;
+    // Значок VR-гарнитуры: x-координата левого края (y = 6); -1 — не рисовать. Ставится слева от значка Steam / лаунчера / плашки «Non-Steam».
+    public int VrLeft = -1;
+    int cacheVr = -1;
     int cacheChk;
     // Готовый кадр плитки (обложка + полоса DLSS) в формате 32bppPArgb: при прокрутке перерисовка плитки —
     // один быстрый BitBlt вместо конвертации формата обложки, масштабирования и рисования текста на каждый кадр.
@@ -64377,9 +66100,48 @@ public class SCDlssPicture : PictureBox
         using (Graphics g = Graphics.FromImage(bmp))
         {
             g.Clear(BackColor);
-            try { if (src != null) g.DrawImage(src, 0, 0, src.Width, src.Height); } catch { }
+            try
+            {
+                if (src != null)
+                {
+                    if (Gray)
+                    {
+                        // Оттенки серого по весам RGB; затемнение накладывается ниже, после обложки.
+                        const float k = 1.0f;
+                        ColorMatrix cm = new ColorMatrix(new float[][] {
+                            new float[] { 0.30f * k, 0.30f * k, 0.30f * k, 0, 0 },
+                            new float[] { 0.59f * k, 0.59f * k, 0.59f * k, 0, 0 },
+                            new float[] { 0.11f * k, 0.11f * k, 0.11f * k, 0, 0 },
+                            new float[] { 0, 0, 0, 1, 0 },
+                            new float[] { 0, 0, 0, 0, 1 } });
+                        using (ImageAttributes ia = new ImageAttributes())
+                        {
+                            ia.SetColorMatrix(cm);
+                            g.DrawImage(src, new Rectangle(0, 0, src.Width, src.Height), 0, 0, src.Width, src.Height, GraphicsUnit.Pixel, ia);
+                        }
+                    }
+                    else g.DrawImage(src, 0, 0, src.Width, src.Height);
+                }
+            }
+            catch { }
+            // Тёмная накладка поверх обложки: тот же цвет и прозрачность, что у плиток «уже в Steam» на вкладках лончеров.
+            if (Gray)
+            {
+                using (SolidBrush dim = new SolidBrush(Color.FromArgb(165, 12, 16, 22)))
+                    g.FillRectangle(dim, 0, 0, w, h);
+            }
             SCDlssBar.Draw(g, w, h, DlssText);
             SCDlssBar.DrawCheck(g, CheckState);
+            if (VrLeft >= 0) SCDlssBar.DrawVr(g, VrLeft, 6);
+            // Пунктирная рамка, как у плиток «уже в Steam».
+            if (Gray)
+            {
+                using (Pen dash = new Pen(Color.FromArgb(74, 86, 100), 1.5f))
+                {
+                    dash.DashStyle = System.Drawing.Drawing2D.DashStyle.Dash;
+                    g.DrawRectangle(dash, 1, 1, w - 3, h - 3);
+                }
+            }
         }
         // GDI-текст не пишет альфа-канал, а плитка всегда непрозрачная — выставляем alpha = 255 вручную.
         Rectangle r = new Rectangle(0, 0, w, h);
@@ -64397,6 +66159,8 @@ public class SCDlssPicture : PictureBox
         cacheSrc = src;
         cacheTxt = DlssText;
         cacheChk = CheckState;
+        cacheGray = Gray;
+        cacheVr = VrLeft;
     }
 
     protected override void OnPaint(PaintEventArgs e)
@@ -64404,7 +66168,7 @@ public class SCDlssPicture : PictureBox
         int w = ClientSize.Width, h = ClientSize.Height;
         if (w <= 0 || h <= 0) return;
         Image src = Image;
-        if (cache == null || !object.ReferenceEquals(src, cacheSrc) || cacheTxt != DlssText || cacheChk != CheckState || cache.Width != w || cache.Height != h)
+        if (cache == null || !object.ReferenceEquals(src, cacheSrc) || cacheTxt != DlssText || cacheChk != CheckState || cacheGray != Gray || cacheVr != VrLeft || cache.Width != w || cache.Height != h)
             Rebuild(src, w, h);
         e.Graphics.DrawImageUnscaled(cache, 0, 0);
     }
@@ -64485,7 +66249,7 @@ function Stop-LibDlssScan {
 }
 
 # Запасные апскейлеры для игр БЕЗ DLSS (плитки библиотеки и панели главного экрана).
-# Порядок = приоритет (от самых популярных): FSR DX12, FSR VK, XeSS, XeSS DX11.
+# Порядок = приоритет (от самых популярных): FSR DX12, FSR Vulkan, XeSS, XeSS DX11.
 # Элементы: @(файл, название). Названия берём из Get-UpscalerDefs, чтобы совпадали с карточкой игры.
 function Get-AltUpscalerList {
     $altUps = @()
@@ -64497,7 +66261,7 @@ function Get-AltUpscalerList {
         }
     } catch { $altUps = @() }
     if ($altUps.Count -eq 0) {
-        $altUps = @(@('amd_fidelityfx_dx12.dll', 'FSR DX12'), @('amd_fidelityfx_vk.dll', 'FSR VK'), @('libxess.dll', 'XeSS'), @('libxess_dx11.dll', 'XeSS DX11'))
+        $altUps = @(@('amd_fidelityfx_dx12.dll', 'FSR DX12'), @('amd_fidelityfx_vk.dll', 'FSR Vulkan'), @('libxess.dll', 'XeSS'), @('libxess_dx11.dll', 'XeSS DX11'))
     }
     return ,$altUps
 }
@@ -64946,6 +66710,19 @@ function Register-SCMenuAutoMargins ($Menu) {
     } catch {}
 }
 
+# Зона кнопок у правого края пункта меню коллекций: 'x' - «удалить», 'e' - «переименовать», '' - вне кнопок.
+# $x - координата курсора относительно левого края пункта.
+function Get-CollGlyphZoneAt ($item, [int]$x) {
+    $w = [int]$item.Width
+    $gz = [int][SCFilterRenderer]::GlyphZone
+    if ($x -ge ($w - $gz)) { return 'x' }
+    if ([string]$item.AccessibleDescription -eq 'collrow') {
+        $ez = [int][SCFilterRenderer]::EditZone
+        if ($x -ge ($w - $gz - $ez)) { return 'e' }
+    }
+    return ''
+}
+
 # Тёмный рендерер выпадающих меню (SCFilterRenderer): общий для меню «Фильтр» и контекстного меню плиток.
 function Initialize-SCFilterRenderer {
     if ('SCFilterRenderer' -as [type]) { return }
@@ -65033,6 +66810,42 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
     // Кнопки в меню коллекций: AccessibleDescription 'collrow' - справа «минус» (удалить коллекцию), 'colladd' - справа «плюс» (создать).
     // Зона кнопки - GlyphZone px у правого края пункта; под курсором - подсветка (меню перерисовывается при движении мыши).
     public static int GlyphZone = 28;
+    // Слева от «минуса» у тех же пунктов - кнопка «переименовать» (карандаш): её зона шириной EditZone px.
+    public static int EditZone = 14;
+    // true - под курсором кнопка «переименовать» пункта HotItem (а не «минус»).
+    public static bool HotEdit = false;
+    // Текст-сочетание клавиш, который только резервирует место справа под обе кнопки; сам текст не рисуется.
+    public static string ShortcutMark = "\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00D7";
+    static void DrawEditGlyph(Graphics g, ToolStripItem it)
+    {
+        // Карандаш без кружка, примерно того же размера (около 12 px), что и красный круг «×»; стоит почти вплотную к нему.
+        int w = it.Width, h = it.Height;
+        bool hot = object.ReferenceEquals(it, HotItem) && HotEdit;
+        bool grey = (it.AccessibleDefaultActionDescription == "greyx");
+        Color cf = grey ? Color.FromArgb(106, 114, 124) : (hot ? Color.White : Color.FromArgb(160, 171, 184));
+        System.Drawing.Drawing2D.SmoothingMode oldSm = g.SmoothingMode;
+        System.Drawing.Drawing2D.PixelOffsetMode oldPo = g.PixelOffsetMode;
+        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.None;
+        float ccx = w - GlyphZone - 5;
+        float ccy = 1 + (h - 2) / 2;
+        System.Drawing.Drawing2D.GraphicsState gs = g.Save();
+        g.TranslateTransform(-0.5f, -0.5f);
+        float s2 = 0.70710678f;
+        // Корпус и заострённый кончик, повёрнутые на 45 градусов (кончик внизу слева).
+        float[] lu = new float[] { -7.8f, -4.6f, 7.0f, 7.0f, -4.6f };
+        float[] lv = new float[] { 0f, -1.8f, -1.8f, 1.8f, 1.8f };
+        PointF[] pts = new PointF[5];
+        for (int i = 0; i < 5; i++)
+        {
+            float u = lu[i] - 0.4f, v = lv[i];
+            pts[i] = new PointF(ccx + (u - v) * s2, ccy - (u + v) * s2);
+        }
+        using (SolidBrush wb = new SolidBrush(cf)) { g.FillPolygon(wb, pts); }
+        g.Restore(gs);
+        g.PixelOffsetMode = oldPo;
+        g.SmoothingMode = oldSm;
+    }
     // Пункт меню коллекций, чья кнопка сейчас под курсором (null - ни одной). Выставляется из PowerShell.
     public static ToolStripItem HotItem = null;
     static void DrawCollGlyph(Graphics g, ToolStripItem it)
@@ -65041,11 +66854,13 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
         bool plus = (it.AccessibleDescription == "colladd");
         bool newc = (it.AccessibleDescription == "collnew");   // «Создать коллекцию…»: зелёный круг с плюсом в одной колонке с красными кругами
         if (!minus && !plus && !newc) return;
+        if (minus) DrawEditGlyph(g, it);
         int w = it.Width, h = it.Height;
         Rectangle zr = new Rectangle(w - GlyphZone, 1, GlyphZone - 2, h - 2);
         // Единственный источник правды о подсветке - HotItem (его выставляет таймер меню по положению мыши): так отрисовка
         // и состояние не расходятся (раньше позицию мыши считали отдельно здесь и в таймере, и на границах зоны они не совпадали).
-        bool hot = object.ReferenceEquals(it, HotItem);
+        // Под курсором «×» только когда курсор над самой кнопкой «×», а не над карандашом (HotEdit).
+        bool hot = object.ReferenceEquals(it, HotItem) && !HotEdit;
         // Маленькая квадратная кнопка в стиле кнопки «X» Steam (как у «Клавиша заглушения»): скруглённый светлее фона квадрат,
         // внутри крестик (удалить коллекцию) или плюс (создать). Под курсором - светлее, значок белый.
         int bs = System.Math.Min(16, System.Math.Min(zr.Width, zr.Height));
@@ -65059,7 +66874,7 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
             bool grey = (!newc && it.AccessibleDefaultActionDescription == "greyx");
             Color cf;
             if (newc) { bool hn = it.Selected; cf = hn ? Color.FromArgb(76, 196, 104) : Color.FromArgb(52, 168, 83); }
-            else cf = grey ? (hot ? Color.FromArgb(140, 148, 158) : Color.FromArgb(106, 114, 124)) : (hot ? Color.FromArgb(247, 84, 97) : Color.FromArgb(234, 53, 66));
+            else cf = grey ? (hot ? Color.FromArgb(140, 148, 158) : Color.FromArgb(106, 114, 124)) : (hot ? Color.White : Color.FromArgb(234, 53, 66));
             System.Drawing.Drawing2D.SmoothingMode oldSmM = g.SmoothingMode;
             System.Drawing.Drawing2D.PixelOffsetMode oldPo = g.PixelOffsetMode;
             g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
@@ -65083,7 +66898,9 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
                     new PointF(ccx + ea, ccy - eb), new PointF(ccx + en, ccy), new PointF(ccx + ea, ccy + eb),
                     new PointF(ccx + eb, ccy + ea), new PointF(ccx, ccy + en), new PointF(ccx - eb, ccy + ea),
                     new PointF(ccx - ea, ccy + eb), new PointF(ccx - en, ccy), new PointF(ccx - ea, ccy - eb) };
-                using (SolidBrush wb = new SolidBrush(Color.White)) { g.FillPolygon(wb, xs); }
+                // Под курсором круг белый, а крест красный (как карандаш рядом подсвечивается белым); у серого (помеченного на удаление) крест остаётся белым.
+                Color crossC = (hot && !grey) ? Color.FromArgb(234, 53, 66) : Color.White;
+                using (SolidBrush wb = new SolidBrush(crossC)) { g.FillPolygon(wb, xs); }
             }
             g.Restore(gs);
             if (newc)
@@ -65139,6 +66956,30 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
         }
         g.SmoothingMode = oldSm;
     }
+    // Ползунок прокрутки длинного меню (данные кладёт SCMenuWheel11 в Tag): тот же вид и цвета, что у полос прокрутки списков.
+    protected override void OnRenderToolStripBorder(ToolStripRenderEventArgs e)
+    {
+        base.OnRenderToolStripBorder(e);
+        int[] t = e.ToolStrip.Tag as int[];
+        if (t == null || t.Length != 6 || t[0] != 0x5C5C || !(e.ToolStrip is ToolStripDropDown)) return;
+        Color clr = t[5] == 2 ? Color.FromArgb(150, 158, 172) : (t[5] == 1 ? Color.FromArgb(123, 131, 146) : Color.FromArgb(96, 103, 116));
+        Graphics g = e.Graphics;
+        System.Drawing.Drawing2D.SmoothingMode old = g.SmoothingMode;
+        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        Rectangle r = new Rectangle(t[1], t[2], t[3], t[4]);
+        int d = System.Math.Min(6, System.Math.Min(r.Width, r.Height));
+        using (System.Drawing.Drawing2D.GraphicsPath gp = new System.Drawing.Drawing2D.GraphicsPath())
+        using (SolidBrush b = new SolidBrush(clr))
+        {
+            gp.AddArc(r.X, r.Y, d, d, 180, 90);
+            gp.AddArc(r.Right - d, r.Y, d, d, 270, 90);
+            gp.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
+            gp.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
+            gp.CloseFigure();
+            g.FillPath(b, gp);
+        }
+        g.SmoothingMode = old;
+    }
     protected override void OnRenderToolStripBackground(ToolStripRenderEventArgs e)
     {
         if (e.ToolStrip is ToolStripDropDown) { using (SolidBrush b = new SolidBrush(SCFilterColors.MenuBg)) { e.Graphics.FillRectangle(b, e.AffectedBounds); } }
@@ -65175,7 +67016,7 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
     {
         // Штатный текст-сочетание клавиш («×» / «+») у пунктов-кнопок коллекций не рисуем: он нужен только чтобы зарезервировать место справа,
         // а сам значок («минус» / «плюс») рисует DrawCollGlyph - иначе рядом с ним торчит лишний значок.
-        if ((e.Item.AccessibleDescription == "collrow" || e.Item.AccessibleDescription == "colladd") && (e.Text == "×" || e.Text == "+")) { return; }
+        if ((e.Item.AccessibleDescription == "collrow" || e.Item.AccessibleDescription == "colladd") && (e.Text.Trim() == "\u00D7" || e.Text == "+")) { return; }
         DrawCollGlyph(e.Graphics, e.Item);
         if (IsPlay(e.Item)) { e.TextColor = Color.White; }
         // В меню без колонки значков значок «Запуск» стоит строго по левому краю текста остальных пунктов (не выступает за него),
@@ -65425,7 +67266,264 @@ function Write-CollFileAtomic ([string]$path, [byte[]]$bytes) {
 
 # Записывает изменения коллекций в один профиль Steam (userdata\<id>). Steam должен быть закрыт.
 # $byCid: id коллекции -> список операций { Ids; Want; Kind }. $found: сюда попадают id коллекций, найденных в файлах профиля.
+# ===================== «БИБЛИОТЕКА VR»: поле OpenVR в shortcuts.vdf как особый пункт меню коллекций =====================
+# appid (строкой uint32) всех ярлыков профиля, у которых OpenVR = 1.
+function Get-OpenVRAppIdsForProfile ([string]$root) {
+    # Элементы возвращаются без унарной запятой: вызывающий код оборачивает результат в @(...), и вложенный массив ломал сопоставление appid.
+    $res = New-Object System.Collections.Generic.List[string]
+    try {
+        $path = Join-Path $root 'config\shortcuts.vdf'
+        if (-not [System.IO.File]::Exists($path)) { return $res.ToArray() }
+        $bytes = [System.IO.File]::ReadAllBytes($path)
+        if ($bytes.Length -eq 0) { return $res.ToArray() }
+        $node = Get-ShortcutsNode $bytes
+        if ($null -eq $node) { return $res.ToArray() }
+        foreach ($entry in $node.Body.Children) {
+            if ($entry.Type -ne 0x00) { continue }
+            $af = $entry.Body.Children | Where-Object { $_.Key -eq 'appid' } | Select-Object -First 1
+            if ($null -eq $af -or $af.Type -ne 0x02) { continue }
+            $vv = Get-VdfDwordField $entry 'OpenVR'
+            if ($null -ne $vv -and [uint32]$vv -ne 0) { [void]$res.Add([string][uint32]$af.Value) }
+        }
+    } catch {}
+    return $res.ToArray()
+}
+
+# Лицензионные (установленные) игры Steam с поддержкой VR. У них нет поля OpenVR, Steam сам решает по метаданным игры,
+# поэтому статус читается из appcache\appinfo.vdf (appinfo -> common -> openvrsupport). Только чтение: записать его нельзя.
+# Результат кэшируется на 10 минут и сбрасывается при изменении appinfo.vdf.
+$script:licVrCache = $null
+function Get-LicensedVrAppIds {
+    $res = New-Object System.Collections.Generic.List[string]
+    try {
+        $steamRoot = Get-ConfiguredSteamInstallPath
+        if ([string]::IsNullOrWhiteSpace($steamRoot)) { return $res.ToArray() }
+        $path = [System.IO.Path]::Combine([string]$steamRoot, 'appcache', 'appinfo.vdf')
+        if (-not [System.IO.File]::Exists($path)) { return $res.ToArray() }
+        $stamp = [System.IO.File]::GetLastWriteTimeUtc($path).Ticks
+        $c = $script:licVrCache
+        if ($null -ne $c -and [long]$c.Stamp -eq [long]$stamp -and (([DateTime]::UtcNow - $c.At).TotalMinutes -lt 10)) { return $c.Ids }
+        # Кого читать: appid установленных игр по именам appmanifest_<id>.acf (содержимое манифестов не открывается).
+        $want = New-Object System.Collections.Generic.List[uint32]
+        foreach ($appsRoot in @(Get-SteamLibraryFolders)) {
+            if (-not [System.IO.Directory]::Exists([string]$appsRoot)) { continue }
+            foreach ($acf in [System.IO.Directory]::EnumerateFiles([string]$appsRoot, 'appmanifest_*.acf')) {
+                $m = [regex]::Match([System.IO.Path]::GetFileName($acf), '^appmanifest_(\d+)\.acf$')
+                if ($m.Success) { [void]$want.Add([uint32]$m.Groups[1].Value) }
+            }
+        }
+        if ($want.Count -eq 0) { return $res.ToArray() }
+        if (-not ('SteamAppInfoVr' -as [type])) {
+            Add-Type -TypeDefinition @'
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Text;
+
+public static class SteamAppInfoVr
+{
+    public static string LastInfo = "";
+    public static string LastError = "";
+
+    sealed class Rd { public byte[] D; public int P; public string[] St; }
+
+    // appid из списка wanted, у которых в appinfo.vdf (appinfo -> common) задан openvrsupport != 0.
+    // Читаются только записи из wanted, остальные пропускаются по их размеру.
+    public static uint[] ReadVrAppIds(string path, uint[] wanted)
+    {
+        var res = new List<uint>();
+        LastInfo = ""; LastError = "";
+        var want = new HashSet<uint>(wanted);
+        int seen = 0, fail = 0;
+        using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 1 << 16))
+        using (var br = new BinaryReader(fs))
+        {
+            uint magic = br.ReadUInt32();
+            if ((magic >> 8) != 0x075644u) { LastError = "magic 0x" + magic.ToString("X8"); return res.ToArray(); }
+            int ver = (int)(magic & 0xFF);
+            if (ver < 39) { LastError = "version " + ver; return res.ToArray(); }
+            br.ReadUInt32(); // universe
+            string[] strings = null;
+            if (ver >= 41)
+            {
+                long tblOff = br.ReadInt64();
+                long dataStart = fs.Position;
+                fs.Position = tblOff;
+                int cnt = (int)br.ReadUInt32();
+                byte[] tbl = br.ReadBytes((int)(fs.Length - fs.Position));
+                strings = new string[cnt];
+                int p = 0;
+                for (int i = 0; i < cnt; i++)
+                {
+                    int s = p;
+                    while (p < tbl.Length && tbl[p] != 0) p++;
+                    strings[i] = Encoding.UTF8.GetString(tbl, s, p - s);
+                    p++;
+                }
+                fs.Position = dataStart;
+            }
+            int hdr = 40 + (ver >= 40 ? 20 : 0);
+            while (fs.Position + 8 <= fs.Length)
+            {
+                uint appid = br.ReadUInt32();
+                if (appid == 0) break;
+                uint size = br.ReadUInt32();
+                long next = fs.Position + size;
+                if (want.Contains(appid) && size > (uint)hdr)
+                {
+                    seen++;
+                    fs.Position += hdr;
+                    byte[] d = br.ReadBytes((int)(size - (uint)hdr));
+                    try { if (HasOpenVr(d, strings)) res.Add(appid); }
+                    catch (Exception ex) { fail++; if (LastError.Length == 0) LastError = ex.Message; }
+                }
+                fs.Position = next;
+            }
+        }
+        LastInfo = "appinfo: wanted=" + want.Count + " found=" + seen + " parseFail=" + fail + " vr=" + res.Count;
+        return res.ToArray();
+    }
+
+    static bool HasOpenVr(byte[] d, string[] st)
+    {
+        var r = new Rd(); r.D = d; r.P = 0; r.St = st;
+        bool found = false;
+        Obj(r, "", false, ref found);
+        return found;
+    }
+
+    static string Key(Rd r)
+    {
+        if (r.St != null)
+        {
+            uint i = BitConverter.ToUInt32(r.D, r.P); r.P += 4;
+            return i < (uint)r.St.Length ? r.St[i] : "";
+        }
+        int s = r.P;
+        while (r.D[r.P] != 0) r.P++;
+        string k = Encoding.UTF8.GetString(r.D, s, r.P - s);
+        r.P++;
+        return k;
+    }
+
+    static void Obj(Rd r, string name, bool capture, ref bool found)
+    {
+        while (r.P < r.D.Length)
+        {
+            byte t = r.D[r.P++];
+            if (t == 8) return;
+            string key = Key(r);
+            bool isVr = capture && string.Equals(key, "openvrsupport", StringComparison.OrdinalIgnoreCase);
+            switch (t)
+            {
+                case 0:
+                    Obj(r, key, name == "appinfo" && key == "common", ref found);
+                    break;
+                case 1:
+                {
+                    int s = r.P;
+                    while (r.D[r.P] != 0) r.P++;
+                    if (isVr)
+                    {
+                        string v = Encoding.UTF8.GetString(r.D, s, r.P - s).Trim();
+                        if (v != "0" && v.Length > 0 && !string.Equals(v, "false", StringComparison.OrdinalIgnoreCase)) found = true;
+                    }
+                    r.P++;
+                    break;
+                }
+                case 2:
+                    if (isVr && BitConverter.ToInt32(r.D, r.P) != 0) found = true;
+                    r.P += 4;
+                    break;
+                case 3: case 4: case 6:
+                    r.P += 4;
+                    break;
+                case 5:
+                    while (r.P + 1 < r.D.Length && !(r.D[r.P] == 0 && r.D[r.P + 1] == 0)) r.P += 2;
+                    r.P += 2;
+                    break;
+                case 7: case 10:
+                    r.P += 8;
+                    break;
+                default:
+                    throw new InvalidDataException("kv type " + t + " at " + r.P);
+            }
+        }
+    }
+}
+'@
+        }
+        $ids = [SteamAppInfoVr]::ReadVrAppIds($path, $want.ToArray())
+        foreach ($x in $ids) { [void]$res.Add([string][uint32]$x) }
+        try { Write-LauncherLog ('licensedVr: ' + [SteamAppInfoVr]::LastInfo + $(if ([SteamAppInfoVr]::LastError) { ' error=' + [SteamAppInfoVr]::LastError } else { '' })) } catch {}
+        $script:licVrCache = [PSCustomObject]@{ Stamp = $stamp; At = [DateTime]::UtcNow; Ids = $res.ToArray() }
+    } catch {
+        try { Write-LauncherLog ('licensedVr: ' + $_.Exception.Message) } catch {}
+    }
+    return $res.ToArray()
+}
+
+# Применяет операции особого пункта «Библиотека VR» ($ops: список {Ids; Want = in|out; Kind}) к shortcuts.vdf профиля.
+# 'in' -> OpenVR = 1, 'out' -> OpenVR = 0 (у ярлыков без поля при 'out' ничего не создаётся). Игры не из Non-Steam пропускаются.
+# Steam должен быть закрыт (как и для записи коллекций). Файл перезаписывается только если что-то реально изменилось.
+function Set-ShortcutsOpenVRForOps ([string]$root, $ops, [string]$stamp) {
+    $path = Join-Path $root 'config\shortcuts.vdf'
+    if (-not [System.IO.File]::Exists($path)) { return }
+    $wantMap = @{}
+    # Обход по индексу вместо foreach (@($ops)): на этой строке падало «Типы аргумента не совпадают» ($ops - List[object]).
+    $opsCount = 0
+    if ($null -ne $ops) { $opsCount = [int]$ops.Count }
+    for ($opIdx = 0; $opIdx -lt $opsCount; $opIdx++) {
+        $op = $ops[$opIdx]
+        if ($null -eq $op -or $null -eq $op.Ids) { continue }
+        if ([string]$op.Kind -ne 'shortcut') { continue }
+        $wantMap[[string][uint32]$op.Ids.Main] = $(if ([string]$op.Want -eq 'in') { 1 } else { 0 })
+    }
+    if ($wantMap.Count -eq 0) { return }
+    $bytes = [System.IO.File]::ReadAllBytes($path)
+    $vdfRoot = Read-VdfObjectBody $bytes 0
+    $shortcutsNode = $vdfRoot.Children | Where-Object { $_.Key -eq 'shortcuts' } | Select-Object -First 1
+    if ($null -eq $shortcutsNode) { return }
+    $changed = $false
+    foreach ($entry in $shortcutsNode.Body.Children) {
+        if ($entry.Type -ne 0x00) { continue }
+        $af = $entry.Body.Children | Where-Object { $_.Key -eq 'appid' } | Select-Object -First 1
+        if ($null -eq $af -or $af.Type -ne 0x02) { continue }
+        $k = [string][uint32]$af.Value
+        if (-not $wantMap.ContainsKey($k)) { continue }
+        $w = [uint32]$wantMap[$k]
+        $cur = Get-VdfDwordField $entry 'OpenVR'
+        if ($null -eq $cur) { if ($w -eq 0) { continue } }
+        elseif ([uint32]$cur -eq $w) { continue }
+        Set-VdfDwordField $entry 'OpenVR' $w 'AllowOverlay'
+        $changed = $true
+    }
+    if ($changed) {
+        Create-AutoShortcutBackup $path | Out-Null
+        Write-SteamShortcutsFile $path ([byte[]](Write-VdfFileBytes $vdfRoot.Children))
+        try { $script:shortcutLightIndexCache = @{} } catch {}
+    }
+}
+
 function Update-SteamCollectionsInProfile ([string]$root, $byCid, $found, [string]$stamp) {
+    # Особый пункт «Библиотека VR» (cid __vr) пишется не в коллекции, а в поле OpenVR файла shortcuts.vdf.
+    if ($byCid.ContainsKey('__vr')) {
+        $vrOps = $byCid['__vr']
+        $byCidRest = @{}
+        foreach ($k0 in @($byCid.Keys)) { if ([string]$k0 -ne '__vr') { $byCidRest[$k0] = $byCid[$k0] } }
+        $byCid = $byCidRest
+        try { Set-ShortcutsOpenVRForOps $root $vrOps $stamp }
+        catch {
+            # Диагностика: добавляем к тексту ошибки строку кода, где она возникла (временно, пока ищем причину «Типы аргумента не совпадают»).
+            $pm = ''
+            try { $pm = ([string]$_.InvocationInfo.PositionMessage) -replace '\s+', ' ' } catch {}
+            $st = ''
+            try { $st = ([string]$_.ScriptStackTrace) -replace '\s+', ' ' } catch {}
+            throw ('{0} [VR: {1} | {2}]' -f $_.Exception.Message, $pm, $st)
+        }
+        $found['__vr'] = $true
+        if ($byCid.Count -eq 0) { return }
+    }
     $ser = Get-CollSerializer
     $utf8 = New-Object System.Text.UTF8Encoding($false)
     $dictT = [System.Collections.Generic.Dictionary[string,object]]
@@ -65614,7 +67712,7 @@ function New-SteamCollectionId {
     return $sb.ToString()
 }
 
-# $op: 'create' или 'delete'. Возвращает $true, если хоть один файл профиля изменён.
+# $op: 'create', 'delete' или 'rename' (для rename $name - новое название). Возвращает $true, если хоть один файл профиля изменён.
 function Edit-SteamCollectionList ([string]$root, [string]$op, [string]$cid, [string]$name, [string]$stamp) {
     $ser = Get-CollSerializer
     $utf8 = New-Object System.Text.UTF8Encoding($false)
@@ -65653,6 +67751,11 @@ function Edit-SteamCollectionList ([string]$root, [string]$op, [string]$cid, [st
                 $lo['removed'] = @()
                 $lcDict[$cid] = $lo
                 $lcDirty = $true
+            }
+        } elseif ($op -eq 'rename') {
+            if ($lcDict.ContainsKey($cid)) {
+                $lce = $lcDict[$cid]
+                if ($lce -is $dictT -and $lce.ContainsKey('name')) { $lce['name'] = $name; $lcDirty = $true }
             }
         } else {
             if ($lcDict.Remove($cid)) { $lcDirty = $true }
@@ -65717,6 +67820,20 @@ function Edit-SteamCollectionList ([string]$root, [string]$op, [string]$cid, [st
                     $sep = $(if ($cloudParsed.Count -gt 0) { ',' } else { '' })
                     $cloudNewText = $trim.Substring(0, $last) + $sep + $pairJson + $trim.Substring($last)
                 }
+            } elseif ($op -eq 'rename') {
+                if ($null -ne $mine) {
+                    $meta2 = $mine[1]
+                    if ($meta2.ContainsKey('value')) {
+                        $val2 = $ser.DeserializeObject([string]$meta2['value'])
+                        if ($val2 -is $dictT) {
+                            $val2['name'] = $name
+                            $meta2['value'] = (ConvertTo-CollJson $val2)
+                            $meta2['timestamp'] = $nowTs
+                            $meta2['version'] = $verVal
+                            $cloudNewText = (ConvertTo-CollJson $cloudParsed)
+                        }
+                    }
+                }
             } else {
                 if ($null -ne $mine) {
                     $tomb = New-Object $dictName
@@ -65746,11 +67863,11 @@ function Edit-SteamCollectionList ([string]$root, [string]$op, [string]$cid, [st
 }
 
 # Окно «Название коллекции» (по образцу Show-FavoriteRenameDialog). Возвращает строку или $null.
-function Show-CollectionNameDialog ($Owner) {
+function Show-CollectionNameDialog ($Owner, [string]$InitialText = '', [string]$Title = '') {
     $dlgN = New-Object System.Windows.Forms.Form
     Enable-SCHandCursor $dlgN
     try {
-        $dlgN.Text = (T 'coll_new_title')
+        $dlgN.Text = $(if ([string]::IsNullOrWhiteSpace($Title)) { T 'coll_new_title' } else { $Title })
         $dlgN.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedDialog
         $dlgN.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterParent
         $dlgN.MaximizeBox = $false; $dlgN.MinimizeBox = $false; $dlgN.ShowInTaskbar = $false
@@ -65761,6 +67878,7 @@ function Show-CollectionNameDialog ($Owner) {
         $tbN.Location = New-Object System.Drawing.Point(14, 14)
         $tbN.Width = 352
         $tbN.MaxLength = 120
+        $tbN.Text = $InitialText
         $tbN.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
         $tbN.BackColor = $steamUi.Input
         $tbN.ForeColor = $steamUi.Text
@@ -65779,7 +67897,7 @@ function Show-CollectionNameDialog ($Owner) {
             $dlgN.Controls.Add($bN)
         }
         $dlgN.AcceptButton = $okN; $dlgN.CancelButton = $cnN
-        $dlgN.Add_Shown({ param($s, $e) try { $s.Controls[0].Focus() } catch {} })
+        $dlgN.Add_Shown({ param($s, $e) try { $c0 = $s.Controls[0]; $c0.Focus(); if ($c0 -is [System.Windows.Forms.TextBox]) { $c0.SelectAll() } } catch {} })
         if ($dlgN.ShowDialog($Owner) -eq [System.Windows.Forms.DialogResult]::OK) {
             $v = ([string]$tbN.Text).Replace("`r", ' ').Replace("`n", ' ').Trim()
             if ($v.Length -gt 0) { return $v }
@@ -65790,7 +67908,7 @@ function Show-CollectionNameDialog ($Owner) {
 
 # Снимает теги с узла одного ярлыка shortcuts.vdf (узел с Body.Children). Оставшиеся теги перенумеровываются 0,1,2...
 # Работает и с разобранным файлом, и с записью, закэшированной в окне библиотеки. Возвращает число снятых тегов.
-function Remove-TagNodesByName ($shortcutNode, [string[]]$namesLower) {
+function Remove-TagNodesByName ($shortcutNode, [string[]]$namesLower, [string]$newName = '') {
     $removed = 0
     if ($null -eq $shortcutNode -or $null -eq $shortcutNode.Body) { return 0 }
     $tagsNode = $null
@@ -65799,8 +67917,25 @@ function Remove-TagNodesByName ($shortcutNode, [string[]]$namesLower) {
     }
     if ($null -eq $tagsNode) { return 0 }
     $keep = New-Object System.Collections.Generic.List[object]
+    # Переименование: $newName задан - тег с прежним названием получает новое (если тега с новым названием ещё нет), иначе тег снимается.
+    $renameMode = (-not [string]::IsNullOrWhiteSpace($newName))
+    $otherHasNew = $false; $placed = $false
+    if ($renameMode) {
+        $newLow = $newName.Trim().ToLowerInvariant()
+        foreach ($t in @($tagsNode.Body.Children)) {
+            if ($null -ne $t -and [int]$t.Type -eq 1) {
+                $tl = ([string]$t.Value).Trim().ToLowerInvariant()
+                if ($tl -eq $newLow -and -not ($namesLower -contains $tl)) { $otherHasNew = $true; break }
+            }
+        }
+    }
     foreach ($t in @($tagsNode.Body.Children)) {
-        if ($null -ne $t -and [int]$t.Type -eq 1 -and ($namesLower -contains ([string]$t.Value).Trim().ToLowerInvariant())) { $removed++; continue }
+        if ($null -ne $t -and [int]$t.Type -eq 1 -and ($namesLower -contains ([string]$t.Value).Trim().ToLowerInvariant())) {
+            if (-not $renameMode) { $removed++; continue }
+            if ($otherHasNew -or $placed) { $removed++; continue }
+            if ([string]$t.Value -cne $newName) { $t.Value = [string]$newName; $removed++ }
+            $placed = $true
+        }
         [void]$keep.Add($t)
     }
     if ($removed -gt 0) {
@@ -65844,7 +67979,9 @@ function Remove-ShortcutTagsBatch ($items) {
                     if ($score -gt $bestScore) { $bestScore = $score; $best = $sc }
                 }
                 if ($null -eq $best) { continue }
-                $n += [int](Remove-TagNodesByName $best ([string[]]$it.NamesLower))
+                $nnTag = ''
+                try { if ($null -ne $it.PSObject.Properties['NewName']) { $nnTag = [string]$it.NewName } } catch {}
+                $n += [int](Remove-TagNodesByName $best ([string[]]$it.NamesLower) $nnTag)
             }
             if ($n -gt 0) {
                 Write-SteamShortcutsFile $fp ([byte[]](Write-VdfFileBytes $root.Children))
@@ -65896,7 +68033,7 @@ function Read-CollFileShared ([string]$path) {
 function Get-CollSnapshotSignature {
     $parts = New-Object System.Collections.Generic.List[string]
     foreach ($pd in @(Get-ConfiguredSteamProfileDirectories)) {
-        foreach ($rel in @('config\cloudstorage\cloud-storage-namespace-1.json', 'config\localconfig.vdf')) {
+        foreach ($rel in @('config\cloudstorage\cloud-storage-namespace-1.json', 'config\localconfig.vdf', 'config\shortcuts.vdf')) {
             $fi = New-Object System.IO.FileInfo((Join-Path ([string]$pd.FullName) $rel))
             if ($fi.Exists) { [void]$parts.Add($fi.FullName + '|' + [string]$fi.Length + '|' + [string]$fi.LastWriteTimeUtc.Ticks) }
             else { [void]$parts.Add($fi.FullName + '|-') }
@@ -66021,6 +68158,24 @@ function Read-SteamCollectionsSnapshotCore {
             } catch {}
         }
     } catch {}
+    # Особый пункт «Библиотека VR»: это не коллекция Steam, а поле OpenVR у ярлыков в shortcuts.vdf. Состав берём оттуда
+    # и подмешиваем в общий список под ключом col:__vr, чтобы все меню коллекций (карточка, библиотека, главный экран,
+    # контекстное меню) показывали его так же, как «Избранное» и «Скрытые».
+    try {
+        $vrKey = 'col:__vr'
+        [void]$list.Insert(0, [PSCustomObject]@{ Key = $vrKey; Name = (T 'lib_filter_coll_vr') })
+        # Лицензионные игры: VR-статус из appinfo.vdf, только чтение (как у Steam).
+        foreach ($vrLic in @(Get-LicensedVrAppIds)) {
+            if (-not $map.ContainsKey($vrLic)) { $map[$vrLic] = New-Object System.Collections.Generic.List[string] }
+            if (-not $map[$vrLic].Contains($vrKey)) { [void]$map[$vrLic].Add($vrKey) }
+        }
+        foreach ($pdVr in @(Get-ConfiguredSteamProfileDirectories)) {
+            foreach ($vrId in @(Get-OpenVRAppIdsForProfile ([string]$pdVr.FullName))) {
+                if (-not $map.ContainsKey($vrId)) { $map[$vrId] = New-Object System.Collections.Generic.List[string] }
+                if (-not $map[$vrId].Contains($vrKey)) { [void]$map[$vrId].Add($vrKey) }
+            }
+        }
+    } catch {}
     # Изменения, ожидающие перезапуска Steam, показываем сразу (в файлах они появятся после записи).
     try { Apply-PendingCollOverlay $map $list $nameMap } catch {}
     return [PSCustomObject]@{ Map = $map; List = $list.ToArray(); NameMap = $nameMap }
@@ -66068,14 +68223,36 @@ function Get-CollKeysForEntry ($snap, $appId, [string]$kind, $shortcutRecord) {
     return $found.ToArray()
 }
 
-# Строки для окна с галочками: «Избранное» и «Скрыто» сверху, дальше по алфавиту. Отмечены коллекции из $selKeys.
+# Системные коллекции Steam («Избранное», «Библиотека VR», «Скрыто») везде идут сверху и отделяются от пользовательских.
+# Внутри системной группы порядок такой: Избранное, Библиотека VR, Скрыто; пользовательские — по алфавиту. Ключ — вида 'col:...'.
+function Get-CollGroupOrd ([string]$key) {
+    if ($key -eq 'col:favorite') { return 0 }
+    if ($key -eq 'col:__vr') { return 1 }
+    if ($key -eq 'col:hidden') { return 2 }
+    return 3
+}
+
+function Test-CollSteamKey ([string]$key) { return ((Get-CollGroupOrd $key) -lt 3) }
+
+# Сортирует строки с полями Key и Name: сначала системные коллекции Steam, затем пользовательские по алфавиту.
+function Sort-CollRows ($rows) {
+    $tmp = New-Object System.Collections.Generic.List[object]
+    foreach ($r in @($rows)) {
+        if ($null -eq $r) { continue }
+        [void]$tmp.Add([PSCustomObject]@{ Ord = (Get-CollGroupOrd ([string]$r.Key)); Low = ([string]$r.Name).ToLowerInvariant(); R = $r })
+    }
+    $out = New-Object System.Collections.Generic.List[object]
+    foreach ($x in @($tmp.ToArray() | Sort-Object -Property Ord, Low)) { [void]$out.Add($x.R) }
+    return $out.ToArray()
+}
+
+# Строки для окна с галочками: системные коллекции Steam сверху, дальше пользовательские по алфавиту. Отмечены коллекции из $selKeys.
 function Get-CollPickerItems ($snap, $selKeys) {
     $selSet = @{}
     foreach ($k in @($selKeys)) { $selSet[[string]$k] = $true }
     $rows = New-Object System.Collections.Generic.List[object]
     foreach ($c in @($snap.List)) {
-        $ord = 2
-        if ([string]$c.Key -eq 'col:favorite') { $ord = 0 } elseif ([string]$c.Key -eq 'col:hidden') { $ord = 1 }
+        $ord = Get-CollGroupOrd ([string]$c.Key)
         [void]$rows.Add([PSCustomObject]@{ Ord = $ord; Low = ([string]$c.Name).ToLowerInvariant(); C = $c })
     }
     $items = New-Object System.Collections.Generic.List[object]
@@ -66135,6 +68312,7 @@ function Save-CardCollections ($snap, [string]$appId, [string]$oldAppId, [string
     foreach ($k in @($union.Keys)) {
         $wantIn = $sel.ContainsKey($k)
         $wasIn = $init.ContainsKey($k)
+        if ($k -eq 'col:__vr' -and $kind -ne 'shortcut') { continue }  # лицензионные игры: «Библиотека VR» только для чтения
         if ($moved) {
             if ($wasIn -and $null -ne $idsOld) { Add-CollPlanOp $byCid $k $idsOld 'out' $kind }
             if ($wantIn) { Add-CollPlanOp $byCid $k $idsNew 'in' $kind }
@@ -66144,7 +68322,7 @@ function Save-CardCollections ($snap, [string]$appId, [string]$oldAppId, [string
             Add-CollPlanOp $byCid $k $idsNew 'out' $kind
         } else { continue }
         # Ярлык мог попасть в коллекцию через тег с её именем — при снятии галочки тег тоже убираем.
-        if ($wasIn -and -not $wantIn -and $kind -eq 'shortcut' -and $k -ne 'col:favorite' -and $k -ne 'col:hidden') {
+        if ($wasIn -and -not $wantIn -and $kind -eq 'shortcut' -and $k -ne 'col:favorite' -and $k -ne 'col:hidden' -and $k -ne 'col:__vr') {
             $nmLow = ([string]$nameOf[$k]).Trim().ToLowerInvariant()
             if ($nmLow -and ($recTags -contains $nmLow)) {
                 [void]$tagWork.Add([PSCustomObject]@{ Entry = [PSCustomObject]@{ ShortcutRecord = $shortcutRecord }; NamesLower = @($nmLow) })
@@ -66293,6 +68471,10 @@ function Apply-PendingCollOverlay ($map, $list, $nameMap) {
                     $has = $false
                     foreach ($x in $list) { if ([string]$x.Key -eq $ck) { $has = $true; break } }
                     if (-not $has) { [void]$list.Add([PSCustomObject]@{ Key = $ck; Name = [string]$op.Name }) }
+                    $nameMap[([string]$op.Name).Trim().ToLowerInvariant()] = $ck
+                } elseif ([string]$op.Op -eq 'rename') {
+                    foreach ($rx in $list) { if ([string]$rx.Key -eq $ck) { $rx.Name = [string]$op.Name } }
+                    foreach ($nk in @($nameMap.Keys)) { if ([string]$nameMap[$nk] -eq $ck) { [void]$nameMap.Remove($nk) } }
                     $nameMap[([string]$op.Name).Trim().ToLowerInvariant()] = $ck
                 } else {
                     for ($i = $list.Count - 1; $i -ge 0; $i--) { if ([string]$list[$i].Key -eq $ck) { $list.RemoveAt($i) } }
@@ -66490,6 +68672,13 @@ function Show-CollectionsPicker ($owner, [string]$title, [string]$hint, $items) 
         }
         $rc = New-Object System.Drawing.Rectangle(($e.Bounds.X + 30), $e.Bounds.Y, ($e.Bounds.Width - 34 - $detW), $e.Bounds.Height)
         [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, [string]$it.Name, $s.Font, $rc, $fg, $flags)
+        # Системные коллекции Steam сверху отделяются от пользовательских линией под последней из них.
+        try {
+            if ((Test-CollSteamKey ([string]$it.Key)) -and ($e.Index + 1 -lt @($state.Shown).Count) -and -not (Test-CollSteamKey ([string]$state.Shown[$e.Index + 1].Key))) {
+                $sepPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(150, $steamUi.Muted), 1)
+                try { $e.Graphics.DrawLine($sepPen, ($e.Bounds.X + 8), ($e.Bounds.Bottom - 1), ($e.Bounds.Right - 8), ($e.Bounds.Bottom - 1)) } finally { $sepPen.Dispose() }
+            }
+        } catch {}
     })
 
     $refill = {
@@ -66814,7 +69003,7 @@ function Show-SteamLibraryBrowser {
         [System.Windows.Forms.Control].GetProperty('DoubleBuffered', $flags).SetValue($dlg, $true, $null)
     } catch {}
 
-    # Кнопка "Назад" в стиле Steam: тонкая рисованная стрелка вместо иконки,
+    # Кнопка "Назад": рисованный значок-стрелка (SVG-контур, см. Add_Paint) вместо иконки,
     # закрывает окно библиотеки и возвращает главное окно программы (см.
     # обработчик $btnSteamLibrary.Add_Click, который прячет $form на время
     # показа библиотеки и снова показывает его после закрытия этого диалога).
@@ -66848,8 +69037,6 @@ function Show-SteamLibraryBrowser {
         $h = [float]$sender.ClientSize.Height
         $cx = $w / 2.0
         $cy = $h / 2.0
-        # Стрелка «назад» как в клиенте Steam: тонкая стрелка «←» (линия со стрелочным наконечником), без подложки.
-        # Обычное состояние - серая, при наведении - белая, при нажатии - чуть темнее.
         $arrowCol = if ($script:libBackDown) {
             [System.Drawing.Color]::FromArgb(176, 183, 194)
         } elseif ($script:libBackHover) {
@@ -66857,24 +69044,36 @@ function Show-SteamLibraryBrowser {
         } else {
             [System.Drawing.Color]::FromArgb(112, 119, 132)
         }
-        $half = 7.5     # половина длины стрелки по горизонтали
-        $head = 7.0     # вылет наконечника по вертикали (и по горизонтали от острия)
-        $x0 = $cx - $half + 1.0   # острие (миттер-стык выступает ещё на ~2 px)
-        $x1 = $cx + $half
-        $pen = New-Object System.Drawing.Pen($arrowCol, 3.0)
+        # Значок «назад»: SVG-контур (viewBox 16x16), отражённый по горизонтали, чтобы стрелка смотрела влево.
+        # Контур строится один раз и кешируется. Обычное состояние - серая, при наведении - белая, при нажатии - чуть темнее.
+        if ($null -eq $script:libBackIconPath) {
+            $mx = { param([double]$x) [single](16.0 - $x) }
+            $pt = { param([double]$x, [double]$y) New-Object System.Drawing.PointF((& $mx $x), [single]$y) }
+            $gp = New-Object System.Drawing.Drawing2D.GraphicsPath
+            $gp.StartFigure()
+            $gp.AddLine((& $pt 9.75467 6.5), (& $pt 5.56047 2.43952))
+            $gp.AddBezier((& $pt 5.56047 2.43952), (& $pt 5.68487 1.26955), (& $pt 6.27511 0.70555), (& $pt 6.27511 0.70555))
+            $gp.AddBezier((& $pt 6.27511 0.70555), (& $pt 6.86535 0.141549), (& $pt 8 0), (& $pt 8 0))
+            $gp.AddBezier((& $pt 8 0), (& $pt 8 0), (& $pt 16.0009 7.08692), (& $pt 16 8))
+            $gp.AddBezier((& $pt 16 8), (& $pt 15.9991 8.91308), (& $pt 8 16), (& $pt 8 16))
+            $gp.AddBezier((& $pt 8 16), (& $pt 8 16), (& $pt 6.87982 15.8258), (& $pt 6.27511 15.2535))
+            $gp.AddBezier((& $pt 6.27511 15.2535), (& $pt 5.6704 14.6812), (& $pt 5.56047 13.5605), (& $pt 5.56047 13.5605))
+            $gp.AddLine((& $pt 5.56047 13.5605), (& $pt 9.75462 9.5))
+            $gp.AddLine((& $pt 9.75462 9.5), (& $pt 0.677395 9.5))
+            $gp.AddBezier((& $pt 0.677395 9.5), (& $pt 0.677395 9.5), (& $pt 0 9), (& $pt 0 8))
+            $gp.AddBezier((& $pt 0 8), (& $pt 0 7), (& $pt 0.677395 6.5), (& $pt 0.677395 6.5))
+            $gp.AddLine((& $pt 0.677395 6.5), (& $pt 9.75467 6.5))
+            $gp.CloseFigure()
+            $script:libBackIconPath = $gp
+        }
+        $iconScale = 1.0   # 16 px при кнопке 34x34
+        $br = New-Object System.Drawing.SolidBrush($arrowCol)
+        $gState = $g.Save()
         try {
-            $pen.StartCap = [System.Drawing.Drawing2D.LineCap]::Flat
-            $pen.EndCap = [System.Drawing.Drawing2D.LineCap]::Flat
-            $pen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Miter
-            # Древко.
-            $g.DrawLine($pen, [single]$x0, [single]$cy, [single]$x1, [single]$cy)
-            # Наконечник: два ровных плеча от острия влево-вверх и влево-вниз.
-            $g.DrawLines($pen, @(
-                (New-Object System.Drawing.PointF(($x0 + $head), ($cy - $head))),
-                (New-Object System.Drawing.PointF($x0, $cy)),
-                (New-Object System.Drawing.PointF(($x0 + $head), ($cy + $head)))
-            ))
-        } finally { $pen.Dispose() }
+            $g.TranslateTransform([single]($cx - 8.0 * $iconScale), [single]($cy - 8.0 * $iconScale))
+            $g.ScaleTransform([single]$iconScale, [single]$iconScale)
+            $g.FillPath($br, $script:libBackIconPath)
+        } finally { $g.Restore($gState); $br.Dispose() }
     })
     $btnLibBack.Add_Click({ $script:libClosingViaBack = $true; try { $dlg.Close() } catch {} })
     $dlg.Controls.Add($btnLibBack)
@@ -66882,7 +69081,7 @@ function Show-SteamLibraryBrowser {
     # Поле поиска той же высоты и на том же уровне, что и кнопки (30 px, y = 12): у однострочного TextBox
     # высоту задать нельзя, поэтому он стоит без рамки внутри панели-рамки нужного размера.
     $pnlSearch = New-Object System.Windows.Forms.Panel
-    $pnlSearch.Location = New-Object System.Drawing.Point(92, 12)   # 12..46 «Назад», 54..84 «Обновить», дальше поиск
+    $pnlSearch.Location = New-Object System.Drawing.Point(130, 12)   # 12..46 «Назад», 54..84 «Настройки», 92..122 «Обновить», дальше поиск
     $pnlSearch.Size = New-Object System.Drawing.Size(236, 30)   # 160 + ширина двух кнопок с зазорами (2 x 38)
     $pnlSearch.BackColor = $steamUi.Input
     $pnlSearch.Cursor = [System.Windows.Forms.Cursors]::IBeam
@@ -66911,7 +69110,7 @@ function Show-SteamLibraryBrowser {
     try { Set-TextBoxCue $txtSearch (T 'lib_search_cue') } catch {}
 
     $lblCount = New-Object System.Windows.Forms.Label
-    $lblCount.Location = New-Object System.Drawing.Point(506, 18)
+    $lblCount.Location = New-Object System.Drawing.Point(544, 18)
     $lblCount.Size = New-Object System.Drawing.Size(60, 22)   # только числа вида «5/255»
     $lblCount.AutoEllipsis = $true
     $lblCount.ForeColor = $steamUi.Muted
@@ -66925,6 +69124,9 @@ function Show-SteamLibraryBrowser {
     $script:libSelected = @{}
     # Выбор игр на вкладке Steam (для кнопки «Обновить апскейлеры»): ключ «тип|AppId|название».
     $script:libSteamSelected = @{}
+    $script:libBtnCounts = @{}   # счётчики отмеченных игр на кнопках верхней панели (см. Draw-LibBtnCountBadge)
+    # Выступающие счётчики кнопок (см. Set-LibCountBadge): карта общая с главным окном, поэтому убираем только записи закрытых кнопок.
+    try { foreach ($kb0 in @($script:libBadgeByBtn.Keys)) { if ($kb0.IsDisposed) { $script:libBadgeByBtn.Remove($kb0) } } } catch {}
     $script:libUpdRunning = $false
     $script:libUpdCancel = $false
     $script:libRestoreRunning = $false
@@ -66935,7 +69137,7 @@ function Show-SteamLibraryBrowser {
 
     $lblSelected = New-Object System.Windows.Forms.Label
     # «Выбрано: N» — сразу правее счётчика «Игр: N» (только на вкладке Steam; на вкладках лаунчеров число стоит в кнопке импорта).
-    $lblSelected.Location = New-Object System.Drawing.Point(570, 18)
+    $lblSelected.Location = New-Object System.Drawing.Point(608, 18)
     $lblSelected.Size = New-Object System.Drawing.Size(86, 22)
     $lblSelected.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
     $lblSelected.Anchor = 'Top,Left'
@@ -67110,7 +69312,7 @@ function Show-SteamLibraryBrowser {
                 $sc = if ($kind -eq 'backup') { 1.1 } else { 1.22 }
                 $gs = $g.Save()
                 try {
-                    $ux = 0.0; $uy = 0.0; if ($kind -ne 'backup') { $ux = 0.5; $uy = 0.5 }   # значок «вернуть»: оптический центр (см. Draw-LibsUndoGlyph)
+                    $ux = 0.0; $uy = 0.0; if ($kind -ne 'backup') { $sc = 1.0 }   # значок «вернуть» симметричен (стрелки вокруг часов): смещение центра не нужно
                     $g.TranslateTransform([single]($cx - $ux), [single]($cy - $uy)); $g.ScaleTransform($sc, $sc)
                     $q = { param($x, $y) New-Object System.Drawing.PointF([single]$x, [single]$y) }
                     if ($kind -eq 'backup') {
@@ -67119,18 +69321,7 @@ function Show-SteamLibraryBrowser {
                         $g.DrawRectangle($pen, [single]-4, [single]-8, [single]7, [single]4.5)
                         $g.DrawRectangle($pen, [single]-5, [single]1.5, [single]10, [single]6.5)
                     } else {
-                        $r = 6.6
-                        $g.DrawArc($pen, [single](-$r), [single](-$r), [single](2 * $r), [single](2 * $r), [single]300, [single](-265))
-                        $a = 35.0 * [Math]::PI / 180.0
-                        $px = $r * [Math]::Cos($a); $py = $r * [Math]::Sin($a)
-                        $nx = [Math]::Cos($a); $ny = [Math]::Sin($a)
-                        $tx = [Math]::Sin($a); $ty = -[Math]::Cos($a)
-                        $k = 4.6; $hw = 3.4
-                        $hb = New-Object System.Drawing.SolidBrush($col)
-                        try {
-                            $g.FillPolygon($hb, [System.Drawing.PointF[]]@((& $q ($px + $nx * $hw) ($py + $ny * $hw)), (& $q ($px + $tx * $k) ($py + $ty * $k)), (& $q ($px - $nx * $hw) ($py - $ny * $hw))))
-                        } finally { $hb.Dispose() }
-                        $g.DrawLines($pen, [System.Drawing.PointF[]]@((& $q 0 -3.2), (& $q 0 0), (& $q 2.6 1.6)))
+                        Draw-RestoreClockCore $g $pen $col
                     }
                 } finally { $g.Restore($gs) }
                 return
@@ -67266,6 +69457,8 @@ function Show-SteamLibraryBrowser {
                 'upd'    { Draw-LibsRefreshGlyph $g $cx $cy $col $false ([single]0.95) }
                 'rst'    { Draw-LibsUndoGlyph $g $cx $cy $col ([single]0.86) }
             }
+            # Счётчик только у дочерних кнопок внутри раскрытых блоков; у общих кнопок групп («Апскейлеры», «Сохранения») его нет.
+            if ($kind -ne 'ups' -and $kind -ne 'saves') { Draw-LibBtnCountBadge $s $g $kind }
         } catch {}
     }
     $btnSaveScan.Name = 'lf_scan'; $btnSaveBackup.Name = 'lf_backup'; $btnSaveRestore.Name = 'lf_restore'
@@ -67379,6 +69572,8 @@ function Show-SteamLibraryBrowser {
                     $libFlyBack.BringToFront()
                     foreach ($b in @($(if ($mode -eq 'u') { $upKids } else { $svKids }))) { $b.BringToFront() }
                     $par.BringToFront()
+                    # Выступающие счётчики кнопок ряда должны остаться над подложкой ряда и своими кнопками.
+                    foreach ($kb in @($(if ($mode -eq 'u') { $upKids } else { $svKids }))) { Sync-LibBadgeGeom $kb }
                     $libFlyBack.Invalidate()
                 } else {
                     $libFlyBack.Visible = $false
@@ -67628,42 +69823,11 @@ function Show-SteamLibraryBrowser {
                     $g.DrawLine($pen, [single]-2.5, 0, [single]-2.5, 6)
                     $g.DrawLine($pen, [single]2.5, 0, [single]2.5, 6)
                 } finally { $g.ResetTransform() }
-                # Значок-счётчик в правом верхнем углу: сколько игр будет удалено. При Shift - красный, как и корзина.
+                # Значок-счётчик у правого верхнего угла (выступает за кнопку): сколько игр будет удалено. При Shift - красный, как и корзина.
                 $dCnt = 0
                 try { $dCnt = [int]$script:libRemoveCount } catch {}
-                if ($btn.Enabled -and $dCnt -gt 0) {
-                    $bTxt = $(if ($dCnt -gt 99) { '99+' } else { [string]$dCnt })
-                    $bH = 13
-                    $bW = [Math]::Max($bH, (6 * $bTxt.Length + 5))
-                    $bX = $w - 2 - $bW
-                    $bY = 1
-                    $bf = $null; $bBr = $null; $bTb = $null; $bRing = $null; $bGp = $null; $bSf = $null
-                    $oldTr = $g.TextRenderingHint
-                    try {
-                        $bf = New-Object System.Drawing.Font('Segoe UI', 7, [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Point)
-                        $bColor = $(if ($dShift) { [System.Drawing.Color]::FromArgb(232, 96, 96) } else { $steamUi.Accent2 })
-                        $bBr = New-Object System.Drawing.SolidBrush($bColor)
-                        $bTb = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White)
-                        $bRing = New-Object System.Drawing.Pen($bg, 2)
-                        $bGp = New-Object System.Drawing.Drawing2D.GraphicsPath
-                        $bArc = [single]$bH
-                        $bGp.AddArc([single]$bX, [single]$bY, $bArc, $bArc, 90, 180)
-                        $bGp.AddArc([single]($bX + $bW - $bH), [single]$bY, $bArc, $bArc, 270, 180)
-                        $bGp.CloseFigure()
-                        # Кольцо цвета фона кнопки отделяет значок от крышки корзины.
-                        $g.DrawPath($bRing, $bGp)
-                        $g.FillPath($bBr, $bGp)
-                        $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::AntiAliasGridFit
-                        $bSf = New-Object System.Drawing.StringFormat
-                        $bSf.Alignment = [System.Drawing.StringAlignment]::Center
-                        $bSf.LineAlignment = [System.Drawing.StringAlignment]::Center
-                        $bRect = New-Object System.Drawing.RectangleF([single]$bX, [single]($bY + 0.5), [single]$bW, [single]$bH)
-                        $g.DrawString($bTxt, $bf, $bTb, $bRect, $bSf)
-                    } finally {
-                        try { $g.TextRenderingHint = $oldTr } catch {}
-                        foreach ($d in @($bf, $bBr, $bTb, $bRing, $bGp, $bSf)) { if ($null -ne $d) { try { $d.Dispose() } catch {} } }
-                    }
-                }
+                $dFill = $(if ($dShift) { [System.Drawing.Color]::FromArgb(232, 96, 96) } else { $steamUi.Accent2 })
+                try { Set-LibCountBadge $btn $(if ($btn.Enabled) { $dCnt } else { 0 }) $dFill } catch {}
             } elseif ($kind -eq 'frames') {
                 # Значок рамок рисует сам вызывающий код (Invoke-EditorDrawIcon 'coverframe', как в карточке): здесь только фон кнопки,
                 # иначе срабатывала бы ветка по умолчанию (скруглённый квадрат с крестом) и просвечивала под глифом.
@@ -67706,7 +69870,7 @@ function Show-SteamLibraryBrowser {
 
     $btnFilter = New-Object System.Windows.Forms.Button
     $btnFilter.Size = New-Object System.Drawing.Size(30, 30)
-    $btnFilter.Location = New-Object System.Drawing.Point(336, 12)   # сразу за полем поиска (92..328) с зазором 8; кнопки 30×30
+    $btnFilter.Location = New-Object System.Drawing.Point(374, 12)   # сразу за полем поиска (92..328) с зазором 8; кнопки 30×30
     $btnFilter.Anchor = 'Top,Left'
     $btnFilter.FlatStyle = 'Flat'
     $btnFilter.FlatAppearance.BorderColor = $steamUi.Border
@@ -67962,6 +70126,23 @@ function Show-SteamLibraryBrowser {
                 } catch {}
             }
         } catch {}
+        # Особый пункт «Библиотека VR»: не коллекция Steam, а поле OpenVR у ярлыков в shortcuts.vdf. Подмешиваем его в список и карту
+        # под ключом col:__vr (как в Read-SteamCollectionsSnapshotCore), чтобы он был и здесь, наравне с «Избранным» и «Скрытыми».
+        try {
+            $vrKey = 'col:__vr'
+            [void]$list.Insert(0, [PSCustomObject]@{ Key = $vrKey; Name = (T 'lib_filter_coll_vr') })
+            # Лицензионные игры: VR-статус из appinfo.vdf, только чтение (как у Steam).
+            foreach ($vrLic in @(Get-LicensedVrAppIds)) {
+                if (-not $map.ContainsKey($vrLic)) { $map[$vrLic] = New-Object System.Collections.Generic.List[string] }
+                if (-not $map[$vrLic].Contains($vrKey)) { [void]$map[$vrLic].Add($vrKey) }
+            }
+            foreach ($pdVr in @(Get-ConfiguredSteamProfileDirectories)) {
+                foreach ($vrId in @(Get-OpenVRAppIdsForProfile ([string]$pdVr.FullName))) {
+                    if (-not $map.ContainsKey($vrId)) { $map[$vrId] = New-Object System.Collections.Generic.List[string] }
+                    if (-not $map[$vrId].Contains($vrKey)) { [void]$map[$vrId].Add($vrKey) }
+                }
+            }
+        } catch {}
         try { Apply-PendingCollOverlay $map $list $nameMap } catch {}
         $script:libCollMap = $map
         $script:libCollList = $list.ToArray()
@@ -67971,6 +70152,62 @@ function Show-SteamLibraryBrowser {
         try {
             $cs0 = [string]$script:libCollSel
             if ($cs0 -and $cs0 -ne [string]$script:libFilterCollNoneKey -and -not (@($list.ToArray() | Where-Object { [string]$_.Key -eq $cs0 }).Count)) { $script:libCollSel = '' }
+        } catch {}
+        # Состав коллекций мог измениться (игру скрыли или вернули): серые плитки пересчитываются.
+        if ($null -ne $syncHiddenTiles) { try { & $syncHiddenTiles } catch {} }
+    }
+
+    # Значок VR-гарнитуры на плитке: игры из «Библиотеки VR» (col:__vr). Ставится левее самого левого элемента в правом верхнем углу:
+    # плашки «Non-Steam»/«ROM» (если она есть), иначе левее значка Steam / лаунчера (22 px, отступ 6).
+    $syncVrBadge = {
+        param($tile, $pic, $keys)
+        try {
+            if ($null -eq $pic -or $pic.IsDisposed) { return }
+            if (-not (@($keys) -contains 'col:__vr')) {
+                if ([int]$pic.VrLeft -ne -1) { $pic.VrLeft = -1; $pic.Invalidate() }
+                return
+            }
+            $tw = [int]$pic.Width
+            $pillLeft = -1
+            $cn = [int]$tile.Controls.Count
+            for ($i = 0; $i -lt $cn; $i++) {
+                $k = $tile.Controls[$i]
+                if ([object]::ReferenceEquals($k, $pic)) { continue }
+                if ([int]$k.Left -gt 4 -and [int]$k.Top -lt 24 -and ([int]$k.Left + [int]$k.Width) -ge ($tw - 10)) {
+                    if ($pillLeft -lt 0 -or [int]$k.Left -lt $pillLeft) { $pillLeft = [int]$k.Left }
+                }
+            }
+            if ($pillLeft -ge 0) { $vx = $pillLeft - 4 - 22 } else { $vx = $tw - 6 - 22 - 4 - 22 }
+            if ($vx -lt 0) { $vx = 0 }
+            if ([int]$pic.VrLeft -ne $vx) { $pic.VrLeft = $vx; $pic.Invalidate() }
+        } catch {}
+    }
+
+    # Ставит плиткам признак «скрытая игра» (чёрно-белая обложка) по текущему составу коллекций. Плитки без обложки (заготовки) пропускаются:
+    # признак они получат при создании содержимого.
+    $syncHiddenTiles = {
+        try {
+            if (-not $script:libDlssNativeOk) { return }
+            $allT = $script:libTileAll
+            if ($null -eq $allT) { return }
+            # Обход по индексу: foreach по @($List) на сотнях плиток падает с «Типы аргумента не совпадают» (см. комментарий в переключении вкладок).
+            $allN = [int]$allT.Count
+            for ($ti = 0; $ti -lt $allN; $ti++) {
+                try {
+                    $t = $allT[$ti]
+                    if ($null -eq $t -or $t.IsDisposed -or $null -eq $t.Tag) { continue }
+                    $tcn = [int]$t.Controls.Count
+                    for ($ci = 0; $ci -lt $tcn; $ci++) {
+                        $c = $t.Controls[$ci]
+                        if ($c.GetType().Name -ne 'SCDlssPicture') { continue }
+                        $tks = @(& $getEntryCollKeys $t.Tag)
+                        $hid = ($tks -contains 'col:hidden')
+                        if ([bool]$c.Gray -ne $hid) { $c.Gray = $hid; $c.Invalidate() }
+                        & $syncVrBadge $t $c $tks
+                        break
+                    }
+                } catch {}
+            }
         } catch {}
     }
 
@@ -68079,7 +70316,7 @@ function Show-SteamLibraryBrowser {
         $noneKey = [string]$script:libFilterCollNoneKey
         $names = @{}
         $order = New-Object System.Collections.Generic.List[string]
-        $rows = @(@($script:libCollList) | Where-Object { $null -ne $_ -and [string]$_.Key -ne 'col:hidden' } | Sort-Object -Property { [string]$_.Name } -CaseSensitive:$false)
+        $rows = @(Sort-CollRows @(@($script:libCollList) | Where-Object { $null -ne $_ -and [string]$_.Key -ne 'col:hidden' }))
         foreach ($r in $rows) { $names[[string]$r.Key] = [string]$r.Name; [void]$order.Add([string]$r.Key) }
         $names[$noneKey] = (T 'lib_filter_coll_none')
         [void]$order.Add($noneKey)
@@ -68174,7 +70411,10 @@ function Show-SteamLibraryBrowser {
         $h.Add_Paint({
             param($s, $e)
             try {
-                $hb = New-Object System.Drawing.SolidBrush($steamUi.Accent2)
+                # Системные коллекции Steam — яркая полоска слева, пользовательские — обычная.
+                $hbCol = $steamUi.Accent2
+                try { if (Test-CollSteamKey ([string]$s.AccessibleName)) { $hbCol = $steamUi.Accent } } catch {}
+                $hb = New-Object System.Drawing.SolidBrush($hbCol)
                 try { $e.Graphics.FillRectangle($hb, 0, 5, 3, ([int]$s.Height - 10)) } finally { $hb.Dispose() }
                 $hp = New-Object System.Drawing.Pen($steamUi.Border, 1)
                 try { $e.Graphics.DrawLine($hp, 0, ([int]$s.Height - 1), [int]$s.Width, ([int]$s.Height - 1)) } finally { $hp.Dispose() }
@@ -68281,12 +70521,13 @@ function Show-SteamLibraryBrowser {
                 if ($wk -and $off.ContainsKey($wk)) { return $false }
             }
             # Коллекция Steam (выбирается одна, как в Steam): остаются игры выбранной коллекции;
-            # для «Без категории» — игры, которых нет ни в одной коллекции. «Скрыто» — служебная, категорией не считается.
+            # для «Без категории» — игры, которых нет ни в одной коллекции («Скрытые» категорией не считаются).
             if ($collSel) {
-                $ck = @(& $getEntryCollKeys $en | Where-Object { [string]$_ -ne 'col:hidden' })
+                $allCk = @(& $getEntryCollKeys $en)
+                $ck = @($allCk | Where-Object { [string]$_ -ne 'col:hidden' })
                 if ($collSel -eq [string]$script:libFilterCollNoneKey) {
                     if ($ck.Count -gt 0) { return $false }
-                } elseif ($ck -notcontains $collSel) {
+                } elseif ($allCk -notcontains $collSel) {
                     return $false
                 }
             }
@@ -68681,7 +70922,7 @@ function Show-SteamLibraryBrowser {
     $script:libCollClosedByBtnAt = 0
     $btnColl = New-Object System.Windows.Forms.Button
     $btnColl.Size = New-Object System.Drawing.Size(30, 30)
-    $btnColl.Location = New-Object System.Drawing.Point(374, 12)   # сразу за кнопкой «Фильтр» (336..366) с зазором 8
+    $btnColl.Location = New-Object System.Drawing.Point(412, 12)   # сразу за кнопкой «Фильтр» (336..366) с зазором 8
     $btnColl.Anchor = 'Top,Left'
     $btnColl.FlatStyle = 'Flat'
     $btnColl.FlatAppearance.BorderColor = $steamUi.Border
@@ -68697,7 +70938,16 @@ function Show-SteamLibraryBrowser {
     $btnColl.Text = ''
     $btnColl.AccessibleName = (T 'lib_filter_collections')
     $dlg.Controls.Add($btnColl)
-    $btnColl.Add_Paint({ param($s, $e) & $paintLibIcon $s $e 'coll' })
+    $script:libCollSelCount = 0
+    $btnColl.Add_Paint({
+        param($s, $e)
+        & $paintLibIcon $s $e 'coll'
+        try {
+            # Есть выбранные игры: у угла счётчик, выступающий за кнопку (кнопка меняет коллекции этих игр); без выбора она остаётся фильтром.
+            $nK = $(if ($s.Enabled) { [int]$script:libCollSelCount } else { 0 })
+            Set-LibCountBadge $s $nK $steamUi.Accent2
+        } catch {}
+    })
 
     # Первая из отмеченных галочкой игр вкладки Steam ($null — ничего не отмечено). Пока игры отмечены, кнопка коллекций
     # работает как пункт «Коллекции» контекстного меню: меняет коллекции отмеченных игр.
@@ -68715,6 +70965,7 @@ function Show-SteamLibraryBrowser {
     $updateCollBtn = {
         try {
             $selEn = & $getCollBtnSelEntry
+            $script:libCollSelCount = $(if ($null -ne $selEn -and $null -ne $script:libSteamSelected) { [int]$script:libSteamSelected.Count } else { 0 })
             if ($null -ne $selEn) {
                 $tgN = @(& $getCtxCollTargets $selEn).Count
                 $btnColl.Text = ''
@@ -68796,14 +71047,15 @@ function Show-SteamLibraryBrowser {
             $noneCount = 0
             $allEntries = @($script:libBrowserEntries)
             foreach ($en in $allEntries) {
-                $ks = @(& $getEntryCollKeys $en | Where-Object { [string]$_ -ne 'col:hidden' })
-                if ($ks.Count -eq 0) { $noneCount++ }
-                foreach ($kk in $ks) {
+                $allK = @(& $getEntryCollKeys $en)
+                # «Без категории»: нет ни одной коллекции, кроме «Скрытых».
+                if (@($allK | Where-Object { [string]$_ -ne 'col:hidden' }).Count -eq 0) { $noneCount++ }
+                foreach ($kk in $allK) {
                     if ($cc.ContainsKey([string]$kk)) { $cc[[string]$kk] = [int]$cc[[string]$kk] + 1 } else { $cc[[string]$kk] = 1 }
                 }
             }
-            # Как в Steam: все коллекции (кроме служебной «Скрыто»), в том числе пустые для этой библиотеки.
-            $colRows = @(@($script:libCollList) | Where-Object { $null -ne $_ -and [string]$_.Key -ne 'col:hidden' } | Sort-Object -Property { [string]$_.Name } -CaseSensitive:$false)
+            # Как в Steam: все коллекции, в том числе «Скрытые» и пустые для этой библиотеки.
+            $colRows = @(Sort-CollRows @(@($script:libCollList) | Where-Object { $null -ne $_ }))
 
             $addCollItem = {
                 param([string]$key, [string]$text, [bool]$canDel = $false)
@@ -68819,17 +71071,28 @@ function Show-SteamLibraryBrowser {
                 if ($canDel) {
                     # Справа у пункта кнопка «минус»: клик по её зоне удаляет коллекцию вместо выбора (рисует SCFilterRenderer).
                     $mi.AccessibleDescription = 'collrow'
-                    # Значок «×» справа - штатный текст сочетания клавиш: Windows сам выравнивает его по правому краю пункта.
+                    # Значки справа («переименовать» и «×») - штатный текст сочетания клавиш: он резервирует место и выравнивается по правому краю пункта.
                     $mi.ShowShortcutKeys = $true
-                    $mi.ShortcutKeyDisplayString = [string][char]0x00D7
+                    $mi.ShortcutKeyDisplayString = [string][SCFilterRenderer]::ShortcutMark
                     $mi.Add_MouseDown({
                         param($snd, $ea)
-                        try { $script:libCollGlyphHit = ($ea.X -ge ($snd.Width - [SCFilterRenderer]::GlyphZone)) } catch { $script:libCollGlyphHit = $false }
+                        try {
+                            $zn = Get-CollGlyphZoneAt $snd ([int]$ea.X)
+                            $script:libCollGlyphHit = ($zn -eq 'x')
+                            $script:libCollEditHit = ($zn -eq 'e')
+                        } catch { $script:libCollGlyphHit = $false; $script:libCollEditHit = $false }
                     })
                 }
                 $mi.Add_Click({
                     param($snd, $ea)
                     try {
+                        if ([bool]$script:libCollEditHit -and [string]$snd.AccessibleDescription -eq 'collrow') {
+                            $script:libCollEditHit = $false
+                            $script:libCollGlyphHit = $false
+                            & $collStructChange 'rename' ([string]$snd.Tag)
+                            return
+                        }
+                        $script:libCollEditHit = $false
                         if ([bool]$script:libCollGlyphHit -and [string]$snd.AccessibleDescription -eq 'collrow') {
                             $script:libCollGlyphHit = $false
                             & $collStructChange 'delete' ([string]$snd.Tag)
@@ -68864,10 +71127,14 @@ function Show-SteamLibraryBrowser {
             [void]$cmenu.Items.Add($miGrp)
             if ($colRows.Count -gt 0) { [void]$cmenu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)) }
             $fcFrom = $cmenu.Items.Count
+            $prevSteamCol = $false
             foreach ($cr in $colRows) {
+                # Между системными коллекциями Steam и пользовательскими — разделитель.
+                if ($prevSteamCol -and -not (Test-CollSteamKey ([string]$cr.Key))) { [void]$cmenu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)) }
+                $prevSteamCol = (Test-CollSteamKey ([string]$cr.Key))
                 $n1 = 0
                 if ($cc.ContainsKey([string]$cr.Key)) { $n1 = [int]$cc[[string]$cr.Key] }
-                & $addCollItem ([string]$cr.Key) (([string]$cr.Name) + '  (' + [string]$n1 + ')') ([string]$cr.Key -ne 'col:favorite')
+                & $addCollItem ([string]$cr.Key) (([string]$cr.Name) + '  (' + [string]$n1 + ')') (-not (Test-CollSteamKey ([string]$cr.Key)))   # системные коллекции Steam не редактируются
             }
             # «Без категории» — как в Steam: игры, которых нет ни в одной коллекции.
             # Если игр без категории нет — пункт не показываем (кроме случая, когда он сейчас выбран и его нужно уметь снять).
@@ -68907,13 +71174,17 @@ function Show-SteamLibraryBrowser {
                     if ($null -eq $m -or $m.IsDisposed -or -not $m.Visible) { return }
                     $pt = $m.PointToClient([System.Windows.Forms.Control]::MousePosition)
                     $hotItem = $null
+                    $hotZone = ''
                     $it = $m.GetItemAt($pt)
                     if ($null -ne $it -and ([string]$it.AccessibleDescription -eq 'collrow' -or [string]$it.AccessibleDescription -eq 'colladd')) {
-                        if (($pt.X - $it.Bounds.X) -ge ($it.Width - [SCFilterRenderer]::GlyphZone)) { $hotItem = $it }
+                        $hotZone = [string](Get-CollGlyphZoneAt $it ([int]($pt.X - $it.Bounds.X)))
+                        if ($hotZone -ne '') { $hotItem = $it }
                     }
-                    if (-not [object]::ReferenceEquals($hotItem, $script:libCollGlyphHotItem)) {
+                    if (-not [object]::ReferenceEquals($hotItem, $script:libCollGlyphHotItem) -or $hotZone -ne [string]$script:libCollGlyphHotZone) {
                         $oldItem = $script:libCollGlyphHotItem
                         $script:libCollGlyphHotItem = $hotItem
+                        $script:libCollGlyphHotZone = $hotZone
+                        [SCFilterRenderer]::HotEdit = ($hotZone -eq 'e')
                         $script:libCollGlyphHot = ($null -ne $hotItem)
                         [SCFilterRenderer]::HotItem = $hotItem
                         $m.Cursor = $(if ($null -ne $hotItem) { [System.Windows.Forms.Cursors]::Hand } else { [System.Windows.Forms.Cursors]::Default })
@@ -68927,8 +71198,11 @@ function Show-SteamLibraryBrowser {
                 try {
                     if ($null -ne $script:libCollHotTimer) { $script:libCollHotTimer.Stop(); $script:libCollHotTimer.Dispose(); $script:libCollHotTimer = $null }
                     $script:libCollGlyphHotItem = $null
+                    $script:libCollGlyphHotZone = ''
+                    $script:libCollEditHit = $false
                     $script:libCollGlyphHot = $false
                     [SCFilterRenderer]::HotItem = $null
+                    [SCFilterRenderer]::HotEdit = $false
                 } catch {}
             })
             $script:libCollHotTimer.Start()
@@ -69119,7 +71393,7 @@ function Show-SteamLibraryBrowser {
 
     $btnSelectAll = New-Object System.Windows.Forms.Button
     $btnSelectAll.Size = New-Object System.Drawing.Size(30, 30)
-    $btnSelectAll.Location = New-Object System.Drawing.Point(336, 12)
+    $btnSelectAll.Location = New-Object System.Drawing.Point(374, 12)
     $btnSelectAll.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $btnSelectAll.FlatAppearance.BorderColor = $steamUi.Border
     $btnSelectAll.FlatAppearance.BorderSize = 1
@@ -69140,7 +71414,7 @@ function Show-SteamLibraryBrowser {
     # на всех вкладках-лаунчерах.
     $btnDeselectAll = New-Object System.Windows.Forms.Button
     $btnDeselectAll.Size = New-Object System.Drawing.Size(30, 30)
-    $btnDeselectAll.Location = New-Object System.Drawing.Point(374, 12)
+    $btnDeselectAll.Location = New-Object System.Drawing.Point(412, 12)
     $btnDeselectAll.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $btnDeselectAll.FlatAppearance.BorderColor = $steamUi.Border
     $btnDeselectAll.FlatAppearance.BorderSize = 1
@@ -69176,7 +71450,7 @@ function Show-SteamLibraryBrowser {
     $btnSwapEmu.AccessibleName = (T 'rom_swap_menu')
     $btnSwapEmu.Enabled = $false
     $btnSwapEmu.Visible = $false
-    $btnSwapEmu.Add_Paint({ param($s, $e) & $paintLibIcon $s $e 'emu' })
+    $btnSwapEmu.Add_Paint({ param($s, $e) & $paintLibIcon $s $e 'emu'; Draw-LibBtnCountBadge $s $e.Graphics 'emu' })
     $dlg.Controls.Add($btnSwapEmu)
 
     # Кнопка «Сменить враппер» для отмеченных обычных (не ROM) игр - справа от кнопки эмуляторов, работает по тому же принципу.
@@ -69197,7 +71471,7 @@ function Show-SteamLibraryBrowser {
     $btnSwapWrap.AccessibleName = (T 'lib_wrap_swap_menu')
     $btnSwapWrap.Enabled = $false
     $btnSwapWrap.Visible = $false
-    $btnSwapWrap.Add_Paint({ param($s, $e) & $paintLibIcon $s $e 'wrap' })
+    $btnSwapWrap.Add_Paint({ param($s, $e) & $paintLibIcon $s $e 'wrap'; Draw-LibBtnCountBadge $s $e.Graphics 'wrap' })
     $dlg.Controls.Add($btnSwapWrap)
 
     # «Рамки обложек» - правее «Снять все» (вкладка Steam): меню рамки / значка / «Без рамки» для отмеченных ярлыков.
@@ -69216,7 +71490,9 @@ function Show-SteamLibraryBrowser {
     $btnLibFrames.Anchor = 'Top,Right'
     $btnLibFrames.Text = ''
     $btnLibFrames.AccessibleName = (T 'bulk_frames_tip')
-    $btnLibFrames.Enabled = $false
+    $btnLibFrames.Enabled = $true
+    $script:libFramesNoSel = $true
+    $script:libFramesSelCount = 0
     $btnLibFrames.Visible = $false
     $btnLibFrames.Add_Paint({
         param($s, $e)
@@ -69227,6 +71503,9 @@ function Show-SteamLibraryBrowser {
             try { $hot = ($s.Enabled -and $s.ClientRectangle.Contains($s.PointToClient([System.Windows.Forms.Cursor]::Position))) } catch {}
             $col = if ([string]$s.Tag -eq 'on') { $steamUi.Accent2 } elseif (-not $s.Enabled) { [System.Drawing.Color]::FromArgb(110, $steamUi.Muted) } elseif ($hot) { $steamUi.Accent2 } else { $steamUi.Text }
             Invoke-EditorDrawIcon $g 'coverframe' $col $s.ClientSize $false
+            # Есть выбранные игры: у угла счётчик, выступающий за кнопку (без выбора кнопка открывает менеджер рамок).
+            $nL = $(if ($s.Enabled) { [int]$script:libFramesSelCount } else { 0 })
+            Set-LibCountBadge $s $nL $steamUi.Accent2
         } catch {}
     })
     $dlg.Controls.Add($btnLibFrames)
@@ -69317,7 +71596,8 @@ function Show-SteamLibraryBrowser {
             }
         } catch {}
     })
-    $libDisTipTimer.Start()
+    # Общий таймер подсказок неактивных кнопок теперь внутри SCToolTip (работает во всех окнах); этот локальный не запускается, чтобы подсказка не показывалась дважды.
+    # $libDisTipTimer.Start()
     $dlg.Add_FormClosed({ try { $libDisTipTimer.Stop(); $libDisTipTimer.Dispose() } catch {} })
     $toggleAuto.Add_Click({ $toggleAuto.Checked = -not $toggleAuto.Checked })
     $lblAutoImport.Add_Click({ $toggleAuto.Checked = -not $toggleAuto.Checked })
@@ -69343,7 +71623,7 @@ function Show-SteamLibraryBrowser {
     $script:libRefreshHover = $false
     $btnLibRefresh = New-Object System.Windows.Forms.Button
     $btnLibRefresh.Size = New-Object System.Drawing.Size(30, 30)
-    $btnLibRefresh.Location = New-Object System.Drawing.Point(54, 12)
+    $btnLibRefresh.Location = New-Object System.Drawing.Point(92, 12)
     $btnLibRefresh.Anchor = 'Top,Left'
     $btnLibRefresh.FlatStyle = 'Flat'
     $btnLibRefresh.FlatAppearance.BorderColor = $steamUi.Border
@@ -69367,13 +71647,99 @@ function Show-SteamLibraryBrowser {
             $bgR = if ($hotR) { $s.FlatAppearance.MouseOverBackColor } else { $s.BackColor }
             $bbR = New-Object System.Drawing.SolidBrush($bgR)
             try { $e.Graphics.FillRectangle($bbR, 1, 1, ([int]$s.ClientSize.Width - 2), ([int]$s.ClientSize.Height - 2)) } finally { $bbR.Dispose() }
+            # Значок обновления — те же стрелки (Draw-RefreshPngIcon), что и у кнопки обновления панелей; цвета и размер (~20 px) как у соседних значков.
             $colR = if (-not $s.Enabled) { [System.Drawing.Color]::FromArgb(110, $steamUi.Muted) } elseif ($hotR) { $steamUi.Accent2 } else { $steamUi.Text }
-            # Тот же значок и размер (~16 px), что у «обновить апскейлеры» в группе справа.
-            Draw-LibsRefreshGlyph $e.Graphics ([single]($s.ClientSize.Width / 2.0)) ([single]($s.ClientSize.Height / 2.0)) $colR $false ([single]0.95)
+            Draw-RefreshPngIcon $e.Graphics ([single]($s.ClientSize.Width / 2.0)) ([single]($s.ClientSize.Height / 2.0)) ([single]20) $colR
         } catch {}
     })
     $dlg.Controls.Add($btnLibRefresh)
     $btnLibRefresh.BringToFront()
+
+    # Кнопка «Настройки» (шестерёнка): справа от «Назад», левее «Обновить». Открывает то же окно, что шестерёнка главного окна.
+    $script:libSettingsHover = $false
+    $btnLibSettings = New-Object System.Windows.Forms.Button
+    $btnLibSettings.Size = New-Object System.Drawing.Size(30, 30)
+    $btnLibSettings.Location = New-Object System.Drawing.Point(54, 12)
+    $btnLibSettings.Anchor = 'Top,Left'
+    $btnLibSettings.FlatStyle = 'Flat'
+    $btnLibSettings.FlatAppearance.BorderColor = $steamUi.Border
+    $btnLibSettings.FlatAppearance.BorderSize = 1
+    $btnLibSettings.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(35,78,106)
+    $btnLibSettings.FlatAppearance.MouseDownBackColor = [System.Drawing.Color]::FromArgb(25,55,75)
+    $btnLibSettings.UseVisualStyleBackColor = $false
+    $btnLibSettings.BackColor = $steamUi.Panel2
+    $btnLibSettings.Text = ''
+    $btnLibSettings.AccessibleName = (T 'settings_title')
+    $btnLibSettings.AccessibleDescription = (T 'settings_desc')
+    $btnLibSettings.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $btnLibSettings.TabStop = $false
+    try { $libSettingsTip = New-SCToolTip; $libSettingsTip.SetToolTip($btnLibSettings, (T 'settings_title')) } catch {}
+    $btnLibSettings.Add_MouseEnter({ $script:libSettingsHover = $true; $btnLibSettings.Invalidate() })
+    $btnLibSettings.Add_MouseLeave({ $script:libSettingsHover = $false; $btnLibSettings.Invalidate() })
+    $btnLibSettings.Add_Paint({
+        param($s, $e)
+        $ia = $null
+        try {
+            $g = $e.Graphics
+            $hotS = $false
+            try { $hotS = ($s.Enabled -and $s.ClientRectangle.Contains($s.PointToClient([System.Windows.Forms.Cursor]::Position))) } catch {}
+            $bgS = if ($hotS) { $s.FlatAppearance.MouseOverBackColor } else { $s.BackColor }
+            $bbS = New-Object System.Drawing.SolidBrush($bgS)
+            try { $g.FillRectangle($bbS, 1, 1, ([int]$s.ClientSize.Width - 2), ([int]$s.ClientSize.Height - 2)) } finally { $bbS.Dispose() }
+            $colS = if (-not $s.Enabled) { $steamUi.Muted } elseif ($hotS) { $steamUi.Accent2 } else { $steamUi.Text }
+            if ($null -ne $script:settingsIcon -or $null -ne $settingsIcon) {
+                $ico = if ($null -ne $script:settingsIcon) { $script:settingsIcon } else { $settingsIcon }
+                $cm = New-Object System.Drawing.Imaging.ColorMatrix
+                # PNG-шестерёнка серая: умножение на цвет оставило бы её серой. Обнуляем исходные R/G/B и задаём цвет смещением
+                # (строка 4 матрицы), а из картинки берём только прозрачность - значок получается сплошного цвета, как у соседних кнопок.
+                $cm.Matrix00 = [single]0.0
+                $cm.Matrix11 = [single]0.0
+                $cm.Matrix22 = [single]0.0
+                $cm.Matrix33 = [single]($colS.A / 255.0)
+                $cm.Matrix40 = [single]($colS.R / 255.0)
+                $cm.Matrix41 = [single]($colS.G / 255.0)
+                $cm.Matrix42 = [single]($colS.B / 255.0)
+                $cm.Matrix44 = [single]1.0
+                $ia = New-Object System.Drawing.Imaging.ImageAttributes
+                $ia.SetColorMatrix($cm)
+                $ia.SetWrapMode([System.Drawing.Drawing2D.WrapMode]::TileFlipXY)
+                $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+                $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+                $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+                $destS = New-Object System.Drawing.Rectangle(5, 5, 20, 20)
+                # В PNG 40x40 сама шестерёнка занимает ~22x23 px (x 9..31, y 7..30), остальное - прозрачные поля. Рисуем только её область, чтобы размер совпал со значками соседних кнопок (~18 px).
+                $g.DrawImage($ico, $destS, 8, 7, 24, 24, [System.Drawing.GraphicsUnit]::Pixel, $ia)
+            } else {
+                $penS = New-Object System.Drawing.Pen($colS, 1.6)
+                try {
+                    $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+                    $g.DrawEllipse($penS, [single]7, [single]7, 16, 16)
+                    $g.DrawEllipse($penS, [single]12, [single]12, 6, 6)
+                } finally { $penS.Dispose() }
+            }
+        } catch {} finally { if ($ia) { $ia.Dispose() } }
+    })
+    $btnLibSettings.Add_Click({
+        try {
+            # Сообщаем диалогу настроек, что он открыт из библиотеки (см. $settingsFromLib в Show-ProgramSettingsDialog).
+            $script:settingsOwnerOverride = $dlg
+            Show-ProgramSettingsDialog | Out-Null
+        } catch {
+            try {
+                Show-AppMessageBox(
+                    $dlg,
+                    (T 'settings_open_fail' @([string]$_.Exception.Message)),
+                    $global:appTitle,
+                    [System.Windows.Forms.MessageBoxButtons]::OK,
+                    [System.Windows.Forms.MessageBoxIcon]::Error
+                ) | Out-Null
+            } catch {}
+        } finally {
+            $script:settingsOwnerOverride = $null
+        }
+    })
+    $dlg.Controls.Add($btnLibSettings)
+    $btnLibSettings.BringToFront()
 
     $tabBar.Add_Paint({
         param($sender, $e)
@@ -70256,6 +72622,17 @@ function Show-SteamLibraryBrowser {
             $lblLibStatus.Text = (T 'hd_cancelling')
         } catch {}
     })
+    # Как в главном окне: кнопка стоит всегда, а активна только пока идёт отменяемое действие (удаление игры с диска и т.п. отменить нельзя - кнопка серая).
+    $libCancelStateTimer = New-Object System.Windows.Forms.Timer
+    $libCancelStateTimer.Interval = 120
+    $libCancelStateTimer.Add_Tick({
+        try {
+            $cancelableLib = ([bool]$script:libUpdRunning -or [bool]$script:libRestoreRunning -or [bool]$script:libSaveRunning -or [bool]$script:libImportRunning)
+            if ([bool]$btnLibCancel.Enabled -ne $cancelableLib) { $btnLibCancel.Enabled = $cancelableLib }
+        } catch {}
+    })
+    $libCancelStateTimer.Start()
+    $dlg.Add_FormClosed({ try { $libCancelStateTimer.Stop(); $libCancelStateTimer.Dispose() } catch {} })
 
     # Кнопки и переключатель автоимпорта живут в верхней строке окна; внизу — только статус и прогресс-бар.
     $dlg.Controls.Add($pnlLibProgress)
@@ -70934,12 +73311,15 @@ function Show-SteamLibraryBrowser {
             # Кэш скачанных обложек этой игры сбрасываем — локальная (выбранная в карточке) важнее.
             if ($null -ne $entry) { try { $script:libCoverMemCache.Remove([string]$entry.AppId) } catch {} }
             try { & $hideLibHoverCardNow } catch {}
+            # Карточка могла изменить коллекции игры (например, убрать из «Скрытых»): перечитываем состав до пересоздания плитки, иначе она возьмёт старое состояние.
+            try { & $loadCollections } catch {}
             # Сначала пробуем точечное обновление: пересоздаются только плитки изменённых игр.
             # Если нельзя (другая вкладка, плитки ещё достраиваются, слишком много изменений) — полная пересборка, как раньше.
             $incOk = $false
             try { $incOk = [bool](& $refreshSteamTilesIncremental $entry) } catch { $incOk = $false }
             if (-not $incOk) { & $refreshSteamTabEntries }
             try { & $resetLibraryScroll $savedY } catch {}
+            try { if ($null -ne $syncHiddenTiles) { & $syncHiddenTiles } } catch {}
         } catch {}
         }
     }
@@ -71464,7 +73844,7 @@ function Show-SteamLibraryBrowser {
         }
     }
 
-    # Пункт «Удалить из библиотеки» (красная корзина) - последним в меню ярлыка Non-Steam игры (обычной и ROM). Если плитка отмечена
+    # Пункт «Удалить из библиотеки» (корзина: белая, при Shift красная) - последним в меню ярлыка Non-Steam игры (обычной и ROM). Если плитка отмечена
     # галочкой и отмечено несколько ярлыков, пункт относится ко всем отмеченным.
     $addRemoveLibMenuItem = {
         param($snd, $en)
@@ -71485,11 +73865,12 @@ function Show-SteamLibraryBrowser {
             $itDel.Text = $(if ($targets.Count -gt 1) { (T 'lib_ctx_remove_lib_sel' @($targets.Count)) } else { (T 'lib_ctx_remove_lib') })
             $itDel.BackColor = [System.Drawing.Color]::FromArgb(22, 28, 36)
             $itDel.ForeColor = $steamUi.Text
-            & $setMenuIcon $itDel 'trash'
+            # Корзина: белая, при удержании Shift красная (удаление вместе с папкой игры) - как кнопка «Удалить из библиотеки» окна.
+            Register-TrashMenuItem $itDel
             $itDel.Tag = [PSCustomObject]@{ Targets = @($targets) }
             $itDel.Add_Click({
                 param($s2, $e2)
-                try { & $removeLibEntries $s2.Tag.Targets } catch {}
+                try { & $removeLibEntries $s2.Tag.Targets (Test-TrashShiftHeld) } catch {}
             })
             [void]$snd.Items.Add($itDel)
         } catch {}
@@ -72175,8 +74556,7 @@ function Show-SteamLibraryBrowser {
             # Список для окна: «Избранное» и «Скрыто» сверху, дальше по алфавиту.
             $sortRows = New-Object System.Collections.Generic.List[object]
             foreach ($c in $colls) {
-                $ord = 2
-                if ([string]$c.Key -eq 'col:favorite') { $ord = 0 } elseif ([string]$c.Key -eq 'col:hidden') { $ord = 1 }
+                $ord = Get-CollGroupOrd ([string]$c.Key)
                 [void]$sortRows.Add([PSCustomObject]@{ Ord = $ord; Low = ([string]$c.Name).ToLowerInvariant(); C = $c })
             }
             $items = New-Object System.Collections.Generic.List[object]
@@ -72210,10 +74590,11 @@ function Show-SteamLibraryBrowser {
                     if (($want -eq 'in') -eq $isIn) { continue }
                     $ids = Get-CollEntryIds $g
                     if ($null -eq $ids) { continue }
+                    if ($cid -eq '__vr' -and [string]$g.Kind -ne 'shortcut') { continue }  # лицензионные: только чтение
                     if (-not $byCid.ContainsKey($cid)) { $byCid[$cid] = New-Object System.Collections.Generic.List[object] }
                     [void]$byCid[$cid].Add([PSCustomObject]@{ Ids = $ids; Want = $want; Kind = [string]$g.Kind })
                     # Ярлык мог попасть в коллекцию через тег с её именем — тогда при снятии галочки тег тоже убираем.
-                    if ($want -eq 'out' -and [string]$g.Kind -eq 'shortcut' -and $cid -ne 'favorite' -and $cid -ne 'hidden' -and $nmLow) {
+                    if ($want -eq 'out' -and [string]$g.Kind -eq 'shortcut' -and $cid -ne 'favorite' -and $cid -ne 'hidden' -and $cid -ne '__vr' -and $nmLow) {
                         $hasTag = $false
                         foreach ($tg in @(& $getEntryTags $g)) { if (([string]$tg).Trim().ToLowerInvariant() -eq $nmLow) { $hasTag = $true; break } }
                         if ($hasTag) { [void]$tagWork.Add([PSCustomObject]@{ Entry = $g; NamesLower = @($nmLow) }) }
@@ -72299,7 +74680,7 @@ function Show-SteamLibraryBrowser {
             $lblLibStatus.Text = ''
             $script:libCollMap = $null
             & $loadCollections
-            $cid = ''; $cname = ''
+            $cid = ''; $cname = ''; $oldName = ''
             $tagWork = New-Object System.Collections.Generic.List[object]
             if ($op -eq 'create') {
                 $cname = Show-CollectionNameDialog $dlg
@@ -72312,10 +74693,35 @@ function Show-SteamLibraryBrowser {
                     }
                 }
                 $cid = New-SteamCollectionId
+            } elseif ($op -eq 'rename') {
+                if (-not $ckey.StartsWith('col:')) { return }
+                $cid = $ckey.Substring(4)
+                if ($cid -eq 'favorite' -or $cid -eq 'hidden' -or $cid -eq '__vr') { return }
+                foreach ($cl in @($script:libCollList)) { if ($null -ne $cl -and [string]$cl.Key -eq $ckey) { $oldName = [string]$cl.Name; break } }
+                if ([string]::IsNullOrWhiteSpace($oldName)) { return }
+                $newName = Show-CollectionNameDialog $dlg $oldName (T 'coll_rename_title')
+                if ([string]::IsNullOrWhiteSpace($newName)) { return }
+                $newName = ([string]$newName).Trim()
+                if ($newName -ceq $oldName) { return }
+                foreach ($cl in @($script:libCollList)) {
+                    if ($null -ne $cl -and [string]$cl.Key -ne $ckey -and ([string]$cl.Name).Trim().ToLowerInvariant() -eq $newName.ToLowerInvariant()) {
+                        Show-AppMessageBox($dlg, (T 'coll_new_exists' @($newName)), $global:appTitle, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
+                        return
+                    }
+                }
+                $cname = $newName
+                # Теги-коллекции у ярлыков Non-Steam (имя тега = имя коллекции) переименовываем вместе с ней, иначе Steam вернёт старую коллекцию из тега.
+                $oldLow = $oldName.Trim().ToLowerInvariant()
+                foreach ($g in @($script:libBrowserEntries)) {
+                    if ($null -eq $g -or [string]$g.Kind -ne 'shortcut') { continue }
+                    $hasTag = $false
+                    foreach ($tg in @(& $getEntryTags $g)) { if (([string]$tg).Trim().ToLowerInvariant() -eq $oldLow) { $hasTag = $true; break } }
+                    if ($hasTag) { [void]$tagWork.Add([PSCustomObject]@{ Entry = $g; NamesLower = @($oldLow); NewName = $newName }) }
+                }
             } else {
                 if (-not $ckey.StartsWith('col:')) { return }
                 $cid = $ckey.Substring(4)
-                if ($cid -eq 'favorite' -or $cid -eq 'hidden') { return }
+                if ($cid -eq 'favorite' -or $cid -eq 'hidden' -or $cid -eq '__vr') { return }
                 foreach ($cl in @($script:libCollList)) { if ($null -ne $cl -and [string]$cl.Key -eq $ckey) { $cname = [string]$cl.Name; break } }
                 if ([string]::IsNullOrWhiteSpace($cname)) { return }
                 # Теги-коллекции у ярлыков Non-Steam (имя тега = имя коллекции): без их снятия Steam создаст коллекцию заново.
@@ -72368,7 +74774,13 @@ function Show-SteamLibraryBrowser {
                     $tagRes = Remove-ShortcutTagsBatch @($tagWork.ToArray())
                     if ($null -ne $tagRes -and [string]$tagRes.Error) { [void]$errors.Add([string]$tagRes.Error) }
                     if ($null -ne $tagRes -and [int]$tagRes.Removed -gt 0) {
-                        foreach ($tw in $tagWork) { try { [void](Remove-TagNodesByName $tw.Entry.ShortcutRecord.Entry ([string[]]$tw.NamesLower)) } catch {} }
+                        foreach ($tw in $tagWork) {
+                            $twNew = ''
+                            try { if ($null -ne $tw.PSObject.Properties['NewName']) { $twNew = [string]$tw.NewName } } catch {}
+                            try { [void](Remove-TagNodesByName $tw.Entry.ShortcutRecord.Entry ([string[]]$tw.NamesLower) $twNew) } catch {}
+                        }
+                        # Коллекция могла существовать только как тег ярлыков (в облачном файле её нет): тогда достаточно переименованных тегов.
+                        if ($op -eq 'rename') { $anyChanged = $true }
                     }
                 }
             } finally {
@@ -72385,7 +74797,7 @@ function Show-SteamLibraryBrowser {
             if ($errors.Count -gt 0) {
                 Show-AppMessageBox($dlg, (T 'coll_fail' @(($errors.ToArray() -join "`n"))), $global:appTitle, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
             } else {
-                $lblLibStatus.Text = $(if ($queueOnly) { T 'coll_queued' } elseif ($op -eq 'create') { T 'coll_created' @($cname) } else { T 'coll_deleted' @($cname) })
+                $lblLibStatus.Text = $(if ($queueOnly) { T 'coll_queued' } elseif ($op -eq 'create') { T 'coll_created' @($cname) } elseif ($op -eq 'rename') { T 'coll_renamed' @($oldName, $cname) } else { T 'coll_deleted' @($cname) })
             }
         } catch {
             try { Write-LauncherLog ('collStructChange: ' + $_.Exception.Message + ' | ' + [string]$_.ScriptStackTrace) } catch {}
@@ -72441,8 +74853,7 @@ function Show-SteamLibraryBrowser {
         # «Избранное» и «Скрыто» сверху, дальше по алфавиту.
         $sortRows = New-Object System.Collections.Generic.List[object]
         foreach ($c in $colls) {
-            $ord = 2
-            if ([string]$c.Key -eq 'col:favorite') { $ord = 0 } elseif ([string]$c.Key -eq 'col:hidden') { $ord = 1 }
+            $ord = Get-CollGroupOrd ([string]$c.Key)
             [void]$sortRows.Add([PSCustomObject]@{ Ord = $ord; Low = ([string]$c.Name).ToLowerInvariant(); C = $c })
         }
         $dd = $itC.DropDown
@@ -72450,8 +74861,12 @@ function Show-SteamLibraryBrowser {
         Initialize-SCContextChecklist $dd $snd $false 18 $null 0 $false
         $dd.Add_Closing({ param($s, $e) try { if ($e.CloseReason -eq [System.Windows.Forms.ToolStripDropDownCloseReason]::ItemClicked -and $null -ne $script:libCollDrop -and $script:libCollDrop.Visible -and $script:libCollDrop.Bounds.Contains([System.Windows.Forms.Cursor]::Position)) { $e.Cancel = $true } } catch {} })
         $collFrom = $dd.Items.Count
+        $prevSteamCk = $false
         foreach ($sr in @($sortRows.ToArray() | Sort-Object -Property Ord, Low)) {
             $ck = [string]$sr.C.Key
+            # Между системными коллекциями Steam и пользовательскими — разделитель.
+            if ($prevSteamCk -and -not (Test-CollSteamKey $ck)) { [void]$dd.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)) }
+            $prevSteamCk = (Test-CollSteamKey $ck)
             $n = [int]$cnt[$ck]
             $nm = ([string]$sr.C.Name).Replace('&', '&&')
             $mi = New-Object System.Windows.Forms.ToolStripMenuItem
@@ -72471,12 +74886,30 @@ function Show-SteamLibraryBrowser {
                 $mi.CheckState = [System.Windows.Forms.CheckState]::Checked
                 $initSt = 1
             }
-            $mi.Tag = [PSCustomObject]@{ Key = $ck; Init = $initSt; Cur = $initSt; BaseText = $nm; Touched = $false }
-            Update-LibCollItemVisual $mi
+            # «Библиотека VR» у лицензионных игр только для чтения (appinfo.vdf): если среди целей нет Non-Steam ярлыков — галочка серая и не снимается.
+            $vrLocked = $false
+            if ($ck -eq 'col:__vr' -and $initSt -eq 1) {
+                $vrLocked = $true
+                foreach ($gLock in $tg) { if ([string]$gLock.Kind -eq 'shortcut') { $vrLocked = $false; break } }
+            }
+            $mi.Tag = [PSCustomObject]@{ Key = $ck; Init = $initSt; Cur = $initSt; BaseText = $nm; Touched = $false; Locked = $vrLocked }
+            if ($vrLocked) {
+                try { $mi.ForeColor = $steamUi.Muted } catch {}
+                Set-CollItemVisual $mi 'prior'
+            } else {
+                Update-LibCollItemVisual $mi
+            }
             $mi.Add_Click({
                 param($s2, $e2)
                 try {
                     $tx = $s2.Tag
+                    # Лицензионная VR-метка: не переключаем.
+                    if ($null -ne $tx.PSObject.Properties['Locked'] -and [bool]$tx.Locked) {
+                        $tx.Cur = 1
+                        Set-CollItemVisual $s2 'prior'
+                        try { $s2.ForeColor = $steamUi.Muted } catch {}
+                        return
+                    }
                     $nv = $(if ([int]$tx.Cur -eq 1) { 0 } else { 1 })
                     $tx.Cur = $nv
                     $tx.Touched = $true
@@ -72515,6 +74948,13 @@ function Show-SteamLibraryBrowser {
                 foreach ($ox in @($s2.Owner.Items)) {
                     $ot = $ox.Tag
                     if ($null -eq $ot -or $null -eq $ot.PSObject.Properties['Key']) { continue }
+                    # Заблокированную VR-метку лицензионных игр «Без категории» не снимает.
+                    if ($null -ne $ot.PSObject.Properties['Locked'] -and [bool]$ot.Locked) {
+                        $ot.Cur = 1
+                        Set-CollItemVisual $ox 'prior'
+                        try { $ox.ForeColor = $steamUi.Muted } catch {}
+                        continue
+                    }
                     if ([string]$ot.Key -eq '__none__') { $ot.Cur = 1 } else { $ot.Cur = 0 }
                     $ot.Touched = $true
                     $ox.Text = [string]$ot.BaseText
@@ -72973,6 +75413,12 @@ function Show-SteamLibraryBrowser {
             if ($script:libUpdRunning -or $script:libImportRunning -or $script:libRestoreRunning) { return }
             # Повторный клик по кнопке: меню уже закрылось само (клик вне меню) - заново не открываем.
             if ($script:bulkFrameMenuClosedAt -and (([Environment]::TickCount - [int]$script:bulkFrameMenuClosedAt) -lt 400)) { $script:bulkFrameMenuClosedAt = 0; return }
+            # Ни одна игра не выбрана: кнопка открывает менеджер рамок.
+            if (@(@(& $getSelectedSteamEntries) | Where-Object { $null -ne $_ }).Count -eq 0) {
+                try { & $hideLibHoverCardNow } catch {}
+                Show-EditorFrameManagerDialog $dlg
+                return
+            }
             $fTargets = @(@(& $getSelectedSteamEntries) | Where-Object { $null -ne $_ -and [string]$_.Kind -eq 'shortcut' })
             if ($fTargets.Count -eq 0) { return }
             try { & $hideLibHoverCardNow } catch {}
@@ -73054,6 +75500,15 @@ function Show-SteamLibraryBrowser {
     $libHoverRomBadge.Visible = $false
     $libHoverCard.Controls.Add($libHoverRomBadge)
     $libHoverRomBadge.BringToFront()
+
+    # Значок VR-гарнитуры в строке источников под горизонтальной миниатюрой (как на вертикальных плитках).
+    $libHoverVrIcon = New-Object System.Windows.Forms.PictureBox
+    $libHoverVrIcon.Size = New-Object System.Drawing.Size(22, 22)
+    $libHoverVrIcon.Location = New-Object System.Drawing.Point(8, 117)
+    $libHoverVrIcon.SizeMode = [System.Windows.Forms.PictureBoxSizeMode]::Normal
+    $libHoverVrIcon.BackColor = [System.Drawing.Color]::Transparent
+    $libHoverVrIcon.Visible = $false
+    $libHoverCard.Controls.Add($libHoverVrIcon)
 
     $script:libHoverImages = New-Object System.Collections.Generic.List[System.Drawing.Image]
     $script:libHoverPendingTile = $null
@@ -73141,6 +75596,26 @@ function Show-SteamLibraryBrowser {
         if (-not [string]::IsNullOrWhiteSpace($srcLid) -and $null -ne $script:libLauncherMap -and $script:libLauncherMap.ContainsKey($srcLid)) {
             try { $srcIcon = $script:libLauncherMap[$srcLid].Icon } catch { $srcIcon = $null }
         }
+        # Левый край строки источников под горизонтальной миниатюрой. Значок VR (коллекция «Библиотека VR») — слева от значков источников, как на вертикальных плитках.
+        $hoverLeft = 8
+        $showVrHover = $false
+        try { $showVrHover = (@(& $getEntryCollKeys $entry) -contains 'col:__vr') } catch { $showVrHover = $false }
+        if ($showVrHover) {
+            $vrHoverBmp = $null
+            try { $vrHoverBmp = Get-LibVrBadgeBitmap } catch { $vrHoverBmp = $null }
+            if ($null -ne $vrHoverBmp) {
+                $libHoverVrIcon.Image = $vrHoverBmp
+                $libHoverVrIcon.Location = New-Object System.Drawing.Point($hoverLeft, 117)
+                $libHoverVrIcon.Visible = $true
+                $hoverLeft = $libHoverVrIcon.Right + 4
+            } else {
+                $libHoverVrIcon.Visible = $false
+                $libHoverVrIcon.Image = $null
+            }
+        } else {
+            $libHoverVrIcon.Visible = $false
+            $libHoverVrIcon.Image = $null
+        }
         if ($null -ne $srcIcon) {
             $libHoverBadge.Visible = $false
             $libHoverLauncherIcon.BackColor = [System.Drawing.Color]::Transparent
@@ -73149,7 +75624,7 @@ function Show-SteamLibraryBrowser {
             $libHoverNsBadge.Visible = $false
             $libHoverRomBadge.Visible = $false
             try {
-                $libHoverLauncherIcon.Location = New-Object System.Drawing.Point(8, 117)
+                $libHoverLauncherIcon.Location = New-Object System.Drawing.Point($hoverLeft, 117)
                 $bx = $libHoverLauncherIcon.Right + 6
                 $libHoverName.Location = New-Object System.Drawing.Point($bx, 114)
                 $libHoverName.Size = New-Object System.Drawing.Size([Math]::Max(40, 220 - $bx), 28)
@@ -73171,7 +75646,7 @@ function Show-SteamLibraryBrowser {
                     $libHoverLauncherIcon.Image = $steamHoverIco
                     $libHoverLauncherIcon.Visible = $true
                     try {
-                        $libHoverLauncherIcon.Location = New-Object System.Drawing.Point(8, 117)
+                        $libHoverLauncherIcon.Location = New-Object System.Drawing.Point($hoverLeft, 117)
                         $bx = $libHoverLauncherIcon.Right + 6
                         $libHoverName.Location = New-Object System.Drawing.Point($bx, 114)
                         $libHoverName.Size = New-Object System.Drawing.Size([Math]::Max(40, 220 - $bx), 28)
@@ -73179,15 +75654,15 @@ function Show-SteamLibraryBrowser {
                 } else {
                     $libHoverLauncherIcon.Visible = $false
                     try {
-                        $libHoverName.Location = New-Object System.Drawing.Point(8, 114)
-                        $libHoverName.Size = New-Object System.Drawing.Size(212, 28)
+                        $libHoverName.Location = New-Object System.Drawing.Point($hoverLeft, 114)
+                        $libHoverName.Size = New-Object System.Drawing.Size([Math]::Max(40, 220 - $hoverLeft), 28)
                     } catch {}
                 }
             } elseif ($showNs -or $showRom) {
                 $libHoverBadge.Visible = $false
                 try {
                     $hoverKindBadge = if ($showRom) { $libHoverRomBadge } else { $libHoverNsBadge }
-                    $hoverKindBadge.Location = New-Object System.Drawing.Point(8, 119)
+                    $hoverKindBadge.Location = New-Object System.Drawing.Point($hoverLeft, 119)
                     $bx = $hoverKindBadge.Right + 6
                     if ($showNs -and $null -ne $hoverWrapProf) {
                         # Значок враппера — справа от «Non-Steam» (как значок эмулятора справа от «ROM»).
@@ -73220,8 +75695,8 @@ function Show-SteamLibraryBrowser {
                 # Лаунчер определён, но его значок недоступен — только название.
                 $libHoverBadge.Visible = $false
                 try {
-                    $libHoverName.Location = New-Object System.Drawing.Point(8, 114)
-                    $libHoverName.Size = New-Object System.Drawing.Size(212, 28)
+                    $libHoverName.Location = New-Object System.Drawing.Point($hoverLeft, 114)
+                    $libHoverName.Size = New-Object System.Drawing.Size([Math]::Max(40, 220 - $hoverLeft), 28)
                 } catch {}
             }
         }
@@ -73298,6 +75773,7 @@ function Show-SteamLibraryBrowser {
         # (в строке с названием, см. $libHoverLauncherIcon).
         try { if ($libHoverNsBadge.Visible) { $libHoverNsBadge.BringToFront() } } catch {}
         try { if ($libHoverRomBadge.Visible) { $libHoverRomBadge.BringToFront() } } catch {}
+        try { if ($libHoverVrIcon.Visible) { $libHoverVrIcon.BringToFront() } } catch {}
 
         # Всегда справа от плитки; влево — только если справа не помещается.
         try {
@@ -73537,6 +76013,8 @@ function Show-SteamLibraryBrowser {
                 $pic.BackColor = [System.Drawing.Color]::FromArgb(20, 24, 28)
                 $pic.Cursor = [System.Windows.Forms.Cursors]::Hand
                 $pic.Tag = $entry
+                # Скрытая в Steam игра (коллекция «Скрытые»): затемнённая чёрно-белая плитка с пунктирной рамкой — в общем списке и в каждой своей коллекции.
+                if ($script:libDlssNativeOk) { try { $pic.Gray = (@(& $getEntryCollKeys $entry) -contains 'col:hidden') } catch { try { Write-SCDebug ('hiddenTile: ' + $_.Exception.Message) } catch {} } }
                 if ($script:libDlssNativeOk) { & $setDlssText $pic } else { $pic.Add_Paint($paintDlssBar) }
 
                 $skipCover = $false
@@ -73687,6 +76165,8 @@ function Show-SteamLibraryBrowser {
                         } catch {}
                     }
                 }
+                # Значок VR-гарнитуры слева от значка источника (после того, как плашка «Non-Steam» уже на месте).
+                if ($script:libDlssNativeOk) { try { & $syncVrBadge $tile $pic @(& $getEntryCollKeys $entry) } catch {} }
                 # Галочка выбора (как на плитках лаунчеров) и рамка выбранной плитки — для кнопки
                 # «Обновить апскейлеры». Только у игр с известной папкой (иначе обновлять нечего).
                 if (& $isSteamEntrySelectable $entry) {
@@ -74434,11 +76914,19 @@ function Show-SteamLibraryBrowser {
             & $layoutSaveButtons
             if ($script:libSaveRunning) { return }
             $busy = ($script:libUpdRunning -or $script:libRestoreRunning -or $script:libImportRunning)
-            $cB = 0; $cR = 0
+            $cB = 0; $cR = 0; $nSelSv = 0
             if (-not $busy) {
                 $cB = @(& $getSaveTargetGames).Count
-                foreach ($g in @(& $getSaveTargetGames $true)) { if (Test-SaveHasBackup (Get-SaveGameParams $g)) { $cR++ } }
+                $svSelG = @(& $getSaveTargetGames $true)
+                $nSelSv = $svSelG.Count
+                foreach ($g in $svSelG) { if (Test-SaveHasBackup (Get-SaveGameParams $g)) { $cR++ } }
             }
+            # Счётчики на кнопках сохранений (и на кнопке группы): сколько отмеченных игр затронет действие. Без отмеченных игр - нет счётчика.
+            $script:libBtnCounts['saves'] = $nSelSv
+            $script:libBtnCounts['scan'] = $nSelSv
+            $script:libBtnCounts['backup'] = $nSelSv
+            $script:libBtnCounts['restore'] = $cR
+            foreach ($ib in @($btnSavesGrp, $btnSaveScan, $btnSaveBackup, $btnSaveRestore)) { try { $ib.Invalidate() } catch {} }
             foreach ($pair in @(@($btnSaveScan, $cB), @($btnSaveBackup, $cB), @($btnSaveRestore, $cR))) {
                 $b = $pair[0]
                 $b.Enabled = ([int]$pair[1] -gt 0)
@@ -74512,7 +77000,7 @@ function Show-SteamLibraryBrowser {
                 $btnRestoreUp.Text = ''
                 # «Обновить апскейлеры» горит, только если среди отмеченных есть игра с библиотеками (ROM и игры без библиотек не считаются).
                 # Один проход по отмеченным (раньше выбор пересобирался заново для каждой из кнопок, а ROM-проверка шла дважды).
-                $cntU = 0; $cntR = 0
+                $cntU = 0; $cntR = 0; $cntUR = 0
                 # Без выделения «Обновить апскейлеры» работает по всем видимым играм; «Вернуть оригиналы» - только по выделенным.
                 $effS = $(if ($cntS -gt 0) { $selS } else { @(& $getVisibleSteamEntries) })
                 foreach ($se in $effS) {
@@ -74520,11 +77008,20 @@ function Show-SteamLibraryBrowser {
                     $seRom = $false
                     try { $seRom = ([string](& $getEntryFilterCat $se) -ceq 'rom') } catch {}
                     if ($seRom) { continue }
-                    if (& $getEntryHasLibs $se) { $cntU++ }
-                    if ($cntS -gt 0 -and (& $getEntryHasOrig $se)) { $cntR++ }
+                    $seHL = [bool](& $getEntryHasLibs $se)
+                    $seHO = [bool]($cntS -gt 0 -and (& $getEntryHasOrig $se))
+                    if ($seHL) { $cntU++ }
+                    if ($seHO) { $cntR++ }
+                    if ($cntS -gt 0 -and ($seHL -or $seHO)) { $cntUR++ }
                 }
                 $btnUpdUp.Enabled = ($cntU -gt 0)
                 $btnRestoreUp.Enabled = ($cntR -gt 0)
+                # Счётчики отмеченных игр: «Обновить» - с библиотеками, «Вернуть» - с бэкапами, на кнопке группы - с тем или другим.
+                # Без отмеченных игр «Обновить апскейлеры» работает по всем видимым, но счётчика нет.
+                $script:libBtnCounts['upd'] = $(if ($cntS -gt 0) { $cntU } else { 0 })
+                $script:libBtnCounts['rst'] = $cntR
+                $script:libBtnCounts['ups'] = $cntUR
+                foreach ($ib in @($btnUpsGrp, $btnUpdUp, $btnRestoreUp)) { try { $ib.Invalidate() } catch {} }
                 foreach ($pair in @(@($btnUpdUp, $cntU), @($btnRestoreUp, $cntR))) {
                     $b = $pair[0]
                     if ([int]$pair[1] -gt 0) {
@@ -74539,19 +77036,27 @@ function Show-SteamLibraryBrowser {
                 $btnDeselectAll.Enabled = ($cntS -gt 0)
                 try {
                     $romSel = @(& $getSelectedRomEntries $selS).Count
+                    $script:libBtnCounts['emu'] = $romSel; $btnSwapEmu.Invalidate()
                     $btnSwapEmu.Enabled = (($romSel -gt 0) -and (@($global:emulatorProfiles).Count -gt 0))
                     $swapTip = (T 'lib_cap_emus')
                     if ([string]$script:libSwapTipText -ne $swapTip) { $script:libSwapTipText = $swapTip; $libToolTip.SetToolTip($btnSwapEmu, $swapTip) }
                 } catch {}
                 try {
                     $wrapSel = @(& $getSelectedWrapEntries $selS).Count
+                    $script:libBtnCounts['wrap'] = $wrapSel; $btnSwapWrap.Invalidate()
                     $btnSwapWrap.Enabled = (($wrapSel -gt 0) -and (@($global:launchWrappers).Count -gt 0))
                     $wrapTip = (T 'lib_cap_wraps')
                     if ([string]$script:libWrapTipText -ne $wrapTip) { $script:libWrapTipText = $wrapTip; $libToolTip.SetToolTip($btnSwapWrap, $wrapTip) }
                 } catch {}
                 try {
                     $frSel = @(@($selS) | Where-Object { $null -ne $_ -and [string]$_.Kind -eq 'shortcut' }).Count
-                    $btnLibFrames.Enabled = ($frSel -gt 0)
+                    # Без выбранных игр кнопка открывает менеджер рамок.
+                    $btnLibFrames.Enabled = $true
+                    $noSelL = (@(@($selS) | Where-Object { $null -ne $_ }).Count -eq 0)
+                    $script:libFramesNoSel = $noSelL
+                    $script:libFramesSelCount = @(@($selS) | Where-Object { $null -ne $_ }).Count
+                    $frTip = $(if ($noSelL) { (Get-EditorFrameText 'card_frame_manage' 'Менеджер рамок…') } else { (T 'lib_cap_frames') })
+                    if ([string]$script:libFramesTipText -ne $frTip) { $script:libFramesTipText = $frTip; $libToolTip.SetToolTip($btnLibFrames, $frTip) }
                     $btnLibFrames.Invalidate()
                 } catch {}
                 try { & $updateLibRemoveBtn $selS } catch {}
@@ -77045,7 +79550,18 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
             $e.Graphics.FillRectangle($bgBrush,$e.Bounds)
             $text = [string]$sender.Items[$e.Index]
             $ctFlags = [System.Windows.Forms.TextFormatFlags]::Left -bor [System.Windows.Forms.TextFormatFlags]::VerticalCenter -bor [System.Windows.Forms.TextFormatFlags]::EndEllipsis -bor [System.Windows.Forms.TextFormatFlags]::NoPadding -bor [System.Windows.Forms.TextFormatFlags]::SingleLine
-            $ctRect = New-Object System.Drawing.Rectangle(($e.Bounds.X + 12), $e.Bounds.Y, [Math]::Max(10, $e.Bounds.Width - 12 - 4), $e.Bounds.Height)
+            # Значок эмулятора (16x16) перед названием: тот же общий кэш, что у настроек и индикатора (Bitmap не освобождать).
+            # Место под значок резервируется у всех строк, чтобы названия стояли ровно, даже если у какого-то эмулятора значка нет.
+            $emuIco = $null
+            try { if ($e.Index -lt $emuProfiles.Count) { $emuIco = Get-EmulatorIconBitmap $emuProfiles[$e.Index] } } catch { $emuIco = $null }
+            if ($null -ne $emuIco) {
+                $oldIm = $e.Graphics.InterpolationMode
+                try {
+                    $e.Graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+                    $e.Graphics.DrawImage($emuIco, [int]($e.Bounds.X + 8), [int]($e.Bounds.Y + [Math]::Floor(($e.Bounds.Height - 16) / 2)), 16, 16)
+                } catch {} finally { $e.Graphics.InterpolationMode = $oldIm }
+            }
+            $ctRect = New-Object System.Drawing.Rectangle(($e.Bounds.X + 32), $e.Bounds.Y, [Math]::Max(10, $e.Bounds.Width - 32 - 4), $e.Bounds.Height)
             [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, $text, $sender.Font, $ctRect, $fg, $ctFlags)
         } finally { $bgBrush.Dispose(); $textBrush.Dispose() }
     })
@@ -78176,8 +80692,12 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
         $lblLaunchOptionsHint.Size = New-Object System.Drawing.Size(600,28)
         $lblLaunchOptionsHint.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
     } else {
-        $lblLaunchOptionsHint.Location = New-Object System.Drawing.Point(115, $savesRowY)
-        $lblLaunchOptionsHint.Size = New-Object System.Drawing.Size(745,18)
+        # Пакетный режим (строки «Сохранения» нет): на y=$savesRowY теперь стоят статус и значки языков обложек (строка $statusY).
+        # Подсказка лежит выше них по порядку наложения и раньше накрывала статус с x=115 и значки языков (от них оставались одни линии),
+        # поэтому она показывается только когда у неё есть текст, и стоит в строке статуса правее его текста, не заходя на значки языков.
+        $lblLaunchOptionsHint.Location = New-Object System.Drawing.Point(340, $statusY)
+        $lblLaunchOptionsHint.Size = New-Object System.Drawing.Size(410,$statusH)
+        if (-not $IsRomEntry) { $lblLaunchOptionsHint.Visible = $false }
     }
     $lblLaunchOptionsHint.ForeColor = $steamUi.Muted
     $lblLaunchOptionsHint.Font = New-Object System.Drawing.Font('Segoe UI',8)
@@ -78185,6 +80705,12 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     $lblLaunchOptionsHint.AutoEllipsis = $true
     $lblLaunchOptionsHint.Text = ''
     if ($IsRomEntry) { $lblLaunchOptionsHint.Visible = $false }   # в ROM App ID Steam нет - подсказка не используется, место занимает статус
+    # Пакетный режим: пустая подсказка скрыта (иначе её пустой фон закрывает статус и языки), с текстом - показывается.
+    if (-not $IsRomEntry -and $savesRowH -le 0) {
+        $lblLaunchOptionsHint.Add_TextChanged({
+            try { $lblLaunchOptionsHint.Visible = (-not [string]::IsNullOrEmpty([string]$lblLaunchOptionsHint.Text)) } catch {}
+        })
+    }
     $dlg.Controls.Add($lblLaunchOptionsHint)
     $launchOptionsHintTip = New-SCToolTip
 
@@ -79012,8 +81538,25 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
                 $cardColl.Snap = Read-SteamCollectionsSnapshot
                 if ($ccAppId) {
                     $cardColl.Init = @(Get-CollKeysForEntry $cardColl.Snap $ccAppId $ccKind $ccRec)
+                    # Лицензионная VR-игра: статус только из appinfo.vdf — принудительно держим col:__vr в Init/Sel.
+                    if ($licensedMode) {
+                        try {
+                            $licVrIds = @(Get-LicensedVrAppIds)
+                            $aid = [string]$ccAppId
+                            if (($licVrIds -contains $aid) -and (@($cardColl.Init) -notcontains 'col:__vr')) {
+                                $cardColl.Init = @(@($cardColl.Init) + @('col:__vr'))
+                            }
+                        } catch {}
+                    }
                     if (-not [bool]$cardColl.Touched) { $cardColl.Sel = @($cardColl.Init) }
                 }
+            } elseif ($licensedMode -and $ccAppId) {
+                # Snap уже был: не даём снять VR-метку из текущего выбора.
+                try {
+                    if ((@($cardColl.Init) -contains 'col:__vr') -and (@($cardColl.Sel) -notcontains 'col:__vr')) {
+                        $cardColl.Sel = @(@($cardColl.Sel) + @('col:__vr'))
+                    }
+                } catch {}
             }
             if (@($cardColl.Snap.List).Count -eq 0) {
                 Show-AppMessageBox($dlg, (T 'coll_dlg_empty'), $global:appTitle, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
@@ -79048,42 +81591,82 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
                 } catch {}
             })
 
+            $prevSteamCc = $false
             foreach ($ccRow in $ccItems) {
+                # Между системными коллекциями Steam и пользовательскими — разделитель.
+                if ($prevSteamCc -and -not (Test-CollSteamKey ([string]$ccRow.Key))) { [void]$cmenu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)) }
+                $prevSteamCc = (Test-CollSteamKey ([string]$ccRow.Key))
                 $mi = New-Object System.Windows.Forms.ToolStripMenuItem
                 $mi.Text = ([string]$ccRow.Name).Replace('&', '&&')
                 $mi.Tag = [string]$ccRow.Key
                 $mi.BackColor = [System.Drawing.Color]::FromArgb(22, 28, 36)
                 $mi.ForeColor = $steamUi.Text
                 $mi.CheckState = $(if ([int]$ccRow.State -eq 1) { [System.Windows.Forms.CheckState]::Checked } else { [System.Windows.Forms.CheckState]::Indeterminate })
-                $mi.Add_Click({
-                    param($snd, $ea)
-                    try {
-                        $k = [string]$snd.Tag
-                        $ccSet = @{}
-                        foreach ($x in @($cardColl.Sel)) { $ccSet[[string]$x] = $true }
-                        if ($ccSet.ContainsKey($k)) {
-                            $ccSet.Remove($k)
-                            $snd.CheckState = [System.Windows.Forms.CheckState]::Indeterminate
-                        } else {
-                            $ccSet[$k] = $true
+                # Лицензионная игра + «Библиотека VR»: статус из appinfo.vdf, только чтение — серая неснимаемая галочка.
+                $isLicVrLocked = ($licensedMode -and [string]$ccRow.Key -eq 'col:__vr' -and [int]$ccRow.State -eq 1)
+                if ($isLicVrLocked) {
+                    $mi.ForeColor = $steamUi.Muted
+                    $mi.CheckState = [System.Windows.Forms.CheckState]::Checked
+                    try { Set-CollItemVisual $mi 'prior' } catch {}
+                    $mi.Add_Click({
+                        param($snd, $ea)
+                        try {
+                            # Не даём снять: возвращаем серую галочку и ключ в выборе.
                             $snd.CheckState = [System.Windows.Forms.CheckState]::Checked
+                            try { Set-CollItemVisual $snd 'prior' } catch {}
+                            $ccSet = @{}
+                            foreach ($x in @($cardColl.Sel)) { $ccSet[[string]$x] = $true }
+                            $ccSet['col:__vr'] = $true
+                            $cardColl.Sel = @($ccSet.Keys)
+                            try { Update-CardCollMenuVisuals $cardColl $snd.Owner } catch {}
+                            $cardCollTip.SetToolTip($btnCardColl, (Get-CardCollTooltip $cardColl.Snap $cardColl.Sel))
+                            $btnCardColl.Tag = 'on'
+                            $btnCardColl.Invalidate()
+                        } catch {}
+                    })
+                } else {
+                    $mi.Add_Click({
+                        param($snd, $ea)
+                        try {
+                            $k = [string]$snd.Tag
+                            # Лицензионная VR-метка не снимается даже если пункт как-то остался переключаемым.
+                            if ($licensedMode -and $k -eq 'col:__vr') {
+                                $snd.CheckState = [System.Windows.Forms.CheckState]::Checked
+                                try { Set-CollItemVisual $snd 'prior' } catch {}
+                                $ccSet = @{}
+                                foreach ($x in @($cardColl.Sel)) { $ccSet[[string]$x] = $true }
+                                $ccSet['col:__vr'] = $true
+                                $cardColl.Sel = @($ccSet.Keys)
+                                try { Update-CardCollMenuVisuals $cardColl $snd.Owner } catch {}
+                                return
+                            }
+                            $ccSet = @{}
+                            foreach ($x in @($cardColl.Sel)) { $ccSet[[string]$x] = $true }
+                            if ($ccSet.ContainsKey($k)) {
+                                $ccSet.Remove($k)
+                                $snd.CheckState = [System.Windows.Forms.CheckState]::Indeterminate
+                            } else {
+                                $ccSet[$k] = $true
+                                $snd.CheckState = [System.Windows.Forms.CheckState]::Checked
+                            }
+                            try { $snd.Invalidate() } catch {}
+                            $cardColl.Sel = @($ccSet.Keys)
+                            $cardColl.Touched = $true
+                            try { $cardColl.TouchedKeys[$k] = $true } catch {}
+                            $cardCollTip.SetToolTip($btnCardColl, (Get-CardCollTooltip $cardColl.Snap $cardColl.Sel))
+                            $btnCardColl.Tag = $(if ($ccSet.Count -gt 0) { 'on' } else { '' })
+                            $btnCardColl.Invalidate()
+                            # Квадратики: выбранное сейчас, заданное раньше и «Без категории».
+                            try { Update-CardCollMenuVisuals $cardColl $snd.Owner } catch {}
+                        } catch {
+                            try { Write-LauncherLog ('cardCollections item: ' + $_.Exception.Message + ' | ' + [string]$_.ScriptStackTrace) } catch {}
                         }
-                        try { $snd.Invalidate() } catch {}
-                        $cardColl.Sel = @($ccSet.Keys)
-                        $cardColl.Touched = $true
-                        try { $cardColl.TouchedKeys[$k] = $true } catch {}
-                        $cardCollTip.SetToolTip($btnCardColl, (Get-CardCollTooltip $cardColl.Snap $cardColl.Sel))
-                        $btnCardColl.Tag = $(if ($ccSet.Count -gt 0) { 'on' } else { '' })
-                        $btnCardColl.Invalidate()
-                        # Квадратики: выбранное сейчас, заданное раньше и «Без категории».
-                        try { Update-CardCollMenuVisuals $cardColl $snd.Owner } catch {}
-                    } catch {
-                        try { Write-LauncherLog ('cardCollections item: ' + $_.Exception.Message + ' | ' + [string]$_.ScriptStackTrace) } catch {}
-                    }
-                })
+                    })
+                }
                 [void]$cmenu.Items.Add($mi)
             }
             # Последним пунктом — «Без категории»: снимает все коллекции, игра попадает в Steam без коллекций.
+            # У лицензионной VR-игры метку «Библиотека VR» не снимаем (она из appinfo.vdf, только чтение).
             $miNone = New-Object System.Windows.Forms.ToolStripMenuItem
             $miNone.Text = (T 'lib_filter_coll_none')
             $miNone.Tag = '__none__'
@@ -79093,12 +81676,16 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
             $miNone.Add_Click({
                 param($snd, $ea)
                 try {
-                    $cardColl.Sel = @()
+                    $keepVr = $false
+                    if ($licensedMode) {
+                        try { $keepVr = (@($cardColl.Init) -contains 'col:__vr') -or (@($cardColl.Sel) -contains 'col:__vr') } catch { $keepVr = $false }
+                    }
+                    $cardColl.Sel = $(if ($keepVr) { @('col:__vr') } else { @() })
                     $cardColl.Touched = $true
                     try { $cardColl.TouchedKeys['__none__'] = $true } catch {}
                     Update-CardCollMenuVisuals $cardColl $snd.Owner
                     $cardCollTip.SetToolTip($btnCardColl, (Get-CardCollTooltip $cardColl.Snap $cardColl.Sel))
-                    $btnCardColl.Tag = ''
+                    $btnCardColl.Tag = $(if (@($cardColl.Sel).Count -gt 0) { 'on' } else { '' })
                     $btnCardColl.Invalidate()
                 } catch {
                     try { Write-LauncherLog ('cardCollections none: ' + $_.Exception.Message) } catch {}
@@ -79376,6 +81963,10 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
         } catch {}
     }
 
+    # Статус не должен перекрывать значки языков: при каждой смене текста (в пакетном режиме карточки открываются подряд,
+    # а значки перестраиваются) ширина подгоняется под панель языков, а сама панель лежит поверх метки статуса.
+    $status.Add_TextChanged({ try { & $alignCoverLangPanelRight; if (@($btnCoverLang.Controls).Count -gt 0) { $btnCoverLang.BringToFront() } } catch {} })
+
     # Рисует текущую страницу языков из $coverLangState (набор кодов + номер страницы).
     $buildCoverLangPage = {
         $all = @($coverLangState.Codes)
@@ -79465,7 +82056,7 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     }
 
     # ===== Апскейлеры в карточке: сетка 3×3 справа от слотов Логотип/Иконка (x 590..860, y 428..) =====
-    # Девять DLL: DLSS (SR / RR / FG), FSR 3.1 (DX12 / Vulkan), XeSS (основная / FG / DX11), XeLL.
+    # Девять DLL: DLSS (SR / FG / RR), FSR 3.1 (DX12 / Vulkan), XeLL, XeSS (основная / FG / DX11).
     # Первое поле (DLSS, nvngx_dlss.dll) — главное: именно по нему показывается версия DLSS
     # на плитке. Поля скрыты, пока в папке игры не найдена соответствующая DLL; найденные
     # укладываются в сетку слева направо, сверху вниз без пропусков. Левый край сетки совпадает
@@ -79475,15 +82066,15 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
     # Title — короткая подпись над полем (в сетке 86 px полные названия не помещаются),
     # Tip — полное название во всплывающей подсказке, File — имя DLL, по которой ищем версию.
     $dlssFieldDefs = @(
-        @{ Key = 'SR';     Title = 'DLSS';      Tip = (T 'card_dlss_sr');            File = 'nvngx_dlss.dll';           Name = 'EditorDlssSrCombo' },
-        @{ Key = 'RR';     Title = 'DLSS RR';   Tip = (T 'card_dlss_rr');            File = 'nvngx_dlssd.dll';          Name = 'EditorDlssRrCombo' },
-        @{ Key = 'FG';     Title = 'DLSS FG';   Tip = (T 'card_dlss_fg');            File = 'nvngx_dlssg.dll';          Name = 'EditorDlssFgCombo' },
-        @{ Key = 'FSR12';  Title = 'FSR DX12';  Tip = 'FSR 3.1 DirectX 12';          File = 'amd_fidelityfx_dx12.dll';  Name = 'EditorFsrDx12Combo' },
-        @{ Key = 'FSRVK';  Title = 'FSR VK';    Tip = 'FSR 3.1 Vulkan';              File = 'amd_fidelityfx_vk.dll';    Name = 'EditorFsrVkCombo' },
-        @{ Key = 'XESS';   Title = 'XeSS';      Tip = 'XeSS';                        File = 'libxess.dll';              Name = 'EditorXessCombo' },
-        @{ Key = 'XESSFG'; Title = 'XeSS FG';   Tip = 'XeSS Frame Generation';       File = 'libxess_fg.dll';           Name = 'EditorXessFgCombo' },
-        @{ Key = 'XESS11'; Title = 'XeSS DX11'; Tip = 'XeSS (DirectX 11)';           File = 'libxess_dx11.dll';         Name = 'EditorXessDx11Combo' },
-        @{ Key = 'XELL';   Title = 'XeLL';      Tip = 'XeLL (Xe Low Latency)';       File = 'libxell.dll';              Name = 'EditorXellCombo' }
+        @{ Key = 'SR';     Title = 'DLSS';      Tip = (T 'card_dlss_sr');   File = 'nvngx_dlss.dll';           Name = 'EditorDlssSrCombo' },
+        @{ Key = 'FG';     Title = 'DLSS FG';   Tip = (T 'card_dlss_fg');   File = 'nvngx_dlssg.dll';          Name = 'EditorDlssFgCombo' },
+        @{ Key = 'RR';     Title = 'DLSS RR';   Tip = (T 'card_dlss_rr');   File = 'nvngx_dlssd.dll';          Name = 'EditorDlssRrCombo' },
+        @{ Key = 'FSR12';  Title = 'FSR DX12';  Tip = (T 'card_fsr_dx12');  File = 'amd_fidelityfx_dx12.dll';  Name = 'EditorFsrDx12Combo' },
+        @{ Key = 'FSRVK';  Title = 'FSR Vulkan'; Tip = (T 'card_fsr_vk');    File = 'amd_fidelityfx_vk.dll';    Name = 'EditorFsrVkCombo' },
+        @{ Key = 'XELL';   Title = 'XeLL';      Tip = (T 'card_xell');      File = 'libxell.dll';              Name = 'EditorXellCombo' },
+        @{ Key = 'XESS';   Title = 'XeSS';      Tip = (T 'card_xess');      File = 'libxess.dll';              Name = 'EditorXessCombo' },
+        @{ Key = 'XESSFG'; Title = 'XeSS FG';   Tip = (T 'card_xess_fg');   File = 'libxess_fg.dll';           Name = 'EditorXessFgCombo' },
+        @{ Key = 'XESS11'; Title = 'XeSS DX11'; Tip = (T 'card_xess_dx11');  File = 'libxess_dx11.dll';         Name = 'EditorXessDx11Combo' }
     )
     $dlssGridLeft = 305 + $iconSlotW + 12   # слот «Иконка» заканчивается на 305 + $iconSlotW, зазор 12; правый край сетки всегда 860
     $dlssColGap   = 6
@@ -79838,11 +82429,10 @@ function Show-GameEditorDialog($gameName, $source, $gamePath, [bool]$batchMode =
                 $eid = New-UpscalerEntryId $en
                 if ($seen.ContainsKey($eid)) { continue }
                 $seen[$eid] = $true
-                $txt = Format-UpscalerVersion ([string]$en.ver)
-                if (-not [string]::IsNullOrWhiteSpace([string]$en.label)) { $txt += ' ' + [string]$en.label }
+                $txt = Format-UpscalerItemText $key ([string]$en.ver) ([string]$en.label)
                 $kind = 'nodl'; $src = ''
                 if ($localById.ContainsKey($eid)) { $kind = 'dl'; $src = [string]$localById[$eid].Path }
-                [void]$raw.Add([PSCustomObject]@{ Text = $txt; Kind = $kind; Src = $src; Norm = (& $normDlssVer ([string]$en.ver)); Num = (ConvertTo-UpscalerVersionObj ([string]$en.ver)); Ord = $ord })
+                [void]$raw.Add([PSCustomObject]@{ Text = $txt; Kind = $kind; Src = $src; Norm = (& $normDlssVer ([string]$en.ver)); Num = (ConvertTo-UpscalerVersionObj ([string]$en.ver) ([string]$en.label)); Ord = $ord })
                 $ord++
             }
             foreach ($lv in $local) {
@@ -83131,6 +85721,13 @@ $menuD.ShowImageMargin = $false
 
 $btnSettings.Add_Click({
     try {
+        # Зелёная вспышка до открытия окна настроек (как у «Обновить» / «Добавить»).
+        try {
+            Start-MainBtnGreenPulse $btnSettings 500
+            $btnSettings.Invalidate()
+            $btnSettings.Update()
+            [System.Windows.Forms.Application]::DoEvents()
+        } catch {}
         Show-ProgramSettingsDialog | Out-Null
         if([string]::IsNullOrWhiteSpace([string]$global:steamGridDbApiKey)){
             $labelHeader.Text=(T 'sl_sg_nokey')
@@ -83145,6 +85742,8 @@ $btnSettings.Add_Click({
             [System.Windows.Forms.MessageBoxButtons]::OK,
             [System.Windows.Forms.MessageBoxIcon]::Error
         ) | Out-Null
+    } finally {
+        try { Clear-MainBtnGreenPulse $btnSettings } catch {}
     }
 })
 
@@ -83266,7 +85865,8 @@ function Update-FavoriteButtons {
             $dir = Get-PanelCurrentDir $panel
             $isFav = (-not [string]::IsNullOrWhiteSpace($dir)) -and ((Find-FavoriteIndex $dir) -ge 0)
             $bStar.Tag.Fav = [bool]$isFav
-            $bStar.ForeColor = $(if ($isFav) { $steamUi.Accent } else { $steamUi.Text })
+            # Установленная звезда — зелёный логотипа (ModeOn), пустая — обычный текст.
+            $bStar.ForeColor = $(if ($isFav) { $steamUi.ModeOn } else { $steamUi.Text })
             $bStar.Invalidate()
             if ($null -ne $mainToolTip) {
                 $mainToolTip.SetToolTip($bStar, (T $(if ($isFav) { 'fav_tip_remove' } else { 'fav_tip_add' })))
@@ -84283,6 +86883,7 @@ function Move-SelectedGames($source) {
     $reserve = [int64]$script:MoveReserveBytes
 
     $btnMoveGame.Enabled = $false
+    Set-MainAddGamesButtonBusy $true
     $btnRefreshLibrary.Enabled = $false
     $btnAddToSteam.Enabled = $false
     # Пока идёт перенос, окно библиотеки открывать нельзя (иначе ошибка в таймере и гонка за файлы).
@@ -84514,6 +87115,7 @@ function Move-SelectedGames($source) {
         try { if ($null -ne $script:scMainWindowGuard) { $script:scMainWindowGuard.ActivateRestoresMinimized = $false } } catch {}
         if ($steamClosed) { Start-SteamIfAuto $steamPathProperty }
         $btnMoveGame.Enabled = $true
+        Set-MainAddGamesButtonBusy $false
         $btnRefreshLibrary.Enabled = $true
         $btnAddToSteam.Enabled = $true
         try { $btnSteamLibrary.Enabled = $true; $btnSteamLibrary.Invalidate() } catch {}
@@ -84535,10 +87137,15 @@ $btnMoveGame.Add_Click({
 $btnRefreshLibrary.Add_Click({
     if (-not $btnRefreshLibrary.Enabled) { return }
     Move-FocusToSink $btnRefreshLibrary
+    try { Start-MainBtnGreenPulse $btnRefreshLibrary 500 } catch {}
     $btnRefreshLibrary.Enabled = $false
     $script:refreshBtnBusy = $true
-    try { $btnRefreshLibrary.FlatAppearance.BorderColor = $steamUi.Accent2; $btnRefreshLibrary.Invalidate(); $btnRefreshLibrary.Update() } catch {}
+    try {
+        $btnRefreshLibrary.FlatAppearance.BorderColor = $steamUi.Accent2
+        $btnRefreshLibrary.Invalidate(); $btnRefreshLibrary.Update()
+    } catch {}
     $btnMoveGame.Enabled = $false
+    Set-MainAddGamesButtonBusy $true
     $btnAddToSteam.Enabled = $false
     $refreshSusp = $false
     try {
@@ -84583,7 +87190,10 @@ $btnRefreshLibrary.Add_Click({
     } finally {
         if ($refreshSusp) { try { Resume-MainPanelsRedraw } catch {} }
         $script:refreshBtnBusy = $false
-        try { $btnRefreshLibrary.FlatAppearance.BorderColor = $steamUi.Border } catch {}
+        try {
+            if (Test-MainBtnGreenPulse $btnRefreshLibrary) { $btnRefreshLibrary.FlatAppearance.BorderColor = $steamUi.Accent2 }
+            else { $btnRefreshLibrary.FlatAppearance.BorderColor = $steamUi.Border }
+        } catch {}
         $btnRefreshLibrary.Enabled = $true
         try { $btnRefreshLibrary.Invalidate() } catch {}
         # РАНЬШЕ здесь было безусловное $btnMoveGame.Enabled = $true /
@@ -84593,7 +87203,7 @@ $btnRefreshLibrary.Add_Click({
         # Refresh-Panels/Update-MainLibraryButtonState уже корректно её
         # выключили. Пересчитываем состояние заново по реальному количеству
         # отмеченных игр, вместо того чтобы включать кнопки вслепую.
-        try { Update-MainLibraryButtonState } catch { $btnMoveGame.Enabled = $true; $btnAddToSteam.Enabled = $true }
+        try { Update-MainLibraryButtonState } catch { $btnMoveGame.Enabled = $true; $btnAddToSteam.Enabled = $true; Set-MainAddGamesButtonBusy $false }
     }
 })
 
@@ -84622,8 +87232,9 @@ function Apply-Localization {
         $mainToolTip.SetToolTip($btnRefreshLibrary, (T 'btn_refresh'))
         try { Update-MainCollButtonLook } catch {}
         $lblBatchAuto.Text = (T 'batch_auto')
+        try { $btnProgCancel.Text = (T 'lib_import_cancel') } catch {}
         $batchAutoTooltipText = (T 'batch_auto_tip')
-        $mainToolTip.SetToolTip($pnlBatchToggle, $batchAutoTooltipText)
+        $mainToolTip.SetToolTip($pnlBatchToggle, ((T 'batch_auto') + ': ' + $batchAutoTooltipText))
         $mainToolTip.SetToolTip($lblBatchAuto, $batchAutoTooltipText)
         foreach ($hs in @('C','D')) {
             $mainToolTip.SetToolTip($script:headerParts[$hs].Cb, (T 'tip_select_all'))
@@ -84702,6 +87313,156 @@ function Update-CheckedStatusHint ([switch]$Force) {
     $script:autoStatusText = $new
 }
 
+# ---------------------------------------------------------------------------
+# «Применить изменения (N)»: у уже добавленных игр одновременно выбраны два действия или больше из трёх -
+# смена эмулятора / враппера, рамка обложек, коллекции. Одна нижняя кнопка (место «Сменить коллекции») выполняет их по порядку:
+# сначала эмулятор / враппер (меняется ярлык), затем рамки (обложки перерисовываются уже под новый ярлык), затем коллекции.
+# ---------------------------------------------------------------------------
+$script:applyAllMode = $false          # нижняя кнопка сейчас работает как «Применить изменения»
+$script:applyAllParts = $null          # { Swap; Frames; Coll; IsWrapper; Revert } на момент последнего пересчёта кнопок
+$script:applyAllKeepChecks = $false    # на время общего применения смена эмулятора / враппера не снимает отметки игр
+$script:applyAllRunning = $false
+$script:applyAllTipSig = ''
+
+# Изменит ли «Сменить эмулятор / враппер» хоть одну из отмеченных игр. Для ROM: у игры уже тот же эмулятор (не RetroArch) -> менять нечего,
+# тогда эмулятор в общее действие не входит. Если не удалось определить - считаем, что изменит.
+function Test-MainSwapWouldChange ($SwapProfile, [bool]$IsWrapper) {
+    if ($IsWrapper) { return $true }
+    try {
+        $isRA = $false
+        try { $isRA = [bool](Test-IsRetroArchProfile ([string]$SwapProfile.Name) ([string]$SwapProfile.ExePath)) } catch {}
+        $rows = @(Get-ShortcutLightIndex)
+        foreach ($game in @(Get-CheckedGames)) {
+            $gk = [string](Get-NormalizedGamePathKey $game.Path)
+            if ([string]::IsNullOrWhiteSpace($gk)) { continue }
+            $gkDir = $gk.TrimEnd('\') + '\'
+            foreach ($r in $rows) {
+                $hit = $false
+                foreach ($q in @($r.Quoted)) {
+                    $qs = [string]$q
+                    if ($qs -eq $gk -or $qs.StartsWith($gkDir, [System.StringComparison]::OrdinalIgnoreCase)) { $hit = $true; break }
+                }
+                if (-not $hit) { continue }
+                $cur = $null
+                try { $cur = Get-EmulatorProfileByExePath ([string]$r.Exe) } catch {}
+                if ($isRA -or $null -eq $cur -or [string]$cur.Id -ne [string]$SwapProfile.Id) { return $true }
+                break
+            }
+        }
+        return $false
+    } catch { return $true }
+}
+
+# Подсказка общей кнопки: что именно будет сделано.
+function Get-MainApplyAllTip ($Parts, $SwapProfile) {
+    $items = New-Object System.Collections.Generic.List[string]
+    try {
+        if ([bool]$Parts.Swap -and $null -ne $SwapProfile) {
+            [void]$items.Add((T $(if ([bool]$Parts.IsWrapper) { 'apply_all_wrap' } else { 'apply_all_emu' }) @([string]$SwapProfile.Name)))
+        }
+    } catch {}
+    try {
+        if ([bool]$Parts.Frames) {
+            $nmF = [string](Get-MainFramesChoiceName ([string]$script:mainFramesPending))
+            if ($nmF -eq '') { $nmF = [string]$script:mainFramesPending }
+            [void]$items.Add((T 'apply_all_frames' @($nmF)))
+        }
+    } catch {}
+    try {
+        if ([bool]$Parts.Coll) {
+            $inK = @(@($script:mainCollPending.Keys) | Where-Object { [string]$script:mainCollPending[$_] -eq 'in' })
+            $nmC = ''
+            if ($inK.Count -gt 0 -and $null -ne $script:mainCollSnap) {
+                $full = [string](Get-CardCollTooltip $script:mainCollSnap $inK)
+                $ix = $full.IndexOf(': ')
+                if ($ix -ge 0) { $nmC = $full.Substring($ix + 2) }
+            }
+            if ($nmC -eq '') { $nmC = [string](T 'btn_coll_tip_editor') }
+            [void]$items.Add((T 'apply_all_coll' @($nmC)))
+        }
+    } catch {}
+    return ($items.ToArray() -join ', ')
+}
+
+# Накопленные создания/удаления коллекций и состав коллекций у уже добавленных игр (общая часть «Сменить коллекции» и «Применить изменения»).
+function Invoke-MainCollApplyPendingCore {
+    # 1) Накопленные создания/удаления коллекций; не записались - остальное не трогаем, очередь остаётся для повтора.
+    $structOk = $true
+    if ((Get-MainCollStructCount) -gt 0) {
+        Invoke-MainCollStructApply
+        $structOk = [bool]$script:mainCollStructApplyOk
+    }
+    # 2) Накопленный состав коллекций у уже добавленных игр.
+    if ($structOk -and @($script:mainCollPending.Keys).Count -gt 0) {
+        $existing = @((Get-MainCollTargets).Existing)
+        if ($existing.Count -gt 0) {
+            $snap = Read-SteamCollectionsSnapshot
+            $changes = @{}
+            foreach ($k in @($script:mainCollPending.Keys)) { $changes[[string]$k] = [string]$script:mainCollPending[$k] }
+            Invoke-MainCollApplyExisting $snap $existing $changes
+            if ($script:mainCollApplyOk) {
+                $script:mainCollPending = @{}
+                $script:mainCollOnlyLibrary = $false
+                # Список коллекций закрываем, отметки с игр снимаем.
+                try { if ($null -ne $script:mainCollMenuCtl) { $script:mainCollMenuCtl.Close() } } catch {}
+                try { $global:checkedC.Clear(); $global:checkedD.Clear(); Refresh-Panels } catch {}
+            }
+        }
+    }
+    Update-MainCollButtonLook
+}
+
+# Выполняет выбранные действия по порядку: эмулятор / враппер -> рамки -> коллекции.
+function Invoke-MainApplyAll {
+    if ($script:applyAllRunning -or $script:moveInProgress -or $script:batchInProgress -or $script:smartBatchActive -or $script:mainCollBusy -or $script:mainCollEditorBusy) { return }
+    $parts = $script:applyAllParts
+    if ($null -eq $parts) { return }
+    $script:applyAllRunning = $true
+    $msgs = New-Object System.Collections.Generic.List[string]
+    try {
+        Move-FocusToSink $btnApplyColl
+        $btnApplyColl.Enabled = $false
+        $selFrames = [string]$script:mainFramesPending
+        # Отметки игр нужны всем трём шагам: общее применение снимает их один раз в конце.
+        $script:applyAllKeepChecks = $true
+        try {
+            # 1) Эмулятор / враппер: меняется ярлык игры.
+            if ([bool]$parts.Swap) {
+                try {
+                    if ([bool]$parts.IsWrapper) { if ([bool]$parts.Revert) { Invoke-MainWrapperRevert } else { Invoke-MainWrapperSwap } } else { Invoke-MainRomEmulatorSwap }
+                } catch { try { Write-LauncherLog ('applyAll swap: ' + $_.Exception.Message) } catch {} }
+                try { $t1 = [string]$labelHeader.Text; if ($t1 -ne '') { [void]$msgs.Add($t1) } } catch {}
+            }
+            # 2) Рамки обложек: обложки перерисовываются уже под новый ярлык.
+            if ([bool]$parts.Frames -and $selFrames -ne '') {
+                try {
+                    $tgA = @(Get-MainFramesTargets)
+                    if ($tgA.Count -eq 0) { [void]$msgs.Add([string](T 'bulk_frames_none')) }
+                    else {
+                        $script:mainFramesPending = ''
+                        Update-MainFramesButtonLook
+                        Invoke-BulkCoverFrames $tgA $selFrames $form $null
+                        try { $t2 = [string]$labelHeader.Text; if ($t2 -ne '') { [void]$msgs.Add($t2) } } catch {}
+                    }
+                } catch { try { Write-LauncherLog ('applyAll frames: ' + $_.Exception.Message) } catch {} }
+            }
+            # 3) Коллекции: Steam закрывается на время записи и запускается снова (как у кнопки «Сменить коллекции»).
+            if ([bool]$parts.Coll) {
+                try {
+                    Invoke-MainCollApplyPendingCore
+                    try { $t3 = [string]$labelHeader.Text; if ($t3 -ne '') { [void]$msgs.Add($t3) } } catch {}
+                } catch { try { Write-LauncherLog ('applyAll collections: ' + $_.Exception.Message + ' | ' + [string]$_.ScriptStackTrace) } catch {} }
+            }
+        } finally { $script:applyAllKeepChecks = $false }
+        # Без коллекций отметки не снял никто: снимаем здесь (с коллекциями их снимает сама запись при успехе).
+        if (-not [bool]$parts.Coll) { try { $global:checkedC.Clear(); $global:checkedD.Clear(); Refresh-Panels } catch {} }
+        try { $labelHeader.Text = (@($msgs.ToArray() | Select-Object -Unique) -join '  |  ') } catch {}
+    } finally {
+        $script:applyAllRunning = $false
+        try { $btnApplyColl.Enabled = $true } catch {}
+    }
+}
+
 function Update-MainLibraryButtonState {
     # Режим действия (апскейлеры / сохранения / коллекции) поменялся - перерисовываем списки, иначе неактивные галочки
     # остаются серыми (или активные - нет) до первого щелчка по панели.
@@ -84719,6 +87480,7 @@ function Update-MainLibraryButtonState {
     try {
         if ($script:batchInProgress -or $script:moveInProgress -or $script:sizeCalcBtnSwapped) {
             try { if ($null -ne $btnMainRemoveLib -and [bool]$btnMainRemoveLib.Enabled) { $btnMainRemoveLib.Enabled = $false } } catch {}
+            try { Set-MainAddGamesButtonBusy $true } catch {}
             return
         }
 
@@ -84749,7 +87511,10 @@ function Update-MainLibraryButtonState {
             if ($moveTip -ne [string]$script:moveTipText) { $script:moveTipText = $moveTip; $mainToolTip.SetToolTip($btnMoveGame, $moveTip) }
         } catch {}
         # Кнопка «Рамки обложек» активна, пока отмечена хотя бы одна игра и не выбран режим апскейлеров/сохранений.
-        try { $btnMainFrames.Enabled = ($ready -and $totalChecked -ge 1 -and -not (Test-MainActionModeActive)); $btnMainFrames.Invalidate() } catch {}
+        # Без отмеченных игр кнопка открывает менеджер рамок, с отмеченными - меню выбора рамки.
+        try { $script:mainFramesNoSel = ($totalChecked -lt 1); $script:mainFramesSelCount = [int]$totalChecked; $btnMainFrames.Enabled = ($ready -and -not (Test-MainActionModeActive)); $btnMainFrames.Invalidate() } catch {}
+        # Счётчик отмеченных игр есть и на кнопках «Библиотеки» и «Сохранения».
+        try { $btnMainLibs.Invalidate(); $btnMainSaves.Invalidate(); $btnMoveGame.Invalidate(); $btnMainRomsMode.Invalidate(); $btnMainWrappersMode.Invalidate() } catch {}
         # Кнопка «Коллекции» активна без выбранных игр (редактор структуры); при выбранных играх сохраняется прежнее ограничение режимов.
         # В режимах апскейлеров и сохранений коллекции недоступны (действия взаимоисключающие).
         # Снятие всех отметок сбрасывает выбор коллекций для новых игр.
@@ -84772,6 +87537,16 @@ function Update-MainLibraryButtonState {
                 }
             }
         }
+        # Отдельная кнопка «Добавить новые игры в библиотеку» между панелями: доступна, пока среди отмеченных есть игры, которых ещё нет в Steam
+        # (при смешанном выборе она работает независимо от нижней кнопки - добавляются только новые игры).
+        try {
+            $script:mainAddableCount = [int]$addableCount
+            $btnMainAddGames.Enabled = ($ready -and $addableCount -ge 1)
+            $addGamesTip = (T 'btn_add_batch')
+            if ($addableCount -ge 1) { $addGamesTip = (T 'btn_add_batch_n' @($addableCount)) }
+            if ($addGamesTip -ne [string]$script:addGamesTipText) { $script:addGamesTipText = $addGamesTip; $mainToolTip.SetToolTip($btnMainAddGames, $addGamesTip) }
+            $btnMainAddGames.Invalidate()
+        } catch {}
 
         # Выбранный вариант рамки сбрасывается, когда не осталось отмеченных игр или выбрано действие с апскейлерами/сохранениями.
         # Есть новые игры (их ещё нет в Steam): приоритет у добавления, как у коллекций - выбор рамки относится к ним, а ожидающая смена
@@ -84870,6 +87645,18 @@ function Update-MainLibraryButtonState {
         $collStructN = Get-MainCollStructCount
         $collApplyWanted = ($ready -and ($collMemberWanted -or $collStructN -ge 1))
         $collApplyN = $collStructN + $(if ($collMemberWanted) { $totalChecked } else { 0 })
+        # Два действия или больше сразу (эмулятор / враппер, рамки, коллекции) у уже добавленных игр: общая кнопка «Применить изменения (N)».
+        # Смена эмулятора входит в общее действие, только если она что-то меняет у отмеченных игр.
+        $swapPart = $false
+        if ($null -ne $swapProfile -and -not $libsApplyWanted -and -not $savesApplyWanted -and ($framesApplyWanted -or $collMemberWanted)) {
+            try { $swapPart = [bool](Test-MainSwapWouldChange $swapProfile $swapIsWrapper) } catch { $swapPart = $true }
+        }
+        $comboN = [int]$swapPart + [int]$framesApplyWanted + [int]$collMemberWanted
+        $comboWanted = ($comboN -ge 2 -and -not $libsApplyWanted -and -not $savesApplyWanted)
+        $script:applyAllMode = $comboWanted
+        if ($comboWanted) {
+            $script:applyAllParts = [PSCustomObject]@{ Swap = [bool]$swapPart; Frames = [bool]$framesApplyWanted; Coll = [bool]$collMemberWanted; IsWrapper = [bool]$swapIsWrapper; Revert = [bool]($swapIsWrapper -and (Test-WrapperRevertActive)) }
+        }
         if ($libsApplyWanted) {
             $btnAddToSteam.Visible = $false
             $btnSteamLibrary.Visible = $false
@@ -84882,6 +87669,19 @@ function Update-MainLibraryButtonState {
             $btnRestartSteam.Visible = $false
             $btnSwapEmuMain.Visible = $false
             try { Set-MainSavesApplyButton $savesApplyN } catch {}
+        } elseif ($comboWanted) {
+            $btnAddToSteam.Visible = $false
+            $btnSteamLibrary.Visible = $false
+            $btnRestartSteam.Visible = $false
+            $btnSwapEmuMain.Visible = $false
+            $btnApplyColl.Tag = (T 'btn_apply_all' @($totalChecked))
+            $btnApplyColl.Visible = $true
+            $btnApplyColl.Enabled = $true
+            $collShown = $true
+            try {
+                $tipAll = [string](Get-MainApplyAllTip $script:applyAllParts $swapProfile)
+                if ($tipAll -ne [string]$script:applyAllTipSig) { $script:applyAllTipSig = $tipAll; $mainToolTip.SetToolTip($btnApplyColl, $tipAll) }
+            } catch {}
         } elseif ($framesApplyWanted) {
             $btnAddToSteam.Visible = $false
             $btnSteamLibrary.Visible = $false
@@ -84891,13 +87691,6 @@ function Update-MainLibraryButtonState {
             $btnApplyFrames.Visible = $true
             $btnApplyFrames.Enabled = $true
             $framesShown = $true
-        } elseif ($ready -and $totalChecked -ge 1 -and $addableCount -ge 1) {
-            $btnAddToSteam.Tag = (T 'btn_add_batch_n' @($addableCount))
-            $btnAddToSteam.Visible = $true
-            $btnAddToSteam.Enabled = $true
-            $btnSteamLibrary.Visible = $false
-            $btnRestartSteam.Visible = $false
-            $btnSwapEmuMain.Visible = $false
         } elseif ($collApplyWanted) {
             $btnAddToSteam.Visible = $false
             $btnSteamLibrary.Visible = $false
@@ -84917,8 +87710,8 @@ function Update-MainLibraryButtonState {
             $btnSwapEmuMain.Enabled = $true
         } else {
             $btnSwapEmuMain.Visible = $false
-            # Если отмечены только игры, которые уже есть в Steam, кнопки
-            # добавления вообще быть не должно — показываем библиотеку.
+            # Добавление игр нижней кнопкой отвязано: оно живёт на кнопке между панелями (btnMainAddGames),
+            # а нижняя кнопка здесь всегда показывает библиотеку (или «Перезапустить Steam»).
             $btnAddToSteam.Visible = $false
             # Ручной режим перезапуска и есть изменения карточек: вместо «Библиотеки» — «Перезапустить Steam».
             $wantRestart = Get-SteamRestartWanted
@@ -84928,6 +87721,20 @@ function Update-MainLibraryButtonState {
             $btnSteamLibrary.Tag = (T 'btn_steam_library')
         }
 
+        try { if (-not $comboWanted -and [string]$script:applyAllTipSig -ne '') { $script:applyAllTipSig = ''; $mainToolTip.SetToolTip($btnApplyColl, '') } } catch {}
+        # Счётчик на кнопках режимов ROMs / Wrappers: только игры, с которыми в режиме сейчас можно что-то сделать, - те же условия, что у нижней кнопки:
+        # есть новые игры - считаются они (кнопка «Добавить в библиотеку»); иначе, если доступна «Сменить эмулятор/враппер», - все отмеченные; иначе 0.
+        try {
+            $modeCnt = 0
+            if ($ready -and $totalChecked -ge 1 -and (Test-MainRomWrapperModeActive)) {
+                if ($addableCount -ge 1) { $modeCnt = [int]$addableCount }
+                elseif ($null -ne $swapProfile -and ([bool]$btnSwapEmuMain.Visible -or ($comboWanted -and [bool]$swapPart))) { $modeCnt = [int]$totalChecked }
+            }
+            if ($modeCnt -ne [int]$script:mainModeSelCount) {
+                $script:mainModeSelCount = $modeCnt
+                $btnMainRomsMode.Invalidate(); $btnMainWrappersMode.Invalidate()
+            }
+        } catch {}
         try { if (-not $libsApplyWanted -and [bool]$btnApplyLibs.Visible) { $btnApplyLibs.Visible = $false } } catch {}
         try { if (-not $savesApplyWanted -and [bool]$btnApplySaves.Visible) { $btnApplySaves.Visible = $false } } catch {}
         try { if (-not $collShown -and [bool]$btnApplyColl.Visible) { $btnApplyColl.Visible = $false } } catch {}
@@ -85458,10 +88265,27 @@ function Get-PanelCtxMenuIcon ([string]$Kind) {
                 $g.FillRectangle($br, 24, 6, 2, 18)
             }
             'libs' { Draw-LibsGlyph $g ([single]15) ([single]15) $col ([single]20) }
-            'trash' {
-                # Красная корзина: тот же рисунок и размер (18x18 в поле 30x30, масштаб 1.5), что у значка «Удалить из библиотеки»
+            'addgame' {
+                # Контурный квадрат со срезанными углами и плюсом внутри: в стиле соседних значков меню (папка и др.), а не сплошная заливка.
+                # Рисуется без сглаживания целыми чётными пикселями битмапа 32x32 (квадрат 26, линия 2): в колонке 16x16 получается чёткий квадрат 13 px с линией 1 px; нечётный размер нужен, чтобы плюс стоял строго по центру рамки.
+                $g.ResetTransform()
+                $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::None
+                $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::None
+                $br = New-Object System.Drawing.SolidBrush($col)
+                $x0 = 2; $y0 = 2; $n = 26; $t = 2
+                $g.FillRectangle($br, ($x0 + $t), $y0, ($n - 2 * $t), $t)
+                $g.FillRectangle($br, ($x0 + $t), ($y0 + $n - $t), ($n - 2 * $t), $t)
+                $g.FillRectangle($br, $x0, ($y0 + $t), $t, ($n - 2 * $t))
+                $g.FillRectangle($br, ($x0 + $n - $t), ($y0 + $t), $t, ($n - 2 * $t))
+                # Рамка 13 px (нечётная), линия плюса 1 px ровно в её середине (14..15 в битмапе), плечи по 3 px в каждую сторону от центра.
+                $g.FillRectangle($br, 8, 14, 14, 2)
+                $g.FillRectangle($br, 14, 8, 2, 14)
+            }
+            { $_ -in @('trash', 'trashred') } {
+                # Корзина: тот же рисунок и размер (18x18 в поле 30x30, масштаб 1.5), что у значка «Удалить из библиотеки»
                 # на кнопке между панелями и у соседних значков меню (папка и т.д.), поэтому встаёт в одну колонку с ними.
-                $pen.Color = [System.Drawing.Color]::FromArgb(232, 96, 96)
+                # 'trash' - цвета текста (обычное удаление из библиотеки), 'trashred' - красная (Shift: удаление вместе с папкой игры).
+                if ($Kind -eq 'trashred') { $pen.Color = [System.Drawing.Color]::FromArgb(232, 96, 96) }
                 $pen.Width = 1.8
                 $ln = { param($x1, $y1, $x2, $y2) $g.DrawLine($pen, [single]$x1, [single]$y1, [single]$x2, [single]$y2) }
                 # Крышка и ручка.
@@ -85518,6 +88342,44 @@ function Get-PanelCtxMenuIcon ([string]$Kind) {
         if ($null -ne $g) { try { $g.Dispose() } catch {} }
     }
 }
+# Корзина в контекстных меню (панели главного окна и плитка библиотеки): как кнопка «Удалить из библиотеки» между панелями -
+# обычный режим: значок цвета текста (удалить только из библиотеки), при удержании Shift - красный (удалить ещё и папку игры с диска).
+# Цвет выставляется при создании пункта и меняется «на лету», пока меню открыто: таймер следит за Shift.
+function Test-TrashShiftHeld {
+    try { return ((([System.Windows.Forms.Control]::ModifierKeys -band [System.Windows.Forms.Keys]::Shift) -eq [System.Windows.Forms.Keys]::Shift)) } catch { return $false }
+}
+$script:trashMenuItem = $null
+$script:trashMenuShift = $false
+$script:trashMenuTimer = $null
+function Register-TrashMenuItem ($Item) {
+    try {
+        $sh = Test-TrashShiftHeld
+        $ic = Get-PanelCtxMenuIcon $(if ($sh) { 'trashred' } else { 'trash' })
+        if ($null -ne $ic) { $Item.Image = $ic; $Item.ImageScaling = [System.Windows.Forms.ToolStripItemImageScaling]::SizeToFit }
+        # Одновременно открыто одно контекстное меню, поэтому следим за последним созданным пунктом-корзиной.
+        $script:trashMenuItem = $Item
+        $script:trashMenuShift = $sh
+        if ($null -eq $script:trashMenuTimer) {
+            $tm = New-Object System.Windows.Forms.Timer
+            $tm.Interval = 60
+            $tm.Add_Tick({
+                try {
+                    $it = $script:trashMenuItem
+                    if ($null -eq $it -or $it.IsDisposed) { return }
+                    $ow = $it.Owner
+                    if ($null -eq $ow -or -not $ow.Visible) { return }
+                    $sh2 = Test-TrashShiftHeld
+                    if ($sh2 -eq [bool]$script:trashMenuShift) { return }
+                    $script:trashMenuShift = $sh2
+                    $ic2 = Get-PanelCtxMenuIcon $(if ($sh2) { 'trashred' } else { 'trash' })
+                    if ($null -ne $ic2) { $it.Image = $ic2; try { $ow.Invalidate() } catch {} }
+                } catch {}
+            })
+            $tm.Start()
+            $script:trashMenuTimer = $tm
+        }
+    } catch {}
+}
 function Set-PanelCtxItemIcon ($Item, [string]$Kind) {
     try {
         $ic = Get-PanelCtxMenuIcon $Kind
@@ -85540,6 +88402,8 @@ function New-PanelCtxMenu {
     $m.ShowCheckMargin = $false
     $m.ShowImageMargin = $true
     $m.ImageScalingSize = New-Object System.Drawing.Size(16, 16)
+    # Подсказки не должны налезать на открытое меню (как в карточке игры).
+    try { if ($null -ne ('SCToolTip' -as [type])) { [SCToolTip]::WatchMenu($m) } } catch {}
     return $m
 }
 
@@ -85565,14 +88429,16 @@ function Add-PanelCtxItem ($Menu, [string]$Text, [bool]$Enabled, [string]$Action
         'rst' { $iconKind = 'undo' }
         'mainsaves' { $iconKind = $(if ([string]$Data -eq 'scan') { 'scan' } elseif ([string]$Data -eq 'backup') { 'backup' } else { 'restore' }) }
         'mainlibs' { $iconKind = $(if ([string]$Data -eq 'upd') { 'libs' } else { 'undo' }) }
-        'rmlib' { $iconKind = 'trash' }
+        'addlib' { $iconKind = 'addgame' }
     }
     if ($iconKind) { Set-PanelCtxItemIcon $mi $iconKind }
+    # Корзина «Удалить из библиотеки»: белая, а при удержании Shift красная (удаление с диска).
+    if ($Action -eq 'rmlib') { Register-TrashMenuItem $mi }
     $mi.Add_Click({ param($s2, $e2) try { Invoke-PanelCtxAction $s2.Tag } catch { try { Write-LauncherLog ('panelCtx: ' + $_.Exception.Message) } catch {} } })
     [void]$Menu.Items.Add($mi)
 }
 
-# «Удалить из библиотеки» - последний пункт меню игры в панели (красная корзина, после разделителя).
+# «Удалить из библиотеки» - последний пункт меню игры в панели (корзина: белая, при Shift красная; после разделителя).
 # Одна игра: удаляется именно она (даже если не отмечена галочкой). Несколько отмеченных игр: удаляются все отмеченные,
 # как по кнопке между панелями. Файлы игр на диске не трогаются; подтверждение и закрытие Steam - в Invoke-MainRemoveFromLibrary.
 function Add-PanelCtxRemoveLibItem ($Menu, [string]$Name, [string]$Source, [string]$Path, [bool]$Multi, [int]$Count, $Entry = $null) {
@@ -85618,10 +88484,27 @@ function Invoke-PanelCtxAction ($Tag) {
         'rst'        { Invoke-PanelCtxUpscalers ([string]$d.Path) ([string]$d.Name) 'rst' }
         'rmlib' {
             $script:panelCtxEntries = $null
+            # Shift (корзина красная): вместе с ярлыком удаляется и папка игры с диска - как у кнопки-корзины между панелями.
+            $rmShift = Test-TrashShiftHeld
             if ($null -eq $d) {
-                $rmGames = @(Get-CheckedGames | Where-Object { -not (Test-PanelPathIsSteamApp ([string]$_.Path)) })
-                if ($rmGames.Count -gt 0) { Invoke-MainRemoveFromLibrary $rmGames }
-            } else { Invoke-MainRemoveFromLibrary @($d) }
+                if ($rmShift) {
+                    # Те же правила, что у кнопки между панелями: игры из библиотеки удаляются вместе с папкой, отмеченные файлы и папки вне библиотеки - с диска.
+                    $rmGamesIn = @(Get-CheckedGames | Where-Object {
+                        $rmKey = Get-NormalizedGamePathKey ([string]$_.Path)
+                        ($rmKey -and $global:installedSteamGames.ContainsKey($rmKey)) -and -not (Test-PanelPathIsSteamApp ([string]$_.Path))
+                    })
+                    $rmDiskOk = $true
+                    $rmDiskItems = @(Get-CheckedGames | Where-Object {
+                        $dkKey = Get-NormalizedGamePathKey ([string]$_.Path)
+                        -not ($dkKey -and $global:installedSteamGames.ContainsKey($dkKey)) -and (Test-MainDiskItemDeletable ([string]$_.Path))
+                    })
+                    if ($rmDiskItems.Count -gt 0) { $rmDiskOk = [bool](Invoke-MainDeleteDiskItems $rmDiskItems) }
+                    if ($rmDiskOk -and $rmGamesIn.Count -gt 0) { Invoke-MainRemoveFromLibrary $rmGamesIn $true }
+                } else {
+                    $rmGames = @(Get-CheckedGames | Where-Object { -not (Test-PanelPathIsSteamApp ([string]$_.Path)) })
+                    if ($rmGames.Count -gt 0) { Invoke-MainRemoveFromLibrary $rmGames }
+                }
+            } else { Invoke-MainRemoveFromLibrary @($d) $rmShift }
             $script:panelCtxEntries = $null
             try { Update-MainLibraryButtonState } catch {}
         }
@@ -85963,6 +88846,23 @@ function Update-PanelCollections {
             } catch {}
         }
     } catch {}
+    # Особый пункт «Библиотека VR»: не коллекция Steam, а поле OpenVR у ярлыков в shortcuts.vdf. Подмешиваем его в список и карту
+    # под ключом col:__vr (как в Read-SteamCollectionsSnapshotCore), чтобы он был и здесь, наравне с «Избранным» и «Скрытыми».
+    try {
+        $vrKey = 'col:__vr'
+        [void]$list.Insert(0, [PSCustomObject]@{ Key = $vrKey; Name = (T 'lib_filter_coll_vr') })
+        # Лицензионные игры: VR-статус из appinfo.vdf, только чтение (как у Steam).
+        foreach ($vrLic in @(Get-LicensedVrAppIds)) {
+            if (-not $map.ContainsKey($vrLic)) { $map[$vrLic] = New-Object System.Collections.Generic.List[string] }
+            if (-not $map[$vrLic].Contains($vrKey)) { [void]$map[$vrLic].Add($vrKey) }
+        }
+        foreach ($pdVr in @(Get-ConfiguredSteamProfileDirectories)) {
+            foreach ($vrId in @(Get-OpenVRAppIdsForProfile ([string]$pdVr.FullName))) {
+                if (-not $map.ContainsKey($vrId)) { $map[$vrId] = New-Object System.Collections.Generic.List[string] }
+                if (-not $map[$vrId].Contains($vrKey)) { [void]$map[$vrId].Add($vrKey) }
+            }
+        }
+    } catch {}
     try { Apply-PendingCollOverlay $map $list $nameMap } catch {}
     $script:panelCollMap = $map
     $script:panelCollList = $list.ToArray()
@@ -86083,8 +88983,7 @@ function Invoke-PanelCtxCollections {
         # Список для окна: «Избранное» и «Скрыто» сверху, дальше по алфавиту.
         $sortRows = New-Object System.Collections.Generic.List[object]
         foreach ($c in $colls) {
-            $ord = 2
-            if ([string]$c.Key -eq 'col:favorite') { $ord = 0 } elseif ([string]$c.Key -eq 'col:hidden') { $ord = 1 }
+            $ord = Get-CollGroupOrd ([string]$c.Key)
             [void]$sortRows.Add([PSCustomObject]@{ Ord = $ord; Low = ([string]$c.Name).ToLowerInvariant(); C = $c })
         }
         $items = New-Object System.Collections.Generic.List[object]
@@ -86118,10 +89017,11 @@ function Invoke-PanelCtxCollections {
                 if (($want -eq 'in') -eq $isIn) { continue }
                 $ids = Get-CollEntryIds $g
                 if ($null -eq $ids) { continue }
+                if ($cid -eq '__vr' -and [string]$g.Kind -ne 'shortcut') { continue }  # лицензионные: только чтение
                 if (-not $byCid.ContainsKey($cid)) { $byCid[$cid] = New-Object System.Collections.Generic.List[object] }
                 [void]$byCid[$cid].Add([PSCustomObject]@{ Ids = $ids; Want = $want; Kind = [string]$g.Kind })
                 # Ярлык мог попасть в коллекцию через тег с её именем — тогда при снятии галочки тег тоже убираем.
-                if ($want -eq 'out' -and [string]$g.Kind -eq 'shortcut' -and $cid -ne 'favorite' -and $cid -ne 'hidden' -and $nmLow) {
+                if ($want -eq 'out' -and [string]$g.Kind -eq 'shortcut' -and $cid -ne 'favorite' -and $cid -ne 'hidden' -and $cid -ne '__vr' -and $nmLow) {
                     $hasTag = $false
                     foreach ($tg in @(Get-PanelCollEntryTags $g)) { if (([string]$tg).Trim().ToLowerInvariant() -eq $nmLow) { $hasTag = $true; break } }
                     if ($hasTag) { [void]$tagWork.Add([PSCustomObject]@{ Entry = $g; NamesLower = @($nmLow) }) }
@@ -86232,8 +89132,7 @@ function Add-PanelCtxCollectionsItem {
     # «Избранное» и «Скрыто» сверху, дальше по алфавиту.
     $sortRows = New-Object System.Collections.Generic.List[object]
     foreach ($c in $colls) {
-        $ord = 2
-        if ([string]$c.Key -eq 'col:favorite') { $ord = 0 } elseif ([string]$c.Key -eq 'col:hidden') { $ord = 1 }
+        $ord = Get-CollGroupOrd ([string]$c.Key)
         [void]$sortRows.Add([PSCustomObject]@{ Ord = $ord; Low = ([string]$c.Name).ToLowerInvariant(); C = $c })
     }
     $dd = $itC.DropDown
@@ -86244,8 +89143,12 @@ function Add-PanelCtxCollectionsItem {
     Initialize-SCContextChecklist $dd $snd $false 18 $null 0 $false
     $dd.Add_Closing({ param($s, $e) try { if ($e.CloseReason -eq [System.Windows.Forms.ToolStripDropDownCloseReason]::ItemClicked -and $null -ne $script:panelCollDrop -and $script:panelCollDrop.Visible -and $script:panelCollDrop.Bounds.Contains([System.Windows.Forms.Cursor]::Position)) { $e.Cancel = $true } } catch {} })
     $collFrom = $dd.Items.Count
+    $prevSteamCk = $false
     foreach ($sr in @($sortRows.ToArray() | Sort-Object -Property Ord, Low)) {
         $ck = [string]$sr.C.Key
+        # Между системными коллекциями Steam и пользовательскими — разделитель.
+        if ($prevSteamCk -and -not (Test-CollSteamKey $ck)) { [void]$dd.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)) }
+        $prevSteamCk = (Test-CollSteamKey $ck)
         $n = [int]$cnt[$ck]
         $nm = ([string]$sr.C.Name).Replace('&', '&&')
         $mi = New-Object System.Windows.Forms.ToolStripMenuItem
@@ -86265,12 +89168,29 @@ function Add-PanelCtxCollectionsItem {
             $mi.CheckState = [System.Windows.Forms.CheckState]::Checked
             $initSt = 1
         }
-        $mi.Tag = [PSCustomObject]@{ Key = $ck; Init = $initSt; Cur = $initSt; BaseText = $nm; Touched = $false }
-        Update-LibCollItemVisual $mi
+        # «Библиотека VR» у лицензионных игр только для чтения: если среди целей нет Non-Steam ярлыков — галочка серая и не снимается.
+        $vrLocked = $false
+        if ($ck -eq 'col:__vr' -and $initSt -eq 1) {
+            $vrLocked = $true
+            foreach ($gLock in $tg) { if ([string]$gLock.Kind -eq 'shortcut') { $vrLocked = $false; break } }
+        }
+        $mi.Tag = [PSCustomObject]@{ Key = $ck; Init = $initSt; Cur = $initSt; BaseText = $nm; Touched = $false; Locked = $vrLocked }
+        if ($vrLocked) {
+            try { $mi.ForeColor = $steamUi.Muted } catch {}
+            Set-CollItemVisual $mi 'prior'
+        } else {
+            Update-LibCollItemVisual $mi
+        }
         $mi.Add_Click({
             param($s2, $e2)
             try {
                 $tx = $s2.Tag
+                if ($null -ne $tx.PSObject.Properties['Locked'] -and [bool]$tx.Locked) {
+                    $tx.Cur = 1
+                    Set-CollItemVisual $s2 'prior'
+                    try { $s2.ForeColor = $steamUi.Muted } catch {}
+                    return
+                }
                 $nv = $(if ([int]$tx.Cur -eq 1) { 0 } else { 1 })
                 $tx.Cur = $nv
                 $tx.Touched = $true
@@ -86309,6 +89229,13 @@ function Add-PanelCtxCollectionsItem {
             foreach ($ox in @($s2.Owner.Items)) {
                 $ot = $ox.Tag
                 if ($null -eq $ot -or $null -eq $ot.PSObject.Properties['Key']) { continue }
+                # Заблокированную VR-метку лицензионных игр «Без категории» не снимает.
+                if ($null -ne $ot.PSObject.Properties['Locked'] -and [bool]$ot.Locked) {
+                    $ot.Cur = 1
+                    Set-CollItemVisual $ox 'prior'
+                    try { $ox.ForeColor = $steamUi.Muted } catch {}
+                    continue
+                }
                 if ([string]$ot.Key -eq '__none__') { $ot.Cur = 1 } else { $ot.Cur = 0 }
                 $ot.Touched = $true
                 $ox.Text = [string]$ot.BaseText
@@ -87251,7 +90178,7 @@ function Invoke-SmartBatchAdd ($selectedGames, [bool]$AutoFill = $true, $OwnerWi
         $cardList = New-Object System.Collections.Generic.List[object]
         $done = 0
 
-        Set-BatchProgressValue ([int](0))
+        Set-BatchProgressValue ([int](1))   # 1%: бар (и «Отменить» в его конце) появляются сразу, с первой фазы
         Set-BatchStatusText ([string]((T 'hd_classify')))
         [System.Windows.Forms.Application]::DoEvents()
 
@@ -87454,7 +90381,7 @@ $btnAddToSteam.Add_Click({
     if(-not $script:batchAutoFillEnabled -and @($selectedGames).Count -eq 1){
         $singleGame=@($selectedGames)[0]
         Move-FocusToSink $btnAddToSteam
-        $btnMoveGame.Enabled=$false;$btnRefreshLibrary.Enabled=$false;$btnAddToSteam.Enabled=$false
+        $btnMoveGame.Enabled=$false;$btnRefreshLibrary.Enabled=$false;$btnAddToSteam.Enabled=$false;Set-MainAddGamesButtonBusy $true
         try{
             if (Test-IsLauncherEntry $singleGame) {
                 Show-GameEditorDialog $singleGame.Name 'Steam' $singleGame.Path $false -IsRomEntry:$false -LauncherEntry $singleGame
@@ -87463,7 +90390,7 @@ $btnAddToSteam.Add_Click({
             }
         }catch{$labelHeader.Text=(T 'hd_card_err' @([string]$_.Exception.Message))}
         finally{
-            $btnMoveGame.Enabled=$true;$btnRefreshLibrary.Enabled=$true;$btnAddToSteam.Enabled=$true
+            $btnMoveGame.Enabled=$true;$btnRefreshLibrary.Enabled=$true;$btnAddToSteam.Enabled=$true;Set-MainAddGamesButtonBusy $false
             $global:checkedC.Clear(); $global:checkedD.Clear()
             Refresh-Panels
         }
@@ -87477,10 +90404,10 @@ $btnAddToSteam.Add_Click({
         # открыта модально (фазы классификации и авто-добавления), главное окно
         # остаётся отзывчивым, и смена выделения в списке иначе сбросила бы текст
         # кнопки обратно через Update-MainLibraryButtonState.
-        $btnMoveGame.Enabled=$false;$btnRefreshLibrary.Enabled=$false
+        $btnMoveGame.Enabled=$false;$btnRefreshLibrary.Enabled=$false;Set-MainAddGamesButtonBusy $true
         $listBoxC.Enabled=$false;$listBoxD.Enabled=$false
         $script:batchInProgress=$true
-        $btnAddToSteam.Tag=(T 'btn_cancel_batch')
+        $btnAddToSteam.Enabled=$false   # отмена — кнопкой в конце прогресс-бара ($btnProgCancel)
         try{
             $labelHeader.Text=(T 'hd_autofill' @($selectedGames.Count))
             [System.Windows.Forms.Application]::DoEvents()
@@ -87496,7 +90423,7 @@ $btnAddToSteam.Add_Click({
         finally{
             $script:batchInProgress=$false
             $btnAddToSteam.Tag=$script:btnAddToSteamDefaultText
-            $btnMoveGame.Enabled=$true;$btnRefreshLibrary.Enabled=$true;$btnAddToSteam.Enabled=$true
+            $btnMoveGame.Enabled=$true;$btnRefreshLibrary.Enabled=$true;$btnAddToSteam.Enabled=$true;Set-MainAddGamesButtonBusy $false
             $listBoxC.Enabled=$true;$listBoxD.Enabled=$true
             # Пакетное автозаполнение по отмеченным играм завершено (или
             # отменено) — отметки своё дело сделали, явно снимаем.
@@ -87507,7 +90434,7 @@ $btnAddToSteam.Add_Click({
     }
 
     Move-FocusToSink $btnAddToSteam
-    $btnMoveGame.Enabled=$false;$btnRefreshLibrary.Enabled=$false;$btnAddToSteam.Enabled=$false
+    $btnMoveGame.Enabled=$false;$btnRefreshLibrary.Enabled=$false;$btnAddToSteam.Enabled=$false;Set-MainAddGamesButtonBusy $true
     $steamPathProperty=$null
     try{
         $steamPathProperty=(Get-ItemProperty -Path 'HKCU:\Software\Valve\Steam' -Name 'SteamExe' -ErrorAction SilentlyContinue).SteamExe
@@ -87540,7 +90467,7 @@ $btnAddToSteam.Add_Click({
         # его скроет таймер через ~1.2 с.
         try{if($script:batchCardCancelRequested -or $progressBarFolder.Value -lt 100){$progressBarFolder.Value=0}}catch{}
         try{End-BatchSteamDefer $steamPathProperty}catch{}
-        $btnMoveGame.Enabled=$true;$btnRefreshLibrary.Enabled=$true;$btnAddToSteam.Enabled=$true
+        $btnMoveGame.Enabled=$true;$btnRefreshLibrary.Enabled=$true;$btnAddToSteam.Enabled=$true;Set-MainAddGamesButtonBusy $false
         # Карточки по всем отмеченным играм прошли (или добавление отменено) —
         # отметки своё дело сделали, явно снимаем.
         $global:checkedC.Clear(); $global:checkedD.Clear()
@@ -87597,7 +90524,7 @@ $btnSwapEmuMain.ContextMenuStrip = $script:swapRevertMenu
 
 $btnSteamLibrary.Add_Click({
     # Идёт подсчёт размера папок: кнопка работает как «Отменить подсчёт» (см. Start-SizeCalc).
-    if ($script:sizeCalcBtnSwapped) { $script:sizeCalcCancel = $true; try { $labelHeader.Text = (T 'st_sizes_cancelled') } catch {}; return }
+    if ($script:sizeCalcActive) { return }   # идёт подсчёт размеров: отмена — кнопкой в конце прогресс-бара
     # Во время переноса игр / пакетного добавления / импорта библиотеку открывать нельзя.
     if ($script:moveInProgress -or $script:batchInProgress -or $script:smartBatchActive -or $script:libImportRunning) { return }
     # Библиотека открывается как экран той же программы: модальное окно ровно поверх главного, которое
@@ -87812,6 +90739,72 @@ $form.Add_Shown({
     } catch {}
     if ($libStart) { try { $btnSteamLibrary.PerformClick() } catch {} }
 })
+# Автоимпорт: мини-тумблер под кнопкой «Добавить игры» в центральной колонке (вместо тумблера с подписью в нижней панели).
+# Кнопка «+» и тумблер обведены общей рамкой; внешний отступ 2 px совпадает с Show-MainFlyBackdrop для блоков выше.
+# Колонка раскладывается заново, размер окна не меняется:
+#  - верх колонки = 48 (на одной линии с верхом полей путей, они сдвинуты вниз на те же 5 px): над «Сохранениями» раскрывается кнопка поиска, и ей нужно ~47 px над верхом колонки, иначе рамка блока обрезается краем окна;
+#  - низ последней кнопки = низ панелей списков (иначе колонка заканчивалась выше их границы).
+# Зазор между кнопками подбирается из свободной высоты (при штатных размерах он равен прежним 8 px).
+try {
+    $tgW = 34; $tgH = 18
+    $colTop = 48; $btnH = 42   # верх первой кнопки на одной линии с верхом полей путей (они тоже на 48)
+    $blkPadX = 2; $blkPadTop = 2; $blkInner = 4; $blkPadBot = 4   # тумблер строго по центру между кнопкой «+» и нижней границей рамки: отступы сверху и снизу равны
+    $blkW = [int]$btnMainAddGames.Width + 2 * $blkPadX
+    $blkH = $blkPadTop + $btnH + $blkInner + $tgH + $blkPadBot
+    $colBottom = [int]$pnlFrameC.Bottom
+    $colBorder = $steamUi.Border   # тот же приглушённый цвет, что и у рамок остальных кнопок
+
+    # Рамка-подложка: цвет фона панели = тёмная заливка, контур рисуется в Paint; тумблер лежит внутри неё (он красит фон под цвет родителя).
+    $pnlAddBlock = New-Object System.Windows.Forms.Panel
+    $pnlAddBlock.TabStop = $false
+    $pnlAddBlock.BackColor = [System.Drawing.Color]::FromArgb(14, 22, 31)
+    $pnlAddBlock.Tag = $colBorder
+    $pnlAddBlock.Add_Paint({
+        param($sender, $e)
+        try {
+            $bp = New-Object System.Drawing.Pen([System.Drawing.Color]$sender.Tag)
+            try { $e.Graphics.DrawRectangle($bp, 0, 0, ($sender.Width - 1), ($sender.Height - 1)) } finally { $bp.Dispose() }
+        } catch {}
+    })
+    $form.Controls.Add($pnlAddBlock)
+
+    # Порядок колонки сверху вниз; вместо кнопки «+» - блок с рамкой.
+    $colItems = @($btnMainSaves, $btnMainLibs, $btnMainFrames, $btnMainColl, $pnlAddBlock, $btnMoveGame, $btnRefreshLibrary, $btnMainRomsMode, $btnMainWrappersMode, $btnMainRemoveLib)
+    $itemsH = 0
+    foreach ($ci in $colItems) { $itemsH += $(if ([object]::ReferenceEquals($ci, $pnlAddBlock)) { $blkH } else { $btnH }) }
+    $gapCnt = $colItems.Count - 1
+    $free = ($colBottom - $colTop) - $itemsH
+    $gapBase = [int][Math]::Floor($free / $gapCnt)
+    $gapExtra = $free - $gapBase * $gapCnt
+    $yy = $colTop
+    for ($ci = 0; $ci -lt $colItems.Count; $ci++) {
+        $it = $colItems[$ci]
+        if ([object]::ReferenceEquals($it, $pnlAddBlock)) {
+            $pnlAddBlock.SetBounds(([int]$btnMainAddGames.Left - $blkPadX), $yy, $blkW, $blkH)
+            $btnMainAddGames.Top = $yy + $blkPadTop
+            $yy += $blkH
+        } else {
+            $it.Top = $yy
+            $yy += $btnH
+        }
+        $yy += $gapBase + $(if ($ci -lt $gapExtra) { 1 } else { 0 })
+    }
+    # Индикатор эмулятора/враппера стоит на месте кнопки удаления - едет вместе с колонкой.
+    try { $pnlRomIndicator.Top = [int]$btnMainRemoveLib.Top } catch {}
+
+    $pnlAddBlock.Controls.Add($pnlBatchToggle)
+    $pnlBatchToggle.Size = New-Object System.Drawing.Size($tgW, $tgH)
+    $pnlBatchToggle.Location = New-Object System.Drawing.Point([int](($blkW - $tgW) / 2), ($blkPadTop + $btnH + $blkInner))
+    $pnlAddBlock.BringToFront()
+    $btnMainAddGames.BringToFront()
+    # Тумблер автоимпорта: приглушён, пока «+» недоступна; во включённом состоянии — зелёный ModeOn (как активные режимы).
+    try {
+        $pnlBatchToggle.Muted = (-not [bool]$btnMainAddGames.Enabled)
+        $btnMainAddGames.Add_EnabledChanged({ try { $pnlBatchToggle.Muted = (-not [bool]$btnMainAddGames.Enabled) } catch {} })
+    } catch {}
+    $lblBatchAuto.Visible = $false
+    $mainToolTip.SetToolTip($pnlBatchToggle, ((T 'batch_auto') + ': ' + (T 'batch_auto_tip')))
+} catch {}
 Write-StartupMark 'before ShowDialog (events + small-screen setup)'
 [System.Windows.Forms.Application]::DoEvents()
 try { Initialize-FormForSmallScreen -Form $form } catch {}
