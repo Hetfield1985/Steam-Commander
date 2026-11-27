@@ -6,6 +6,33 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [2.3.6] - 2026-11-28
+
+### Added
+* **Emulator and wrapper editors in the library window.** When no game is checked, the *Emulator* and *Wrapper* buttons of the top bar are active and open the same list with *Add / Edit / Delete* as the settings, in a window like the frame manager (the same way as the *Covers frames* button opens its manager). With checked games the buttons work as before: they open the menu to change the emulator / wrapper. The tooltip without a selection shows the name of the section. After the window is closed, the buttons and the emulator indicator are refreshed.
+* **Quick jump by the first letter in long menus.** In a drop-down menu with a scrollable list (for example, the RetroArch cores or the collections) a pressed letter selects the next item that starts with it (it goes round), the visible window is moved to the item, and *Enter* picks it. Menus with a built-in input field (search, new name) are not affected: the letters belong to the field.
+* **Blue frame on hover for all buttons of the middle column.** *Saves*, *Libraries*, *Frames*, *Collections*, *Move*, *Refresh*, *ROMs*, *Wrappers* and *Remove from library* get the accent frame when the mouse is over an active button (the same as the *Add games* block). It is drawn over the button and does not touch its own border colour, which the modes and the busy state still control.
+* **Highlight of the *Add games* block.** The frame of the whole block (the *+* button and the auto-import toggle) turns blue on hover and flashes for half a second after a click on the button or on the toggle.
+
+### Improved
+* **The *Add games* block is as wide as the other buttons of the column (42 px).** The *+* button inside it is 38 × 38 and its icon is 22 px (it was 20 px; a square with a cut-out plus looked smaller than the filled icons of the neighbours) and is drawn exactly on the pixel grid, without blur. The height of the block and the gaps between the buttons are the same as before, and the counter pill on *+* stands in the same place as on the other buttons.
+* **The menu of the RetroArch cores opens like the other menus of the column.** Its left edge is just to the right of the column of buttons, it opens upwards with the bottom edge at the bottom of the RetroArch icon, and it does not depend on the width of the indicator panel. If it does not fit on the screen on the right, it is moved to the left.
+* **Thin scroll bar in menus is now on by default.** Every long menu gets the rounded thumb on the right (the arrows ▲ ▼ stay). The place for the bar is reserved only if the list is really longer than the window, so short menus have no extra gap on the right. The highlight of an item does not go under the thumb, and the length of the thumb is recalculated after the menu is shown and on every change of its size (at the first opening it used to be longer than needed and became shorter only after the first scroll).
+* **The caption of the emulator indicator** is now Segoe UI 8 in the main text colour, as the names on the tiles of the emulator picker (it was a grey semibold 9.5).
+* **Columns of the emulator and wrapper tables in the settings** are fractions of the panel width (wrappers: name 30 %, file 27 %; emulators: name 17 %, file 30 %, extensions 20 %; the rest is for the arguments), so the tables fill the panel at any window width.
+* **The progress bar of the main window is 16 px longer**, the percent label is narrower, and the *Cancel* button stays at the end of the bar.
+* **The *Remove from library* button no longer disappears** when an action with upscalers, saves or collections is chosen: it is hidden only in the *ROMs* / *Wrappers* modes, where the indicator stands in its place. During a long action it keeps the same rule, so it never overlaps the indicator.
+
+### Fixed
+* **The icon of the *Wrapper* button of the library window flashed as the *Upscalers* icon.** After a click on the *Upscalers* button, the *Emulator* or *Wrapper* button opened its window (the editor or a menu), and when the window was closed, the icon of the wrapper button changed for a fraction of a second to the icon of upscalers. The cause was in the layout of the top bar: on every recalculation the *Upscalers* button was first put at the place of the *Wrapper* button and only then moved to its own place, and in between it could be drawn. Now every button gets its position once, directly to the final place, and only if it really changed. The *Saves* button does not jump to the right and back any more while the *Upscalers* row is unfolded.
+* **A hole in the frame of a neighbour block after a counter pill was hidden or moved.** The pill sticks out over the frames of the neighbours (for example, over the block with the *+* button and the toggle) and covered a piece of their border. When it was hidden or moved, the form did not always redraw the neighbours under it, and a notch was left in the corner of the frame, especially while the window was busy with batch adding. The place is now repainted at once and once more after the current message is handled.
+* **The data of the menu scroll bar was kept in the `Tag` of the menu.** Other handlers store their own data there (for example, the button that owns the frame menu), so the scroll bar and these handlers could overwrite each other. The bar now uses its own field.
+
+### Changed
+* Application version is now 2.3.6.
+
+---
+
 ## [2.3.5] - 2026-11-27
 
 ### Added
