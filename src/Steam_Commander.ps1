@@ -6196,7 +6196,7 @@ Set-SplashProgress 0.52
 # Единая версия приложения — используется в заголовке главного окна, в
 # подписи внизу окна настроек и в User-Agent HTTP-запросов. Меняйте только
 # здесь при выпуске новой версии.
-$global:appVersion = "2.3.5"
+$global:appVersion = "2.3.6"
 $global:appTitle = "Steam Commander"
 # Ссылки на исходный код и поддержку автора (окно «Поддержать» в настройках). Меняйте только здесь.
 $global:appRepoUrl = "https://github.com/Hetfield1985/Steam-Commander"
@@ -13623,6 +13623,42 @@ function Register-ListBoxNameTip ($listBox) {
         try { $global:listNameTip.Hide($this); $global:listNameTipIdx[[string]$this.Tag] = -1 } catch {}
     })
 }
+# Значок Steam для колонки «В библиотеке» (16x16, встроенный ресурс, кэшируется в Get-LibUniformIcon). $null - значка нет, тогда рисуется прежняя галочка.
+$script:libHdrIconOn = $false
+function Get-MainPanelSteamIcon {
+    try { $ic = Get-LibUniformIcon 'steam' 16; if (Test-LibIconBitmapAlive $ic) { return $ic } } catch {}
+    return $null
+}
+# Текст подписи колонки сортировки. Для «В библиотеке» при наличии значка Steam остаётся только стрелка сортировки: сам значок рисует Paint подписи.
+function Get-SortHeaderLabelText ($col, [string]$arrow) {
+    if ([string]$col.Key -eq 'Library' -and [bool]$script:libHdrIconOn) { return '' }   # значок и стрелку сортировки рисует Paint подписи
+    return ((T $col.TextKey) + $arrow)
+}
+# Значки встроенных ресурсов появляются позже, чем создаётся заголовок, поэтому состояние проверяется при каждом обновлении заголовка.
+function Sync-LibHeaderIconState {
+    try {
+        $on = [bool](Test-LibIconBitmapAlive (Get-MainPanelSteamIcon))
+        if ($on -eq [bool]$script:libHdrIconOn) { return }
+        $script:libHdrIconOn = $on
+        foreach ($s in @('C', 'D')) {
+            $hp = $script:headerParts[$s]
+            if ($null -eq $hp -or -not $hp.Labels.ContainsKey('Library')) { continue }
+            $l = $hp.Labels['Library']
+            $l.Padding = New-Object System.Windows.Forms.Padding($(if ($on) { 0 } else { 5 }), 0, 0, 0)
+            # Текст подписи меняем здесь же: Update-SortHeaderUI пропускает невидимые подписи, а при запуске окно ещё не показано
+            # (Visible = $false), из-за чего рядом со значком оставалась старая «✓».
+            try {
+                $lc = $l.Tag.Column
+                $lm = if ($s -eq 'C') { [string]$script:panelSortC } else { [string]$script:panelSortD }
+                $la = ''
+                if ($lm -eq [string]$lc.AscCode) { $la = ' ▲' } elseif ($lm -eq [string]$lc.DescCode) { $la = ' ▼' }
+                $l.Text = (Get-SortHeaderLabelText $lc $la)
+            } catch {}
+            $l.Invalidate()
+            Set-AutoColDirty $s
+        }
+    } catch {}
+}
 function Register-ListBoxDrawEvent ($listBox) {
     $listBox.Add_DrawItem({
         param([object]$sender, [System.Windows.Forms.DrawItemEventArgs]$e)
@@ -13897,13 +13933,27 @@ function Register-ListBoxDrawEvent ($listBox) {
         # В библиотеке — зелёная подпись-галочка; видна и на выделенной строке
         # (на синем фоне берём чуть более яркий зелёный, чтобы не сливалась).
         if ($isInstalled) {
-            if ($null -eq $script:rowBadgeFont) { $script:rowBadgeFont = New-Object System.Drawing.Font("Segoe UI Semibold", 8) }
-            $badgeFont = $script:rowBadgeFont
-            $badgeColor = if ($isSelected) { [System.Drawing.Color]::FromArgb(128,214,150) } else { $steamUi.Green }
-            $badgeBrush = New-Object System.Drawing.SolidBrush($badgeColor)
-            $badgeRect = New-Object System.Drawing.RectangleF(($colX3 + 5), ($e.Bounds.Y + 5), [Math]::Max(1, [int]$w[3] - 6), 20)
-            $e.Graphics.DrawString("✓", $badgeFont, $badgeBrush, $badgeRect, $sf)
-            $badgeBrush.Dispose()
+            # Игра уже в библиотеке Steam: вместо зелёной галочки значок Steam (16 px). Нет значка - рисуется прежняя галочка.
+            $steamRowIco = $null
+            try { $steamRowIco = Get-MainPanelSteamIcon } catch { $steamRowIco = $null }
+            $steamRowDrawn = $false
+            if ($null -ne $steamRowIco) {
+                try {
+                    $e.Graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+                    $e.Graphics.CompositingMode = [System.Drawing.Drawing2D.CompositingMode]::SourceOver
+                    $e.Graphics.DrawImage($steamRowIco, ($colX3 + 3), ($e.Bounds.Y + [int](($e.Bounds.Height - 16) / 2)), 16, 16)
+                    $steamRowDrawn = $true
+                } catch {}
+            }
+            if (-not $steamRowDrawn) {
+                if ($null -eq $script:rowBadgeFont) { $script:rowBadgeFont = New-Object System.Drawing.Font("Segoe UI Semibold", 8) }
+                $badgeFont = $script:rowBadgeFont
+                $badgeColor = if ($isSelected) { [System.Drawing.Color]::FromArgb(128,214,150) } else { $steamUi.Green }
+                $badgeBrush = New-Object System.Drawing.SolidBrush($badgeColor)
+                $badgeRect = New-Object System.Drawing.RectangleF(($colX3 + 5), ($e.Bounds.Y + 5), [Math]::Max(1, [int]$w[3] - 6), 20)
+                $e.Graphics.DrawString("✓", $badgeFont, $badgeBrush, $badgeRect, $sf)
+                $badgeBrush.Dispose()
+            }
         }
         $sf.Dispose()
         # Системная пунктирная рамка фокуса (оранжево-коричневая) заменена тонкой рамкой акцентного цвета программы.
@@ -18069,6 +18119,8 @@ function Update-AutoColWidths ([string]$source) {
 
         # «✓»: значок в строке рисуется со смещением 8 px и полем 10 px справа.
         $libW = [Math]::Max(((& $mHdr $colLib) - 3), ((& $mCell "✓" $badge) + 5 + 2))
+        # Значок Steam (16 px) + маленькая стрелка сортировки справа: хватает минимальной ширины колонки, лишнего места нет.
+        if ([bool]$script:libHdrIconOn) { $libW = [Math]::Max([int]$colLib.MinWidth, 28) }
         $sizeW = 0; $dateW = 0
 
         if (-not $merged) {
@@ -18227,6 +18279,25 @@ function New-SortHeaderRow ($x, $y, $source) {
                     $dp = New-Object System.Drawing.Pen($steamUi.Border)
                     $pe.Graphics.DrawLine($dp, ($sender.Width - 1), 4, ($sender.Width - 1), ($sender.Height - 5))
                     $dp.Dispose()
+                } elseif ([bool]$script:libHdrIconOn) {
+                    # Колонка «В библиотеке»: вместо «✓» значок Steam.
+                    $hdrIco = Get-MainPanelSteamIcon
+                    if ($null -ne $hdrIco) {
+                        $pe.Graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+                        $pe.Graphics.DrawImage($hdrIco, 3, [int](([int]$sender.Height - 16) / 2), 16, 16)
+                        # Сортировка по этой колонке: маленький треугольник (вверх - по возрастанию, вниз - по убыванию) справа от значка.
+                        $hdrMode = if ([string]$sender.Tag.Source -eq 'C') { [string]$script:panelSortC } else { [string]$script:panelSortD }
+                        $hdrUp = ($hdrMode -eq [string]$sender.Tag.Column.AscCode)
+                        if ($hdrUp -or $hdrMode -eq [string]$sender.Tag.Column.DescCode) {
+                            $hy = [int]([int]$sender.Height / 2)
+                            $pe.Graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+                            $hdrBr = New-Object System.Drawing.SolidBrush($steamUi.Accent)
+                            try {
+                                $triPts = $(if ($hdrUp) { [System.Drawing.PointF[]]@((New-Object System.Drawing.PointF(23.5, ($hy - 2.5))), (New-Object System.Drawing.PointF(20.5, ($hy + 2.5))), (New-Object System.Drawing.PointF(26.5, ($hy + 2.5)))) } else { [System.Drawing.PointF[]]@((New-Object System.Drawing.PointF(20.5, ($hy - 2.5))), (New-Object System.Drawing.PointF(26.5, ($hy - 2.5))), (New-Object System.Drawing.PointF(23.5, ($hy + 2.5)))) })
+                                $pe.Graphics.FillPolygon($hdrBr, $triPts)
+                            } finally { $hdrBr.Dispose() }
+                        }
+                    }
                 }
             } catch {}
         })
@@ -18303,21 +18374,22 @@ function New-SortHeaderRow ($x, $y, $source) {
 function Update-SortHeaderUI ([string]$source) {
     $labels = if ($source -eq 'C') { $script:sortHeaderLabelsC } else { $script:sortHeaderLabelsD }
     if ($labels -eq $null) { return }
+    Sync-LibHeaderIconState
     $mode = if ($source -eq 'C') { $script:panelSortC } else { $script:panelSortD }
     foreach ($col in $script:sortColumns) {
         $lbl = $labels[$col.Key]
         if ($null -eq $lbl) { continue }
         if (-not $lbl.Visible) { continue }
         if ($mode -eq $col.AscCode) {
-            $lbl.Text = (T $col.TextKey) + " ▲"
+            $lbl.Text = (Get-SortHeaderLabelText $col ' ▲'); $lbl.Invalidate()
             $lbl.ForeColor = $steamUi.Accent
             $lbl.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 8.3)
         } elseif ($mode -eq $col.DescCode) {
-            $lbl.Text = (T $col.TextKey) + " ▼"
+            $lbl.Text = (Get-SortHeaderLabelText $col ' ▼'); $lbl.Invalidate()
             $lbl.ForeColor = $steamUi.Accent
             $lbl.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 8.3)
         } else {
-            $lbl.Text = (T $col.TextKey)
+            $lbl.Text = (Get-SortHeaderLabelText $col ''); $lbl.Invalidate()
             $lbl.ForeColor = if ($col.Key -eq 'Library') { $steamUi.Green } else { $steamUi.Muted }
             $lbl.Font = New-Object System.Drawing.Font("Segoe UI", 8.3)
         }
@@ -18878,7 +18950,9 @@ function Draw-SteamAddGameGlyph ($g, [single]$X, [single]$Y, [single]$Size, $Col
 function Draw-MainAddCountBadge ($btn) {
     $n = 0
     try { if ($btn.Enabled -and [int]$script:mainAddableCount -gt 0) { $n = [int]$script:mainAddableCount } } catch { $n = 0 }
-    Set-LibCountBadge $btn $n $steamUi.Accent2 $null 3
+    $ovAdd = 3
+    try { $ovAdd = 3 + [int]$script:mainAddBtnInset } catch { $ovAdd = 3 }
+    Set-LibCountBadge $btn $n $steamUi.Accent2 $null $ovAdd
 }
 
 # Перенос/обновление/пакетное добавление идут - кнопка недоступна; по окончании состояние берётся из последнего подсчёта (его освежает Update-MainLibraryButtonState).
@@ -18971,12 +19045,20 @@ $btnMainAddGames.Add_Paint({
         try { $pulse = [bool](Test-MainBtnGreenPulse $sender) } catch {}
         $hot = $false
         try { $hot = ($sender.Enabled -and $sender.ClientRectangle.Contains($sender.PointToClient([System.Windows.Forms.Cursor]::Position))) } catch {}
+        try { if ($sender.Enabled -and [bool]$script:addBlockHot) { $hot = $true } } catch {}
         $col = if ($pulse) { $steamUi.ModeOn } elseif (-not $sender.Enabled) { $steamUi.Muted } elseif ($hot) { $steamUi.Accent2 } else { $sender.ForeColor }
-        # Значок «Добавить игру» из Steam (тот же, что на нижней кнопке), 20x20 px - как остальные значки на кнопках 42x42.
-        $box = 20.0
+        # Значок «Добавить игру» из Steam (тот же, что на нижней кнопке). Кнопка внутри рамки 38x38, значок 22x22 px (чуть крупнее 20 px у остальных:
+        # квадрат с вырезанным плюсом выглядит мельче заливных значков соседей). Размер чётный - ровно по центру чётной кнопки.
+        # PixelOffsetMode.Half: по умолчанию GDI+ при сглаживании кладёт целые координаты на центр пикселя, и значок смещался на пол-пикселя вправо-вниз
+        # с размытыми краями; с Half границы квадрата ложатся ровно на пиксели, как у значков соседних кнопок.
+        $box = 22.0
         $px = [single][Math]::Floor(($sender.ClientSize.Width - $box) / 2.0)
         $py = [single][Math]::Floor(($sender.ClientSize.Height - $box) / 2.0)
-        Draw-SteamAddGameGlyph $g $px $py ([single]$box) $col
+        $oldPix = $g.PixelOffsetMode
+        try {
+            $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::Half
+            Draw-SteamAddGameGlyph $g $px $py ([single]$box) $col
+        } finally { $g.PixelOffsetMode = $oldPix }
         Draw-MainAddCountBadge $sender
     } catch {}
 })
@@ -19228,19 +19310,55 @@ function Draw-FrameCountBadge ($g, [int]$W, [int]$Cnt, $ringCol, [int]$H = 12, [
 # Одна «таблетка» на кнопку: $script:libBadgeByBtn[кнопка]. Показ, цвет и положение обновляются из Paint кнопки (Set-LibCountBadge),
 # а скрытие/сдвиг кнопки отслеживают события VisibleChanged/Move/Resize (Sync-LibBadgeGeom).
 $script:libBadgeByBtn = @{}
+# Перерисовка места, где был значок. Значок скрывается из Paint кнопки, а во время добавления пакета окно занято циклом и отложенные перерисовки
+# (Invalidate без Update, таймеры, BeginInvoke) не доходят - рамка соседнего блока оставалась с дырой. Поэтому: сначала помечаем область и всех соседей под ней
+# недействительными и рисуем их синхронно (Update), а затем ещё раз отложенно - на случай, если первая попытка пришлась на середину чужой отрисовки.
+function Repaint-BadgeArea ($par, $r) {
+    try {
+        if ($null -eq $par -or $par.IsDisposed -or -not $par.IsHandleCreated) { return }
+        foreach ($sib in @($par.Controls)) {
+            try { if ($sib.Visible -and $sib.Bounds.IntersectsWith($r)) { $sib.Invalidate() } } catch {}
+        }
+        $par.Invalidate($r, $true)
+        $par.Update()
+        $cl = {
+            try {
+                if ($par.IsDisposed) { return }
+                foreach ($sib2 in @($par.Controls)) { try { if ($sib2.Visible -and $sib2.Bounds.IntersectsWith($r)) { $sib2.Invalidate() } } catch {} }
+                $par.Invalidate($r, $true)
+            } catch {}
+        }.GetNewClosure()
+        $null = $par.BeginInvoke([System.Windows.Forms.MethodInvoker]$cl)
+    } catch {}
+}
 function Sync-LibBadgeGeom ($btn) {
     try {
         $b = $script:libBadgeByBtn[$btn]
         if ($null -eq $b) { return }
         $par = $btn.Parent
         $show = ([bool]$b.Want -and [bool]$btn.Visible -and $null -ne $par)
-        if (-not $show) { if ($b.Visible) { $b.Visible = $false }; return }
+        if (-not $show) {
+            if ($b.Visible) {
+                # Значок лежит поверх рамок соседей (например, блока «+» с тумблером) и закрывает кусок их границы. Пока он был виден, соседи под ним
+                # не рисовались (клип по Region значка), а при скрытии форма не гарантирует перерисовку их Paint: в углу оставалась дыра в рамке.
+                # Поэтому запоминаем место значка и принудительно перерисовываем его вместе с вложенными контролами.
+                $oldR = $b.Bounds; $oldP = $b.Parent
+                $b.Visible = $false
+                Repaint-BadgeArea $oldP $oldR
+            }
+            return
+        }
         if (-not [object]::ReferenceEquals($b.Parent, $par)) { $par.Controls.Add($b) }
         $ov = 3   # на сколько пикселей значок выступает за правый и верхний край кнопки (отрицательное - внутрь кнопки)
         if ($null -ne $b.Tag) { $ov = [int]$b.Tag }
         $nx = [int]($btn.Left + $btn.Width + $ov - [int]$b.PillW - 1)
         $ny = [int]($btn.Top - $ov - 1)
-        if ($b.Left -ne $nx -or $b.Top -ne $ny) { $b.Location = New-Object System.Drawing.Point($nx, $ny) }
+        if ($b.Left -ne $nx -or $b.Top -ne $ny) {
+            $oldR2 = $b.Bounds; $wasVis = $b.Visible
+            $b.Location = New-Object System.Drawing.Point($nx, $ny)
+            # Сдвинутый значок оставляет на старом месте невыровненный кусок рамки соседа - перерисовываем его.
+            if ($wasVis) { Repaint-BadgeArea $par $oldR2 }
+        }
         if (-not $b.Visible) { $b.Visible = $true; $b.BringToFront() }
         elseif ($par.Controls.GetChildIndex($b) -gt $par.Controls.GetChildIndex($btn)) { $b.BringToFront() }
     } catch {}
@@ -22323,7 +22441,7 @@ $btnMainColl.Add_Click({
 
 $progressBarFolder = New-Object System.Windows.Forms.ProgressBar
 $progressBarFolder.Location = New-Object System.Drawing.Point(20, 633)
-$progressBarFolder.Size = New-Object System.Drawing.Size(890, 14)   # короче на 110 px: в конце бара процент и кнопка «Отменить» (как в окне библиотеки)
+$progressBarFolder.Size = New-Object System.Drawing.Size(906, 14)   # короче на 110 px: в конце бара процент и кнопка «Отменить» (как в окне библиотеки)
 $progressBarFolder.Style = [System.Windows.Forms.ProgressBarStyle]::Continuous
 # Скрыт, пока прогресс не используется; показывается/прячется таймером ниже.
 $progressBarFolder.Visible = $false
@@ -22336,8 +22454,8 @@ $form.Controls.Add($progressBarFolder)
 # известно только по тексту статусной строки ($labelHeader) — сейчас это
 # ещё и процент рядом с самим баром.
 $lblProgressPercent = New-Object System.Windows.Forms.Label
-$lblProgressPercent.Location = New-Object System.Drawing.Point(914, 630)
-$lblProgressPercent.Size = New-Object System.Drawing.Size(42, 20)
+$lblProgressPercent.Location = New-Object System.Drawing.Point(930, 630)
+$lblProgressPercent.Size = New-Object System.Drawing.Size(32, 20)
 $lblProgressPercent.Font = New-Object System.Drawing.Font("Segoe UI", 8)
 $lblProgressPercent.ForeColor = $steamUi.Muted
 $lblProgressPercent.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft   # процент вплотную к концу прогресс-бара (как в окне библиотеки)
@@ -22828,8 +22946,9 @@ $lblRomEmulatorName = New-Object System.Windows.Forms.Label
 $lblRomEmulatorName.Location = New-Object System.Drawing.Point(0, 42)
 $lblRomEmulatorName.Size = New-Object System.Drawing.Size(140, 36)
 $lblRomEmulatorName.TextAlign = [System.Drawing.ContentAlignment]::TopCenter
-$lblRomEmulatorName.ForeColor = $steamUi.Muted
-$lblRomEmulatorName.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 9.5)
+# Подпись под значком - как названия на плитках окна выбора эмуляторов: Segoe UI 8, цвет основного текста.
+$lblRomEmulatorName.ForeColor = $steamUi.Text
+$lblRomEmulatorName.Font = New-Object System.Drawing.Font("Segoe UI", 8)
 $lblRomEmulatorName.Text = (T 'rom_emu_none')
 $lblRomEmulatorName.Cursor = [System.Windows.Forms.Cursors]::Hand
 try { $lblRomEmulatorName.AutoEllipsis = $false } catch {}
@@ -23165,7 +23284,7 @@ function Update-RomEmulatorIndicator {
         try {
             $baseW = 140
             $needW = $baseW
-            $lblRomEmulatorName.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 9.5)
+            if ($lblRomEmulatorName.Font.Name -ne 'Segoe UI' -or [Math]::Abs($lblRomEmulatorName.Font.SizeInPoints - 8) -gt 0.01) { $lblRomEmulatorName.Font = New-Object System.Drawing.Font("Segoe UI", 8) }
             if ($isRA) {
                 foreach ($ln in (([string]$lblRomEmulatorName.Text) -split "`n")) {
                     $w = [System.Windows.Forms.TextRenderer]::MeasureText([string]$ln, $lblRomEmulatorName.Font, (New-Object System.Drawing.Size(2000, 40)), [System.Windows.Forms.TextFormatFlags]::NoPadding).Width + 10
@@ -23864,7 +23983,7 @@ function Ensure-MainRaCoreMenu {
             $maxH = [Math]::Max(160, [Math]::Min(280, $indY - $waTop - 8))
         } catch {}
         try { $menu.MaximumSize = New-Object System.Drawing.Size(0, $maxH) } catch {}
-        try { Enable-MenuWheelScroll $menu 12 $null $maxH $true } catch {}
+        try { Enable-MenuWheelScroll $menu 12 $null $maxH } catch {}
 
         # Сразу ограничиваем видимые пункты (не ждать Opening) — быстрый первый Show и верная высота.
         try {
@@ -23922,15 +24041,29 @@ function Show-MainRetroArchCoreMenu {
         try { if ($script:mainRaCoreMenuMaxH -gt 0) { $h = [int]$script:mainRaCoreMenuMaxH } } catch {}
         try { $menu.MaximumSize = New-Object System.Drawing.Size(0, $h) } catch {}
         try {
-            $topLeft = $pnlRomIndicator.PointToScreen([System.Drawing.Point]::Empty)
-            $x = [int]$topLeft.X
-            $y = [int]$topLeft.Y - $h
+            # Как меню кнопки рамок (и остальные меню колонки кнопок): левый край - сразу справа от колонки кнопок.
+            # Внизу окна под меню нет места, поэтому оно открывается вверх: нижний край - на уровне низа значка RetroArch.
+            # Привязка не зависит от ширины панели индикатора (она растёт под длинное имя ядра).
+            $icoRect = $picRomEmulatorIcon.RectangleToScreen($picRomEmulatorIcon.ClientRectangle)
+            $wa = [System.Windows.Forms.Screen]::FromControl($pnlRomIndicator).WorkingArea
+            $x = 0
             try {
-                $wa = [System.Windows.Forms.Screen]::FromControl($pnlRomIndicator).WorkingArea
-                if ($y -lt $wa.Top) { $y = $wa.Top }
-                if ($x -lt $wa.Left) { $x = $wa.Left }
+                $colRect = $btnMainFrames.RectangleToScreen($btnMainFrames.ClientRectangle)
+                $x = [int]$colRect.Right + 2
+            } catch { $x = 0 }
+            if ($x -le 0) { $x = [int]$icoRect.Right + 2 }
+            $y = [int]$icoRect.Bottom
+            $mw = 0
+            try { $mw = [int]$menu.GetPreferredSize([System.Drawing.Size]::Empty).Width } catch { $mw = 0 }
+            if ($mw -le 0) { try { $mw = [int]$menu.Width } catch { $mw = 0 } }
+            if ($mw -gt 0 -and ($x + $mw) -gt $wa.Right) { $x = $wa.Right - $mw - 8 }
+            if ($x -lt $wa.Left) { $x = $wa.Left + 8 }
+            $menu.Show((New-Object System.Drawing.Point($x, $y)), [System.Windows.Forms.ToolStripDropDownDirection]::AboveRight)
+            # Реальная ширина известна только после показа: если меню вылезло за правый край экрана, сдвигаем его влево.
+            try {
+                $aw = [int]$menu.Width
+                if ($aw -gt 0 -and ($menu.Left + $aw) -gt $wa.Right) { $menu.Left = $wa.Right - $aw - 8 }
             } catch {}
-            $menu.Show($x, $y)
         } catch {
             $menu.Show($pnlRomIndicator, (New-Object System.Drawing.Point(0, 0)), [System.Windows.Forms.ToolStripDropDownDirection]::AboveRight)
         }
@@ -47171,6 +47304,46 @@ function Show-EditorFrameManagerDialog($owner) {
     }
 }
 
+# Редактор эмуляторов (тот же список с «Добавить / Изменить / Удалить», что в Настройках) в таком же окне, как менеджер рамок.
+# Открывается кнопкой «Эмулятор» окна библиотеки, когда не выбрана ни одна игра.
+function Show-EmulatorsManagerDialog($owner) {
+    $f = $null
+    try {
+        $f = New-FramesDlgForm (T 'rom_popup_hdr') 760 430
+        $pnl = New-Object System.Windows.Forms.Panel
+        $pnl.Location = New-Object System.Drawing.Point(12, 12)
+        $pnl.Size = New-Object System.Drawing.Size(736, 406)
+        $pnl.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right -bor [System.Windows.Forms.AnchorStyles]::Bottom
+        $pnl.BackColor = $f.BackColor
+        $f.Controls.Add($pnl)
+        Add-EmulatorsManagerControls $f $pnl
+        [void]$f.ShowDialog($owner)
+    } catch {} finally {
+        try { if ($null -ne $f) { $f.Dispose() } } catch {}
+        try { Update-RomEmulatorIndicator } catch {}
+    }
+}
+
+# Редактор врапперов (тот же список с «Добавить / Изменить / Удалить», что в Настройках) в таком же окне, как менеджер рамок.
+# Открывается кнопкой «Враппер» окна библиотеки, когда не выбрана ни одна игра.
+function Show-WrappersManagerDialog($owner) {
+    $f = $null
+    try {
+        $f = New-FramesDlgForm (T 'wrap_popup_hdr') 760 430
+        $pnl = New-Object System.Windows.Forms.Panel
+        $pnl.Location = New-Object System.Drawing.Point(12, 12)
+        $pnl.Size = New-Object System.Drawing.Size(736, 406)
+        $pnl.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right -bor [System.Windows.Forms.AnchorStyles]::Bottom
+        $pnl.BackColor = $f.BackColor
+        $f.Controls.Add($pnl)
+        Add-WrappersManagerControls $f $pnl
+        [void]$f.ShowDialog($owner)
+    } catch {} finally {
+        try { if ($null -ne $f) { $f.Dispose() } } catch {}
+        try { Update-RomEmulatorIndicator } catch {}
+    }
+}
+
 function New-EditorFrameMenuItem($menu, [string]$text, [bool]$checked, [scriptblock]$onClick) {
     # Галочка рисуется рендерером программы (квадрат с заливкой акцентом и белой «птичкой», как в списках игр),
     # а колонка галочек выравнивает текст всех пунктов по одной линии.
@@ -47187,8 +47360,9 @@ function New-EditorFrameMenuItem($menu, [string]$text, [bool]$checked, [scriptbl
 # Прокрутка колесом мыши в длинном меню или подменю: выпадающие меню не получают фокус, поэтому WM_MOUSEWHEEL уходит окну-владельцу.
 # Пока меню открыто, колесо над ним перехватывается, а в меню показывается «окно» из $Window пунктов, которое колесо сдвигает.
 # $Items - какие именно пункты прокручиваются (остальные, например «Без рамки» сверху и «Менеджер рамок» снизу, стоят на месте);
-# без $Items прокручиваются все пункты меню. Над прокручиваемой частью и под ней стоят тонкие полоски со стрелками ▲ ▼.
-function Enable-MenuWheelScroll($DropDown, [int]$Window = 18, $Items = $null, [int]$Height = 0, [bool]$Scrollbar = $false) {
+# без $Items прокручиваются все пункты меню. Над прокручиваемой частью и под ней стоят тонкие полоски со стрелками ▲ ▼,
+# а справа (если список длиннее окна) - тонкий ползунок прокрутки, как в списках игр; полоса по умолчанию включена у всех меню.
+function Enable-MenuWheelScroll($DropDown, [int]$Window = 18, $Items = $null, [int]$Height = 0, [bool]$Scrollbar = $true) {
     try {
         if (-not ('SCMenuWheel11' -as [type])) {
             Add-Type -ReferencedAssemblies @('System.Drawing','System.Windows.Forms') -TypeDefinition @'
@@ -47211,8 +47385,51 @@ public sealed class SCMenuWheel11 : IMessageFilter
     // Стрелки прокрутки: ▲ сверху показывается, когда выше есть скрытые пункты, ▼ снизу - когда ниже. Щелчок по стрелке сдвигает список.
     private ToolStripLabel up, down;
     private int n = 0;
-    // Режим полосы прокрутки (как в остальных списках программы): тонкий скруглённый ползунок справа, без стрелок.
-    // Рисуется рендерером меню (SCFilterRenderer) по данным из dd.Tag: {0x5C5C, x, y, ширина, длина, состояние 0/1/2}.
+    // Быстрый переход по первой букве: каждое нажатие ищет следующий пункт, начинающийся с этой буквы (по кругу).
+    // Окно прокрутки сдвигается к найденному пункту, пункт подсвечивается (Enter выбирает его).
+    private char lastCh = '\0';
+    private int lastChTick = 0;
+    private bool hasHost = false;   // в меню есть поле ввода/встроенный элемент - буквы принадлежат ему
+    private static string PlainText(ToolStripItem it)
+    {
+        string t = it.Text;
+        if (t == null) return "";
+        return t.Replace("&&", "\u0001").Replace("&", "").Replace("\u0001", "&");
+    }
+    private void SelectItem(int i)
+    {
+        if (i < top) top = i;
+        else if (i >= top + win) top = i - win + 1;
+        Apply();
+        try { items[i].Select(); } catch { }
+    }
+    // true - символ принят (даже если совпадений нет), чтобы меню не пикало и не запускало свои мнемоники
+    public bool HandleChar(char c)
+    {
+        if (dead || items == null || n == 0 || hasHost) return false;
+        if (char.IsControl(c)) return false;
+        int now = Environment.TickCount;
+        // WM_CHAR может дойти и через фильтр сообщений, и через KeyPress меню: один символ обрабатываем один раз.
+        if (c == lastCh && unchecked(now - lastChTick) >= 0 && unchecked(now - lastChTick) < 15) return true;
+        lastCh = c; lastChTick = now;
+        if (char.IsWhiteSpace(c)) return true;
+        int cur = -1;
+        for (int i = 0; i < n; i++) if (items[i].Selected) { cur = i; break; }
+        int from = cur >= 0 ? cur + 1 : 0;
+        string prefix = c.ToString();
+        for (int step = 0; step < n; step++)
+        {
+            int i = (from + step) % n;
+            ToolStripItem it = items[i];
+            if (it == null || !it.Enabled) continue;
+            if (PlainText(it).StartsWith(prefix, StringComparison.CurrentCultureIgnoreCase)) { SelectItem(i); break; }
+        }
+        return true;
+    }
+    // Режим полосы прокрутки (как в остальных списках программы): тонкий скруглённый ползунок справа, стрелки ▲ ▼ остаются.
+    private bool padAdded = false;
+    // Рисуется рендерером меню (SCFilterRenderer) по данным из dd.AccessibleDescription: "5C5C|x|y|ширина|длина|состояние 0/1/2".
+    // Tag меню не занимаем: в нём другие обработчики хранят свои данные (например, кнопку-владельца у меню рамок).
     private bool bar = false, barHot = false, barDrag = false;
     private int dragY = 0, dragTop = 0;
     private const int BarZone = 11;
@@ -47230,9 +47447,9 @@ public sealed class SCMenuWheel11 : IMessageFilter
     }
     private void UpdateBar()
     {
-        if (!BarOn()) { if (dd.Tag is int[]) dd.Tag = null; return; }
+        if (!BarOn()) { if (dd.AccessibleDescription != null && dd.AccessibleDescription.StartsWith("5C5C|")) dd.AccessibleDescription = null; return; }
         Rectangle r = ThumbRect();
-        dd.Tag = new int[] { 0x5C5C, r.X, r.Y, r.Width, r.Height, barDrag ? 2 : (barHot ? 1 : 0) };
+        dd.AccessibleDescription = "5C5C|" + r.X + "|" + r.Y + "|" + r.Width + "|" + r.Height + "|" + (barDrag ? 2 : (barHot ? 1 : 0));
     }
     // Приглушённый цвет стрелки: смесь цвета текста и фона меню.
     private Color Dim()
@@ -47262,8 +47479,8 @@ public sealed class SCMenuWheel11 : IMessageFilter
         dd.SuspendLayout();
         for (int i = 0; i < n; i++) items[i].Visible = (i >= top && i < top + win);
         // Стрелки всегда занимают место (когда список длиннее окна), только цвет гаснет: размер меню при прокрутке не меняется.
-        if (up != null) { up.Visible = scroll && !bar; up.ForeColor = (scroll && top > 0) ? Dim() : dd.BackColor; }
-        if (down != null) { down.Visible = scroll && !bar; down.ForeColor = (scroll && top + win < n) ? Dim() : dd.BackColor; }
+        if (up != null) { up.Visible = scroll; up.ForeColor = (scroll && top > 0) ? Dim() : dd.BackColor; }
+        if (down != null) { down.Visible = scroll; down.ForeColor = (scroll && top + win < n) ? Dim() : dd.BackColor; }
         dd.ResumeLayout(true);
         UpdateBar();
         dd.Invalidate();
@@ -47293,6 +47510,12 @@ public sealed class SCMenuWheel11 : IMessageFilter
     public bool PreFilterMessage(ref Message m)
     {
         if (dead || dd == null || dd.IsDisposed || !dd.Visible) return false;
+
+        if (m.Msg == 0x0102 && items != null && !hasHost) // WM_CHAR: быстрый переход по букве
+        {
+            char ch = (char)(((long)m.WParam) & 0xFFFF);
+            if (HandleChar(ch)) return true;
+        }
 
         // Перетаскивание обрабатывается на уровне очереди сообщений, а не через
         // ToolStrip.MouseMove: ToolStrip передаёт движение наведённому пункту меню,
@@ -47375,12 +47598,12 @@ public sealed class SCMenuWheel11 : IMessageFilter
             if (old.down != null) dd.Items.Remove(old.down);
         }
         attached[dd] = f;
+        if (old != null) f.padAdded = old.padAdded;
         if (scrollbar)
         {
             // Справа резервируем полосу под ползунок (пункты её не перекрывают, клик по ней не выбирает пункт).
             // Drag обрабатывается SCMenuWheel11 в IMessageFilter: MouseMove самого ToolStripDropDown
             // не приходит, когда курсор находится над ToolStripMenuItem.
-            if (old == null || !old.bar) dd.Padding = new Padding(dd.Padding.Left, dd.Padding.Top, dd.Padding.Right + BarZone, dd.Padding.Bottom);
             dd.MouseLeave += delegate { if (!f.barDrag && f.barHot) { f.barHot = false; f.UpdateBar(); dd.Invalidate(); } };
         }
         int minW = 0;
@@ -47394,6 +47617,11 @@ public sealed class SCMenuWheel11 : IMessageFilter
                 else { foreach (ToolStripItem it in dd.Items) f.items.Add(it); }
                 f.n = f.items.Count;
                 if (f.n == 0) return;
+                foreach (ToolStripItem hi in dd.Items) { if (hi is ToolStripControlHost) { f.hasHost = true; break; } }
+                if (!f.hasHost)
+                {
+                    dd.KeyPress += delegate (object ks, KeyPressEventArgs ke) { if (!f.dead && f.HandleChar(ke.KeyChar)) ke.Handled = true; };
+                }
                 minW = dd.MinimumSize.Width;
                 f.up = f.MakeArrow("\u25B2", -1);
                 f.down = f.MakeArrow("\u25BC", 1);
@@ -47415,6 +47643,10 @@ public sealed class SCMenuWheel11 : IMessageFilter
             // Не показываем больше заданного числа пунктов одновременно: для контекстных списков единый предел — 18 строк.
             if (f.win > 0 && w > f.win) w = f.win;
             f.win = w;
+            // Место под полосу справа резервируется только если список действительно длиннее окна: у коротких меню лишнего отступа нет.
+            bool needBar = f.bar && f.n > f.win;
+            if (needBar && !f.padAdded) { dd.Padding = new Padding(dd.Padding.Left, dd.Padding.Top, dd.Padding.Right + BarZone, dd.Padding.Bottom); f.padAdded = true; }
+            else if (!needBar && f.padAdded) { dd.Padding = new Padding(dd.Padding.Left, dd.Padding.Top, Math.Max(0, dd.Padding.Right - BarZone), dd.Padding.Bottom); f.padAdded = false; }
             // Ширина считается по всем пунктам, чтобы при прокрутке меню не меняло размер.
             foreach (ToolStripItem it in f.items) it.Visible = true;
             f.up.Visible = false; f.down.Visible = false;
@@ -47435,7 +47667,10 @@ public sealed class SCMenuWheel11 : IMessageFilter
             Point pt = dd.PointToClient(Control.MousePosition);
             if ((f.up.Visible && f.up.Bounds.Contains(pt)) || (f.down.Visible && f.down.Bounds.Contains(pt))) e.Cancel = true;
         };
-        dd.Opened += delegate { if (!f.dead) Application.AddMessageFilter(f); };
+        // Полоса считается по высоте меню, которая на момент Opening ещё не окончательная: пересчитываем после показа и при любом изменении размера,
+        // иначе при первом открытии ползунок длиннее, чем должен быть, и «укорачивается» только после первой прокрутки.
+        dd.SizeChanged += delegate { if (!f.dead && f.bar && f.up != null) { f.UpdateBar(); dd.Invalidate(); } };
+        dd.Opened += delegate { if (!f.dead) { Application.AddMessageFilter(f); if (f.bar && f.up != null) { f.UpdateBar(); dd.Invalidate(); } } };
         dd.Closed += delegate { f.EndThumbDrag(true); Application.RemoveMessageFilter(f); };
     }
 }
@@ -51275,8 +51510,10 @@ function Add-WrappersManagerControls ($owner, $container) {
     $lv.BackColor = $steamUi.Input
     $lv.ForeColor = $steamUi.Text
     $lv.Font = New-Object System.Drawing.Font('Segoe UI', 8.5)
-    $colName = 120; $colFile = 190
-    $colArgs = [System.Math]::Max(100, ($container.ClientSize.Width - $colName - $colFile))
+    # Ширины колонок - доли ширины панели (название 30%, файл 27%, остальное - аргументы).
+    $cw = [int]$container.ClientSize.Width
+    $colName = [System.Math]::Max(150, [int]($cw * 0.30)); $colFile = [System.Math]::Max(150, [int]($cw * 0.27))
+    $colArgs = [System.Math]::Max(100, ($cw - $colName - $colFile))
     [void]$lv.Columns.Add((T 'emu_col_name'), $colName)
     [void]$lv.Columns.Add((T 'col_file'), $colFile)
     [void]$lv.Columns.Add((T 'emu_col_args'), $colArgs)
@@ -56407,8 +56644,10 @@ function Add-EmulatorsManagerControls ($owner, $container) {
     $lv.BackColor = $steamUi.Input
     $lv.ForeColor = $steamUi.Text
     $lv.Font = New-Object System.Drawing.Font('Segoe UI', 8.5)
-    $colName = 120; $colFile = 150; $colExt = 90
-    $colArgs = [System.Math]::Max(100, ($container.ClientSize.Width - $colName - $colFile - $colExt))
+    # Ширины колонок - доли ширины панели (название 17%, файл 30%, расширения 20%, остальное - аргументы).
+    $cw = [int]$container.ClientSize.Width
+    $colName = [System.Math]::Max(110, [int]($cw * 0.17)); $colFile = [System.Math]::Max(150, [int]($cw * 0.30)); $colExt = [System.Math]::Max(90, [int]($cw * 0.20))
+    $colArgs = [System.Math]::Max(100, ($cw - $colName - $colFile - $colExt))
     [void]$lv.Columns.Add((T 'emu_col_name'), $colName)
     [void]$lv.Columns.Add((T 'col_file'), $colFile)
     [void]$lv.Columns.Add((T 'emu_col_ext'), $colExt)
@@ -66960,8 +67199,14 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
     protected override void OnRenderToolStripBorder(ToolStripRenderEventArgs e)
     {
         base.OnRenderToolStripBorder(e);
-        int[] t = e.ToolStrip.Tag as int[];
-        if (t == null || t.Length != 6 || t[0] != 0x5C5C || !(e.ToolStrip is ToolStripDropDown)) return;
+        if (!(e.ToolStrip is ToolStripDropDown)) return;
+        string bs = e.ToolStrip.AccessibleDescription;
+        if (bs == null || !bs.StartsWith("5C5C|")) return;
+        string[] bp = bs.Split('|');
+        if (bp.Length != 6) return;
+        int[] t = new int[6];
+        t[0] = 0x5C5C;
+        for (int bi = 1; bi < 6; bi++) { if (!int.TryParse(bp[bi], out t[bi])) return; }
         Color clr = t[5] == 2 ? Color.FromArgb(150, 158, 172) : (t[5] == 1 ? Color.FromArgb(123, 131, 146) : Color.FromArgb(96, 103, 116));
         Graphics g = e.Graphics;
         System.Drawing.Drawing2D.SmoothingMode old = g.SmoothingMode;
@@ -66994,7 +67239,27 @@ public class SCFilterRenderer : ToolStripProfessionalRenderer
                 using (SolidBrush b = new SolidBrush(SCFilterColors.MenuBg)) { e.Graphics.FillRectangle(b, new Rectangle(Point.Empty, e.Item.Size)); }
                 return;
             }
+            // Подсветка пункта не заходит под ползунок прокрутки справа (он рисуется поверх и иначе «слипается» с подсветкой).
+            Rectangle hl = new Rectangle(Point.Empty, e.Item.Size);
+            try
+            {
+                string hbs = e.ToolStrip != null ? e.ToolStrip.AccessibleDescription : null;
+                if (e.Item.IsOnDropDown && hbs != null && hbs.StartsWith("5C5C|"))
+                {
+                    string[] hp = hbs.Split('|');
+                    int hx;
+                    if (hp.Length == 6 && int.TryParse(hp[1], out hx))
+                    {
+                        int lim = hx - 3 - e.Item.Bounds.X;
+                        if (lim > 0 && lim < hl.Width) hl.Width = lim;
+                    }
+                }
+            }
+            catch { }
+            System.Drawing.Drawing2D.GraphicsState hst = e.Graphics.Save();
+            e.Graphics.SetClip(hl);
             base.OnRenderMenuItemBackground(e);
+            e.Graphics.Restore(hst);
             return;
         }
         Rectangle r = new Rectangle(2, 1, e.Item.Width - 4, e.Item.Height - 2);
@@ -75219,6 +75484,13 @@ function Show-SteamLibraryBrowser {
         try {
             if ($script:libUpdRunning -or $script:libImportRunning -or $script:libRestoreRunning) { return }
             if (Test-MenuButtonJustClosed $btnSwapEmu) { return }
+            # Ни одна игра не выбрана: кнопка открывает редактор эмуляторов (как «Рамки обложек» - менеджер рамок).
+            if (@(@(& $getSelectedSteamEntries) | Where-Object { $null -ne $_ }).Count -eq 0) {
+                try { & $hideLibHoverCardNow } catch {}
+                Show-EmulatorsManagerDialog $dlg
+                try { & $updateSelectionUi } catch {}
+                return
+            }
             $swTargets = @(& $getSelectedRomEntries)
             if ($swTargets.Count -eq 0) { return }
             $swProfiles = @(@($global:emulatorProfiles) | Where-Object { $null -ne $_ } | Sort-Object -Property { [string]$_.Name } -CaseSensitive:$false)
@@ -75319,6 +75591,13 @@ function Show-SteamLibraryBrowser {
         try {
             if ($script:libUpdRunning -or $script:libImportRunning -or $script:libRestoreRunning) { return }
             if (Test-MenuButtonJustClosed $btnSwapWrap) { return }
+            # Ни одна игра не выбрана: кнопка открывает редактор врапперов (как «Рамки обложек» - менеджер рамок).
+            if (@(@(& $getSelectedSteamEntries) | Where-Object { $null -ne $_ }).Count -eq 0) {
+                try { & $hideLibHoverCardNow } catch {}
+                Show-WrappersManagerDialog $dlg
+                try { & $updateSelectionUi } catch {}
+                return
+            }
             $wTargets = @(& $getSelectedWrapEntries)
             if ($wTargets.Count -eq 0) { return }
             $wps = @(@($global:launchWrappers) | Where-Object { $null -ne $_ } | Sort-Object -Property { [string]$_.Name } -CaseSensitive:$false)
@@ -76833,7 +77112,10 @@ function Show-SteamLibraryBrowser {
             foreach ($b in @($btnSaveScan, $btnSaveBackup, $btnSaveRestore)) { $b.Width = $w; $b.Visible = $true }
             # Корзина - самая правая кнопка ряда, без подписи; группа «Апскейлеры» стоит левее неё (зазор 16).
             $btnLibRemove.Left = [int]$dlg.ClientSize.Width - 12 - [int]$btnLibRemove.Width
-            $btnUpsGrp.Left = [int]$btnLibRemove.Left - 8 - 30
+            # ИСПРАВЛЕНИЕ: раньше здесь $btnUpsGrp.Left временно ставился в x кнопки враппера (Remove.Left - 38), а ниже перемещался на место.
+            # Между двумя перемещениями кнопка апскейлеров успевала отрисоваться поверх враппера (мигание значка). Теперь считаем во временной переменной
+            # и двигаем кнопку один раз, сразу в итоговую позицию.
+            $upsLeftTmp = [int]$btnLibRemove.Left - 8 - 30
             $oldEmuRect = $btnSwapEmu.Bounds
             $oldWrapRect = $btnSwapWrap.Bounds
             $oldFramesRect = $btnLibFrames.Bounds
@@ -76846,8 +77128,8 @@ function Show-SteamLibraryBrowser {
             $flyStep = 36                               # кнопка 30 + зазор 6 внутри раскрытого ряда
             $minUpSave = $w + 2 * $flyStep + 8          # от левого края кнопки «Сохранения» до левого края кнопки «Апскейлеры»
             $minSaveLeft = $flyStep + 8                 # от правого края левого соседа до левого края кнопки «Сохранения»
-            $upCapLeft = [int]$btnUpsGrp.Left - 6 - [int]$lblCapUpscalers.Width
-            $saveRestoreLeft = [Math]::Min(($upCapLeft - 16 - $w), ([int]$btnUpsGrp.Left - $minUpSave))
+            $upCapLeft = $upsLeftTmp - 6 - [int]$lblCapUpscalers.Width
+            $saveRestoreLeft = [Math]::Min(($upCapLeft - 16 - $w), ($upsLeftTmp - $minUpSave))
             $scanLeftC = $saveRestoreLeft
             $capSaveLeft = $scanLeftC - 6 - [int]$lblCapSaves.Width
             $wrapLeftC = [Math]::Min(($capSaveLeft - 8), ($scanLeftC - $minSaveLeft)) - [int]$btnSwapWrap.Width
@@ -76858,7 +77140,7 @@ function Show-SteamLibraryBrowser {
             $capFramesLeft = $framesLeftC - 6 - [int]$lblCapFrames.Width
             $capsFit = $false   # всегда компактный вид: подписи групп не показываются, их текст теперь в подсказках кнопок
             if ($capsFit) {
-                $saveRestoreLeft_ = $saveRestoreLeft; $scanLeft_ = $scanLeftC; $wrapLeft_ = $wrapLeftC; $emuLeft_ = $emuLeftC; $framesLeft_ = $framesLeftC
+                $upsLeft_ = $upsLeftTmp; $saveRestoreLeft_ = $saveRestoreLeft; $scanLeft_ = $scanLeftC; $wrapLeft_ = $wrapLeftC; $emuLeft_ = $emuLeftC; $framesLeft_ = $framesLeftC
             } else {
                 # Компактный вид: без подписей, все кнопки в один ровный ряд с одинаковым промежутком 16 px. Раскрытый ряд здесь накрывает соседей
                 # на время раскрытия (см. $applyLibFly: накрытые кнопки прячутся), а не раздвигает кнопки.
@@ -76867,11 +77149,16 @@ function Show-SteamLibraryBrowser {
                 $wrapLeft_ = [int]$btnLibRemove.Left - $gapG - [int]$btnSwapWrap.Width
                 $emuLeft_ = $wrapLeft_ - $gapG - [int]$btnSwapEmu.Width
                 $framesLeft_ = $emuLeft_ - $gapG - [int]$btnLibFrames.Width
-                $btnUpsGrp.Left = $framesLeft_ - $gapG - 30
-                $saveRestoreLeft_ = [int]$btnUpsGrp.Left - $gapG - $w
+                $upsLeft_ = $framesLeft_ - $gapG - 30
+                $saveRestoreLeft_ = $upsLeft_ - $gapG - $w
                 $scanLeft_ = $saveRestoreLeft_
             }
-            $btnSavesGrp.Left = $scanLeft_   # положение трёх кнопок сохранений в раскрытом ряду считает $applyLibFly
+            if ([int]$btnUpsGrp.Left -ne [int]$upsLeft_) { $btnUpsGrp.Left = [int]$upsLeft_ }
+            # Если ряд апскейлеров раскрыт (компактный вид), «Сохранения» уже сдвинуты влево: сразу ставим их туда, а не на базовое место
+            # (иначе кнопка прыгала вправо и обратно на каждую перерисовку раскладки). Сдвиг тот же, что в $applyLibFly.
+            $svLeftNow = [int]$scanLeft_
+            if ((-not $capsFit) -and [bool]$script:libFlyUpsOpen) { $svLeftNow -= (2 * (6 + 30) + 4) }
+            if ([int]$btnSavesGrp.Left -ne $svLeftNow) { $btnSavesGrp.Left = $svLeftNow }   # положение трёх кнопок сохранений в раскрытом ряду считает $applyLibFly
             $btnSwapWrap.Top = 12
             $btnSwapWrap.Left = $wrapLeft_
             $btnSwapEmu.Top = 12
@@ -77037,15 +77324,19 @@ function Show-SteamLibraryBrowser {
                 try {
                     $romSel = @(& $getSelectedRomEntries $selS).Count
                     $script:libBtnCounts['emu'] = $romSel; $btnSwapEmu.Invalidate()
-                    $btnSwapEmu.Enabled = (($romSel -gt 0) -and (@($global:emulatorProfiles).Count -gt 0))
-                    $swapTip = (T 'lib_cap_emus')
+                    # Без выбранных игр кнопка открывает редактор эмуляторов.
+                    $noSelE = (@(@($selS) | Where-Object { $null -ne $_ }).Count -eq 0)
+                    $btnSwapEmu.Enabled = ($noSelE -or (($romSel -gt 0) -and (@($global:emulatorProfiles).Count -gt 0)))
+                    $swapTip = $(if ($noSelE) { (T 'emu_section') } else { (T 'lib_cap_emus') })
                     if ([string]$script:libSwapTipText -ne $swapTip) { $script:libSwapTipText = $swapTip; $libToolTip.SetToolTip($btnSwapEmu, $swapTip) }
                 } catch {}
                 try {
                     $wrapSel = @(& $getSelectedWrapEntries $selS).Count
                     $script:libBtnCounts['wrap'] = $wrapSel; $btnSwapWrap.Invalidate()
-                    $btnSwapWrap.Enabled = (($wrapSel -gt 0) -and (@($global:launchWrappers).Count -gt 0))
-                    $wrapTip = (T 'lib_cap_wraps')
+                    # Без выбранных игр кнопка открывает редактор врапперов.
+                    $noSelW = (@(@($selS) | Where-Object { $null -ne $_ }).Count -eq 0)
+                    $btnSwapWrap.Enabled = ($noSelW -or (($wrapSel -gt 0) -and (@($global:launchWrappers).Count -gt 0)))
+                    $wrapTip = $(if ($noSelW) { (T 'wrap_section') } else { (T 'lib_cap_wraps') })
                     if ([string]$script:libWrapTipText -ne $wrapTip) { $script:libWrapTipText = $wrapTip; $libToolTip.SetToolTip($btnSwapWrap, $wrapTip) }
                 } catch {}
                 try {
@@ -87480,6 +87771,8 @@ function Update-MainLibraryButtonState {
     try {
         if ($script:batchInProgress -or $script:moveInProgress -or $script:sizeCalcBtnSwapped) {
             try { if ($null -ne $btnMainRemoveLib -and [bool]$btnMainRemoveLib.Enabled) { $btnMainRemoveLib.Enabled = $false } } catch {}
+            # Тумблеры ROMs/Wrappers в это время не блокируются: видимость корзины всё равно держим в паре с индикатором (он занимает её место), иначе они наложатся.
+            try { if ($null -ne $btnMainRemoveLib) { $rlVisBusy = (-not [bool]$script:romsModeEnabled -and -not [bool]$script:wrappersModeEnabled); if ([bool]$btnMainRemoveLib.Visible -ne $rlVisBusy) { $btnMainRemoveLib.Visible = $rlVisBusy } } } catch {}
             try { Set-MainAddGamesButtonBusy $true } catch {}
             return
         }
@@ -87592,9 +87885,9 @@ function Update-MainLibraryButtonState {
                     $rlTip = $(if ($rlShift) { (T 'btn_remove_disk_tip' @($removableCount)) } else { (T 'btn_remove_lib_tip' @($removableCount)) })
                     if ($rlTip -ne [string]$script:removeLibTipText) { $script:removeLibTipText = $rlTip; $mainToolTip.SetToolTip($btnMainRemoveLib, $rlTip) }
                 }
-                # Корзина видна всегда, кроме режимов ROMs/Wrappers (там на её месте индикатор эмулятора/враппера).
+                # Корзина видна всегда (в том числе при выбранных апскейлерах/сохранениях/коллекциях), кроме режимов ROMs/Wrappers (там на её месте индикатор эмулятора/враппера).
                 # Нечего удалять (ничего не отмечено, отмечены только новые или лицензионные игры) - она просто неактивна.
-                $rlVisible = (-not [bool]$script:romsModeEnabled -and -not [bool]$script:wrappersModeEnabled -and -not (Test-MainCheckRestrictionActive))
+                $rlVisible = (-not [bool]$script:romsModeEnabled -and -not [bool]$script:wrappersModeEnabled)
                 if (-not $showRemoveLib -and [string]$script:removeLibTipText -ne [string](T 'btn_remove_lib')) {
                     $script:removeLibTipText = [string](T 'btn_remove_lib'); $mainToolTip.SetToolTip($btnMainRemoveLib, $script:removeLibTipText)
                 }
@@ -87742,7 +88035,7 @@ function Update-MainLibraryButtonState {
         try { if ((& $btnSigOf) -ne $btnSigBefore) { $btnAddToSteam.Invalidate(); $btnSteamLibrary.Invalidate(); $btnSwapEmuMain.Invalidate(); $btnRestartSteam.Invalidate(); $btnApplyColl.Invalidate(); $btnApplyFrames.Invalidate() } } catch {}
     } catch {
         try { $btnApplyLibs.Visible = $false; $btnApplySaves.Visible = $false; $btnApplyFrames.Visible = $false } catch {}
-        try { if ($null -ne $btnMainRemoveLib) { $btnMainRemoveLib.Visible = $false } } catch {}
+        try { if ($null -ne $btnMainRemoveLib) { $btnMainRemoveLib.Visible = (-not [bool]$script:romsModeEnabled -and -not [bool]$script:wrappersModeEnabled) } } catch {}
         try { $btnAddToSteam.Visible = $false; $btnSwapEmuMain.Visible = $false; $btnRestartSteam.Visible = $false; $btnSteamLibrary.Visible = $true } catch {}
     }
 }
@@ -90748,9 +91041,16 @@ $form.Add_Shown({
 try {
     $tgW = 34; $tgH = 18
     $colTop = 48; $btnH = 42   # верх первой кнопки на одной линии с верхом полей путей (они тоже на 48)
-    $blkPadX = 2; $blkPadTop = 2; $blkInner = 4; $blkPadBot = 4   # тумблер строго по центру между кнопкой «+» и нижней границей рамки: отступы сверху и снизу равны
-    $blkW = [int]$btnMainAddGames.Width + 2 * $blkPadX
-    $blkH = $blkPadTop + $btnH + $blkInner + $tgH + $blkPadBot
+    # Рамка блока той же ширины, что и остальные кнопки колонки (42 px); кнопка «+» внутри уменьшена пропорционально (38x38), значок на ней прежнего размера (20 px).
+    # Высота блока прежняя (70 px), чтобы зазоры между кнопками колонки не менялись; тумблер строго по центру между кнопкой «+» и нижней границей рамки: отступы сверху и снизу равны.
+    $blkPadX = 2; $blkPadTop = 2; $blkInner = 6; $blkPadBot = 6
+    $blkW = [int]$btnMainRemoveLib.Width
+    $addBtnSz = $blkW - 2 * $blkPadX
+    $blkH = $blkPadTop + $addBtnSz + $blkInner + $tgH + $blkPadBot
+    $colLeftX = [int]$btnMainAddGames.Left
+    $btnMainAddGames.Size = New-Object System.Drawing.Size($addBtnSz, $addBtnSz)
+    $btnMainAddGames.Left = $colLeftX + $blkPadX
+    $script:mainAddBtnInset = $blkPadX   # счётчик на «+» выступает на столько же дальше, чтобы стоять в одном месте со счётчиками других кнопок
     $colBottom = [int]$pnlFrameC.Bottom
     $colBorder = $steamUi.Border   # тот же приглушённый цвет, что и у рамок остальных кнопок
 
@@ -90794,7 +91094,7 @@ try {
 
     $pnlAddBlock.Controls.Add($pnlBatchToggle)
     $pnlBatchToggle.Size = New-Object System.Drawing.Size($tgW, $tgH)
-    $pnlBatchToggle.Location = New-Object System.Drawing.Point([int](($blkW - $tgW) / 2), ($blkPadTop + $btnH + $blkInner))
+    $pnlBatchToggle.Location = New-Object System.Drawing.Point([int](($blkW - $tgW) / 2), ($blkPadTop + $addBtnSz + $blkInner))
     $pnlAddBlock.BringToFront()
     $btnMainAddGames.BringToFront()
     # Тумблер автоимпорта: приглушён, пока «+» недоступна; во включённом состоянии — зелёный ModeOn (как активные режимы).
@@ -90804,7 +91104,67 @@ try {
     } catch {}
     $lblBatchAuto.Visible = $false
     $mainToolTip.SetToolTip($pnlBatchToggle, ((T 'batch_auto') + ': ' + (T 'batch_auto_tip')))
+    # Подсветка всего блока («+» и тумблер автоимпорта) при наведении и после действия (клик по «+» или по тумблеру): рамка блока Accent2, заливка Selected только у кнопки (фон блока не меняем, чтобы кнопка не сливалась с ним).
+    $script:addBlockHot = $false
+    $script:addBlockPulseUntil = [datetime]::MinValue
+    $script:addBlockBorderNormal = $colBorder
+    $script:addBlockBackNormal = $pnlAddBlock.BackColor
+    function Update-AddBlockLook {
+        try {
+            if ($null -eq $pnlAddBlock -or $pnlAddBlock.IsDisposed) { return }
+            $hot = $false
+            try { $hot = ($pnlAddBlock.Visible -and $pnlAddBlock.ClientRectangle.Contains($pnlAddBlock.PointToClient([System.Windows.Forms.Cursor]::Position))) } catch {}
+            $pulse = ([datetime]::UtcNow -lt $script:addBlockPulseUntil)
+            $changed = ([bool]$script:addBlockHot -ne $hot)
+            $script:addBlockHot = $hot
+            $lit = ($hot -or $pulse)
+            $pnlAddBlock.Tag = $(if ($lit) { $steamUi.Accent2 } else { $script:addBlockBorderNormal })
+            $btnMainAddGames.BackColor = $(if ($lit) { $steamUi.Selected } else { $steamUi.Panel })
+            $pnlAddBlock.Invalidate()
+            $pnlBatchToggle.Invalidate()
+            if ($changed) { $btnMainAddGames.Invalidate() }
+        } catch {}
+    }
+    function Start-AddBlockPulse {
+        try {
+            $script:addBlockPulseUntil = [datetime]::UtcNow.AddMilliseconds(500)
+            Update-AddBlockLook
+            if ($null -eq $script:addBlockPulseTimer -or $script:addBlockPulseTimer.IsDisposed) {
+                $script:addBlockPulseTimer = New-Object System.Windows.Forms.Timer
+                $script:addBlockPulseTimer.Interval = 520
+                $script:addBlockPulseTimer.Add_Tick({
+                    try { $script:addBlockPulseTimer.Stop() } catch {}
+                    Update-AddBlockLook
+                })
+            }
+            $script:addBlockPulseTimer.Stop()
+            $script:addBlockPulseTimer.Start()
+        } catch {}
+    }
+    foreach ($abCtl in @($pnlAddBlock, $btnMainAddGames, $pnlBatchToggle)) {
+        $abCtl.Add_MouseEnter({ Update-AddBlockLook })
+        $abCtl.Add_MouseLeave({ Update-AddBlockLook })
+    }
+    $btnMainAddGames.Add_Click({ Start-AddBlockPulse })
+    $pnlBatchToggle.Add_Click({ Start-AddBlockPulse })
+    # Рамка Accent2 при наведении у всех кнопок колонки (как у блока добавления). Рисуется поверх в Paint и не трогает BorderColor: его ведут режимы, пульс и busy-состояния.
+    foreach ($hbtn in @($btnMainSaves, $btnMainLibs, $btnMainFrames, $btnMainColl, $btnMoveGame, $btnRefreshLibrary, $btnMainRomsMode, $btnMainWrappersMode, $btnMainRemoveLib)) {
+        try {
+            $hbtn.Add_Paint({
+                param($sender, $e)
+                try {
+                    if (-not $sender.Enabled) { return }
+                    if (-not $sender.ClientRectangle.Contains($sender.PointToClient([System.Windows.Forms.Cursor]::Position))) { return }
+                    $hp = New-Object System.Drawing.Pen($steamUi.Accent2)
+                    try { $e.Graphics.DrawRectangle($hp, 0, 0, ($sender.Width - 1), ($sender.Height - 1)) } finally { $hp.Dispose() }
+                } catch {}
+            })
+        } catch {}
+    }
 } catch {}
+# Значок Steam в заголовке колонки «В библиотеке»: к этому моменту загружены все встроенные ресурсы, поэтому ставим его сразу,
+# а не после первой смены сортировки (заголовок создаётся раньше и сначала содержит «✓»).
+try { Update-SortHeaderUI 'C'; Update-SortHeaderUI 'D' } catch {}
 Write-StartupMark 'before ShowDialog (events + small-screen setup)'
 [System.Windows.Forms.Application]::DoEvents()
 try { Initialize-FormForSmallScreen -Form $form } catch {}
