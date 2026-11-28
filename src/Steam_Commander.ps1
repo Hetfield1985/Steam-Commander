@@ -6196,7 +6196,7 @@ Set-SplashProgress 0.52
 # Единая версия приложения — используется в заголовке главного окна, в
 # подписи внизу окна настроек и в User-Agent HTTP-запросов. Меняйте только
 # здесь при выпуске новой версии.
-$global:appVersion = "2.3.6"
+$global:appVersion = "2.3.7"
 $global:appTitle = "Steam Commander"
 # Ссылки на исходный код и поддержку автора (окно «Поддержать» в настройках). Меняйте только здесь.
 $global:appRepoUrl = "https://github.com/Hetfield1985/Steam-Commander"
@@ -6289,6 +6289,7 @@ $script:I18n = @{
         frames_only_real = 'Только шаблоны с прозрачной областью'
         frames_tab = 'Рамки'
         frames_no_transp = 'Без прозрачности'
+frames_underlay = 'Подложка'
         frames_kit_search = 'SteamGridDB'
         frames_kit_name = 'Имя'
         frames_kit_click = 'Нажмите, чтобы выбрать обложку'
@@ -7299,6 +7300,7 @@ $script:I18n = @{
         frames_only_real = 'Only templates with a transparent area'
         frames_tab = 'Frames'
         frames_no_transp = 'No transparency'
+frames_underlay = 'Backdrop'
         frames_kit_search = 'SteamGridDB'
         frames_kit_name = 'Name'
         frames_kit_click = 'Click to choose a cover'
@@ -9172,6 +9174,7 @@ $script:I18n = @{
         frames_only_real = '仅显示带透明区域的模板'
         frames_tab = '边框'
         frames_no_transp = '无透明区域'
+frames_underlay = '底图'
         frames_kit_search = 'SteamGridDB'
         frames_kit_name = '名称'
         frames_kit_click = '点击选择封面'
@@ -10177,6 +10180,7 @@ $script:I18n = @{
         frames_only_real = 'Solo plantillas con área transparente'
         frames_tab = 'Marcos'
         frames_no_transp = 'Sin transparencia'
+frames_underlay = 'Fondo de muestra'
         frames_kit_search = 'SteamGridDB'
         frames_kit_name = 'Nombre'
         frames_kit_click = 'Haz clic para elegir una portada'
@@ -11182,6 +11186,7 @@ $script:I18n = @{
         frames_only_real = 'Somente modelos com área transparente'
         frames_tab = 'Molduras'
         frames_no_transp = 'Sem transparência'
+frames_underlay = 'Fundo de amostra'
         frames_kit_search = 'SteamGridDB'
         frames_kit_name = 'Nome'
         frames_kit_click = 'Clique para escolher uma capa'
@@ -12186,6 +12191,7 @@ $script:I18n = @{
         frames_only_real = 'Nur Vorlagen mit transparentem Bereich'
         frames_tab = 'Rahmen'
         frames_no_transp = 'Keine Transparenz'
+frames_underlay = 'Mustervorlage'
         frames_kit_search = 'SteamGridDB'
         frames_kit_name = 'Name'
         frames_kit_click = 'Klicken, um ein Cover auszuwählen'
@@ -17705,34 +17711,37 @@ function Set-BrowseIconTip ($Button) {
 # Значок папки рисуется кодом строго по центру кнопки (глиф эмодзи 📁 из шрифта имеет несимметричные
 # боковые поля и стоял правее центра). Чётность размера значка совпадает с чётностью кнопки, поэтому отступы слева и справа равны.
 $script:browseFolderHooked = @{}
+# Контур значка папки (корпус со скошенным язычком + задняя вкладка), форма взята из flaticon «file-and-folder».
+# Координаты исходника 512x512 (осевые линии обводки): корпус x 32..480, y 78..448, задняя вкладка выше корпуса.
+# $hw/$hh — полуширина и полувысота значка в пикселях вокруг центра ($cx, $cy).
+function Get-FolderIconPoints ([double]$cx, [double]$cy, [double]$hw, [double]$hh) {
+    $m = { param($x, $y) New-Object System.Drawing.PointF([single]($cx + ($x - 256.0) / 224.0 * $hw), [single]($cy + ($y - 263.0) / 185.0 * $hh)) }
+    $body = [System.Drawing.PointF[]]@(
+        (& $m 32 448), (& $m 32 78), (& $m 190 78), (& $m 252 176), (& $m 480 176), (& $m 480 448))
+    $tab = [System.Drawing.PointF[]]@((& $m 212 112), (& $m 432 112), (& $m 432 176))
+    return @{ Body = $body; Tab = $tab }
+}
 function Paint-BrowseFolderIcon ($btn, $e) {
-    $pen = $null; $gp = $null
+    $pen = $null
     try {
         $g = $e.Graphics
         $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
         $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
         $w = [int]$btn.ClientSize.Width; $h = [int]$btn.ClientSize.Height
         $col = if ($btn.Enabled) { $btn.ForeColor } else { [System.Drawing.Color]::FromArgb(110, $btn.ForeColor) }
-        # Контур папки одной замкнутой линией (корпус + скошенный язычок) и линия «крышки».
-        # Координаты лежат на центрах пикселей: у чётной кнопки полуширина X.5, у нечётной целая, поэтому слева и справа отступы равны.
+        # Крайние линии лежат на центрах пикселей: у чётной кнопки полуширина X.5, у нечётной целая, поэтому слева и справа отступы равны.
         $cx = [single]($w / 2.0); $cy = [single]($h / 2.0)
         $hw = if (($w % 2) -eq 0) { 7.5 } else { 7.0 }
-        $hh = if (($h % 2) -eq 0) { 5.5 } else { 5.0 }
-        $pf = { param($x, $y) New-Object System.Drawing.PointF([single]($cx + $x), [single]($cy + $y)) }
+        $hh = if (($h % 2) -eq 0) { 6.5 } else { 6.0 }
+        $fig = Get-FolderIconPoints $cx $cy $hw $hh
         $pen = New-Object System.Drawing.Pen($col, 1.4)
         $pen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
         $pen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
         $pen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
-        $gp = New-Object System.Drawing.Drawing2D.GraphicsPath
-        $gp.AddLines([System.Drawing.PointF[]]@(
-            (& $pf (-$hw) $hh), (& $pf (-$hw) (-$hh)), (& $pf (-$hw + 4.5) (-$hh)),
-            (& $pf (-$hw + 6.5) (-$hh + 2.0)), (& $pf $hw (-$hh + 2.0)), (& $pf $hw $hh)))
-        $gp.CloseFigure()
-        $g.DrawPath($pen, $gp)
-        $g.DrawLine($pen, (& $pf (-$hw) (-$hh + 4.5)), (& $pf $hw (-$hh + 4.5)))
+        $g.DrawPolygon($pen, $fig.Body)
+        $g.DrawLines($pen, $fig.Tab)
     } catch {} finally {
         if ($null -ne $pen) { $pen.Dispose() }
-        if ($null -ne $gp) { $gp.Dispose() }
     }
 }
 # Значки «скачать» (стрелка вниз) и «удалить» (крест) на плитках библиотек апскейлеров в настройках: рисуются кодом вокруг центра кнопки
@@ -17790,14 +17799,40 @@ $btnSelectC.ForeColor = $steamUi.Text
 $btnSelectC.Cursor = [System.Windows.Forms.Cursors]::Hand
 $form.Controls.Add($btnSelectC)
 
+# Однострочный TextBox рисует текст у верхнего края и высоту не меняет, поэтому поле стоит без рамки
+# внутри панели-рамки 490x24, по центру по вертикали (как поле поиска в библиотеке).
+$pnlSearchC = New-Object System.Windows.Forms.Panel
+$pnlSearchC.Location = New-Object System.Drawing.Point(20, 81)
+$pnlSearchC.Size = New-Object System.Drawing.Size(490, 24)
+$pnlSearchC.BackColor = $steamUi.Input
+$pnlSearchC.Cursor = [System.Windows.Forms.Cursors]::IBeam
 $txtSearchC = New-Object System.Windows.Forms.TextBox
-$txtSearchC.Location = New-Object System.Drawing.Point(20, 81)
-$txtSearchC.Size = New-Object System.Drawing.Size(490, 24)
+$txtSearchC.BorderStyle = [System.Windows.Forms.BorderStyle]::None
 $txtSearchC.Font = New-Object System.Drawing.Font("Segoe UI", 9)
 $txtSearchC.BackColor = $steamUi.Input
 $txtSearchC.ForeColor = $steamUi.Text
-$txtSearchC.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
-$form.Controls.Add($txtSearchC)
+$txtSearchC.Width = ($pnlSearchC.Width - 26 - 24)
+$txtSearchC.Location = New-Object System.Drawing.Point(26, [int][Math]::Floor(($pnlSearchC.Height - $txtSearchC.Height) / 2))
+$pnlSearchC.Controls.Add($txtSearchC)
+$pnlSearchC.Add_Paint({
+    param($sender, $e)
+    $bp = New-Object System.Drawing.Pen($steamUi.Border)
+    try { $e.Graphics.DrawRectangle($bp, 0, 0, ($sender.Width - 1), ($sender.Height - 1)) } finally { $bp.Dispose() }
+    # Лупа слева: цвет как у неактивного крестика очистки, штрих ~ той же толщины, что и у крестика.
+    $lp = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(78, 85, 96), 1.75)
+    try {
+        $lp.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+        $lp.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+        $e.Graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+        # Центр лупы по горизонтали (x = 16) совпадает с центром галочки «выбрать всё» в заголовке списка
+        # (галочка: колонка 14 px, от x = 9 до 23 относительно этой панели), ручка короткая.
+        [single]$lx = 11; [single]$ly = [Math]::Floor(($sender.Height - 10) / 2) + 0.5
+        $e.Graphics.DrawEllipse($lp, $lx, $ly, [single]7, [single]7)
+        $e.Graphics.DrawLine($lp, [single]($lx + 6.0), [single]($ly + 6.0), [single]($lx + 9.0), [single]($ly + 9.0))
+    } finally { $lp.Dispose() }
+})
+$pnlSearchC.Add_Click({ try { $txtSearchC.Focus() } catch {} })
+$form.Controls.Add($pnlSearchC)
 Set-TextBoxCue $txtSearchC (T 'search_cue')
 [void](Add-TextBoxClearButton $txtSearchC)
 
@@ -17957,14 +17992,40 @@ $btnSelectD.Cursor = [System.Windows.Forms.Cursors]::Hand
 $form.Controls.Add($btnSelectD)
 
 
+# Однострочный TextBox рисует текст у верхнего края и высоту не меняет, поэтому поле стоит без рамки
+# внутри панели-рамки 490x24, по центру по вертикали (как поле поиска в библиотеке).
+$pnlSearchD = New-Object System.Windows.Forms.Panel
+$pnlSearchD.Location = New-Object System.Drawing.Point(570, 81)
+$pnlSearchD.Size = New-Object System.Drawing.Size(490, 24)
+$pnlSearchD.BackColor = $steamUi.Input
+$pnlSearchD.Cursor = [System.Windows.Forms.Cursors]::IBeam
 $txtSearchD = New-Object System.Windows.Forms.TextBox
-$txtSearchD.Location = New-Object System.Drawing.Point(570, 81)
-$txtSearchD.Size = New-Object System.Drawing.Size(490, 24)
+$txtSearchD.BorderStyle = [System.Windows.Forms.BorderStyle]::None
 $txtSearchD.Font = New-Object System.Drawing.Font("Segoe UI", 9)
 $txtSearchD.BackColor = $steamUi.Input
 $txtSearchD.ForeColor = $steamUi.Text
-$txtSearchD.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
-$form.Controls.Add($txtSearchD)
+$txtSearchD.Width = ($pnlSearchD.Width - 26 - 24)
+$txtSearchD.Location = New-Object System.Drawing.Point(26, [int][Math]::Floor(($pnlSearchD.Height - $txtSearchD.Height) / 2))
+$pnlSearchD.Controls.Add($txtSearchD)
+$pnlSearchD.Add_Paint({
+    param($sender, $e)
+    $bp = New-Object System.Drawing.Pen($steamUi.Border)
+    try { $e.Graphics.DrawRectangle($bp, 0, 0, ($sender.Width - 1), ($sender.Height - 1)) } finally { $bp.Dispose() }
+    # Лупа слева: цвет как у неактивного крестика очистки, штрих ~ той же толщины, что и у крестика.
+    $lp = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(78, 85, 96), 1.75)
+    try {
+        $lp.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+        $lp.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+        $e.Graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+        # Центр лупы по горизонтали (x = 16) совпадает с центром галочки «выбрать всё» в заголовке списка
+        # (галочка: колонка 14 px, от x = 9 до 23 относительно этой панели), ручка короткая.
+        [single]$lx = 11; [single]$ly = [Math]::Floor(($sender.Height - 10) / 2) + 0.5
+        $e.Graphics.DrawEllipse($lp, $lx, $ly, [single]7, [single]7)
+        $e.Graphics.DrawLine($lp, [single]($lx + 6.0), [single]($ly + 6.0), [single]($lx + 9.0), [single]($ly + 9.0))
+    } finally { $lp.Dispose() }
+})
+$pnlSearchD.Add_Click({ try { $txtSearchD.Focus() } catch {} })
+$form.Controls.Add($pnlSearchD)
 Set-TextBoxCue $txtSearchD (T 'search_cue')
 [void](Add-TextBoxClearButton $txtSearchD)
 
@@ -19648,6 +19709,143 @@ function Get-MainLibsKey ([string]$Path) {
     try { return ([string]$Path).Trim().TrimEnd('\').ToUpperInvariant() } catch { return '' }
 }
 
+# ===== Кэш результатов поиска библиотек апскейлеров на диске =====
+# %AppData%\Steam Commander\libs_cache.json. Результаты прошлых запусков показываются сразу (панели главного окна и плитки
+# библиотеки), а фоновая перепроверка идёт как обычно и обновляет данные. Формат: { v:1, p:{ключ:[Libs,Orig,DlssVer,DlssOrigVer,AltVer,t]},
+# l:{ключ:[Ver,Libs,Orig,t]}, s:{ключ:[Found,Backup,BackupDateTicks,t]} (флаги «сохранения найдены / есть бэкап» строк панелей) }, ключ - путь папки игры ВЕРХНИМ РЕГИСТРОМ без хвостового \, t - время записи (секунды Unix).
+# Записи старше 90 дней при сохранении отбрасываются. Битый или чужой файл просто игнорируется.
+$global:libsDiskCacheFile = Join-Path $global:appDataDir 'libs_cache.json'
+$script:libsDiskCache = $null
+$script:libsDiskDirty = $false
+$script:libsDiskPanelLoaded = $false
+
+function Get-LibsUnixNow {
+    try { return [long](([DateTime]::UtcNow - (New-Object DateTime 1970, 1, 1, 0, 0, 0, ([System.DateTimeKind]::Utc))).TotalSeconds) } catch { return [long]0 }
+}
+
+function Get-LibsDiskCache {
+    if ($null -ne $script:libsDiskCache) { return $script:libsDiskCache }
+    $c = @{ P = @{}; L = @{}; S = @{} }
+    try {
+        $f = [string]$global:libsDiskCacheFile
+        if ([System.IO.File]::Exists($f)) {
+            $obj = ([System.IO.File]::ReadAllText($f, [System.Text.Encoding]::UTF8) | ConvertFrom-Json)
+            if ($null -ne $obj -and [int]$obj.v -eq 1) {
+                foreach ($pr in @($obj.p.PSObject.Properties)) {
+                    try { $e = @($pr.Value); if ($e.Count -ge 6) { $c.P[[string]$pr.Name] = $e } } catch {}
+                }
+                foreach ($pr in @($obj.l.PSObject.Properties)) {
+                    try { $e = @($pr.Value); if ($e.Count -ge 4) { $c.L[[string]$pr.Name] = $e } } catch {}
+                }
+                try {
+                    if ($null -ne $obj.s) {
+                        foreach ($pr in @($obj.s.PSObject.Properties)) {
+                            try { $e = @($pr.Value); if ($e.Count -ge 4) { $c.S[[string]$pr.Name] = $e } } catch {}
+                        }
+                    }
+                } catch {}
+            }
+        }
+    } catch {}
+    $script:libsDiskCache = $c
+    return $c
+}
+
+function Save-LibsDiskCache {
+    try {
+        if (-not $script:libsDiskDirty) { return }
+        $c = Get-LibsDiskCache
+        $minT = (Get-LibsUnixNow) - (90 * 86400)
+        $o = [ordered]@{ v = 1; p = [ordered]@{}; l = [ordered]@{}; s = [ordered]@{} }
+        foreach ($k in @($c.P.Keys)) { $e = $c.P[$k]; if ([long]$e[5] -ge $minT) { $o.p[[string]$k] = $e } }
+        foreach ($k in @($c.L.Keys)) { $e = $c.L[$k]; if ([long]$e[3] -ge $minT) { $o.l[[string]$k] = $e } }
+        foreach ($k in @($c.S.Keys)) { $e = $c.S[$k]; if ([long]$e[3] -ge $minT) { $o.s[[string]$k] = $e } }
+        $json = ($o | ConvertTo-Json -Depth 4 -Compress)
+        $f = [string]$global:libsDiskCacheFile
+        $dir = [System.IO.Path]::GetDirectoryName($f)
+        if (-not [System.IO.Directory]::Exists($dir)) { [void][System.IO.Directory]::CreateDirectory($dir) }
+        $tmp = $f + '.tmp'
+        [System.IO.File]::WriteAllText($tmp, $json, (New-Object System.Text.UTF8Encoding($false)))
+        [System.IO.File]::Copy($tmp, $f, $true)
+        try { [System.IO.File]::Delete($tmp) } catch {}
+        $script:libsDiskDirty = $false
+    } catch {}
+}
+
+# Один раз за запуск: кладём сохранённые результаты в кэш панелей как «устаревшие» (At = 30 минут назад, FromDisk) -
+# панели показывают их сразу, а Request-MainLibsScan / Request-MainLibsPanelScan перепроверяют такие папки в фоне.
+function Import-MainLibsDiskCache {
+    if ($script:libsDiskPanelLoaded) { return }
+    $script:libsDiskPanelLoaded = $true
+    try {
+        $c = Get-LibsDiskCache
+        $old = [DateTime]::UtcNow.AddMinutes(-30)
+        foreach ($k in @($c.P.Keys)) {
+            if ($script:mainLibsCache.ContainsKey([string]$k)) { continue }
+            $e = $c.P[$k]
+            $script:mainLibsCache[[string]$k] = [PSCustomObject]@{ Libs = [bool]$e[0]; Orig = [bool]$e[1]; DlssVer = [string]$e[2]; DlssOrigVer = [string]$e[3]; AltVer = [string]$e[4]; At = $old; FromDisk = $true }
+        }
+    } catch {}
+}
+
+# Флаги сохранений строк панелей (найдены ли сохранения, есть ли бэкап): сохранённые значения показываются сразу
+# (запись помечается устаревшей - At = 30 минут назад), а Add-MainSavesWarm / Get-MainSavesRowFlags пересчитывают их в фоне.
+$script:libsDiskSavesLoaded = $false
+function Import-MainSavesDiskFlags {
+    if ($script:libsDiskSavesLoaded) { return }
+    $script:libsDiskSavesLoaded = $true
+    try {
+        $c = Get-LibsDiskCache
+        $old = [DateTime]::UtcNow.AddMinutes(-30)
+        foreach ($k in @($c.S.Keys)) {
+            if ($script:mainSavesRowFlags.ContainsKey([string]$k)) { continue }
+            $e = $c.S[$k]
+            $bd = $null
+            try { if ([long]$e[2] -gt 0) { $bd = New-Object DateTime ([long]$e[2]) } } catch { $bd = $null }
+            $script:mainSavesRowFlags[[string]$k] = [PSCustomObject]@{ At = $old; Res = [PSCustomObject]@{ Found = [bool]$e[0]; Backup = [bool]$e[1]; BackupDate = $bd } }
+        }
+    } catch {}
+}
+function Save-MainSavesFlagsDisk {
+    try {
+        $c = Get-LibsDiskCache
+        $now = Get-LibsUnixNow
+        $n = 0
+        foreach ($k in @($script:mainSavesRowFlags.Keys)) {
+            $cf = $script:mainSavesRowFlags[$k]
+            if ($null -eq $cf -or (([DateTime]::UtcNow - $cf.At).TotalMinutes -ge 20)) { continue }   # только свежепосчитанные, не загруженные с диска
+            $bt = [long]0
+            try { if ($null -ne $cf.Res.BackupDate) { $bt = [long]([datetime]$cf.Res.BackupDate).Ticks } } catch { $bt = [long]0 }
+            $c.S[[string]$k] = @([bool]$cf.Res.Found, [bool]$cf.Res.Backup, $bt, $now)
+            $n++
+        }
+        if ($n -gt 0) { $script:libsDiskDirty = $true; Save-LibsDiskCache }
+    } catch {}
+}
+
+# Результаты поиска окна библиотеки -> диск. Первый раз, когда закончен первый проход (известны версии и наличие библиотек),
+# второй - когда закончен и поиск бэкапов. Прерванный поиск не сохраняем.
+function Save-LibDlssDiskCache ($st) {
+    try {
+        if ($null -eq $st -or [bool]$st['Cancel']) { return }
+        $stage = ''
+        if ([bool]$st['Done']) { $stage = 'SavedDone' } elseif ([bool]$st['LibsDone']) { $stage = 'SavedLibs' } else { return }
+        if ($st.ContainsKey($stage)) { return }
+        $st[$stage] = $true
+        $c = Get-LibsDiskCache
+        $now = Get-LibsUnixNow
+        foreach ($k in @($st['Results'].Keys)) {
+            $prev = $c.L[[string]$k]
+            $libs = $false; $orig = $false
+            if ($st['Libs'].ContainsKey($k)) { $libs = [bool]$st['Libs'][$k] } elseif ($null -ne $prev) { $libs = [bool]$prev[1] }
+            if ($st['Orig'].ContainsKey($k)) { $orig = [bool]$st['Orig'][$k] } elseif ($null -ne $prev) { $orig = [bool]$prev[2] }
+            $c.L[[string]$k] = @([string]$st['Results'][$k], $libs, $orig, $now)
+        }
+        $script:libsDiskDirty = $true
+        Save-LibsDiskCache
+    } catch {}
+}
+
 # Значок «Библиотеки»: скруглённый квадрат с разрывом, маленький квадрат и диагональная стрелка (как «изменить размер»).
 # Рисуется в квадрате $size px вокруг точки ($cx, $cy), толщина линии ~1.6 px (в одном стиле с остальными значками программы).
 function Draw-LibsGlyph ($g, [single]$cx, [single]$cy, $col, [single]$size) {
@@ -20136,7 +20334,7 @@ function Initialize-MainLibsScanner {
         # ИСПРАВЛЕНИЕ: прежний поток-одиночка заменён несколькими (2-4), которые разбирают общую очередь папок:
         # обход диска упирается в ожидание файловой системы, и параллельные потоки ускоряют проверку всех игр панелей.
         $nWorkers = 2
-        try { $nWorkers = [Math]::Max(2, [Math]::Min(4, [int][Environment]::ProcessorCount)) } catch { $nWorkers = 2 }
+        try { $nWorkers = [Math]::Min(6, [Math]::Max(2, [int]([Environment]::ProcessorCount / 2))) } catch { $nWorkers = 2 }
         $state['Alive'] = [int]$nWorkers
         # Старые (завершившиеся) потоки освобождаем, чтобы не копились.
         try { foreach ($oldPs in @($script:mainLibsPsList)) { try { $oldPs.Dispose() } catch {} } } catch {}
@@ -20163,6 +20361,12 @@ function Initialize-MainLibsScanner {
                     } catch {}
                     return ''
                 }
+                $libSet = New-Object 'System.Collections.Generic.HashSet[string]'
+                $origSet = New-Object 'System.Collections.Generic.HashSet[string]'
+                $altSet = New-Object 'System.Collections.Generic.HashSet[string]'
+                foreach ($ln in $libNames) { [void]$libSet.Add(([string]$ln).ToLowerInvariant()); [void]$origSet.Add(([string]$ln).ToLowerInvariant() + '.sc_orig') }
+                foreach ($au in $altUps) { [void]$altSet.Add(([string]$au[0]).ToLowerInvariant()) }
+                $reparse = [System.IO.FileAttributes]::ReparsePoint
                 $idle = 0
                 while (-not $state['Cancel']) {
                     $d = $null
@@ -20183,33 +20387,35 @@ function Initialize-MainLibsScanner {
                                 $dir = [string]$it[0]
                                 $depth = [int]$it[1]
                                 $visited++
-                                try {
-                                    $dlssCand = [System.IO.Path]::Combine($dir, 'nvngx_dlss.dll')
-                                    if (-not $dlssFound -and [System.IO.File]::Exists($dlssCand)) { $dlssFound = $dlssCand; $libs = $true }
-                                } catch {}
-                                try {
-                                    $dlssOrigCand = [System.IO.Path]::Combine($dir, 'nvngx_dlss.dll.sc_orig')
-                                    if (-not $dlssOrigFound -and [System.IO.File]::Exists($dlssOrigCand)) { $dlssOrigFound = $dlssOrigCand; $orig = $true }
-                                } catch {}
-                                # Запасные апскейлеры (FSR / XeSS): первый найденный файл каждого вида.
-                                foreach ($au in $altUps) {
-                                    if ($altFound.ContainsKey([string]$au[0])) { continue }
-                                    try {
-                                        $ac = [System.IO.Path]::Combine($dir, [string]$au[0])
-                                        if ([System.IO.File]::Exists($ac)) { $altFound[[string]$au[0]] = $ac }
-                                    } catch {}
+                                # УСКОРЕНИЕ: вместо ~24 проверок File.Exists на каждую папку - один GetFiles('*.dll') и один GetFiles('*.sc_orig').
+                                $dlls = $null
+                                try { $dlls = [System.IO.Directory]::GetFiles($dir, '*.dll') } catch { $dlls = $null }
+                                if ($null -ne $dlls) {
+                                    foreach ($fp in $dlls) {
+                                        $fn = [System.IO.Path]::GetFileName($fp).ToLowerInvariant()
+                                        if ($fn -eq 'nvngx_dlss.dll') { if (-not $dlssFound) { $dlssFound = $fp }; $libs = $true; continue }
+                                        if ($libSet.Contains($fn)) { $libs = $true }
+                                        # Запасные апскейлеры (FSR / XeSS): первый найденный файл каждого вида.
+                                        if ($altSet.Contains($fn) -and -not $altFound.ContainsKey($fn)) { $altFound[$fn] = $fp }
+                                    }
                                 }
-                                foreach ($ln in $libNames) {
-                                    try { if (-not $libs -and [System.IO.File]::Exists([System.IO.Path]::Combine($dir, [string]$ln))) { $libs = $true } } catch {}
-                                    try { if (-not $orig -and [System.IO.File]::Exists([System.IO.Path]::Combine($dir, ([string]$ln + '.sc_orig')))) { $orig = $true } } catch {}
+                                $origs = $null
+                                try { $origs = [System.IO.Directory]::GetFiles($dir, '*.sc_orig') } catch { $origs = $null }
+                                if ($null -ne $origs) {
+                                    foreach ($fp in $origs) {
+                                        $fn = [System.IO.Path]::GetFileName($fp).ToLowerInvariant()
+                                        if ($fn -eq 'nvngx_dlss.dll.sc_orig') { if (-not $dlssOrigFound) { $dlssOrigFound = $fp }; $orig = $true; continue }
+                                        if ($origSet.Contains($fn)) { $orig = $true }
+                                    }
                                 }
                                 if ($libs -and $orig -and $dlssFound -and $dlssOrigFound) { break }
                                 if ($depth -lt 12) {
                                     try {
-                                        foreach ($sd in [System.IO.Directory]::EnumerateDirectories($dir)) {
-                                            $skip = $false
-                                            try { if (([System.IO.File]::GetAttributes($sd) -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) { $skip = $true } } catch { $skip = $true }
-                                            if (-not $skip) { $q.Enqueue(@([string]$sd, ($depth + 1))) }
+                                        # DirectoryInfo отдаёт атрибуты (точка повторной обработки) сразу, без отдельного запроса на каждую подпапку.
+                                        $di = New-Object System.IO.DirectoryInfo($dir)
+                                        foreach ($sd in $di.EnumerateDirectories()) {
+                                            if (($sd.Attributes -band $reparse) -ne 0) { continue }
+                                            $q.Enqueue(@([string]$sd.FullName, ($depth + 1)))
                                         }
                                     } catch {}
                                 }
@@ -20310,6 +20516,7 @@ $script:mainLibsPollTimer.Add_Tick({
             $dlssOV = if ($v -is [System.Array] -and $v.Count -ge 4) { [string]$v[3] } else { 'N/A' }
             $altV = if ($v -is [System.Array] -and $v.Count -ge 5) { [string]$v[4] } else { '' }
             $script:mainLibsCache[[string]$k] = [PSCustomObject]@{ Libs = [bool]$v[0]; Orig = [bool]$v[1]; DlssVer = $dlssV; DlssOrigVer = $dlssOV; AltVer = $altV; At = [DateTime]::UtcNow }
+            try { $dcP = Get-LibsDiskCache; $dcP.P[[string]$k] = @([bool]$v[0], [bool]$v[1], $dlssV, $dlssOV, $altV, (Get-LibsUnixNow)); $script:libsDiskDirty = $true } catch {}
             $script:mainLibsQueued.Remove([string]$k)
             $got = $true
         }
@@ -20334,13 +20541,14 @@ $script:mainLibsPollTimer.Add_Tick({
                 }
             } catch {}
         }
-        if ($script:mainLibsQueued.Count -eq 0) { $script:mainLibsPollTimer.Stop() }
+        if ($script:mainLibsQueued.Count -eq 0) { $script:mainLibsPollTimer.Stop(); try { Save-LibsDiskCache } catch {} }
     } catch {}
 })
 
 # Отправляет на скан папки игр, которых нет в кэше (или чей результат старше 5 минут). Не-папки (ROM-файлы) сразу «без библиотек».
 function Request-MainLibsScan ($Games) {
     try {
+        Import-MainLibsDiskCache   # результаты прошлых запусков показываются сразу, ниже они перепроверяются как устаревшие
         $todo = New-Object System.Collections.Generic.List[string]
         foreach ($g in @($Games)) {
             $p = ([string]$g.Path).Trim().TrimEnd('\')
@@ -20376,6 +20584,7 @@ function Request-MainLibsPanelScan {
         $script:mainLibsPanelScanSig = $sigNow
         $script:mainLibsPanelScanTick = $tkNow
     } catch {}
+    try { Import-MainLibsDiskCache } catch {}
     $todo = New-Object System.Collections.Generic.List[object]
     foreach ($src in @('C', 'D')) {
         $lb = if ($src -eq 'C') { $listBoxC } else { $listBoxD }
@@ -20386,7 +20595,9 @@ function Request-MainLibsPanelScan {
                 $nm = Clean-GameName $it.ToString()
                 if ([string]::IsNullOrWhiteSpace($nm)) { continue }
                 $gp = Join-Path $root $nm
-                if ($null -ne $script:mainLibsCache[(Get-MainLibsKey $gp)]) { continue }
+                $ccP = $script:mainLibsCache[(Get-MainLibsKey $gp)]
+                # Записи, загруженные с диска (FromDisk), тоже отправляем на перепроверку: показаны они уже сейчас.
+                if ($null -ne $ccP -and $null -eq $ccP.PSObject.Properties['FromDisk']) { continue }
                 [void]$todo.Add([PSCustomObject]@{ Name = $nm; Path = $gp })
             } catch {}
         }
@@ -20971,6 +21182,7 @@ function Get-MainSavesRowFlags ([string]$Path, [switch]$CacheOnly) {
     $res = [PSCustomObject]@{ Found = $false; Backup = $false; BackupDate = $null }
     $key = ''
     try {
+        if (-not $script:libsDiskSavesLoaded) { Import-MainSavesDiskFlags }   # значения прошлых запусков - сразу, пересчёт в фоне
         $path = ([string]$Path).Trim().TrimEnd('\')
         if ([string]::IsNullOrWhiteSpace($path)) { return $res }
         $key = Get-MainSavesKey $path
@@ -21108,6 +21320,7 @@ $script:mainSavesWarmTimer.Add_Tick({
             $script:mainSavesWarmSet.Clear()
             try { Invalidate-MainSavesDirtyRows } catch {}
             try { Update-SelectAllCheckbox 'C'; Update-SelectAllCheckbox 'D' } catch {}
+            try { Save-MainSavesFlagsDisk } catch {}
         } elseif (([int]$script:mainSavesWarmTicks % 5) -eq 0) {
             try { Invalidate-MainSavesDirtyRows } catch {}
         }
@@ -21674,6 +21887,7 @@ function Get-MainCollTargets {
     # Проход 2: ярлыки добавленных игр ищем (дорого) только если они нужны.
     if (-not ($SkipExistingWhenNew -and $new.Count -gt 0)) {
         $script:shortcutParseCache = @{}   # один разбор shortcuts.vdf на все отмеченные игры (см. Find-SteamShortcutRecord)
+        $script:shortcutFilesCache = $null   # список файлов ярлыков перечитываем: свежий массовый поиск не должен видеть данные трёхсекундной давности
         try {
             foreach ($g in $inLib) {
                 $rec = $null
@@ -25901,12 +26115,17 @@ function Apply-PanelView ([string]$source, [string[]]$forceSelectedNames = $null
     if ($data.Count -gt 0) {
         try {
             if ($view.Count -eq 0) {
-                $emptyLabel.Text = (T 'nothing_found' @($search))
-                $emptyLabel.Visible = $true
-                $listBox.Visible = $false
-            } else {
-                $emptyLabel.Visible = $false
+                # Список не скрываем: пустой, он просто закрыт подписью. Раньше Visible=$false/$true на каждый переход
+                # «ничего не найдено» <-> «есть результаты» показывал на долю секунды неотрисованный фон и белый скроллбар.
                 $listBox.Visible = $true
+                $emptyLabel.Text = (T 'nothing_found' @($search))
+                $emptyLabel.BringToFront()
+                $emptyLabel.Visible = $true
+            } else {
+                $listBox.Visible = $true
+                $emptyLabel.Visible = $false
+                # Сразу синхронно дорисовываем список, пока тяжёлые шаги ниже (ширины колонок, заголовок) не заняли UI-поток.
+                try { if (([int]$script:mainPanelsRedrawDepth -le 0) -and $listBox.IsHandleCreated) { $listBox.Refresh() } } catch {}
             }
         } catch {}
     }
@@ -26583,54 +26802,96 @@ function Show-ExeSelectionDialog ($exeList, $rootPath, $gameName) {
 # $exePath (необязательный) — точное совпадение по пути к exe. Нужен проверке
 # дубликатов при добавлении: там $gamePath — это папка exe (например ...\bin), а не
 # корень игры, и сравнение по имени последней папки давало ложные "игра уже есть".
+$script:shortcutFilesCache = $null
 function Find-SteamShortcutRecord ($gameName, $gamePath = $null, $exePath = $null, $matchLaunchOptions = $null) {
-    $steamPath = Get-ConfiguredSteamInstallPath
-    $userDataPath = Get-ConfiguredSteamUserDataPath
-    if (-not (Test-Path $userDataPath)) { return $null }
+    # УСКОРЕНИЕ (массовый режим, когда включён $script:shortcutParseCache - панели «Сохранения», коллекции отмеченных игр и т.п.):
+    # раньше для КАЖДОЙ игры заново искались файлы shortcuts.vdf и по каждой записи ярлыка строились хэш-таблица полей и объект
+    # (сотни игр x сотни ярлыков). Теперь список файлов живёт 3 секунды, а готовые записи ярлыков (без повторного разбора полей)
+    # хранятся в том же кэше разбора под ключом файла (имя + время изменения + размер, поэтому устаревшие данные не используются).
+    $bulk = ($script:shortcutParseCache -is [hashtable])
+    $userDataPath = $null
+    $files = $null
+    if ($bulk) {
+        $fc = $script:shortcutFilesCache
+        $tkF = [Environment]::TickCount
+        if ($null -ne $fc -and ($tkF - [int]$fc.Tick) -ge 0 -and ($tkF - [int]$fc.Tick) -lt 3000) { $userDataPath = [string]$fc.Path; $files = @($fc.Files) }
+    }
+    if ($null -eq $files) {
+        $userDataPath = Get-ConfiguredSteamUserDataPath
+        if (-not (Test-Path $userDataPath)) { return $null }
+        $files = @(Get-ShortcutsVdfFiles $userDataPath)
+        if ($bulk) { $script:shortcutFilesCache = @{ Path = [string]$userDataPath; Tick = [Environment]::TickCount; Files = $files } }
+    }
+    $cloneRec = {
+        param($r)
+        [PSCustomObject]@{
+            FilePath=[string]$r.FilePath
+            UserDataDir=[string]$r.UserDataDir
+            Entry=$r.Entry
+            ShortcutId=[string]$r.ShortcutId
+            AppName=[string]$r.AppName
+            Exe=[string]$r.Exe
+            StartDir=[string]$r.StartDir
+            LaunchOptions=[string]$r.LaunchOptions
+        }
+    }
 
     $pathMatch = $null
-    foreach ($shortcutsFile in (Get-ShortcutsVdfFiles $userDataPath)) {
+    foreach ($shortcutsFile in $files) {
         try {
-            # При массовом поиске (список коллекций для многих отмеченных игр) файл читается и разбирается один раз, а не на каждую игру.
-            $shortcutsNode = $null
-            if ($script:shortcutParseCache -is [hashtable]) {
-                $scKey = [string]$shortcutsFile.FullName + '|' + [string]$shortcutsFile.LastWriteTimeUtc.Ticks + '|' + [string]$shortcutsFile.Length
-                if ($script:shortcutParseCache.ContainsKey($scKey)) { $shortcutsNode = $script:shortcutParseCache[$scKey] }
+            $recs = $null
+            $scKey = ''
+            if ($bulk) {
+                $scKey = [string]$shortcutsFile.FullName + '|' + [string]$shortcutsFile.LastWriteTimeUtc.Ticks + '|' + [string]$shortcutsFile.Length + '|rec'
+                if ($script:shortcutParseCache.ContainsKey($scKey)) { $recs = $script:shortcutParseCache[$scKey] }
             }
-            if ($null -eq $shortcutsNode) {
-                $bytes = [System.IO.File]::ReadAllBytes($shortcutsFile.FullName)
-                if ($bytes.Length -eq 0) { continue }
-                $shortcutsNode = Get-ShortcutsNode $bytes
-                if ($shortcutsNode -eq $null) { continue }
-                if ($script:shortcutParseCache -is [hashtable]) { $script:shortcutParseCache[$scKey] = $shortcutsNode }
+            if ($null -eq $recs) {
+                $shortcutsNode = $null
+                if ($bulk) {
+                    $nodeKey = [string]$shortcutsFile.FullName + '|' + [string]$shortcutsFile.LastWriteTimeUtc.Ticks + '|' + [string]$shortcutsFile.Length
+                    if ($script:shortcutParseCache.ContainsKey($nodeKey)) { $shortcutsNode = $script:shortcutParseCache[$nodeKey] }
+                }
+                if ($null -eq $shortcutsNode) {
+                    $bytes = [System.IO.File]::ReadAllBytes($shortcutsFile.FullName)
+                    if ($bytes.Length -eq 0) { continue }
+                    $shortcutsNode = Get-ShortcutsNode $bytes
+                    if ($shortcutsNode -eq $null) { continue }
+                    if ($bulk) { $script:shortcutParseCache[$nodeKey] = $shortcutsNode }
+                }
+                $recList = New-Object System.Collections.Generic.List[object]
+                foreach ($entry in $shortcutsNode.Body.Children) {
+                    if ($entry.Type -ne 0x00) { continue }
+
+                    $fields = @{}
+                    foreach ($field in $entry.Body.Children) {
+                        if ($field.Type -eq 0x01 -or $field.Type -eq 0x02) { $fields[$field.Key] = $field }
+                    }
+
+                    $appName = if ($fields.ContainsKey("AppName")) { [string]$fields["AppName"].Value } else { "" }
+                    $exe = if ($fields.ContainsKey("Exe")) { [string]$fields["Exe"].Value } else { "" }
+                    $startDir = if ($fields.ContainsKey("StartDir")) { [string]$fields["StartDir"].Value } else { "" }
+                    $launchOptions = if ($fields.ContainsKey("LaunchOptions")) { [string]$fields["LaunchOptions"].Value } else { "" }
+                    $entryId = if ($fields.ContainsKey("appid")) { [string]$fields["appid"].Value } else { "" }
+
+                    [void]$recList.Add([PSCustomObject]@{
+                        FilePath=[string]$shortcutsFile.FullName
+                        UserDataDir=[string]$shortcutsFile.Directory.Parent.FullName
+                        Entry=$entry
+                        ShortcutId=$entryId
+                        AppName=$appName
+                        Exe=$exe.Trim('"')
+                        StartDir=$startDir.Trim('"')
+                        LaunchOptions=$launchOptions
+                    })
+                }
+                $recs = $recList.ToArray()
+                if ($bulk) { $script:shortcutParseCache[$scKey] = $recs }
             }
 
-            foreach ($entry in $shortcutsNode.Body.Children) {
-                if ($entry.Type -ne 0x00) { continue }
-
-                $fields = @{}
-                foreach ($field in $entry.Body.Children) {
-                    if ($field.Type -eq 0x01 -or $field.Type -eq 0x02) { $fields[$field.Key] = $field }
-                }
-
-                $appName = if ($fields.ContainsKey("AppName")) { [string]$fields["AppName"].Value } else { "" }
-                $exe = if ($fields.ContainsKey("Exe")) { [string]$fields["Exe"].Value } else { "" }
-                $startDir = if ($fields.ContainsKey("StartDir")) { [string]$fields["StartDir"].Value } else { "" }
-                $launchOptions = if ($fields.ContainsKey("LaunchOptions")) { [string]$fields["LaunchOptions"].Value } else { "" }
-                $cleanExe = $exe.Trim('"')
-                $cleanStart = $startDir.Trim('"')
-                $entryId = if ($fields.ContainsKey("appid")) { [string]$fields["appid"].Value } else { "" }
-
-                $record = [PSCustomObject]@{
-                    FilePath=[string]$shortcutsFile.FullName
-                    UserDataDir=[string]$shortcutsFile.Directory.Parent.FullName
-                    Entry=$entry
-                    ShortcutId=$entryId
-                    AppName=$appName
-                    Exe=$cleanExe
-                    StartDir=$cleanStart
-                    LaunchOptions=$launchOptions
-                }
+            foreach ($record in $recs) {
+                $cleanExe = [string]$record.Exe
+                $cleanStart = [string]$record.StartDir
+                $launchOptions = [string]$record.LaunchOptions
 
                 # ВАЖНО: раньше здесь было ещё и совпадение по одному лишь имени
                 # (AppName ярлыка == искомое имя игры, без всякой проверки пути) —
@@ -26654,7 +26915,7 @@ function Find-SteamShortcutRecord ($gameName, $gamePath = $null, $exePath = $nul
                     [string]::Equals($cleanExe, ([string]$exePath).Trim('"'), [System.StringComparison]::OrdinalIgnoreCase)) {
                     if ([string]::IsNullOrEmpty($matchLaunchOptions) -or
                         [string]::Equals($matchLaunchOptions.Trim(), $record.LaunchOptions.Trim(), [System.StringComparison]::OrdinalIgnoreCase)) {
-                        return $record
+                        return (& $cloneRec $record)
                     }
                 }
 
@@ -26663,7 +26924,7 @@ function Find-SteamShortcutRecord ($gameName, $gamePath = $null, $exePath = $nul
                     $gpKey = Get-NormalizedGamePathKey $gamePath
                     foreach ($qm2 in [regex]::Matches($launchOptions, '"([^"]+)"')) {
                         $qKey = Get-NormalizedGamePathKey ([string]$qm2.Groups[1].Value).Replace('/', '\')
-                        if ($qKey -eq $gpKey -or ($gpKey -and $qKey.StartsWith($gpKey + '\'))) { return $record }
+                        if ($qKey -eq $gpKey -or ($gpKey -and $qKey.StartsWith($gpKey + '\'))) { return (& $cloneRec $record) }
                     }
                 }
 
@@ -26678,7 +26939,8 @@ function Find-SteamShortcutRecord ($gameName, $gamePath = $null, $exePath = $nul
             }
         } catch {}
     }
-    return $pathMatch
+    if ($null -ne $pathMatch) { return (& $cloneRec $pathMatch) }
+    return $null
 }
 
 # ------------------------------------------------------------------
@@ -33119,7 +33381,7 @@ function Show-FrameKitDialog($owner, $Kit = $null, [string]$InitName = '', [stri
         }.GetNewClosure()
         # Таймер крутит спиннеры слотов, пока идёт загрузка (DoEvents в скачивании даёт ему тики).
         $ctx.LoadTimer = New-Object System.Windows.Forms.Timer
-        $ctx.LoadTimer.Interval = 70
+        $ctx.LoadTimer.Interval = 16
         $ctx.LoadTimer.Add_Tick({
             try {
                 foreach ($sw in @('v', 'h')) {
@@ -33213,6 +33475,17 @@ function Show-FrameKitDialog($owner, $Kit = $null, [string]$InitName = '', [stri
 
         # Обложки нужного вида (v - вертикальные, h - горизонтальные) в порядке сайта (по популярности).
         # Для вертикальных сначала идут шаблоны подборки выбранной платформы, затем обложки её записи на сайте.
+        # Горизонтальные обложки всех платформ списка («Все шаблоны подборки»): первые страницы и состояние для догрузки остальных.
+        $ctx.AllHoriz = {
+            $gids = New-Object System.Collections.ArrayList
+            foreach ($x in @($ctx.CollItems)) { try { $g = [int]$x.game.id; if ($g -gt 0) { [void]$gids.Add($g) } } catch {} }
+            $prevCH = [System.Windows.Forms.Cursor]::Current
+            try {
+                [System.Windows.Forms.Cursor]::Current = [System.Windows.Forms.Cursors]::WaitCursor
+                return (Get-SgdbMultiGameStart @($gids.ToArray()) 'horizontal')
+            } finally { [System.Windows.Forms.Cursor]::Current = $prevCH }
+        }.GetNewClosure()
+
         $ctx.Items = {
             param([string]$w)
             $site = @()
@@ -33230,6 +33503,11 @@ function Show-FrameKitDialog($owner, $Kit = $null, [string]$InitName = '', [stri
                     $src = if ($w -eq 'v') { $ctx.Assets.GridsVertical } else { $ctx.Assets.GridsHorizontal }
                     $site = @(@($src) | Where-Object { $null -ne $_ })
                 }
+            }
+            # «Все шаблоны подборки»: записи игры нет, поэтому горизонтальные обложки собираются со всех платформ и магазинов списка
+            # (вертикальные в этом режиме уже берутся из шаблонов подборки целиком).
+            if ($w -eq 'h' -and [int]$ctx.GameId -le 0 -and @($ctx.CollItems).Count -gt 0) {
+                return @((& $ctx.AllHoriz).Items)
             }
             if ($w -ne 'v' -or @($ctx.CollItems).Count -eq 0) { return $site }
             $have = @{}
@@ -33280,6 +33558,7 @@ function Show-FrameKitDialog($owner, $Kit = $null, [string]$InitName = '', [stri
                 $kind = if ($w -eq 'v') { 'vertical' } else { 'horizontal' }
                 $mp = $null
                 if ([int]$ctx.GameId -gt 0) { $mp = New-SgdbMorePageState $kind ([int]$ctx.GameId) '' }
+                elseif ($w -eq 'h' -and @($ctx.CollItems).Count -gt 0) { $mp = (& $ctx.AllHoriz).State }
                 # Обложки у игры есть, но окно по умолчанию показывает только варианты с прозрачной областью (рамки).
                 # Если ни у одного нет прозрачности, окно раньше открывалось, крутило заглушки и только потом писало «не найдено».
                 # Поэтому прозрачность проверяется ДО открытия окна (при необходимости - по первым страницам сайта);
@@ -33331,7 +33610,9 @@ function Show-FrameKitDialog($owner, $Kit = $null, [string]$InitName = '', [stri
                 $tw = if ($w -eq 'v') { 170 } else { 270 }
                 $th = if ($w -eq 'v') { 230 } else { 130 }
                 $title = if ($w -eq 'v') { (T 'frames_kit_v') } else { (T 'frames_kit_h') }
-                $chosen = Show-SgdbAssetChooser $title $items $tw $th $f $null $mp @() (New-FrameTransparencyFilter)
+                $fltC = New-FrameTransparencyFilter
+                $fltC.Kind = [string]$w
+                $chosen = Show-SgdbAssetChooser $title $items $tw $th $f $null $mp @() $fltC
                 if ([string]::IsNullOrWhiteSpace([string]$chosen)) { return }
                 & $ctx.StartSlotLoading @($w)
                 try {
@@ -34416,8 +34697,15 @@ $script:CoverTileAnimMaxBytes = 0
 # Плитки окна выбора: сколько кадров оставлять и сколько памяти (байт) отдавать на одну плитку.
 # 100000 кадров = без прореживания, частота кадров как в оригинале. Если файл не помещается в бюджет памяти,
 # уменьшается разрешение кадров, а не их число. Для экономии памяти уменьшите бюджет (33554432 = 32 МБ на плитку).
+# Полная оригинальная анимация на плитках: без прореживания кадров и без обрезки по длине.
+# Для ускорения можно поставить CoverTileMaxFrames = 60, CoverTileBudget = 12582912, CoverTileSourceFrames = 100 (но анимация станет короче/реже).
 $script:CoverTileMaxFrames = 100000
 $script:CoverTileBudget = 33554432
+# Сколько первых кадров исходного файла играет плитка (остальные не раскодируются). 0 - весь файл (медленно).
+$script:CoverTileSourceFrames = 0
+# WebM-плитки (через ffmpeg): сколько кадров оставлять в памяти на плитку. Длина и частота берутся из файла (до 30 с и 30 кадр/с);
+# если кадров больше, лишние пропускаются равномерно, длительность цикла сохраняется.
+$script:CoverTileWebmMaxFrames = 120
 $script:ScAnimDecoderReady = $null
 $script:ScAnimCs = @'
 using System;
@@ -34564,12 +34852,18 @@ public static class ScAnimDecoder
 
     internal static Bitmap NewFrame(Image src, int sw, int sh)
     {
+        return NewFrame(src, sw, sh, false);
+    }
+
+    // fast = true: HighQualityBilinear вместо Bicubic. Для длинных анимаций слота (сотни кадров 1920 px) это в разы быстрее, на глаз разницы почти нет.
+    internal static Bitmap NewFrame(Image src, int sw, int sh, bool fast)
+    {
         Bitmap bmp = new Bitmap(sw, sh, PixelFormat.Format32bppPArgb);
         using (Graphics g = Graphics.FromImage(bmp))
         {
             g.Clear(Color.Transparent);
             g.CompositingMode = CompositingMode.SourceCopy;
-            g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            g.InterpolationMode = fast ? InterpolationMode.HighQualityBilinear : InterpolationMode.HighQualityBicubic;
             g.PixelOffsetMode = PixelOffsetMode.HighQuality;
             using (ImageAttributes ia = new ImageAttributes())
             {
@@ -34941,6 +35235,7 @@ public class ScAnimJob
     private int _maxSide;
     private long _budget;
     private bool _scaled;
+    private bool _fast;
     public ScAnimResult Result = new ScAnimResult();
     public bool Failed;
 
@@ -34952,6 +35247,7 @@ public class ScAnimJob
         _maxSide = maxSide;
         _budget = budget;
         _total = delays.Count;
+        _fast = maxFrames >= 200;
         _step = 1;
         if (maxFrames > 1 && _total > maxFrames) _step = (int)Math.Ceiling((double)_total / (double)maxFrames);
         _outCount = (_total + _step - 1) / _step;
@@ -34992,7 +35288,7 @@ public class ScAnimJob
                             Result.Width = _sw;
                             Result.Height = _sh;
                         }
-                        Result.Frames.Add(ScAnimDecoder.NewFrame(src, _sw, _sh));
+                        Result.Frames.Add(ScAnimDecoder.NewFrame(src, _sw, _sh, _fast));
                     }
                     int dl = 0;
                     for (int k = _next; k < _next + _step && k < _total; k++) dl += _delays[k];
@@ -35214,8 +35510,8 @@ try {
     if     ($pc -le 2)  { $script:CoverAnimSlotCount = 2 }
     elseif ($pc -le 4)  { $script:CoverAnimSlotCount = 3 }
     elseif ($pc -le 8)  { $script:CoverAnimSlotCount = 4 }
-    elseif ($pc -le 12) { $script:CoverAnimSlotCount = 6 }
-    else                { $script:CoverAnimSlotCount = 8 }
+    elseif ($pc -le 12) { $script:CoverAnimSlotCount = 4 }
+    else                { $script:CoverAnimSlotCount = 4 }
 } catch { $script:CoverAnimSlotCount = 3 }
 $script:CoverAnimSlots = New-Object 'object[]' $script:CoverAnimSlotCount
 function Test-CoverAnimJobsBusy {
@@ -35225,7 +35521,7 @@ function Test-CoverAnimJobsBusy {
 function Ensure-CoverAnimTimer {
     if ($null -eq $script:CoverAnimTimer) {
         $script:CoverAnimTimer = New-Object System.Windows.Forms.Timer
-        $script:CoverAnimTimer.Interval = 20
+        $script:CoverAnimTimer.Interval = 30
         $script:CoverAnimTimer.Add_Tick({ try { Step-CoverAnimations } catch {} })
     }
     $script:CoverAnimTimer.Start()
@@ -35236,7 +35532,36 @@ function Ensure-CoverAnimTimer {
 # Скачивается один раз в %AppData%\Steam Commander\ffmpeg (около 100 МБ) в фоне, без остановки окна.
 $script:FfmpegDl = $null
 $script:FfmpegFailedAt = [datetime]::MinValue
+# Автозагрузка ffmpeg (~100 МБ, один раз) при первой анимированной плитке SteamGridDB, пока ffmpeg.exe нет в %AppData%\Steam Commander\ffmpeg.
+$script:FfmpegAutoDownload = $true
 $script:CoverAnimWaitFf = New-Object System.Collections.ArrayList
+
+# Длительность и частота кадров WebM из заголовка (EBML): TimecodeScale, Duration, DefaultDuration. Без запуска ffmpeg.
+function Get-WebmTimingInfo([byte[]]$b) {
+    $r = @{ DurMs = 0.0; Fps = 0.0 }
+    try {
+        if ($null -eq $b -or $b.Length -lt 64) { return $r }
+        $n = [Math]::Min($b.Length, 4096) - 12
+        $scale = 1000000.0; $dur = 0.0; $defNs = 0.0
+        for ($i = 0; $i -lt $n; $i++) {
+            $x = $b[$i]
+            if ($x -eq 0x2A -and $b[$i + 1] -eq 0xD7 -and $b[$i + 2] -eq 0xB1) {
+                $sz = [int]$b[$i + 3] - 0x80
+                if ($sz -ge 1 -and $sz -le 8) { $v = 0.0; for ($k = 0; $k -lt $sz; $k++) { $v = $v * 256.0 + $b[$i + 4 + $k] }; if ($v -gt 0) { $scale = $v } }
+            } elseif ($x -eq 0x44 -and $b[$i + 1] -eq 0x89 -and $dur -eq 0.0) {
+                $sz = [int]$b[$i + 2] - 0x80
+                if ($sz -eq 4) { $t = [byte[]]@($b[$i + 6], $b[$i + 5], $b[$i + 4], $b[$i + 3]); $dur = [double][BitConverter]::ToSingle($t, 0) }
+                elseif ($sz -eq 8) { $t = New-Object 'byte[]' 8; for ($k = 0; $k -lt 8; $k++) { $t[$k] = $b[$i + 10 - $k] }; $dur = [BitConverter]::ToDouble($t, 0) }
+            } elseif ($x -eq 0x23 -and $b[$i + 1] -eq 0xE3 -and $b[$i + 2] -eq 0x83 -and $defNs -eq 0.0) {
+                $sz = [int]$b[$i + 3] - 0x80
+                if ($sz -ge 1 -and $sz -le 8) { $v = 0.0; for ($k = 0; $k -lt $sz; $k++) { $v = $v * 256.0 + $b[$i + 4 + $k] }; $defNs = $v }
+            }
+        }
+        if ($dur -gt 0) { $r.DurMs = $dur * $scale / 1000000.0 }
+        if ($defNs -gt 0) { $f = 1000000000.0 / $defNs; if ($f -ge 5 -and $f -le 120) { $r.Fps = $f } }
+    } catch {}
+    return $r
+}
 
 function Get-FfmpegExe {
     try {
@@ -35268,7 +35593,7 @@ function Start-FfmpegDownloadAttempt {
 }
 
 function Start-FfmpegDownloadIfNeeded {
-    return   # автозагрузка ffmpeg отключена: WebM-миниатюры заменяются полным анимированным WebP
+    if (-not $script:FfmpegAutoDownload) { return }   # автозагрузка ffmpeg выключается так: $script:FfmpegAutoDownload = $false
     if ($null -ne $script:FfmpegDl) { return }
     if ((Get-FfmpegExe)) { return }
     if (([datetime]::Now - $script:FfmpegFailedAt).TotalMinutes -lt 10) { return }
@@ -35339,6 +35664,8 @@ function Step-FfmpegDownload {
 
 # Освобождает то, что держит задание (процесс anim_dump / ffmpeg, кадры, временную папку).
 function Remove-CoverAnimWork($j) {
+    # Предварительное проигрывание слота (см. Step-CoverAnimJobs): запись снимается до освобождения кадров, чтобы PictureBox не остался на удалённой картинке.
+    try { if ($j.EarlyPlay -and $null -ne $j.Pb) { $ee = Find-CoverAnimEntry $j.Pb; if ($null -ne $ee) { Remove-CoverAnimEntry $ee $true } } } catch {}
     try { if ($null -ne $j.Proc) { try { if (-not $j.Proc.HasExited) { $j.Proc.Kill() } } catch {}; $j.Proc.Dispose() } } catch {}
     try { if ($null -ne $j.Job) { $j.Job.Result.Dispose() } } catch {}
     try { if ($j.Work) { Remove-Item -LiteralPath ([string]$j.Work) -Recurse -Force -ErrorAction SilentlyContinue } } catch {}
@@ -35363,11 +35690,11 @@ function Cancel-CoverAnimJobs($pb) {
     } catch {}
 }
 
-function Queue-CoverAnimJob($pb, [string]$path, $bytes, [int]$side, [long]$budget, [int]$maxFrames, [bool]$front, [bool]$tile, [bool]$hover = $false, [int]$fitW = 0, [int]$fitH = 0, [string]$cacheKey = '') {
+function Queue-CoverAnimJob($pb, [string]$path, $bytes, [int]$side, [long]$budget, [int]$maxFrames, [bool]$front, [bool]$tile, [bool]$hover = $false, [int]$fitW = 0, [int]$fitH = 0, [string]$cacheKey = '', [bool]$showFirst = $false) {
     if (-not $script:CoverAnimationEnabled) { return }
     if ($null -eq $pb -or $pb.IsDisposed -or $null -eq $pb.Image) { return }
     Cancel-CoverAnimJobs $pb
-    $j = @{ Pb = $pb; Img = $pb.Image; Path = $path; Bytes = $bytes; Side = $side; Budget = $budget; MaxFrames = $maxFrames; Tile = $tile; Hover = $hover; FitW = $fitW; FitH = $fitH; CacheKey = $cacheKey; Stage = 'new' }
+    $j = @{ Pb = $pb; Img = $pb.Image; Path = $path; Bytes = $bytes; Side = $side; Budget = $budget; MaxFrames = $maxFrames; Tile = $tile; Hover = $hover; FitW = $fitW; FitH = $fitH; CacheKey = $cacheKey; ShowFirst = $showFirst; FirstShown = $false; Stage = 'new' }
     if ($front) { $script:CoverAnimQueue.Insert(0, $j) } else { [void]$script:CoverAnimQueue.Add($j) }
     Ensure-CoverAnimTimer
 }
@@ -35462,9 +35789,17 @@ function Test-CoverTileOnScreen($pb) {
     } catch { return $true }
 }
 
+# Предварительное проигрывание слота карточки (старт после первых 20 кадров). Выключено: слот играет полную анимацию, как в прежней версии.
+$script:CoverEarlyPlay = $false
 # Один шаг каждого из заданий (вызывается из таймера).
 function Step-CoverAnimJobs {
-    for ($si = 0; $si -lt $script:CoverAnimSlots.Length; $si++) {
+    # Общий бюджет времени UI-потока на один тик для плиток (см. Step-CoverAnimJobSlot): окно не замирает.
+    $script:CoverTickSw = [System.Diagnostics.Stopwatch]::StartNew()
+    $slotN = $script:CoverAnimSlots.Length
+    if ($null -eq $script:CoverAnimRot) { $script:CoverAnimRot = 0 }
+    $script:CoverAnimRot = ($script:CoverAnimRot + 1) % $slotN
+    for ($sk = 0; $sk -lt $slotN; $sk++) {
+        $si = ($sk + $script:CoverAnimRot) % $slotN
         $script:CoverAnimActive = $script:CoverAnimSlots[$si]
         try { Step-CoverAnimJobSlot } catch { $script:CoverAnimActive = $null }
         $script:CoverAnimSlots[$si] = $script:CoverAnimActive
@@ -35481,11 +35816,26 @@ function Step-CoverAnimJobSlot {
     }
     $j = $script:CoverAnimActive
     $pb = $j.Pb
-    if ($null -eq $pb -or $pb.IsDisposed -or $null -eq $pb.Image -or -not [object]::ReferenceEquals($pb.Image, $j.Img) -or ($j.Tile -and $script:CoverAnimEntries.Count -ge 48)) {
+    if ($null -eq $pb -or $pb.IsDisposed -or $null -eq $pb.Image -or -not [object]::ReferenceEquals($pb.Image, $j.Img)) {
         try { if ($null -ne $pb -and -not $pb.IsDisposed -and $null -ne $pb.PSObject.Properties['ChooserSpinner']) { $pb | Add-Member -NotePropertyName AnimDone -NotePropertyValue $true -Force; Set-CoverSpinnerState $pb.ChooserSpinner 'done' } } catch {}
         Remove-CoverAnimWork $j
         $script:CoverAnimActive = $null
         return
+    }
+    # Не больше 48 играющих плиток. Первый проход (только первый кадр) лимитом не ограничивается, иначе плитки, до которых дошла
+    # очередь при прокрутке, оставались пустыми. Для полной анимации место освобождаем за счёт плиток, уже ушедших с экрана
+    # (они остаются на первом кадре); если таких нет, плитка остаётся на первом кадре.
+    if ($j.Stage -eq 'new' -and $j.Tile -and -not $j.Hover -and $script:CoverAnimEntries.Count -ge 48 -and -not (-not $j.PreviewDone -and $null -ne $pb.PSObject.Properties['ChooserSpinner'])) {
+        foreach ($ee in @($script:CoverAnimEntries)) {
+            if ($script:CoverAnimEntries.Count -lt 48) { break }
+            if (-not (Test-CoverTileOnScreen $ee.Pb)) { try { Remove-CoverAnimEntry $ee $true } catch {} }
+        }
+        if ($script:CoverAnimEntries.Count -ge 48) {
+            try { if ($null -ne $pb.PSObject.Properties['ChooserSpinner']) { $pb | Add-Member -NotePropertyName AnimDone -NotePropertyValue $true -Force; Set-CoverSpinnerState $pb.ChooserSpinner 'done' } } catch {}
+            Remove-CoverAnimWork $j
+            $script:CoverAnimActive = $null
+            return
+        }
     }
     # Плитки вне экрана не раскодируем: откладываем в конец очереди (раскодируются, когда их прокрутят в видимую область).
     if ($j.Stage -eq 'new' -and $j.Tile -and -not $j.Hover -and $script:CoverAnimQueue.Count -gt 0 -and -not (Test-CoverTileOnScreen $pb)) {
@@ -35524,15 +35874,27 @@ function Step-CoverAnimJobSlot {
                 $inFile = Join-Path $work 'in.webm'
                 [System.IO.File]::WriteAllBytes($inFile, $bytes)
                 $sw = [int][Math]::Max(120, [Math]::Min(900, [int]$j.Side))
+                # Полная длина и частота кадров из файла (если заголовок не прочитался - прежние 6 с и 12 кадр/с).
+                $wInfo = Get-WebmTimingInfo $bytes
+                $wFps = 12.0; $wSec = 6.0; $wCount = 72
+                if ([double]$wInfo.DurMs -ge 300 -and [double]$wInfo.DurMs -le 60000) {
+                    $wSec = [Math]::Min(30.0, [double]$wInfo.DurMs / 1000.0)
+                    $wFps = if ([double]$wInfo.Fps -ge 5) { [Math]::Min(30.0, [double]$wInfo.Fps) } else { 25.0 }
+                    $wCount = [int][Math]::Max(2, [Math]::Floor($wSec * $wFps))
+                }
+                $wDelay = [int][Math]::Max(10, [Math]::Round(1000.0 / $wFps))
+                $inv = [System.Globalization.CultureInfo]::InvariantCulture
+                $wFpsS = $wFps.ToString('0.###', $inv); $wSecS = $wSec.ToString('0.###', $inv)
                 $psi = New-Object System.Diagnostics.ProcessStartInfo
                 $psi.FileName = $ff
-                $psi.Arguments = '-v error -y -i "' + $inFile + '" -an -t 6 -vf "fps=12,scale=' + $sw + ':-2:flags=bicubic" -pix_fmt rgba -c:v pam -f image2 -start_number 0 "' + (Join-Path $work 'f_%04d.pam') + '"'
+                $psi.Arguments = '-v error -y -i "' + $inFile + '" -an -t ' + $wSecS + ' -vf "fps=' + $wFpsS + ',scale=' + $sw + ':-2:flags=bicubic" -pix_fmt rgba -c:v pam -f image2 -start_number 0 "' + (Join-Path $work 'f_%04d.pam') + '"'
                 $psi.UseShellExecute = $false
                 $psi.CreateNoWindow = $true
                 $durs = New-Object 'System.Collections.Generic.List[int]'
-                for ($di = 0; $di -lt 72; $di++) { $durs.Add(83) }
-                $j.Job = New-Object ScAnimJob($work, 'f_', $durs, [int]$j.Side, [long]$j.Budget, 80)
+                for ($di = 0; $di -lt $wCount; $di++) { $durs.Add($wDelay) }
+                $j.Job = New-Object ScAnimJob($work, 'f_', $durs, [int]$j.Side, [long]$j.Budget, [int]$script:CoverTileWebmMaxFrames)
                 $j.Proc = [System.Diagnostics.Process]::Start($psi)
+                try { $j.Proc.PriorityClass = [System.Diagnostics.ProcessPriorityClass]::BelowNormal } catch {}
                 $j.Clock = [System.Diagnostics.Stopwatch]::StartNew()
                 $j.Stage = 'load'
                 return
@@ -35558,13 +35920,20 @@ function Step-CoverAnimJobSlot {
             $psi.CreateNoWindow = $true
             $durs = [ScAnimDecoder]::WebpDurations($bytes)
             if ($durs.Count -lt 2) { Write-AnimLog 'anim job: no ANMF frames'; Complete-CoverAnimJob $j $null; return }
+            # Плитка окна выбора: играем только первые N кадров. Как только они прочитаны, задание завершается и anim_dump
+            # убивается, а не пишет на диск все 200+ кадров в полном разрешении (главная причина долгой загрузки).
+            $capN = [int]$script:CoverTileSourceFrames
+            if ($j.Tile -and -not $j.Hover -and $capN -ge 2 -and $durs.Count -gt $capN) { $durs.RemoveRange($capN, $durs.Count - $capN) }
             $j.Job = New-Object ScAnimJob($work, 'f_', $durs, [int]$j.Side, [long]$j.Budget, [int]$j.MaxFrames)
             $j.Proc = [System.Diagnostics.Process]::Start($psi)
+            try { $j.Proc.PriorityClass = [System.Diagnostics.ProcessPriorityClass]::BelowNormal } catch {}
             $j.Clock = [System.Diagnostics.Stopwatch]::StartNew()
             $j.Stage = 'load'
             return
         }
         if ($j.Stage -eq 'load') {
+            # Плитки: за тик таймера UI-поток тратит не больше ~14 мс на все задания вместе, остальное - в следующий тик.
+            if ($j.Tile -and -not $j.Hover -and $null -ne $script:CoverTickSw -and $script:CoverTickSw.ElapsedMilliseconds -ge 14) { return }
             $exited = $j.Proc.HasExited
             $fin = $false
             if ($j.Tile -and -not $j.Hover -and -not $j.PreviewDone -and $null -ne $pb.PSObject.Properties['ChooserSpinner']) {
@@ -35575,12 +35944,25 @@ function Step-CoverAnimJobSlot {
                 # Без прореживания кадров их много, и по 3 штуки за тик раскодирование плитки растягивалось на секунды.
                 $stepBudgetMs = 25
                 if (-not [string]::IsNullOrEmpty([string]$j.CacheKey)) { $stepBudgetMs = 60 }   # карточку ждёт пользователь
+                elseif (-not $j.Tile -and -not $j.Hover) { $stepBudgetMs = 60 }                   # окно просмотра / карточка: пользователь ждёт анимацию
+                if ($j.Tile -and -not $j.Hover -and $null -ne $script:CoverTickSw) { $stepBudgetMs = [int][Math]::Max(4, [Math]::Min(10, 14 - [int]$script:CoverTickSw.ElapsedMilliseconds)) }
                 $swStep = [System.Diagnostics.Stopwatch]::StartNew()
+                $swPump = [System.Diagnostics.Stopwatch]::StartNew()
                 do {
                     $cnt0 = $j.Job.Result.Frames.Count
                     $fin = $j.Job.Step(2, $exited)
                     $progressed = ($j.Job.Result.Frames.Count -gt $cnt0)
+                    if (-not $fin -and $swPump.ElapsedMilliseconds -ge 16) { Pump-CoverSpinners $pb; $swPump.Restart() }
                 } while (-not $fin -and $progressed -and $swStep.ElapsedMilliseconds -lt $stepBudgetMs)
+            }
+            if (-not $fin -and $j.ShowFirst -and -not $j.FirstShown -and $j.Job.Result.Frames.Count -ge 1) {
+                # Окно просмотра: первый чёткий кадр показываем сразу, не дожидаясь остальных (до этого стоит временная картинка с плитки).
+                try {
+                    $fcopy = New-Object System.Drawing.Bitmap($j.Job.Result.Frames[0])
+                    $pb.Image = $fcopy
+                    $j.Img = $fcopy
+                    $j.FirstShown = $true
+                } catch { $j.FirstShown = $true }
             }
             if (-not $fin -and $j.Tile -and -not $j.Hover -and -not $j.PreviewDone -and $null -ne $pb.PSObject.Properties['ChooserSpinner'] -and $j.Job.Result.Frames.Count -ge 1) {
                 # Первый кадр сразу: показываем его на плитке, спиннер уходит в угол, а полное раскодирование
@@ -35589,8 +35971,7 @@ function Step-CoverAnimJobSlot {
                 $old = $pb.Image
                 $pb.Image = $copy
                 try { $old.Dispose() } catch {}
-                # Спиннер после первого кадра не нужен: анимация стартует через 1-2 с, значок только портил вид.
-                try { Set-CoverSpinnerState $pb.ChooserSpinner 'done' } catch {}
+                # Тот же спиннер (по центру, поверх обложки, без подложки) крутится дальше, пока анимация не раскодирована и не заиграла.
                 Write-AnimLog ('tile first frame shown after ' + $j.Clock.ElapsedMilliseconds + ' ms')
                 $nj = @{ Pb = $pb; Img = $copy; Path = $j.Path; Bytes = $j.Bytes; Side = $j.Side; Budget = $j.Budget; MaxFrames = $j.MaxFrames; Tile = $j.Tile; Hover = $j.Hover; FitW = $j.FitW; FitH = $j.FitH; Stage = 'new'; PreviewDone = $true }
                 Remove-CoverAnimWork $j
@@ -35598,7 +35979,20 @@ function Step-CoverAnimJobSlot {
                 [void]$script:CoverAnimQueue.Add($nj)
                 return
             }
+            # Слот карточки (длинная анимация): играем уже готовую часть кадров, не дожидаясь раскодирования всего файла.
+            # Запись использует тот же список кадров, он пополняется по мере чтения; цикл удлиняется сам (см. Step-CoverAnimations).
+            if ($script:CoverEarlyPlay -eq $true -and -not $fin -and -not $j.EarlyPlay -and [int]$j.MaxFrames -ge 200 -and -not $j.Tile -and -not $j.Hover -and [string]::IsNullOrEmpty([string]$j.CacheKey) -and $j.Job.Result.Frames.Count -ge 20) {
+                try {
+                    if ($null -ne $pb -and -not $pb.IsDisposed -and [object]::ReferenceEquals($pb.Image, $j.Img)) {
+                        if ([bool](Start-CoverAnimation $pb $j.Job.Result $false)) { $j.EarlyPlay = $true }
+                    }
+                } catch {}
+            }
             if ($fin) {
+                # Предварительное проигрывание заканчивается: возвращаем статичный кадр (его ждёт Complete-CoverAnimJob), затем стартует полная анимация.
+                try { if ($j.EarlyPlay) { $ee = Find-CoverAnimEntry $pb; if ($null -ne $ee) { Remove-CoverAnimEntry $ee $true } } } catch {}
+                # Временная запись снята: флаг сбрасывается, иначе Remove-CoverAnimWork снимет уже запущенную полную анимацию и освободит её кадры.
+                $j.EarlyPlay = $false
                 $res = $j.Job.Result
                 if ($j.Job.Failed) { Write-AnimLog 'anim job: frame load failed'; Complete-CoverAnimJob $j $null; return }
                 if ($res.Frames.Count -lt 2) { try { Write-AnimLog ('anim job: only ' + $res.Frames.Count + ' frames, proc exit=' + $j.Proc.ExitCode + ' file=' + [string]$j.Path) } catch {} }
@@ -35627,12 +36021,13 @@ function Step-CoverAnimations {
             # Картинку PictureBox заменил кто-то другой (новая обложка, композиция) - анимацию снимаем.
             if (-not [object]::ReferenceEquals($pb.Image, $e.Cur)) { Remove-CoverAnimEntry $e $false; continue }
             if (-not $pb.Visible) { continue }
-            if (-not (Test-CoverTileOnScreen $pb)) { continue }
+            if ($null -eq $e.VisAt -or ($now - [long]$e.VisAt) -ge 250) { $e.Vis = [bool](Test-CoverTileOnScreen $pb); $e.VisAt = $now }
+            if (-not $e.Vis) { continue }
             # Кадр выбирается по прошедшему времени, а не «через N мс после предыдущего»: таймер WinForms тикает грубо
             # (~31 мс), и в старой схеме каждый кадр удлинялся до ближайшего тика, причём короткие кадры (карточка) -
             # сильнее длинных (плитки с прореженными кадрами). Теперь везде скорость равна исходной.
             $frames = $e.Anim.Frames
-            if ($null -eq $e.Cum) {
+            if ($null -eq $e.Cum -or [int]$e.CumN -ne [int]$frames.Count) {
                 $cum = New-Object 'int[]' $frames.Count
                 $acc = 0
                 for ($ci = 0; $ci -lt $frames.Count; $ci++) {
@@ -35643,7 +36038,8 @@ function Step-CoverAnimations {
                 }
                 $e.Cum = $cum
                 $e.Total = $acc
-                $e.T0 = $now
+                $e.CumN = [int]$frames.Count
+                if ($null -eq $e.T0) { $e.T0 = $now }
             }
             $cumA = $e.Cum
             $el = ([long](([double]($now - $e.T0)) * [double]$script:CoverAnimSpeed)) % [long]$e.Total
@@ -35701,8 +36097,12 @@ function Start-SlotCoverAnimation($slot, [string]$filePath) {
         $info = Get-ImageContainerInfo $filePath
         if (-not $info.Animated) { return $false }
         # Раскодирование идёт в фоне по частям (см. Step-CoverAnimJobs): карточка открывается сразу, анимация включится чуть позже.
-        $side = [int][Math]::Min(1400, [Math]::Max(320, ([Math]::Max($pb.Width, $pb.Height) * 1.5)))
-        Queue-CoverAnimJob $pb $filePath $null $side ([long]104857600) 90 $true $false
+        # Кадры готовятся ровно под размер слота на экране (с учётом масштаба Windows): PictureBox тогда не масштабирует их при каждой смене кадра.
+        # Раньше было в 1,5 раза больше и всего 90 кадров на цикл: у длинной анимации (например, герой в 300 кадров) оставался каждый 4-й кадр, отсюда низкая частота.
+        $dpiK = 1.0
+        try { $dpiK = [Math]::Max(1.0, [double]$pb.DeviceDpi / 96.0) } catch {}
+        $side = [int][Math]::Min(1400, [Math]::Max(320, ([Math]::Max($pb.Width, $pb.Height) * $dpiK)))
+        Queue-CoverAnimJob $pb $filePath $null $side ([long]125829120) 300 $true $false
         return $true
     } catch {
         return $false
@@ -38124,6 +38524,67 @@ function Invoke-UiPumpingDownload ($url, $targetPath, [int]$maxSeconds = 40, [in
     if ($exitCode -eq 0 -and (Test-Path $targetPath) -and (Get-Item $targetPath -ErrorAction SilentlyContinue).Length -ge $minSize) { return $true }
     Remove-Item $targetPath -Force -ErrorAction SilentlyContinue
     return $false
+}
+
+# Предзагрузка полного файла анимированной обложки SteamGridDB: пока пользователь держит курсор на плитке (или нажал на неё),
+# curl.exe уже качает файл в фоне. После выбора слот берёт готовый файл вместо долгого спиннера. Одновременно качается один файл.
+$script:SgdbPrefetch = $null
+function Stop-SgdbPrefetch {
+    try {
+        $p = $script:SgdbPrefetch
+        $script:SgdbPrefetch = $null
+        if ($null -eq $p) { return }
+        try { if ($null -ne $p.Proc -and -not $p.Proc.HasExited) { $p.Proc.Kill() } } catch {}
+        try { if ($null -ne $p.Proc) { $p.Proc.Dispose() } } catch {}
+        try { if ($p.Path -and [System.IO.File]::Exists([string]$p.Path)) { Remove-Item -LiteralPath ([string]$p.Path) -Force -ErrorAction SilentlyContinue } } catch {}
+    } catch {}
+}
+function Start-SgdbPrefetch([string]$Url) {
+    try {
+        if ($Url -notmatch '^(?i)https?://') { return }
+        $p = $script:SgdbPrefetch
+        if ($null -ne $p -and [string]$p.Url -eq $Url) { return }
+        Stop-SgdbPrefetch
+        $dir = [string]$global:tempCovers
+        if ([string]::IsNullOrWhiteSpace($dir)) { return }
+        if (-not (Test-Path -LiteralPath $dir -PathType Container)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+        $path = Join-Path $dir ('sgdb_prefetch_' + [guid]::NewGuid().ToString('N') + '.tmp')
+        $psi = New-Object System.Diagnostics.ProcessStartInfo
+        $psi.FileName = 'curl.exe'
+        $psi.Arguments = '-L -s -S -f --connect-timeout 10 --max-time 60 -A "Mozilla/5.0" -o "{0}" "{1}"' -f $path, $Url
+        $psi.UseShellExecute = $false
+        $psi.CreateNoWindow = $true
+        $proc = New-Object System.Diagnostics.Process
+        $proc.StartInfo = $psi
+        if (-not $proc.Start()) { return }
+        $script:SgdbPrefetch = @{ Url = $Url; Path = $path; Proc = $proc }
+    } catch { $script:SgdbPrefetch = $null }
+}
+# $true - файл уже лежит в $Target (скачан предзагрузкой); $false - предзагрузки для этого адреса нет или она не удалась, качать надо обычным путём.
+function Use-SgdbPrefetch([string]$Url, [string]$Target, [int]$MinSize = 512) {
+    $p = $script:SgdbPrefetch
+    if ($null -eq $p) { return $false }
+    if ([string]$p.Url -ne $Url) { Stop-SgdbPrefetch; return $false }
+    $ok = $false
+    try {
+        $deadline = (Get-Date).AddSeconds(65)
+        while (-not $p.Proc.HasExited) {
+            [System.Windows.Forms.Application]::DoEvents()
+            if ($global:editorLoadAbortRequested) { break }
+            Start-Sleep -Milliseconds 40
+            if ((Get-Date) -gt $deadline) { break }
+        }
+        if ($p.Proc.HasExited -and [int]$p.Proc.ExitCode -eq 0 -and [System.IO.File]::Exists([string]$p.Path) -and (Get-Item -LiteralPath ([string]$p.Path)).Length -ge $MinSize) {
+            Move-Item -LiteralPath ([string]$p.Path) -Destination $Target -Force
+            $ok = [System.IO.File]::Exists($Target)
+        }
+    } catch { $ok = $false }
+    # Файл (если он остался) и процесс убираем в любом случае.
+    $script:SgdbPrefetch = $null
+    try { if (-not $p.Proc.HasExited) { $p.Proc.Kill() } } catch {}
+    try { $p.Proc.Dispose() } catch {}
+    try { if ($p.Path -and [System.IO.File]::Exists([string]$p.Path)) { Remove-Item -LiteralPath ([string]$p.Path) -Force -ErrorAction SilentlyContinue } } catch {}
+    return $ok
 }
 
 # Качает несколько файлов ОДНОВРЕМЕННО (отдельный curl.exe на каждый), пока UI продолжает
@@ -40660,9 +41121,37 @@ function New-CoverSpinner {
 
     if ($null -eq $accentColor) { $accentColor = [System.Drawing.Color]::FromArgb(102,192,244) }
 
-    $sp = New-Object System.Windows.Forms.Panel
+    # Прозрачный и «сквозной» для мыши слой: спиннер рисуется прямо поверх обложки без подложки, клики проходят к плитке.
+    $sp = $null
+    try {
+        if (-not ('ScSpinnerOverlay' -as [type])) {
+            Add-Type -ErrorAction Stop -ReferencedAssemblies @('System.Drawing','System.Windows.Forms') -TypeDefinition @'
+using System;
+using System.Windows.Forms;
+public class ScSpinnerOverlay : Control
+{
+    public ScSpinnerOverlay()
+    {
+        SetStyle(ControlStyles.UserPaint | ControlStyles.SupportsTransparentBackColor | ControlStyles.ResizeRedraw, true);
+        SetStyle(ControlStyles.Selectable, false);
+        TabStop = false;
+        BackColor = System.Drawing.Color.Transparent;
+    }
+    protected override void WndProc(ref Message m)
+    {
+        if (m.Msg == 0x84) { m.Result = (IntPtr)(-1); return; }   // HTTRANSPARENT
+        base.WndProc(ref m);
+    }
+}
+'@
+        }
+        $sp = New-Object ScSpinnerOverlay
+    } catch { $sp = $null }
+    if ($null -eq $sp) {
+        $sp = New-Object System.Windows.Forms.Panel
+        try { if ($null -ne $target) { $sp.BackColor = $target.BackColor } } catch {}
+    }
     $sp.Dock = 'Fill'
-    try { if ($null -ne $target) { $sp.BackColor = $target.BackColor } } catch {}
     $sp.Tag = @{ State = 'loading'; Angle = 0; Accent = $accentColor; Max = $maxDiameter }
 
     # Двойная буферизация: без неё дуга заметно мерцает при перерисовке.
@@ -40697,6 +41186,12 @@ function New-CoverSpinner {
                 $g.DrawEllipse($trackPen, $rect)
                 $trackPen.Dispose()
 
+                $shPen = New-Object System.Drawing.Pen -ArgumentList ([System.Drawing.Color]::FromArgb(110, 0, 0, 0)), ($thickness + 3.0)
+                $shPen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+                $shPen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+                $g.DrawArc($shPen, $rect, [float]$st.Angle, [float]95)
+                $shPen.Dispose()
+
                 $arcPen = New-Object System.Drawing.Pen -ArgumentList $accent, $thickness
                 $arcPen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
                 $arcPen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
@@ -40730,7 +41225,49 @@ function Step-CoverSpinner($spinner) {
         $st = $spinner.Tag
         if ($null -eq $st -or [string]$st.State -ne 'loading') { return }
         if (-not $spinner.Visible) { return }
-        $st.Angle = ([int]$st.Angle + 22) % 360
+        # Угол считается по реальному времени, а не «+22° за тик»: скорость вращения одинакова,
+        # какой бы таймер ни вызвал шаг (16/60/70 мс) и как бы ни притормаживал UI-поток при декодировании.
+        if ($null -eq $script:CoverSpinnerSw) { $script:CoverSpinnerSw = [System.Diagnostics.Stopwatch]::StartNew() }
+        $st.Angle = [double](($script:CoverSpinnerSw.ElapsedMilliseconds * 0.36) % 360.0)   # 360°/с — один оборот в секунду
+        $spinner.Invalidate()
+    } catch {}
+}
+
+# Прокачка спиннеров внутри долгого цикла на UI-потоке (раскодирование кадров): шаг + синхронная перерисовка,
+# иначе пока идёт цикл, дуга стоит на месте и потом «прыгает».
+function Pump-CoverSpinners($host_) {
+    try {
+        if ($null -eq $host_ -or $host_.IsDisposed) { return }
+        foreach ($c in @($host_.Controls)) {
+            try {
+                $t = $c.Tag
+                if ($t -is [hashtable] -and $t.ContainsKey('Angle') -and $c.Visible) {
+                    Step-CoverSpinner $c
+                    $c.Update()
+                }
+            } catch {}
+        }
+    } catch {}
+}
+
+# Уменьшает спиннер до круглой плашки в правом верхнем углу родителя: показывает «ещё грузится», не закрывая картинку.
+function Set-CoverSpinnerCorner($spinner, [int]$size = 28, [int]$margin = 6) {
+    if ($null -eq $spinner) { return }
+    try {
+        $p = $spinner.Parent
+        $spinner.Dock = [System.Windows.Forms.DockStyle]::None
+        $spinner.Size = New-Object System.Drawing.Size($size, $size)
+        $pw = 0
+        if ($null -ne $p) { $pw = [int]$p.ClientSize.Width }
+        $spinner.Location = New-Object System.Drawing.Point([int][Math]::Max(0, $pw - $size - $margin), $margin)
+        $spinner.Anchor = [System.Windows.Forms.AnchorStyles]'Top,Right'
+        $spinner.BackColor = [System.Drawing.Color]::FromArgb(30, 41, 54)
+        $gp = New-Object System.Drawing.Drawing2D.GraphicsPath
+        $gp.AddEllipse(0, 0, $size, $size)
+        $spinner.Region = New-Object System.Drawing.Region($gp)
+        $gp.Dispose()
+        $spinner.Visible = $true
+        $spinner.BringToFront()
         $spinner.Invalidate()
     } catch {}
 }
@@ -41298,9 +41835,118 @@ function New-SgdbMorePageState ([string]$Kind, [int]$SgdbGameId, [string]$SteamA
     return @{ Kind = $Kind; GameId = $SgdbGameId; SteamAppId = $SteamAppId; Page = 0; V2Page = 0; UseV2 = $false; Done = $false; Fails = 0 }
 }
 
+# Постраничная выдача обложек сразу по многим записям SteamGridDB (режим «Все шаблоны подборки» в окне комплекта: у подборки нет
+# своей горизонтальной выдачи, поэтому берутся обложки всех платформ и магазинов списка, как при поиске по каждой из них).
+# Сайт принимает в game_id массив, записи делятся на порции по 20: один шаг (страница) = один запрос на каждую ещё не исчерпанную
+# порцию, все одновременно. Обложки порций чередуются, чтобы в начале шли самые популярные у разных платформ. Страницы листаются
+# до конца, как у одной игры (окно выбора догружает их через Get-SgdbMorePage).
+function New-SgdbMultiMoreState ($GameIds, [string]$Kind) {
+    $ids = @(@($GameIds) | ForEach-Object { $g = 0; if ([int]::TryParse([string]$_, [ref]$g) -and $g -gt 0) { $g } } | Sort-Object -Unique)
+    $chunks = New-Object System.Collections.ArrayList
+    for ($off = 0; $off -lt $ids.Count; $off += 20) {
+        [void]$chunks.Add([int[]]@($ids[$off..([Math]::Min($off + 19, $ids.Count - 1))]))
+    }
+    return @{ Kind = $Kind; GameId = 0; SteamAppId = ''; Page = 0; V2Page = 0; UseV2 = $false; Done = ($chunks.Count -eq 0); Fails = 0
+              MultiChunks = $chunks; ChunkDone = @{}; Seen = @{}; Counter = 0 }
+}
+
+function Get-SgdbMorePageMulti ($State) {
+    $res = [PSCustomObject]@{ Items = @(); Done = $false }
+    try {
+        if ($null -eq $State -or [bool]$State.Done) { $res.Done = $true; return $res }
+        if ($script:SgdbSiteBlocked -and (Get-Date) -gt $script:SgdbSiteBlockedUntil) { $script:SgdbSiteBlocked = $false }
+        if (-not $script:SgdbSiteEnabled -or $script:SgdbSiteBlocked) { $State.Done = $true; $res.Done = $true; return $res }
+        $dims = if ([string]$State.Kind -eq 'vertical') { @('600x900', '342x482', '660x930') } else { @('460x215', '920x430') }
+        $chunks = $State.MultiChunks
+        # Окно выбора при включении «взрослых» обложек сбрасывает Page в 0 и начинает выдачу заново: порции и повторы тоже сбрасываем.
+        if ([int]$State.Page -eq 0) { $State.ChunkDone.Clear(); $State.Seen.Clear(); $State.Counter = 0 }
+        $active = New-Object System.Collections.ArrayList
+        for ($ci = 0; $ci -lt $chunks.Count; $ci++) { if (-not $State.ChunkDone.ContainsKey($ci)) { [void]$active.Add($ci) } }
+        if ($active.Count -eq 0) { $State.Done = $true; $res.Done = $true; return $res }
+        $bodies = New-Object System.Collections.ArrayList
+        foreach ($ci in $active) {
+            $chunk = @($chunks[$ci])
+            $b = New-SgdbSiteAssetsBody ([int]$chunk[0]) 'grid' $dims ([int]$State.Page)
+            $b = $b.Replace(('"game_id":[' + [string]$chunk[0] + ']'), ('"game_id":[' + ($chunk -join ',') + ']'))
+            [void]$bodies.Add($b)
+        }
+        $resp = @(Invoke-SgdbSitePostBatch @($bodies.ToArray()) 15 @() 4)
+        if ($global:editorLoadAbortRequested) { return $res }
+        $lists = New-Object System.Collections.ArrayList
+        for ($k = 0; $k -lt $active.Count; $k++) {
+            $ci = [int]$active[$k]
+            $r = $null; if ($k -lt $resp.Count) { $r = $resp[$k] }
+            if ($null -eq $r -or -not $r.Success) {
+                $st = 0; try { $st = [int]$r.Status } catch {}
+                if ($st -eq 401 -or $st -eq 403) { $script:SgdbSiteBlocked = $true; $script:SgdbSiteBlockedUntil = (Get-Date).AddMinutes(3) }
+                $State.ChunkDone[$ci] = $true
+                continue
+            }
+            $l = @(); try { $l = @($r.Data.assets | Where-Object { $null -ne $_ }) } catch { $l = @() }
+            if ($l.Count -lt 48 -or ([int]$State.Page + 1) -gt 80) { $State.ChunkDone[$ci] = $true }
+            [void]$lists.Add($l)
+        }
+        $State.Page = [int]$State.Page + 1
+        $out = New-Object System.Collections.ArrayList
+        $maxLen = 0
+        foreach ($l in $lists) { if ($l.Count -gt $maxLen) { $maxLen = $l.Count } }
+        for ($i = 0; $i -lt $maxLen; $i++) {
+            foreach ($l in $lists) {
+                if ($i -ge $l.Count) { continue }
+                $it = $l[$i]
+                $idKey = ''; try { $idKey = [string]$it.id } catch {}
+                if ($idKey -ne '') { if ($State.Seen.ContainsKey($idKey)) { continue }; $State.Seen[$idKey] = $true }
+                # Форматы, которые GDI+ не читает (WebP, анимированный PNG, GIF), не показываем (как и в первой загрузке).
+                $gMime = ''; try { $gMime = [string]$it.mime } catch {}
+                $gUrl = ''; try { $gUrl = [string]$it.url } catch {}
+                if (($gMime -match $script:SgdbUnsupportedMimeRx) -or ($gUrl -match $script:SgdbUnsupportedUrlRx)) { continue }
+                try { Save-SgdbRealScore $it } catch {}
+                try { Add-Member -InputObject $it -NotePropertyName score -NotePropertyValue ([double](1000000 - [int]$State.Counter)) -Force } catch {}
+                $State.Counter = [int]$State.Counter + 1
+                [void]$out.Add($it)
+            }
+        }
+        $res.Items = @($out.ToArray())
+        if ($State.ChunkDone.Count -ge $chunks.Count) { $State.Done = $true; $res.Done = $true }
+    } catch {
+        $State.Fails = [int]$State.Fails + 1
+        if ([int]$State.Fails -ge 2) { $State.Done = $true; $res.Done = $true }
+    }
+    return $res
+}
+
+# Первые две страницы (как у одной игры) плюс состояние для догрузки остальных. Результат запоминается до перезапуска программы;
+# при сбое сайта (ничего не пришло) в кеш не кладётся, чтобы следующая попытка повторила запрос.
+function Get-SgdbMultiGameStart ($GameIds, [string]$Kind = 'horizontal') {
+    $st = New-SgdbMultiMoreState $GameIds $Kind
+    $key = $Kind + ':' + ((@($st.MultiChunks | ForEach-Object { $_ -join ',' })) -join '|')
+    if ($null -eq $script:SgdbMultiStartCache) { $script:SgdbMultiStartCache = @{} }
+    if ($script:SgdbMultiStartCache.ContainsKey($key)) {
+        $c = $script:SgdbMultiStartCache[$key]
+        $ns = New-SgdbMultiMoreState $GameIds $Kind
+        $ns.Page = $c.Page; $ns.Counter = $c.Counter; $ns.Done = $c.Done
+        foreach ($k in @($c.ChunkDone.Keys)) { $ns.ChunkDone[$k] = $true }
+        foreach ($k in @($c.Seen.Keys)) { $ns.Seen[$k] = $true }
+        return [PSCustomObject]@{ Items = @($c.Items); State = $ns }
+    }
+    try { [void](Initialize-WebpSupport) } catch {}
+    $items = New-Object System.Collections.ArrayList
+    for ($pg = 0; $pg -lt 2 -and -not [bool]$st.Done; $pg++) {
+        $r = Get-SgdbMorePageMulti $st
+        foreach ($x in @($r.Items)) { if ($null -ne $x) { [void]$items.Add($x) } }
+        if ($global:editorLoadAbortRequested) { break }
+    }
+    if ($items.Count -gt 0) {
+        $script:SgdbMultiStartCache[$key] = @{ Items = @($items.ToArray()); Page = $st.Page; Counter = $st.Counter; Done = $st.Done
+                                                ChunkDone = $st.ChunkDone.Clone(); Seen = $st.Seen.Clone() }
+    }
+    return [PSCustomObject]@{ Items = @($items.ToArray()); State = $st }
+}
+
 function Get-SgdbMorePage ($State) {
     $res = [PSCustomObject]@{ Items = @(); Done = $false }
     if ($null -eq $State -or [bool]$State.Done) { $res.Done = $true; return $res }
+    if ($State -is [hashtable] -and $State.ContainsKey('MultiChunks')) { return (Get-SgdbMorePageMulti $State) }
     try {
         if ([int]$State.GameId -le 0 -and [string]$State.SteamAppId -match '^\d+$') {
             $c = $null
@@ -41840,9 +42486,9 @@ function Get-SgdbItemMeta ($Item) {
 # Кнопка «глаз» по центру плитки в окне выбора обложек открывает это окно: сначала сразу показывается
 # миниатюра, а оригинал докачивается в фоне (curl.exe) и заменяет её, когда готов. Esc или щелчок — закрыть.
 function Show-SgdbFullPreview {
-    param($owner, [string]$source, $thumbBytes = $null, [bool]$thumbIsFull = $false, $item = $null)
-    if ([string]::IsNullOrWhiteSpace($source) -and $null -eq $thumbBytes) { return }
-    $st = @{ Img = $null; Stream = $null; ThumbImg = $null; ThumbStream = $null; Proc = $null; Tmp = $null; Timer = $null; Closed = $false }
+    param($owner, [string]$source, $thumbBytes = $null, [bool]$thumbIsFull = $false, $item = $null, $placeholder = $null)
+    if ([string]::IsNullOrWhiteSpace($source) -and $null -eq $thumbBytes) { try { if ($placeholder) { $placeholder.Dispose() } } catch {}; return }
+    $st = @{ UseSpin = $false; AnimQueued = $false; SpTimer = $null; Spin = $null; Img = $null; Stream = $null; ThumbImg = $null; ThumbStream = $null; Proc = $null; Tmp = $null; Timer = $null; Closed = $false }
     $isLocal = $false
     try { $isLocal = (-not [string]::IsNullOrWhiteSpace($source)) -and (Test-Path -LiteralPath $source -PathType Leaf) } catch {}
 
@@ -41874,7 +42520,7 @@ function Show-SgdbFullPreview {
     # Оригинал без готовой миниатюры сначала скачивается, а окно создаётся только когда есть что показать: никакого
     # пустого окна «Загружаю оригинал…». Пока идёт загрузка, у владельца курсор ожидания; повторный вход блокируется.
     $preFailed = $false
-    if ($null -eq $thumbBytes -and -not $isLocal -and -not [string]::IsNullOrWhiteSpace($source)) {
+    if ($null -eq $thumbBytes -and -not $isLocal -and $null -eq $placeholder -and -not [string]::IsNullOrWhiteSpace($source)) {
         if ($script:SgdbPreviewBusy) { return }
         $script:SgdbPreviewBusy = $true
         $preTmp = [System.IO.Path]::Combine($global:tempCovers, ('sgdb_full_{0}.tmp' -f [guid]::NewGuid().ToString('N')))
@@ -41945,6 +42591,37 @@ function Show-SgdbFullPreview {
     $view.BackColor = [System.Drawing.Color]::FromArgb(13,20,28)
     $view.Cursor = [System.Windows.Forms.Cursors]::Hand
     $f.Controls.Add($view)
+
+    # Крутящийся значок в углу: пока оригинал не скачан, не раскодирован и анимация не заиграла.
+    try {
+        $spv = New-CoverSpinner $view ([System.Drawing.Color]::FromArgb(102,192,244)) 46
+        $view.Controls.Add($spv)
+        $spv.Visible = $false
+        $st.Spin = $spv
+        $st.UseSpin = ($null -ne $placeholder)
+        $spTm = New-Object System.Windows.Forms.Timer
+        $spTm.Interval = 16
+        $st.SpTimer = $spTm
+        $spTm.Add_Tick({
+            try {
+                if ($st.Closed -or $null -eq $st.Spin -or $st.Spin.IsDisposed) { return }
+                if (-not $st.UseSpin) { if ($st.Spin.Visible) { $st.Spin.Visible = $false }; return }
+                if ($st.AnimQueued) {
+                    $playing = $null -ne (Find-CoverAnimEntry $view)
+                    $busy = $false
+                    if (-not $playing) {
+                        foreach ($q in @($script:CoverAnimQueue)) { if ([object]::ReferenceEquals($q.Pb, $view)) { $busy = $true; break } }
+                        if (-not $busy) { foreach ($sj in $script:CoverAnimSlots) { if ($null -ne $sj -and [object]::ReferenceEquals($sj.Pb, $view)) { $busy = $true; break } } }
+                        if (-not $busy) { foreach ($wj in @($script:CoverAnimWaitFf)) { if ($null -ne $wj -and [object]::ReferenceEquals($wj.Pb, $view)) { $busy = $true; break } } }
+                    }
+                    if ($playing -or -not $busy) { $st.UseSpin = $false; $st.Spin.Visible = $false; return }
+                }
+                if (-not $st.Spin.Visible) { $st.Spin.Visible = $true; $st.Spin.BringToFront() }
+                Step-CoverSpinner $st.Spin
+            } catch {}
+        })
+        $spTm.Start()
+    } catch {}
 
     # Панель сведений об обложке (SteamGridDB): одна компактная центрированная строка.
     # Рисуется целиком в Paint — без FlowLayout и разъезда по высоте.
@@ -42177,6 +42854,15 @@ function Show-SgdbFullPreview {
         } catch {}
     }
 
+    # Кадр анимированной плитки показывается сразу: окно открывается мгновенно, а не после раскодирования оригинала.
+    if ($null -ne $placeholder) {
+        try {
+            $st.Img = $placeholder
+            $view.Image = $placeholder
+            & $fitToImage $placeholder
+        } catch { $st.Img = $null }
+    }
+
     # Миниатюра (если уже была скачана на плитке) — показывается мгновенно, пока грузится оригинал.
     if ($null -ne $thumbBytes) {
         try {
@@ -42195,7 +42881,23 @@ function Show-SgdbFullPreview {
         if ($fmt -eq 'webm') { return 'unsupported' }
         $bytes = [System.IO.File]::ReadAllBytes($path)
         $img = $null; $ms = $null
-        if ($fmt -eq 'webp') {
+        $deferFirst = $false
+        $pw = 0; $ph = 0
+        if ($fmt -eq 'webp' -and $null -ne $placeholder -and $null -ne $st.Img) {
+            # Анимированный WebP: первый кадр заодно даёт раскодирование анимации (ShowFirst), отдельный проход не нужен.
+            try {
+                if ($bytes.Length -gt 30 -and $bytes[12] -eq 0x56 -and $bytes[13] -eq 0x50 -and $bytes[14] -eq 0x38 -and $bytes[15] -eq 0x58 -and (([int]$bytes[20] -band 0x02) -ne 0)) {
+                    $pw = 1 + ([int]$bytes[24] -bor ([int]$bytes[25] -shl 8) -bor ([int]$bytes[26] -shl 16))
+                    $ph = 1 + ([int]$bytes[27] -bor ([int]$bytes[28] -shl 8) -bor ([int]$bytes[29] -shl 16))
+                    $deferFirst = ($pw -gt 0 -and $ph -gt 0)
+                }
+            } catch { $deferFirst = $false }
+        }
+        if ($deferFirst) {
+            # Временная картинка остаётся на экране; размеры берём из заголовка файла.
+            $img = $st.Img
+            $dimW = $pw; $dimH = $ph
+        } elseif ($fmt -eq 'webp') {
             $img = Get-WebpFirstFrameBitmap $path
             if ($null -eq $img) { return 'failed' }
         } else {
@@ -42203,24 +42905,33 @@ function Show-SgdbFullPreview {
             $img = [System.Drawing.Image]::FromStream($ms)
         }
         try { Stop-CoverAnimation $view $false $true } catch {}
-        $view.Image = $null
-        try { if ($st.Img) { $st.Img.Dispose() } } catch {}
-        try { if ($st.Stream) { $st.Stream.Dispose() } } catch {}
-        $st.Img = $img; $st.Stream = $ms
-        $view.Image = $img
-        & $fitToImage $img
+        if (-not $deferFirst) {
+            $view.Image = $null
+            try { if ($st.Img) { $st.Img.Dispose() } } catch {}
+            try { if ($st.Stream) { $st.Stream.Dispose() } } catch {}
+            $st.Img = $img; $st.Stream = $ms
+            $view.Image = $img
+            & $fitToImage $img
+        }
+        $imgW = [int]$img.Width; $imgH = [int]$img.Height
+        if ($deferFirst) { $imgW = [int]$dimW; $imgH = [int]$dimH }
         # Анимированный APNG / WebP: после первого кадра остальные раскодируются в фоне и играют (GIF GDI+ проигрывает сама).
         try {
             $ci = Get-ImageContainerInfo $path
             if ([bool]$ci.Animated -and [string]$ci.Format -ne 'gif') {
-                $aSide = [int][Math]::Min(1600, [Math]::Max(480, [Math]::Max($img.Width, $img.Height)))
-                Queue-CoverAnimJob $view $path $bytes $aSide ([long]125829120) 120 $true $false
+                $aSide = [int][Math]::Min(1600, [Math]::Max(480, [Math]::Max($imgW, $imgH)))
+                if ($deferFirst) {
+                    # Кадры нужны не больше окна: меньше работы раскодированию, анимация стартует быстрее.
+                    $aSide = [int][Math]::Min($aSide, [Math]::Max(480, [Math]::Max([int]$view.ClientSize.Width, [int]$view.ClientSize.Height)))
+                }
+                Queue-CoverAnimJob $view $path $bytes $aSide ([long]125829120) 120 $true $false $false 0 0 '' $deferFirst
+                $st.UseSpin = $true; $st.AnimQueued = $true
             }
         } catch {}
         $kb = $bytes.Length / 1KB
         $sz = if ($kb -ge 1024) { ('{0:N1} MB' -f ($kb / 1024)) } else { ('{0:N0} KB' -f $kb) }
         $dot = [string][char]0x00B7; $times = [string][char]0x00D7
-        $dimText = ('{0}{1}{2}px' -f $img.Width, $times, $img.Height)
+        $dimText = ('{0}{1}{2}px' -f $imgW, $times, $imgH)
         $metaHasDim = $false
         try {
             if ($null -ne $metaState) {
@@ -42240,6 +42951,7 @@ function Show-SgdbFullPreview {
 
     $finishFail = {
         param([string]$key)
+        $st.UseSpin = $false
         if ($null -ne $st.ThumbImg) { $info.Text = (T $key) + $hint } else { $info.Text = (T 'preview_failed_nothumb') + $hint }
     }
 
@@ -42253,6 +42965,7 @@ function Show-SgdbFullPreview {
     $f.Add_FormClosed({
         $st.Closed = $true
         try { if ($st.Timer) { $st.Timer.Stop(); $st.Timer.Dispose() } } catch {}
+        try { if ($st.SpTimer) { $st.SpTimer.Stop(); $st.SpTimer.Dispose() } } catch {}
         try { if ($st.Proc -and -not $st.Proc.HasExited) { $st.Proc.Kill() } } catch {}
         try { Stop-CoverAnimation $view $false $true } catch {}
         try { $view.Image = $null } catch {}
@@ -42260,7 +42973,23 @@ function Show-SgdbFullPreview {
         try { if ($st.Tmp -and (Test-Path -LiteralPath $st.Tmp)) { Remove-Item -LiteralPath $st.Tmp -Force -ErrorAction SilentlyContinue } } catch {}
     })
 
-    if ($isLocal) {
+    if ($isLocal -and $null -ne $placeholder) {
+        # Есть кадр с плитки: окно сначала появляется с ним, а файл раскодируется сразу после показа окна.
+        $info.Text = (T 'preview_loading')
+        $st.UseSpin = $true
+        $t0 = New-Object System.Windows.Forms.Timer
+        $t0.Interval = 15
+        $localSrc = $source
+        $t0.Add_Tick({
+            try { $t0.Stop(); $t0.Dispose() } catch {}
+            if ($st.Closed) { return }
+            try {
+                $r = & $showFile $localSrc
+                if ($r -ne 'ok') { & $finishFail 'preview_unsupported' }
+            } catch { & $finishFail 'preview_failed' }
+        })
+        $t0.Start()
+    } elseif ($isLocal) {
         # Своя обложка / иконка с диска: открываем файл сразу.
         $info.Text = (T 'preview_loading')
         try {
@@ -42333,7 +43062,10 @@ function Show-SgdbPreviewForPb {
         try { if ($null -ne $pb.PSObject.Properties['ThumbIsFull']) { $tf = [bool]$pb.ThumbIsFull } } catch {}
         $mi = $null
         try { if ($null -ne $pb.PSObject.Properties['SgdbItem']) { $mi = $pb.SgdbItem } } catch {}
-        Show-SgdbFullPreview $owner $srcStr $tb $tf $mi
+        # Анимированная плитка: её текущий кадр сразу показывается в большом окне, пока грузится и раскодируется оригинал.
+        $ph = $null
+        try { if ($null -ne $pb.PSObject.Properties['AnimBytes'] -and $null -ne $pb.Image) { $ph = New-Object System.Drawing.Bitmap($pb.Image) } } catch { $ph = $null }
+        Show-SgdbFullPreview $owner $srcStr $tb $tf $mi $ph
     } catch {}
 }
 
@@ -42379,7 +43111,1338 @@ function Add-SgdbPreviewEye {
     if ($null -ne $tip) { try { $tip.SetToolTip($eye, (T 'preview_eye_tip')) } catch {} }
 }
 
+# =====================================================================================================
+# СЕТКА ОБЛОЖЕК НА WEBVIEW2 (этап 1)
+# Плитки окна выбора SteamGridDB рисует встроенный браузер (Edge WebView2): WebM-миниатюры играют как на сайте,
+# без раскладки на кадры. Окно со старой сеткой (Show-SgdbAssetChooser) остаётся запасным вариантом: оно
+# открывается, если WebView2 недоступен. Выключатель новой сетки: $script:SgdbWebGrid = $false
+# Этап 1: слоты 1-4 (не иконки и не рамки), без панели сортировки/фильтров. Есть: плитки, выбор, «глазок»
+# (и правая кнопка), догрузка при прокрутке, «Выбрать свою» и свои картинки с крестиком.
+# =====================================================================================================
+function Get-SgdbWv2Files {
+    $r = @{ Core = ''; WinForms = ''; Loader = '' }
+    try {
+        $root = Join-Path ([string]$global:appDataDir) 'webview2'
+        if (-not (Test-Path -LiteralPath $root -PathType Container)) { return $r }
+        $names = @('Microsoft.Web.WebView2.Core.dll', 'Microsoft.Web.WebView2.WinForms.dll', 'WebView2Loader.dll')
+        $all = @(Get-ChildItem -LiteralPath $root -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $names -contains $_.Name })
+        $arch = if ([Environment]::Is64BitProcess) { 'x64' } else { 'x86' }
+        foreach ($pair in @(@('Core', 'Microsoft.Web.WebView2.Core.dll'), @('WinForms', 'Microsoft.Web.WebView2.WinForms.dll'))) {
+            $c = @($all | Where-Object { $_.Name -eq $pair[1] })
+            $pick = @($c | Where-Object { $_.FullName -match '[\\/]net4' }) | Select-Object -First 1
+            if ($null -eq $pick) { $pick = $c | Select-Object -First 1 }
+            if ($null -ne $pick) { $r[$pair[0]] = [string]$pick.FullName }
+        }
+        $l = @($all | Where-Object { $_.Name -eq 'WebView2Loader.dll' })
+        $pick = @($l | Where-Object { $_.FullName -match ('[\\/](win-)?' + $arch + '[\\/]') }) | Select-Object -First 1
+        if ($null -eq $pick) { $pick = $l | Select-Object -First 1 }
+        if ($null -ne $pick) { $r['Loader'] = [string]$pick.FullName }
+    } catch {}
+    return $r
+}
+
+# Скачивает пакет Microsoft.Web.WebView2 (около 10 МБ, один раз) и достаёт из него нужные DLL.
+function Install-SgdbWv2Package {
+    $root = Join-Path ([string]$global:appDataDir) 'webview2'
+    if (-not (Test-Path -LiteralPath $root -PathType Container)) { New-Item -ItemType Directory -Path $root -Force | Out-Null }
+    $curl = Join-Path $env:SystemRoot 'System32\curl.exe'
+    if (-not (Test-Path -LiteralPath $curl -PathType Leaf)) { $curl = 'curl.exe' }
+    $urls = @('https://www.nuget.org/api/v2/package/Microsoft.Web.WebView2/1.0.2903.40',
+              'https://api.nuget.org/v3-flatcontainer/microsoft.web.webview2/1.0.2903.40/microsoft.web.webview2.1.0.2903.40.nupkg')
+    foreach ($u in $urls) {
+        $tmp = Join-Path $root ('pkg.' + [guid]::NewGuid().ToString('N').Substring(0, 8) + '.tmp')
+        try {
+            $psi = New-Object System.Diagnostics.ProcessStartInfo
+            $psi.FileName = $curl
+            $psi.Arguments = '-L -f -s --connect-timeout 15 --max-time 180 -o "' + $tmp + '" "' + $u + '"'
+            $psi.UseShellExecute = $false
+            $psi.CreateNoWindow = $true
+            $p = [System.Diagnostics.Process]::Start($psi)
+            while (-not $p.HasExited) { [System.Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 30 }
+            $code = [int]$p.ExitCode
+            try { $p.Dispose() } catch {}
+            if ($code -ne 0 -or -not [System.IO.File]::Exists($tmp) -or (New-Object System.IO.FileInfo($tmp)).Length -lt 1000000) { continue }
+            Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction SilentlyContinue
+            $zip = [System.IO.Compression.ZipFile]::OpenRead($tmp)
+            try {
+                foreach ($e in $zip.Entries) {
+                    if ($e.FullName -match '^(lib/net462/[^/]+\.dll|runtimes/win-(x64|x86|arm64)/native/WebView2Loader\.dll)$') {
+                        $dest = Join-Path $root ('pkg\' + ($e.FullName -replace '/', '\'))
+                        $dd = [System.IO.Path]::GetDirectoryName($dest)
+                        if (-not (Test-Path -LiteralPath $dd -PathType Container)) { New-Item -ItemType Directory -Path $dd -Force | Out-Null }
+                        [System.IO.Compression.ZipFileExtensions]::ExtractToFile($e, $dest, $true)
+                    }
+                }
+            } finally { $zip.Dispose() }
+            $f = Get-SgdbWv2Files
+            if ($f.Core -and $f.WinForms -and $f.Loader) { return }
+        } catch {
+            try { Write-SgdbTimingLog ('WV2 package download failed: ' + $_.Exception.Message) } catch {}
+        } finally {
+            try { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue } catch {}
+        }
+    }
+}
+
+# Подключает WebView2 (скачивает пакет при первом запуске). $true - можно открывать окно с сеткой на WebView2.
+function Initialize-SgdbWebView2 {
+    if ($script:SgdbWv2Ready -eq $true) { return $true }
+    if ($null -ne $script:SgdbWv2FailedAt -and ([datetime]::Now - [datetime]$script:SgdbWv2FailedAt).TotalMinutes -lt 10) { return $false }
+    $oldCursor = $null
+    try {
+        $f = Get-SgdbWv2Files
+        if (-not ($f.Core -and $f.WinForms -and $f.Loader)) {
+            try { $oldCursor = [System.Windows.Forms.Cursor]::Current; [System.Windows.Forms.Cursor]::Current = [System.Windows.Forms.Cursors]::WaitCursor } catch {}
+            Install-SgdbWv2Package
+            $f = Get-SgdbWv2Files
+        }
+        if (-not ($f.Core -and $f.WinForms -and $f.Loader)) { throw 'WebView2 package files not found' }
+        # Родная часть (WebView2Loader.dll) ищется по PATH процесса; заодно подгружаем её сами.
+        $loaderDir = [System.IO.Path]::GetDirectoryName([string]$f.Loader)
+        try { if (($env:PATH -split ';') -notcontains $loaderDir) { $env:PATH = $loaderDir + ';' + $env:PATH } } catch {}
+        try {
+            if (-not ('ScWv2.Native' -as [type])) {
+                Add-Type -Namespace ScWv2 -Name Native -MemberDefinition '[System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)] public static extern System.IntPtr LoadLibraryW(string path);'
+            }
+            [void][ScWv2.Native]::LoadLibraryW([string]$f.Loader)
+        } catch {}
+        [void][System.Reflection.Assembly]::LoadFrom([string]$f.Core)
+        [void][System.Reflection.Assembly]::LoadFrom([string]$f.WinForms)
+        if (-not ('Microsoft.Web.WebView2.WinForms.WebView2' -as [type])) { throw 'WebView2 types not loaded' }
+        $script:SgdbWv2Ready = $true
+        try { Write-SgdbTimingLog ('WV2 ready: ' + [string]$f.Core) } catch {}
+        return $true
+    } catch {
+        try { Write-SgdbTimingLog ('WV2 init failed: ' + $_.Exception.Message) } catch {}
+        $script:SgdbWv2FailedAt = [datetime]::Now
+        return $false
+    } finally {
+        try { if ($null -ne $oldCursor) { [System.Windows.Forms.Cursor]::Current = $oldCursor } } catch {}
+    }
+}
+
+# Страница с сеткой. Подстановки: __W__ / __H__ - размер обложки, __CW__ / __CH__ - размер плитки.
+$script:SgdbWebGridHtml = @'
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+:root{--bg:#171d25;--card:#0d141c;--bd:#3d4450;--tx:#dcdfe4;--ac:#66c0f4}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--tx);font:12px "Segoe UI",sans-serif;overflow:hidden;user-select:none;-webkit-user-select:none}
+#sc{height:100%;overflow-y:auto;overflow-x:hidden;padding:4px 0 10px}
+#sc::-webkit-scrollbar{width:12px}
+#sc::-webkit-scrollbar-track{background:transparent}
+#sc::-webkit-scrollbar-thumb{background:#3d4450;border-radius:6px;border:3px solid var(--bg)}
+#sc::-webkit-scrollbar-thumb:hover{background:#5a6475}
+#grid{display:grid;grid-template-columns:repeat(auto-fill,__CW__px);justify-content:center;gap:13px 10px;padding:6px 8px}
+.card{position:relative;width:__CW__px;height:__CH__px;background:var(--card);border:1px solid var(--bd)}
+.thumb{position:absolute;left:4px;top:4px;width:__W__px;height:__H__px;border:1px solid var(--bd);background:var(--card);overflow:hidden;cursor:pointer}
+.thumb img,.thumb video{display:block;width:100%;height:100%;object-fit:contain}
+.under .card:not(.pick) .thumb{background-image:var(--under);background-size:cover;background-position:center}
+.thumb:not(.ready):not(.fail)::after{content:"";position:absolute;left:50%;top:50%;width:34px;height:34px;margin:-17px 0 0 -17px;border:3px solid rgba(102,192,244,.25);border-top-color:var(--ac);border-radius:50%;animation:sp .8s linear infinite}
+.thumb.fail::after{content:"\00D7";position:absolute;left:0;right:0;top:50%;margin-top:-22px;text-align:center;font-size:40px;color:#c0504d}
+@keyframes sp{to{transform:rotate(360deg)}}
+.card:hover .thumb{border-color:var(--ac)}
+.row{position:absolute;left:4px;right:4px;top:calc(__H__px + 9px);height:22px;display:flex;align-items:center}
+.row .l{flex:1;display:flex;gap:4px;align-items:center}
+.row .r{flex:1;display:flex;justify-content:flex-end;align-items:center;white-space:nowrap}
+.pill{display:inline-flex;align-items:center;gap:3px;height:20px;padding:0 5px;border-radius:6px;background:#1e2834;color:#e8ebf0;font:700 11px "Segoe UI",sans-serif;cursor:default}
+.pill svg{display:block;flex:none}
+.b{display:block;width:22px;height:22px;flex:none}
+.b svg{display:block}
+.b.n{cursor:help}
+.eye{width:26px;height:22px;padding:0;border:1px solid var(--bd);background:#1e2630;color:var(--tx);cursor:pointer;display:flex;align-items:center;justify-content:center}
+.eye:hover{border-color:var(--ac);color:var(--ac)}
+.x{position:absolute;right:4px;top:4px;width:22px;height:22px;padding:0;border:0;background:rgba(160,40,40,.9);color:#fff;font-size:16px;line-height:20px;cursor:pointer;display:none}
+.card.own:hover .x{display:block}
+.pick .thumb{border:2px dashed #6e7a88;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:#6e7a88}
+.pick .thumb:hover{border-color:var(--ac);color:var(--ac)}
+.pick .thumb::after{content:none!important;display:none!important}
+.plus{font-size:44px;line-height:40px}
+.plbl{font:600 13px "Segoe UI",sans-serif;text-align:center;padding:0 10px}
+#ld{display:none;text-align:center;padding:12px}
+#ld i{display:inline-block;width:26px;height:26px;border:3px solid rgba(102,192,244,.25);border-top-color:var(--ac);border-radius:50%;animation:sp .8s linear infinite}
+.hideown .card.own{display:none}
+.row .exe{color:var(--ac);font-weight:600}
+.exeb{width:26px;height:22px;flex:none;border:1px solid var(--bd);background:#1e2630;color:var(--tx);display:flex;align-items:center;justify-content:center;cursor:default}
+#tip{display:none;opacity:0;transition:opacity .15s ease-out;position:fixed;z-index:9;max-width:400px;padding:5px 7px;background:#ffffe1;border:1px solid #646464;color:#000;font:12px "Segoe UI",sans-serif;line-height:1.3;white-space:pre-wrap;pointer-events:none}
+#ov{display:none;position:fixed;left:0;right:0;top:0;bottom:0;background:rgba(23,29,37,.8);z-index:5;align-items:center;justify-content:center;flex-direction:column;gap:12px;font:600 13px "Segoe UI",sans-serif}
+#ov i{display:block;width:34px;height:34px;border:3px solid rgba(102,192,244,.25);border-top-color:var(--ac);border-radius:50%;animation:sp .8s linear infinite}
+</style></head><body>
+<div id="sc"><div id="grid"></div><div id="ld"><i></i></div></div>
+<div id="ov"><i></i><span id="ovt"></span></div>
+<div id="tip"></div>
+<script>
+window.onerror=function(m,u,l,c){ try{ window.chrome.webview.postMessage({t:'jserr',k:String(m)+' @'+l+':'+c}); }catch(e){} };
+(function(){
+'use strict';
+var sc=document.getElementById('sc'), grid=document.getElementById('grid'), ld=document.getElementById('ld');
+var busy=false, more=false, T={}, hasPick=false;
+function post(o){ try{ window.chrome.webview.postMessage(o); }catch(e){} }
+function el(tag,cls,txt){ var e=document.createElement(tag); if(cls){ e.className=cls; } if(txt!==undefined){ e.textContent=txt; } return e; }
+var tipEl=document.getElementById('tip'), tipTimer=0, tipX=0, tipY=0;
+function hideTip(){ clearTimeout(tipTimer); tipTimer=0; tipEl.style.opacity='0'; tipEl.style.display='none'; }
+function bindTip(e,text){
+  if(!text){ return; }
+  e.addEventListener('mouseenter',function(ev){
+    hideTip(); tipX=ev.clientX; tipY=ev.clientY;
+    tipTimer=setTimeout(function(){
+      tipEl.textContent=text; tipEl.style.opacity='0'; tipEl.style.display='block';
+      var w=tipEl.offsetWidth, h=tipEl.offsetHeight;
+      var x=Math.max(2,Math.min(tipX,window.innerWidth-w-2));
+      var y=tipY+20; if(y+h>window.innerHeight-2){ y=Math.max(2,tipY-h-6); }
+      tipEl.style.left=x+'px'; tipEl.style.top=y+'px';
+      void tipEl.offsetWidth; tipEl.style.opacity='1';
+    },400);
+  });
+  e.addEventListener('mousemove',function(ev){ if(tipTimer){ tipX=ev.clientX; tipY=ev.clientY; } });
+  e.addEventListener('mouseleave',hideTip);
+  e.addEventListener('click',hideTip);
+}
+var HEART=(function(){
+  var n=32,xs=[],ys=[],i,t,x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;
+  for(i=0;i<n;i++){ t=2*Math.PI*i/n; xs[i]=16*Math.pow(Math.sin(t),3);
+    ys[i]=13*Math.cos(t)-5*Math.cos(2*t)-2*Math.cos(3*t)-Math.cos(4*t);
+    if(xs[i]<x0)x0=xs[i]; if(xs[i]>x1)x1=xs[i]; if(ys[i]<y0)y0=ys[i]; if(ys[i]>y1)y1=ys[i]; }
+  var pts=[]; for(i=0;i<n;i++){ pts.push((((xs[i]-x0)/(x1-x0))*11).toFixed(2)+','+((((y1-ys[i])/(y1-y0))*10)+0.5).toFixed(2)); }
+  return '<svg viewBox="0 0 11 11" width="11" height="11"><polygon points="'+pts.join(' ')+'" fill="#66c0f4"/></svg>';
+})();
+var ANIM='<svg viewBox="0 0 22 22" width="22" height="22"><rect width="22" height="22" rx="5" fill="#c4840a"/><rect x="1" y="1" width="20" height="20" rx="4" fill="#fcc428"/><rect x="3" y="4" width="16" height="14" fill="#36280a"/>'
+  +[4,8,12,16].map(function(x){ return '<rect x="'+x+'" y="5" width="2" height="2" fill="#fcc428"/><rect x="'+x+'" y="15" width="2" height="2" fill="#fcc428"/>'; }).join('')
+  +'<rect x="4" y="8" width="6" height="6" fill="#fcc428"/><rect x="12" y="8" width="6" height="6" fill="#fcc428"/></svg>';
+var NOTE='<svg viewBox="0 0 22 22" width="22" height="22"><rect width="22" height="22" rx="3" fill="#808286"/><rect x="4.8" y="4.8" width="12.4" height="8.6" fill="none" stroke="#eef0f3" stroke-width="1.6"/><polygon points="6,13 6,17.5 10.5,13" fill="#eef0f3"/><rect x="7.5" y="7.6" width="7" height="1.4" fill="#eef0f3"/><rect x="7.5" y="10" width="4.5" height="1.4" fill="#eef0f3"/></svg>';
+var EXEI='<svg viewBox="0 0 20 20" width="20" height="20"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="13" height="11"/><line x1="3.5" y1="8.5" x2="16.5" y2="8.5"/></g><circle cx="6" cy="6.5" r="0.8" fill="currentColor"/><circle cx="8.8" cy="6.5" r="0.8" fill="currentColor"/></svg>';
+var FOLDER='<svg viewBox="0 0 20 20" width="20" height="20"><polygon points="1,4 7,4 9,6 19,6 19,17 1,17" fill="#d69830"/><rect x="1" y="8" width="18" height="9" fill="#f5c45c"/></svg>';
+var EYE='<svg viewBox="0 0 24 24" width="16" height="16"><circle cx="10" cy="10" r="6" fill="none" stroke="currentColor" stroke-width="2"/><path d="M15 15l6 6" stroke="currentColor" stroke-width="2"/></svg>';
+var io=new IntersectionObserver(function(es){
+  es.forEach(function(en){
+    var v=en.target;
+    if(en.isIntersecting){
+      if(v.dataset.src && !v.getAttribute('src')){ v.src=v.dataset.src; }
+      var p=v.play(); if(p && p.catch){ p.catch(function(){}); }
+    } else { try{ v.pause(); }catch(e){} }
+  });
+},{root:sc,rootMargin:'300px 0px'});
+function tile(it){
+  var card=el('div','card'+((it.own||it.exe)?' own':''));
+  var th=el('div','thumb'); card.appendChild(th);
+  card.dataset.k=it.k;
+  function ok(){ th.classList.add('ready'); }
+  function bad(){ th.classList.add('fail'); }
+  var m;
+  if(it.video){
+    m=document.createElement('video');
+    m.muted=true; m.setAttribute('muted',''); m.loop=true; m.playsInline=true; m.preload='auto';
+    m.dataset.src=it.src;
+    m.addEventListener('loadeddata',ok); m.addEventListener('error',bad);
+    io.observe(m);
+  } else {
+    m=document.createElement('img'); m.alt=''; m.decoding='async'; m.loading='lazy'; m.draggable=false;
+    m.addEventListener('load',ok); m.addEventListener('error',bad);
+    m.src=it.src;
+  }
+  th.appendChild(m);
+  th.addEventListener('click',function(){ post({t:'pick',k:it.k}); });
+  if(it.anim&&!it.own&&!it.exe){
+    var wt=0;
+    var warm=function(){ post({t:'warm',k:it.k}); };
+    th.addEventListener('mouseenter',function(){ clearTimeout(wt); wt=setTimeout(warm,350); });
+    th.addEventListener('mouseleave',function(){ clearTimeout(wt); });
+    th.addEventListener('mousedown',function(){ clearTimeout(wt); warm(); });
+  }
+  card.addEventListener('contextmenu',function(e){ e.preventDefault(); post({t:'preview',k:it.k}); });
+  var row=el('div','row'); card.appendChild(row);
+  var l=el('div','l'), c=el('div','c'), r=el('div','r');
+  row.appendChild(l); row.appendChild(c); row.appendChild(r);
+  if(it.own&&!it.exe){ var fb=el('span','b'); fb.style.display='flex'; fb.style.alignItems='center'; fb.style.justifyContent='center'; fb.innerHTML=FOLDER; bindTip(fb,T.own); l.appendChild(fb); }
+  if(it.exe){ var xb=el('span','exeb'); xb.innerHTML=EXEI; bindTip(xb,T.exe||'EXE'); l.appendChild(xb); }
+  if(it.anim){ var a=el('span','b'); a.innerHTML=ANIM; bindTip(a,T.anim); l.appendChild(a); }
+  if(it.note){ var n=el('span','b n'); n.innerHTML=NOTE; bindTip(n,it.note); l.appendChild(n); }
+  var eye=el('button','eye'); eye.innerHTML=EYE; bindTip(eye,T.eye);
+  eye.addEventListener('click',function(e){ e.stopPropagation(); post({t:'preview',k:it.k}); });
+  c.appendChild(eye);
+  if(it.likes){ var h=el('span','pill'); h.innerHTML=HEART; h.appendChild(document.createTextNode(String(it.likes))); bindTip(h,it.likesTip); r.appendChild(h); }
+  if(it.own&&!it.exe){
+    var x=el('button','x','\u00D7'); x.title=T.remove||'';
+    x.addEventListener('click',function(e){ e.stopPropagation(); post({t:'ownrm',k:it.k}); });
+    card.appendChild(x);
+  }
+  return card;
+}
+function addTiles(list,before){
+  var f=document.createDocumentFragment();
+  (list||[]).forEach(function(it){ try{ f.appendChild(tile(it)); }catch(e){ post({t:'jserr',k:'tile: '+e}); } });
+  if(before){ grid.insertBefore(f,before); } else { grid.appendChild(f); }
+}
+var gotInit=false, everHad=false;
+var lastLay='';
+function layout(){
+  var cs=grid.querySelectorAll('.card'), f=null, i;
+  for(i=0;i<cs.length;i++){ var b0=cs[i].getBoundingClientRect(); if(b0.width>0){ f=b0; break; } }
+  if(!f){ return; }
+  var r=f.right;
+  for(i=0;i<cs.length;i++){ var b=cs[i].getBoundingClientRect(); if(b.width>0 && Math.abs(b.top-f.top)<2 && b.right>r){ r=b.right; } }
+  // Ширина по всем колонкам сетки, а не по занятым плиткам: когда обложек мало, панель и подпись не должны сужаться.
+  try{
+    var gcs=getComputedStyle(grid), tr=String(gcs.gridTemplateColumns).split(' ').map(parseFloat).filter(function(v){ return v>0; });
+    if(tr.length){
+      var tw=tr.reduce(function(a,v){ return a+v; },0)+(tr.length-1)*(parseFloat(gcs.columnGap)||0);
+      if(f.left+tw>r){ r=f.left+tw; }
+    }
+  }catch(e){}
+  var key=Math.round(f.left)+':'+Math.round(r-f.left);
+  if(key!==lastLay){ lastLay=key; post({t:'layout',x:Math.round(f.left),w:Math.round(r-f.left)}); }
+}
+function layoutSoon(){ requestAnimationFrame(function(){ requestAnimationFrame(layout); }); }
+function check(){
+  layoutSoon();
+  if(busy||!more){ return; }
+  if(sc.scrollHeight-sc.scrollTop-sc.clientHeight < sc.clientHeight*1.5){ busy=true; ld.style.display='block'; post({t:'more'}); }
+}
+window.chrome.webview.addEventListener('message',function(ev){
+  var d=ev.data; if(!d){ return; }
+  if(d.t==='init'){
+    T=d.strings||{}; grid.innerHTML=''; hasPick=!!d.pick;
+    if(hasPick){
+      var pc=el('div','card pick'), pt=el('div','thumb');
+      pt.appendChild(el('div','plus','+')); pt.appendChild(el('div','plbl',T.pick||''));
+      pt.addEventListener('click',function(){ post({t:'ownpick'}); });
+      pc.appendChild(pt); grid.appendChild(pc);
+    }
+    addTiles(d.own); addTiles(d.items);
+    more=!!d.more; setTimeout(check,80); gotInit=true; everHad=true; post({t:'inited'});
+  } else if(d.t==='add'){
+    addTiles(d.items); more=!!d.more; busy=false; ld.style.display='none'; setTimeout(check,80);
+  } else if(d.t==='own'){
+    addTiles(d.items, grid.children[hasPick?1:0]||null);
+  } else if(d.t==='ownrm'){
+    var cs=grid.querySelectorAll('.card'); for(var i=0;i<cs.length;i++){ if(cs[i].dataset.k===d.k){ grid.removeChild(cs[i]); break; } }
+  } else if(d.t==='reset'){
+    var cs2=grid.querySelectorAll('.card');
+    for(var j=cs2.length-1;j>=0;j--){
+      var c2=cs2[j];
+      if(c2.classList.contains('pick')||c2.classList.contains('own')){ continue; }
+      var v2=c2.querySelector('video'); if(v2){ try{ io.unobserve(v2); v2.pause(); v2.removeAttribute('src'); v2.load(); }catch(e){} }
+      grid.removeChild(c2);
+    }
+    addTiles(d.items); more=!!d.more; busy=false; ld.style.display='none'; sc.scrollTop=0; setTimeout(check,80);
+  } else if(d.t==='busy'){
+    document.getElementById('ovt').textContent=d.text||''; document.getElementById('ov').style.display=d.on?'flex':'none';
+  } else if(d.t==='ownvis'){
+    grid.classList.toggle('hideown',!d.on); layoutSoon();
+  } else if(d.t==='under'){
+    if(d.img){ document.documentElement.style.setProperty('--under','url("'+d.img+'")'); }
+    grid.classList.toggle('under',!!d.on);
+  }
+});
+sc.addEventListener('scroll',check,{passive:true});
+sc.addEventListener('scroll',hideTip,{passive:true});
+window.addEventListener('resize',check);
+if(window.ResizeObserver){ new ResizeObserver(layoutSoon).observe(sc); }
+document.addEventListener('keydown',function(e){ if(e.key==='Escape'){ post({t:'esc'}); } });
+// Сторож: раз в 2 с сообщает программе, что страница жива, и проверяет, что плитки на месте и нарисованы.
+// Если сетка опустела, плитки не рисуются или картинки потеряны, просит программу отправить плитки заново.
+function guard(){
+  try{
+    post({t:'hb'});
+    if(!gotInit){ return; }
+    var cs=grid.querySelectorAll('.card');
+    if(everHad && cs.length===0){ post({t:'blank',k:'nocards'}); return; }
+    if(document.visibilityState==='hidden'){ return; }
+    var hideOwn=grid.classList.contains('hideown'), vis=null, i;
+    for(i=0;i<cs.length;i++){ if(!(hideOwn && cs[i].classList.contains('own'))){ vis=cs[i]; break; } }
+    if(vis && sc.clientHeight>0){ var b=vis.getBoundingClientRect(); if(b.width===0 && b.height===0){ post({t:'blank',k:'collapsed'}); return; } }
+    var sr=sc.getBoundingClientRect(), imgs=grid.querySelectorAll('.thumb.ready img'), tot=0, bad=0;
+    for(i=0;i<imgs.length;i++){
+      var r=imgs[i].getBoundingClientRect();
+      if(r.width===0 || r.bottom<sr.top || r.top>sr.bottom){ continue; }
+      tot++;
+      if(imgs[i].complete && imgs[i].naturalWidth===0){ bad++; try{ var u=imgs[i].src; imgs[i].removeAttribute('src'); imgs[i].src=u; }catch(e){} }
+    }
+    if(tot>=3 && bad===tot){ post({t:'blank',k:'lostimg'}); }
+  }catch(e){}
+}
+setInterval(guard,2000);
+post({t:'ready'});
+})();
+</script></body></html>
+'@
+
+# Журнал новой сетки: %AppData%\Steam Commander\webview2\wv2.log (для поиска причин, если плитки не показались).
+function Write-SgdbWvLog([string]$Text) {
+    try {
+        $f = Join-Path ([string]$global:appDataDir) 'webview2\wv2.log'
+        $d = [System.IO.Path]::GetDirectoryName($f)
+        if (-not (Test-Path -LiteralPath $d -PathType Container)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
+        if ([System.IO.File]::Exists($f) -and (New-Object System.IO.FileInfo($f)).Length -gt 200000) { Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue }
+        [System.IO.File]::AppendAllText($f, ((Get-Date).ToString('HH:mm:ss.fff') + ' ' + $Text + [Environment]::NewLine))
+    } catch {}
+}
+
+function Show-SgdbAssetChooserWeb ($title, [array]$items, [int]$thumbWidth, [int]$thumbHeight, $owner, $customStore = $null, $moreProvider = $null, $platformKeys = @(), $transparency = $null) {
+    $res = [PSCustomObject]@{ Shown = $false; Result = $null; Restart = $false }
+    $items = @($items)
+    $script:sgdbChooserPickedBytes = $null
+    $script:sgdbChooserPickedIsFull = $false
+
+    $dlg = New-SCForm
+    $dlg.Text = "SteamGridDB — $title"
+    try { $ico = Get-SteamGridDbFormIcon; if ($null -ne $ico) { $dlg.Icon = $ico } } catch {}
+    $dlg.MinimumSize = New-Object System.Drawing.Size(820, 560)
+    $dlg.StartPosition = 'CenterParent'
+    $dlg.FormBorderStyle = 'Sizable'
+    $dlg.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::Font
+    $dlg.BackColor = [System.Drawing.Color]::FromArgb(23, 29, 37)
+    $dlg.ForeColor = [System.Drawing.Color]::FromArgb(220, 223, 228)
+    $dlg.Font = New-Object System.Drawing.Font('Segoe UI', 9)
+    $dlg.ClientSize = New-Object System.Drawing.Size(1084, 682)
+
+    $lbl = New-Object System.Windows.Forms.Label
+    $lbl.Text = (T 'sgdb_chooser_hint')
+    $lbl.Location = New-Object System.Drawing.Point(15, 6)
+    $lbl.Size = New-Object System.Drawing.Size(1054, 34)
+    $lbl.Anchor = 'Top,Left,Right'
+    $lbl.AutoSize = $false
+    $lbl.AutoEllipsis = $true
+    $lbl.Font = New-Object System.Drawing.Font('Segoe UI', 9, [System.Drawing.FontStyle]::Bold)
+    $lbl.ForeColor = [System.Drawing.Color]::FromArgb(220, 223, 228)
+    $dlg.Controls.Add($lbl)
+
+    $st = @{
+        Result = $null; Closed = $false; Busy = $false; LoadingMore = $false; PrevAbort = $false
+        MoreDone = ($null -eq $moreProvider); Seq = 0; ShownCount = 0
+        Shown = @{}; Own = @{}; Exe = @{}; Seen = @{}
+        Actions = (New-Object System.Collections.Queue)
+        InitFailed = $false; Ready = $false; Started = [datetime]::Now
+        AllItems = (New-Object System.Collections.ArrayList); Pending = (New-Object System.Collections.Queue); SeenIds = @{}
+        Arr = 0; Grp = 0; SortMode = $(if (@($platformKeys).Count -gt 0) { 'platform' } else { 'pop' })
+        Filter = @{ Dim = @{}; Style = @{}; Lang = @{}; Mime = @{}; Static = $true; Animated = $true; Humor = $true; Epilepsy = $true; Untagged = $true; Own = $true; Adult = [bool]$script:SgdbSiteIncludeNsfw }
+        AdultDefault = [bool]$script:SgdbSiteIncludeNsfw; AdultFetched = $false; FilterQueued = $false; CloseMenuNow = $false
+        MenuKind = ''; MenuClosedAt = [datetime]::MinValue; LastMenu = $null; OldMenus = (New-Object System.Collections.ArrayList); ShowAll = $false
+    }
+
+    $wv = New-Object Microsoft.Web.WebView2.WinForms.WebView2
+    $cp = New-Object Microsoft.Web.WebView2.WinForms.CoreWebView2CreationProperties
+    $cp.UserDataFolder = (Join-Path ([string]$global:appDataDir) 'webview2\profile')
+    $wv.CreationProperties = $cp
+    try { $wv.DefaultBackgroundColor = [System.Drawing.Color]::FromArgb(23, 29, 37) } catch {}
+    # Панель сортировки и фильтров сайта SteamGridDB (как в старом окне).
+    $showBar = (-not (@($items).Count -eq 0 -and $null -eq $moreProvider))
+    $bar = New-Object System.Windows.Forms.FlowLayoutPanel
+    $bar.Location = New-Object System.Drawing.Point(15, 44)
+    $bar.Size = New-Object System.Drawing.Size(1054, $(if ($null -ne $transparency) { 62 } else { 30 }))
+    $bar.Anchor = 'Top,Left,Right'
+    $bar.WrapContents = ($null -ne $transparency)
+    $bar.AutoScroll = $false
+    $bar.BackColor = [System.Drawing.Color]::FromArgb(23, 29, 37)
+    $bar.Visible = $showBar
+    $dlg.Controls.Add($bar)
+    $newBarButton = {
+        param([string]$text)
+        $nb = New-Object System.Windows.Forms.Button
+        $nb.AutoSize = $true
+        $nb.AutoSizeMode = [System.Windows.Forms.AutoSizeMode]::GrowAndShrink
+        $nb.MinimumSize = New-Object System.Drawing.Size(0, 28)
+        $nb.Padding = New-Object System.Windows.Forms.Padding(8, 0, 8, 0)
+        $nb.Margin = New-Object System.Windows.Forms.Padding(0, 0, 6, 0)
+        $nb.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+        $nb.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(61, 68, 80)
+        $nb.UseVisualStyleBackColor = $false
+        $nb.BackColor = [System.Drawing.Color]::FromArgb(30, 38, 48)
+        $nb.ForeColor = [System.Drawing.Color]::FromArgb(220, 223, 228)
+        $nb.Cursor = [System.Windows.Forms.Cursors]::Hand
+        $nb.Text = $text
+        return $nb
+    }
+    $btnSort = & $newBarButton ''
+    $btnDim = & $newBarButton ''
+    $btnStyle = & $newBarButton ''
+    $btnLang = & $newBarButton ''
+    $btnMime = & $newBarButton ''
+    $btnTags = & $newBarButton ''
+    foreach ($bb in @($btnSort, $btnDim, $btnStyle, $btnLang, $btnMime, $btnTags)) { $bar.Controls.Add($bb) }
+    # Конструктор рамок: галочка «Без прозрачности» (показать все обложки, а не только с прозрачной областью)
+    # и галочка «Подложка» (под прозрачные шаблоны подставляется образец обложки программы, как в окне комплекта).
+    $chkAll = $null; $chkUnder = $null
+    if ($null -ne $transparency) {
+        try {
+            $chkAll = New-SCUseFramesCheckBox $dlg ([string](T 'frames_no_transp')) 0 0 28 $false
+            $chkAll.Margin = New-Object System.Windows.Forms.Padding(8, 0, 0, 0)
+            $chkUnder = New-SCUseFramesCheckBox $dlg ([string](T 'frames_underlay')) 0 0 28 $false
+            $chkUnder.Margin = New-Object System.Windows.Forms.Padding(4, 0, 0, 0)
+            $bar.Controls.Add($chkAll); $bar.Controls.Add($chkUnder)
+            $bar.SetFlowBreak($btnTags, $true)
+            $chkAll.Margin = New-Object System.Windows.Forms.Padding(0, 4, 8, 0)
+            $chkUnder.Margin = New-Object System.Windows.Forms.Padding(0, 4, 0, 0)
+        } catch { $chkAll = $null; $chkUnder = $null }
+    }
+    $barBtn = @{ Dim = $btnDim; Style = $btnStyle; Lang = $btnLang; Mime = $btnMime; Tags = $btnTags }
+    $wvTop = $(if ($showBar) { $(if ($null -ne $transparency) { 110 } else { 78 }) } else { 44 })
+    $wv.Location = New-Object System.Drawing.Point(12, $wvTop)
+    $wv.Size = New-Object System.Drawing.Size(1060, (670 - $wvTop))
+    $wv.Anchor = 'Top,Bottom,Left,Right'
+    $dlg.Controls.Add($wv)
+
+    try { Write-SgdbWvLog ('open chooser ' + $title + ' items=' + @($items).Count) } catch {}
+    $html = ([string]$script:SgdbWebGridHtml).Replace('__CW__', [string]($thumbWidth + 12)).Replace('__CH__', [string]($thumbHeight + 40)).Replace('__W__', [string]$thumbWidth).Replace('__H__', [string]$thumbHeight)
+
+    $send = {
+        param($obj)
+        try {
+            $core = $wv.CoreWebView2
+            if ($null -ne $core) { $core.PostWebMessageAsJson((ConvertTo-Json -InputObject $obj -Depth 6 -Compress)) }
+            else { try { Write-SgdbWvLog ('send skipped (no core) t=' + [string]$obj.t) } catch {} }
+        } catch { try { Write-SgdbWvLog ('send FAILED t=' + [string]$obj.t + ': ' + $_.Exception.Message) } catch {} }
+    }
+
+    # Подложка: образец обложки программы (JPEG из окна комплекта рамок) показывается под плитками; v - вертикальный, h - горизонтальный.
+    $sendUnder = {
+        try {
+            $on = ($null -ne $chkUnder -and [bool]$chkUnder.Checked)
+            $img = ''
+            if ($on) {
+                $kd = ''; try { $kd = [string]$transparency.Kind } catch {}
+                $b64 = $(if ($kd -eq 'h') { [string]$script:FrameSampleHB64 } else { [string]$script:FrameSampleVB64 })
+                $img = 'data:image/jpeg;base64,' + ($b64 -replace '\s', '')
+            }
+            & $send @{ t = 'under'; on = $on; img = $img }
+        } catch {}
+    }
+    if ($null -ne $chkUnder) { $chkUnder.Add_CheckedChanged({ try { & $sendUnder } catch {} }) }
+    if ($null -ne $chkAll) {
+        $chkAll.Add_CheckedChanged({
+            try {
+                $st.ShowAll = [bool]$chkAll.Checked
+                if (-not [bool]$st.ShowAll) {
+                    # Фильтр включён снова: превью уже полученных вариантов проверяются перед перестройкой списка.
+                    try { & $transparency.Prepare @($st.AllItems | ForEach-Object { $_.Item }) } catch {}
+                }
+                if (-not [bool]$st.FilterQueued) { $st.FilterQueued = $true; $st.Actions.Enqueue(@{ T = 'applyfilters'; K = '' }) }
+            } catch {}
+        })
+    }
+
+    # Этапы запуска WebView2 показываются в подписи окна (пока плитки не появились), затем подпись возвращается.
+    $status = {
+        param([string]$t)
+        try { $lbl.Text = 'WebView2: ' + $t } catch {}
+        try { Write-SgdbWvLog ('status ' + $t) } catch {}
+    }
+
+    # Плитка варианта SteamGridDB для страницы. Миниатюра - как её отдаёт сайт (WebM для анимированных).
+    $mkTile = {
+        param($item)
+        $url = ''; $thumbUrl = ''
+        try {
+            if ($null -ne $item.PSObject.Properties['url']) { $url = [string]$item.PSObject.Properties['url'].Value }
+            if ($null -ne $item.PSObject.Properties['thumb']) { $thumbUrl = [string]$item.PSObject.Properties['thumb'].Value }
+            if ([string]::IsNullOrWhiteSpace($url) -and $null -ne $item.PSObject.Properties['grid_url']) { $url = [string]$item.PSObject.Properties['grid_url'].Value }
+            if ([string]::IsNullOrWhiteSpace($thumbUrl) -and $null -ne $item.PSObject.Properties['grid_url_thumbnail']) { $thumbUrl = [string]$item.PSObject.Properties['grid_url_thumbnail'].Value }
+        } catch {}
+        if ([string]::IsNullOrWhiteSpace($thumbUrl)) { $thumbUrl = $url }
+        if ([string]::IsNullOrWhiteSpace($url)) { $url = $thumbUrl }
+        if ([string]::IsNullOrWhiteSpace($url)) { return $null }
+        $st.Seq = [int]$st.Seq + 1
+        $k = 's' + [string]$st.Seq
+        $st.Shown[$k] = @{ Item = $item; Url = $url }
+        $likes = ''; $likesTip = ''
+        try {
+            $hp = $item.PSObject.Properties['hearts']
+            if ($null -ne $hp -and $null -ne $hp.Value) {
+                $likes = [string](Format-SgdbCount $hp.Value)
+                $likesTip = [string](T 'sgdb_badge_likes' @([string][int][double]$hp.Value))
+            }
+        } catch {}
+        $anim = $false; try { $anim = [bool](Test-SgdbItemAnimated $item) } catch {}
+        $note = ''; try { $note = [string](Get-SgdbNoteText $item) } catch {}
+        return [PSCustomObject]@{ k = $k; own = $false; video = [bool]($thumbUrl -match '\.webm(\?|$)'); src = $thumbUrl; anim = $anim; note = $note; likes = $likes; likesTip = $likesTip }
+    }
+
+    # Фильтры сайта: применяются к полученным вариантам (размер, стиль, язык, формат, тип, теги).
+    $passesFilter = {
+        param($it)
+        # Фильтр прозрачности (конструктор рамок): остаются только обложки с прозрачной областью; не проверенные ($null) показываются.
+        if ($null -ne $transparency -and -not [bool]$st.ShowAll) {
+            $trv = $null
+            try { $trv = & $transparency.Test $it } catch {}
+            if ($trv -eq $false) { return $false }
+        }
+        $f = $st.Filter
+        if ($f.Dim.Count -gt 0) {
+            $dv = ''
+            try { $dv = ([string]$it.width) + 'x' + ([string]$it.height) } catch {}
+            if (-not $f.Dim.ContainsKey($dv)) { return $false }
+        }
+        if ($f.Style.Count -gt 0) {
+            $sv = ''
+            try { $sv = [string]$it.style } catch {}
+            if (-not $f.Style.ContainsKey($sv)) { return $false }
+        }
+        if ($f.Lang.Count -gt 0) {
+            $lv = ''
+            try { $lv = [string]$it.language } catch {}
+            if (-not $f.Lang.ContainsKey($lv)) { return $false }
+        }
+        if ($f.Mime.Count -gt 0) {
+            $mv = ''
+            try { $mv = [string]$it.mime } catch {}
+            if (-not $f.Mime.ContainsKey($mv)) { return $false }
+        }
+        $tt = @()
+        try { $tt = @($it.types | Where-Object { $null -ne $_ }) } catch {}
+        $isAnim = ($tt -contains 'animated')
+        if (-not $isAnim) {
+            $am = ''; $au = ''
+            try { $am = [string]$it.mime } catch {}
+            try { $au = [string]$it.url } catch {}
+            if (($am -match '(?i)gif|apng|webm') -or ($au -match '(?i)\.(gif|apng|webm)(\?|$)')) { $isAnim = $true }
+            elseif (($tt -notcontains 'static') -and (($am -match '(?i)webp') -or ($au -match '(?i)\.webp(\?|$)'))) { $isAnim = $true }
+        }
+        if ($isAnim -and -not $f.Animated) { return $false }
+        if ((-not $isAnim) -and -not $f.Static) { return $false }
+        $tagCount = 0
+        $hum = $false; try { $hum = [bool]$it.humor } catch {}
+        $epi = $false; try { $epi = [bool]$it.epilepsy } catch {}
+        $adu = $false; try { $adu = [bool]$it.nsfw } catch {}
+        if ($hum) { $tagCount++; if (-not $f.Humor) { return $false } }
+        if ($epi) { $tagCount++; if (-not $f.Epilepsy) { return $false } }
+        if ($adu) { $tagCount++; if (-not $f.Adult) { return $false } }
+        if ($tagCount -eq 0 -and -not $f.Untagged) { return $false }
+        return $true
+    }
+
+    # Новые варианты: без повторов по id; запоминаются для сортировки; прошедшие фильтры идут в очередь показа.
+    $enqueueItems = {
+        param($list)
+        if ($null -ne $transparency -and -not [bool]$st.ShowAll) { try { & $transparency.Prepare @($list) } catch {} }
+        foreach ($ni in @($list)) {
+            if ($null -eq $ni) { continue }
+            $nid = ''
+            try { $nid = [string]$ni.id } catch {}
+            if ($nid -ne '') {
+                if ($st.SeenIds.ContainsKey($nid)) { continue }
+                $st.SeenIds[$nid] = $true
+            }
+            $rid = -1.0; $rido = 1e18
+            try { if ($nid -ne '') { $dv2 = [double]$nid; $rid = $dv2; $rido = $dv2 } } catch {}
+            $rsc = 0.0
+            try { $rsc = [double]$ni.score } catch {}
+            $st.Arr = [int]$st.Arr + 1
+            [void]$st.AllItems.Add([PSCustomObject]@{ Item = $ni; Arr = [int]$st.Arr; G = [int]$st.Grp; IdNew = $rid; IdOld = $rido; Score = $rsc; Rank = -1 })
+            if (& $passesFilter $ni) { $st.Pending.Enqueue($ni) }
+        }
+    }
+
+    # Следующая порция плиток из очереди показа.
+    $takeTiles = {
+        param([int]$n)
+        $out = New-Object System.Collections.ArrayList
+        while ($st.Pending.Count -gt 0 -and $out.Count -lt $n) {
+            $ni = $st.Pending.Dequeue()
+            $t = & $mkTile $ni
+            if ($null -ne $t) { [void]$out.Add($t); $st.ShownCount = [int]$st.ShownCount + 1 }
+        }
+        return $out.ToArray()
+    }
+    $moreFlag = { return [bool]($st.Pending.Count -gt 0 -or -not [bool]$st.MoreDone) }
+
+    $sortName = {
+        param([string]$m)
+        switch ($m) {
+            'new'      { return (T 'sgdb_sort_new') }
+            'old'      { return (T 'sgdb_sort_old') }
+            'platform' { return (T 'sgdb_sort_platform') }
+            default    { return (T 'sgdb_sort_pop') }
+        }
+    }
+
+    # Подписи кнопок панели; кнопка с активным фильтром подсвечена.
+    $updateBar = {
+        try {
+            $f = $st.Filter
+            $acc = [System.Drawing.Color]::FromArgb(102, 192, 244)
+            $nor = [System.Drawing.Color]::FromArgb(220, 223, 228)
+            $brd = [System.Drawing.Color]::FromArgb(61, 68, 80)
+            $btnSort.Text = ((T 'sgdb_sort_label' @((& $sortName ([string]$st.SortMode)))) + ' ' + [char]0x25BE)
+            $sets = @( @($btnDim, 'sgdb_flt_dims', 'Dim'), @($btnStyle, 'sgdb_flt_styles', 'Style'), @($btnLang, 'sgdb_flt_langs', 'Lang'), @($btnMime, 'sgdb_flt_files', 'Mime') )
+            foreach ($sx in $sets) {
+                $cn = [int]$f[[string]$sx[2]].Count
+                $tx = (T ([string]$sx[1]))
+                if ($cn -gt 0) { $tx = $tx + ' (' + $cn + ')' }
+                $sx[0].Text = ($tx + ' ' + [char]0x25BE)
+                if ($cn -gt 0) { $sx[0].ForeColor = $acc; $sx[0].FlatAppearance.BorderColor = $acc } else { $sx[0].ForeColor = $nor; $sx[0].FlatAppearance.BorderColor = $brd }
+            }
+            $dev = 0
+            foreach ($fk in @('Static', 'Animated', 'Humor', 'Epilepsy', 'Untagged', 'Own')) { if (-not [bool]$f[$fk]) { $dev++ } }
+            if ([bool]$f.Adult -ne [bool]$st.AdultDefault) { $dev++ }
+            $tgx = (T 'sgdb_flt_tags')
+            if ($dev -gt 0) { $tgx = $tgx + ' (' + $dev + ')' }
+            $btnTags.Text = ($tgx + ' ' + [char]0x25BE)
+            if ($dev -gt 0) { $btnTags.ForeColor = $acc; $btnTags.FlatAppearance.BorderColor = $acc } else { $btnTags.ForeColor = $nor; $btnTags.FlatAppearance.BorderColor = $brd }
+        } catch {}
+    }
+
+    $isDefaultFilter = {
+        $f = $st.Filter
+        return ($f.Dim.Count -eq 0 -and $f.Style.Count -eq 0 -and $f.Lang.Count -eq 0 -and $f.Mime.Count -eq 0 -and [bool]$f.Static -and [bool]$f.Animated -and [bool]$f.Humor -and [bool]$f.Epilepsy -and [bool]$f.Untagged -and ([bool]$f.Adult -eq [bool]$st.AdultDefault))
+    }
+
+    # Все оставшиеся страницы SteamGridDB (нужны для сортировки и фильтров). Страница показывает счётчик поверх сетки.
+    # Вызывать при $st.LoadingMore = $true.
+    $loadAllPages = {
+        if ($null -eq $moreProvider) { return }
+        $prevNsfwFlag = [bool]$script:SgdbSiteIncludeNsfw
+        if ([bool]$st.AdultFetched) { $script:SgdbSiteIncludeNsfw = $true }
+        try {
+            while (-not [bool]$st.MoreDone -and -not $st.Closed) {
+                $txt = (T 'sgdb_sort_loading' @([int]$st.AllItems.Count))
+                try { $lbl.Text = $txt } catch {}
+                & $send @{ t = 'busy'; on = $true; text = $txt }
+                $pg = $null
+                try { $pg = Get-SgdbMorePage $moreProvider } catch { $pg = $null }
+                if ($st.Closed) { break }
+                if ($null -eq $pg) { $st.MoreDone = $true; break }
+                & $enqueueItems @($pg.Items)
+                if ([bool]$pg.Done) { $st.MoreDone = $true }
+                [System.Windows.Forms.Application]::DoEvents()
+            }
+        } finally {
+            $script:SgdbSiteIncludeNsfw = $prevNsfwFlag
+            if (-not $st.Closed) { & $send @{ t = 'busy'; on = $false; text = '' } }
+        }
+    }
+
+    # Плитки строятся заново из всех полученных вариантов: порядок $mode + текущие фильтры.
+    #   pop - рейтинг (порядок сайта); new/old - по id; platform - обложки нужной платформы первыми.
+    $rebuild = {
+        param([string]$mode)
+        $st.Pending.Clear()
+        $st.Shown = @{}
+        $st.ShownCount = 0
+        $recs = @($st.AllItems)
+        $sorted = $recs
+        switch ($mode) {
+            'new' { $sorted = @($recs | Sort-Object @{Expression = 'IdNew'; Descending = $true }, @{Expression = 'Arr'; Descending = $false }) }
+            'old' { $sorted = @($recs | Sort-Object @{Expression = 'IdOld'; Descending = $false }, @{Expression = 'Arr'; Descending = $false }) }
+            'platform' {
+                $pkeys = @($platformKeys)
+                foreach ($rr in $recs) {
+                    if ([int]$rr.Rank -lt 0) {
+                        $rk = 1
+                        try { $rk = [int](Get-SgdbGridPlatformRank $rr.Item $pkeys) } catch {}
+                        $rr.Rank = $rk
+                    }
+                }
+                $sorted = @($recs | Sort-Object @{Expression = 'Rank'; Descending = $false }, @{Expression = 'G'; Descending = $false }, @{Expression = 'Score'; Descending = $true }, @{Expression = 'Arr'; Descending = $false })
+            }
+            default { $sorted = @($recs | Sort-Object @{Expression = 'G'; Descending = $false }, @{Expression = 'Score'; Descending = $true }, @{Expression = 'Arr'; Descending = $false }) }
+        }
+        foreach ($sr in $sorted) { if (& $passesFilter $sr.Item) { $st.Pending.Enqueue($sr.Item) } }
+        $st.SortMode = $mode
+        $nt = @(& $takeTiles 60)
+        & $send @{ t = 'reset'; items = $nt; more = (& $moreFlag) }
+        & $send @{ t = 'ownvis'; on = [bool]$st.Filter.Own }
+        & $updateBar
+        try {
+            if ([int]$st.ShownCount -eq 0 -and $st.AllItems.Count -gt 0) { $lbl.Text = (T 'sgdb_flt_empty') } else { $lbl.Text = (T 'sgdb_chooser_hint') }
+        } catch {}
+    }
+
+    # Подпись значения фильтра: стиль / тип файла / язык.
+    $filterValueLabel = {
+        param([string]$kind, [string]$v)
+        switch ($kind) {
+            'Style' {
+                $skey = ('sgdb_style_' + $v)
+                $stx = (T $skey)
+                if ($stx -ne $skey) { return [string]$stx }
+                return ((Get-Culture).TextInfo.ToTitleCase($v.Replace('_', ' ')))
+            }
+            'Mime' {
+                switch ($v) { 'image/png' { return 'PNG' } 'image/jpeg' { return 'JPEG' } 'image/webp' { return 'WebP' } 'image/gif' { return 'GIF' } 'image/apng' { return 'APNG' } 'video/webm' { return 'WebM' } }
+                if ($v -match '/') { return ($v.Substring($v.IndexOf('/') + 1).ToUpperInvariant()) }
+                return $v
+            }
+            'Lang' {
+                try {
+                    $ci = [System.Globalization.CultureInfo]::GetCultureInfo($v)
+                    if ($null -ne $ci -and -not [string]::IsNullOrWhiteSpace($ci.EnglishName) -and $ci.EnglishName -notmatch 'Unknown') { return ($ci.EnglishName + ' (' + $v + ')') }
+                } catch {}
+                return $v
+            }
+        }
+        return $v
+    }
+
+    # Клик по пункту меню фильтра: меню остаётся открытым (можно отметить несколько), перестройка плиток идёт через очередь действий.
+    $onFilterClick = {
+        param($sender, $ea)
+        try {
+            $tg = $sender.Tag
+            $kk = [string]$tg.Kind
+            $vv = [string]$tg.Value
+            $fl = $st.Filter
+            if ($kk -eq 'Reset') {
+                foreach ($sk in @('Dim', 'Style', 'Lang', 'Mime')) { $fl[$sk].Clear() }
+                foreach ($fk in @('Static', 'Animated', 'Humor', 'Epilepsy', 'Untagged', 'Own')) { $fl[$fk] = $true }
+                $fl['Adult'] = [bool]$st.AdultDefault
+                $st.CloseMenuNow = $true
+                foreach ($mit in @($sender.Owner.Items)) {
+                    if ($mit -is [System.Windows.Forms.ToolStripMenuItem] -and $null -ne $mit.Tag) {
+                        $tk2 = [string]$mit.Tag.Kind
+                        $tv2 = [string]$mit.Tag.Value
+                        if ($tk2 -eq 'Flag') { $mit.Checked = [bool]$fl[$tv2] }
+                        elseif ($tk2 -ne 'Reset') { $mit.Checked = ($tv2 -eq '*') }
+                    }
+                }
+                try { $sender.Owner.Refresh() } catch {}
+            } elseif ($kk -eq 'Flag') {
+                $fl[$vv] = (-not [bool]$fl[$vv])
+                if (-not [bool]$fl['Static'] -and -not [bool]$fl['Animated']) {
+                    if ($vv -eq 'Static') { $fl['Animated'] = $true } elseif ($vv -eq 'Animated') { $fl['Static'] = $true }
+                }
+                foreach ($mit in @($sender.Owner.Items)) {
+                    if ($mit -is [System.Windows.Forms.ToolStripMenuItem] -and $null -ne $mit.Tag -and [string]$mit.Tag.Kind -eq 'Flag') { $mit.Checked = [bool]$fl[[string]$mit.Tag.Value] }
+                }
+                $sender.Checked = [bool]$fl[$vv]
+            } else {
+                $set = $fl[$kk]
+                if ($vv -eq '*') { $set.Clear() }
+                elseif ($set.ContainsKey($vv)) { $set.Remove($vv) }
+                else { $set[$vv] = $true }
+                foreach ($mit in @($sender.Owner.Items)) {
+                    if ($mit -is [System.Windows.Forms.ToolStripMenuItem] -and $null -ne $mit.Tag) {
+                        $mv = [string]$mit.Tag.Value
+                        if ($mv -eq '*') { $mit.Checked = ($set.Count -eq 0) } else { $mit.Checked = $set.ContainsKey($mv) }
+                    }
+                }
+            }
+            if ($kk -eq 'Flag' -and $vv -eq 'Adult' -and [bool]$fl['Adult'] -and -not [bool]$st.AdultFetched -and $null -ne $moreProvider) {
+                # Варианты «для взрослых» при обычной загрузке не запрашивались: перезапрашиваем страницы с начала (полученные раньше пропускаются по id).
+                $st.AdultFetched = $true
+                try { $moreProvider.Page = 0; $moreProvider.V2Page = 0; $moreProvider.UseV2 = $false; $moreProvider.Done = $false; $moreProvider.Fails = 0 } catch {}
+                $st.MoreDone = $false
+            }
+            & $updateBar
+            if ($kk -eq 'Flag' -and $vv -eq 'Own') { & $send @{ t = 'ownvis'; on = [bool]$fl['Own'] }; return }
+            if (-not [bool]$st.FilterQueued) { $st.FilterQueued = $true; $st.Actions.Enqueue(@{ T = 'applyfilters'; K = '' }) }
+        } catch {}
+    }
+
+    # Меню фильтра: Dim (размеры), Style, Lang, Mime (формат) - значения из полученных вариантов; Tags - типы и теги сайта.
+    # Вызывается из очереди действий (список значений должен быть полным, поэтому сначала догружаются все страницы).
+    $showFilterMenu = {
+        param($btn, [string]$kind)
+        if ($st.Closed) { return }
+        if ($kind -ne 'Tags' -and $null -ne $moreProvider -and -not [bool]$st.MoreDone) {
+            $st.LoadingMore = $true
+            $st.PrevAbort = [bool]$global:editorLoadAbortRequested
+            try { & $loadAllPages; try { $lbl.Text = (T 'sgdb_chooser_hint') } catch {} }
+            finally {
+                $st.LoadingMore = $false
+                if ($st.Closed) { $global:editorLoadAbortRequested = [bool]$st.PrevAbort }
+            }
+            if ($st.Closed) { return }
+        }
+        try { if ($null -ne $st.LastMenu) { [void]$st.OldMenus.Add($st.LastMenu) } } catch {}
+        $menu = (New-PanelCtxMenu)
+        $menu.BackColor = [System.Drawing.Color]::FromArgb(30, 38, 48)
+        $menu.ForeColor = [System.Drawing.Color]::FromArgb(220, 223, 228)
+        try { Initialize-SCFilterRenderer; $menu.Renderer = (New-Object SCFilterRenderer) } catch {}
+        $st.LastMenu = $menu
+        $f = $st.Filter
+        if ($kind -eq 'Tags') {
+            $flagDefs = @( @('Static', 'sgdb_flt_static'), @('Animated', 'sgdb_flt_animated'), @('-', '-'), @('Humor', 'sgdb_flt_humor') )
+            $flagDefs += , @('Adult', 'sgdb_flt_adult')
+            $flagDefs += , @('Epilepsy', 'sgdb_flt_epilepsy')
+            if ($null -ne $customStore) { $flagDefs += , @('-', '-'); $flagDefs += , @('Own', 'sgdb_flt_own') }
+            foreach ($fd in $flagDefs) {
+                if ([string]$fd[0] -eq '-') { [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)); continue }
+                $fmi = New-Object System.Windows.Forms.ToolStripMenuItem((T ([string]$fd[1])))
+                $fmi.Tag = @{ Kind = 'Flag'; Value = [string]$fd[0] }
+                $fmi.Checked = [bool]$f[[string]$fd[0]]
+                $fmi.Add_Click($onFilterClick)
+                [void]$menu.Items.Add($fmi)
+            }
+        } else {
+            $propName = 'style'
+            switch ($kind) { 'Dim' { $propName = 'dim' } 'Style' { $propName = 'style' } 'Lang' { $propName = 'language' } 'Mime' { $propName = 'mime' } }
+            $cnt = @{}
+            foreach ($rc in @($st.AllItems)) {
+                $cv = ''
+                try { if ($propName -eq 'dim') { $cv = ([string]$rc.Item.width) + 'x' + ([string]$rc.Item.height) } else { $cv = [string]$rc.Item.$propName } } catch {}
+                if ([string]::IsNullOrEmpty($cv) -or $cv -eq 'x') { continue }
+                if ($cnt.ContainsKey($cv)) { $cnt[$cv] = [int]$cnt[$cv] + 1 } else { $cnt[$cv] = 1 }
+            }
+            foreach ($selKey in @($f[$kind].Keys)) { if (-not $cnt.ContainsKey([string]$selKey)) { $cnt[[string]$selKey] = 0 } }
+            $allMi = New-Object System.Windows.Forms.ToolStripMenuItem((T 'sgdb_flt_all'))
+            $allMi.Tag = @{ Kind = $kind; Value = '*' }
+            $allMi.Checked = ($f[$kind].Count -eq 0)
+            $allMi.Add_Click($onFilterClick)
+            [void]$menu.Items.Add($allMi)
+            foreach ($e in @($cnt.GetEnumerator() | Sort-Object @{Expression = 'Value'; Descending = $true }, @{Expression = 'Key'; Descending = $false })) {
+                $vk = [string]$e.Key
+                $txt = (& $filterValueLabel $kind $vk)
+                if ([int]$e.Value -gt 0) { $txt = $txt + ' (' + [int]$e.Value + ')' }
+                $vmi = New-Object System.Windows.Forms.ToolStripMenuItem($txt)
+                $vmi.Tag = @{ Kind = $kind; Value = $vk }
+                $vmi.Checked = $f[$kind].ContainsKey($vk)
+                $vmi.Add_Click($onFilterClick)
+                [void]$menu.Items.Add($vmi)
+            }
+        }
+        [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
+        $rmi = New-Object System.Windows.Forms.ToolStripMenuItem((T 'sgdb_flt_reset'))
+        $rmi.Tag = @{ Kind = 'Reset'; Value = '' }
+        $rmi.Add_Click($onFilterClick)
+        [void]$menu.Items.Add($rmi)
+        $menu.Add_Closing({
+            param($sender, $ea)
+            try {
+                if ($ea.CloseReason -eq [System.Windows.Forms.ToolStripDropDownCloseReason]::ItemClicked -and -not $st.CloseMenuNow) { $ea.Cancel = $true }
+            } catch {}
+        })
+        $menu.Tag = $kind
+        $menu.Add_Closed({
+            param($sender, $ea)
+            try {
+                $st.CloseMenuNow = $false
+                # Закрытие щелчком мимо меню (в том числе по его же кнопке): запоминаем, чтобы повторный щелчок по кнопке не открыл меню заново.
+                if ($ea.CloseReason -ne [System.Windows.Forms.ToolStripDropDownCloseReason]::ItemClicked) { $st.MenuKind = [string]$sender.Tag; $st.MenuClosedAt = [datetime]::Now }
+                $wv.Focus()
+            } catch {}
+        })
+        $menu.Show($btn, (New-Object System.Drawing.Point(0, $btn.Height)))
+    }
+
+    # Меню сортировки.
+    $sortMenu = (New-PanelCtxMenu)
+    $sortMenu.BackColor = [System.Drawing.Color]::FromArgb(30, 38, 48)
+    $sortMenu.ForeColor = [System.Drawing.Color]::FromArgb(220, 223, 228)
+    try { Initialize-SCFilterRenderer; $sortMenu.Renderer = (New-Object SCFilterRenderer) } catch {}
+    $sortMenu.ShowCheckMargin = $false; $sortMenu.ShowImageMargin = $false
+    $sortModes = @('pop', 'new', 'old')
+    if (@($platformKeys).Count -gt 0) { $sortModes = @('platform', 'pop', 'new', 'old') }
+    foreach ($sm in $sortModes) {
+        $smi = New-Object System.Windows.Forms.ToolStripMenuItem((& $sortName $sm))
+        $smi.Tag = $sm
+        $smi.Add_Click({
+            param($sender, $ea)
+            try { $st.Actions.Enqueue(@{ T = 'applysort'; K = [string]$sender.Tag }) } catch {}
+        })
+        [void]$sortMenu.Items.Add($smi)
+    }
+    $sortMenu.Tag = 'Sort'
+    $sortMenu.Add_Closed({
+        param($sender, $ea)
+        try {
+            if ($ea.CloseReason -ne [System.Windows.Forms.ToolStripDropDownCloseReason]::ItemClicked) { $st.MenuKind = 'Sort'; $st.MenuClosedAt = [datetime]::Now }
+            $wv.Focus()
+        } catch {}
+    })
+    $btnSort.Add_Click({
+        try {
+            if ([string]$st.MenuKind -eq 'Sort' -and ([datetime]::Now - [datetime]$st.MenuClosedAt).TotalMilliseconds -lt 400) { $st.MenuKind = ''; return }
+            foreach ($smItem in @($sortMenu.Items)) { $smItem.Checked = ([string]$smItem.Tag -eq [string]$st.SortMode) }
+            $sortMenu.Show($btnSort, (New-Object System.Drawing.Point(0, $btnSort.Height)))
+        } catch {}
+    })
+    foreach ($fkind in @('Dim', 'Style', 'Lang', 'Mime', 'Tags')) {
+        $barBtn[$fkind].Tag = $fkind
+        $barBtn[$fkind].Add_Click({ param($s, $ea) try {
+            if ([string]$st.MenuKind -eq [string]$s.Tag -and ([datetime]::Now - [datetime]$st.MenuClosedAt).TotalMilliseconds -lt 400) { $st.MenuKind = ''; return }
+            $st.Actions.Enqueue(@{ T = 'menu'; K = [string]$s.Tag }) } catch {} })
+    }
+    & $updateBar
+
+    # Плитка своей картинки из хранилища карточки: файл отдаётся странице через виртуальный адрес sc-own.local.
+    $mkOwn = {
+        param([string]$path)
+        try {
+            if ($null -eq $customStore) { return $null }
+            $dirFull = [System.IO.Path]::GetFullPath([string]$customStore.Dir).TrimEnd([char[]]@('\', '/'))
+            $pFull = [System.IO.Path]::GetFullPath($path)
+            if (-not $pFull.StartsWith($dirFull + '\', [System.StringComparison]::OrdinalIgnoreCase)) { return $null }
+            $rel = $pFull.Substring($dirFull.Length + 1)
+            $segs = @($rel -split '[\\/]' | ForEach-Object { [System.Uri]::EscapeDataString($_) })
+            $st.Seq = [int]$st.Seq + 1
+            $k = 'o' + [string]$st.Seq
+            $st.Own[$k] = $pFull
+            return [PSCustomObject]@{ k = $k; own = $true; video = $false; src = ('https://sc-own.local/' + ($segs -join '/')); anim = $false; note = ''; likes = ''; likesTip = '' }
+        } catch { return $null }
+    }
+
+    # Иконка из EXE игры (слот 5): файл из кэша иконок отдаётся странице как data-адрес; удалять её нельзя.
+    $mkExe = {
+        param([string]$path)
+        try {
+            if (-not [System.IO.File]::Exists($path)) { return $null }
+            $bytes = [System.IO.File]::ReadAllBytes($path)
+            $mime = 'image/png'
+            if ($path -match '(?i)\.ico$') { $mime = 'image/x-icon' } elseif ($path -match '(?i)\.jpe?g$') { $mime = 'image/jpeg' }
+            $st.Seq = [int]$st.Seq + 1
+            $k = 'e' + [string]$st.Seq
+            $st.Exe[$k] = $path
+            return [PSCustomObject]@{ k = $k; own = $true; exe = $true; video = $false; src = ('data:' + $mime + ';base64,' + [Convert]::ToBase64String($bytes)); anim = $false; note = ''; likes = ''; likesTip = '' }
+        } catch { return $null }
+    }
+
+    $handleAction = {
+        param($a)
+        $k = [string]$a.K
+        switch ([string]$a.T) {
+            'ready' {
+                # Страница сообщила о готовности повторно (перезагрузилась): плитки не пропадают, а отправляются заново.
+                if ($null -ne $st.InitObj) {
+                    try { Write-SgdbWvLog 'ready again: resend init' } catch {}
+                    $st.InitAck = $false; $st.InitTries = 1; $st.InitAt = [datetime]::Now
+                    & $send $st.InitObj
+                    try { if ($null -ne $chkUnder -and [bool]$chkUnder.Checked) { & $sendUnder } } catch {}
+                    break
+                }
+                & $enqueueItems $items
+                $st.Grp = 1
+                $tiles = @(& $takeTiles 60)
+                $own = @()
+                if ($null -ne $customStore) {
+                    $ownList = New-Object System.Collections.ArrayList
+                    foreach ($cf in @(Get-CustomCoverFiles ([string]$customStore.Dir) ([string]$customStore.Slot))) {
+                        $ot = & $mkOwn ([string]$cf)
+                        if ($null -ne $ot) { [void]$ownList.Add($ot) }
+                    }
+                    # Иконки из EXE идут после своих файлов, перед вариантами SteamGridDB.
+                    try {
+                        $seenHashes = @{}
+                        foreach ($autoExe in @($customStore.AutoExes)) {
+                            try {
+                                if ([string]::IsNullOrWhiteSpace([string]$autoExe)) { continue }
+                                $autoPng = Get-ExeIconCachePng ([string]$autoExe)
+                                if ([string]::IsNullOrWhiteSpace($autoPng)) { continue }
+                                $hh = (Get-FileHash -LiteralPath $autoPng -Algorithm SHA1).Hash
+                                if ($seenHashes.ContainsKey($hh)) { continue }
+                                $seenHashes[$hh] = $true
+                                $et = & $mkExe ([string]$autoPng)
+                                if ($null -ne $et) { [void]$ownList.Add($et) }
+                            } catch {}
+                        }
+                    } catch {}
+                    $own = @($ownList.ToArray())
+                }
+                $strings = @{
+                    pick = [string](T 'custom_tile'); eye = [string](T 'preview_eye_tip'); anim = [string](T 'sgdb_badge_animated'); remove = ''; exe = [string](T 'custom_label_exe'); own = [string](T 'custom_label_tip')
+                }
+                $initObj = @{ t = 'init'; pick = ($null -ne $customStore); strings = $strings; own = $own; items = $tiles; more = (& $moreFlag) }
+                # Запоминаем, чтобы отправить повторно, если страница не подтвердит получение (иначе окно остаётся пустым).
+                $st.InitObj = $initObj; $st.InitAck = $false; $st.InitTries = 1; $st.InitAt = [datetime]::Now
+                & $send $initObj
+                try { if ($null -ne $chkUnder -and [bool]$chkUnder.Checked) { & $sendUnder } } catch {}
+                try { $lbl.Text = (T 'sgdb_chooser_hint'); Write-SgdbWvLog ('init sent tiles=' + [string]$tiles.Count + ' own=' + [string]$own.Count) } catch {}
+                if ($tiles.Count -eq 0 -and $own.Count -eq 0 -and [bool]$st.MoreDone) { try { $lbl.Text = (T 'custom_empty_hint') } catch {} }
+            }
+            'warm' {
+                # Страница просит заранее скачать полный файл анимированной обложки (курсор на плитке или нажатие).
+                try { if ($st.Shown.ContainsKey($k)) { Start-SgdbPrefetch ([string]$st.Shown[$k].Url) } } catch {}
+            }
+            'esc' {
+                $dlg.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+                $dlg.Close()
+            }
+            'pick' {
+                $picked = ''
+                if ($st.Own.ContainsKey($k)) { $picked = [string]$st.Own[$k] }
+                elseif ($st.Exe.ContainsKey($k)) { $picked = [string]$st.Exe[$k] }
+                elseif ($st.Shown.ContainsKey($k)) { $picked = [string]$st.Shown[$k].Url }
+                if (-not [string]::IsNullOrWhiteSpace($picked)) {
+                    $st.Result = $picked
+                    $dlg.DialogResult = [System.Windows.Forms.DialogResult]::OK
+                    $dlg.Close()
+                }
+            }
+            'preview' {
+                try {
+                    if ($st.Own.ContainsKey($k)) {
+                        Show-SgdbFullPreview $dlg ([string]$st.Own[$k]) $null $false $null $null
+                    } elseif ($st.Exe.ContainsKey($k)) {
+                        Show-SgdbFullPreview $dlg ([string]$st.Exe[$k]) $null $false $null $null
+                    } elseif ($st.Shown.ContainsKey($k)) {
+                        Show-SgdbFullPreview $dlg ([string]$st.Shown[$k].Url) $null $false ($st.Shown[$k].Item) $null
+                    }
+                } catch {}
+            }
+            'ownpick' {
+                if ($null -eq $customStore) { return }
+                $ofd = New-Object System.Windows.Forms.OpenFileDialog
+                try {
+                    $ofd.Title = (T 'custom_dlg_title' @([string]$title))
+                    $ofd.Filter = $(if ([string]$title -match '^\s*5\.') { (T 'custom_filter_icon') } else { (T 'custom_filter') })
+                    $ofd.CheckFileExists = $true
+                    $ofd.Multiselect = $true
+                    $startDir = [string]$script:customImageLastDir
+                    if (-not [string]::IsNullOrWhiteSpace($startDir) -and (Test-Path -LiteralPath $startDir -PathType Container)) { $ofd.InitialDirectory = $startDir }
+                    if ($ofd.ShowDialog($dlg) -eq [System.Windows.Forms.DialogResult]::OK) {
+                        try { $script:customImageLastDir = [System.IO.Path]::GetDirectoryName($ofd.FileName) } catch {}
+                        $newOwn = New-Object System.Collections.ArrayList
+                        $ownFiles = @($ofd.FileNames); [array]::Reverse($ownFiles)
+                        foreach ($fn2 in $ownFiles) {
+                            $stored = Add-CustomCoverFile ([string]$customStore.Dir) ([string]$customStore.Slot) ([string]$fn2) ([string]$title)
+                            if ($null -ne $stored) {
+                                $ot = & $mkOwn ([string]$stored)
+                                if ($null -ne $ot) { [void]$newOwn.Add($ot) }
+                            } else {
+                                try {
+                                    Show-AppMessageBox((T 'custom_bad' @([System.IO.Path]::GetFileName([string]$fn2))), $global:appTitle, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
+                                } catch {}
+                            }
+                        }
+                        if ($newOwn.Count -gt 0) { & $send @{ t = 'own'; items = @($newOwn.ToArray()) } }
+                    }
+                } catch {} finally { $ofd.Dispose() }
+            }
+            'ownrm' {
+                if ($st.Own.ContainsKey($k)) {
+                    try { Remove-Item -LiteralPath ([string]$st.Own[$k]) -Force -ErrorAction SilentlyContinue } catch {}
+                    $st.Own.Remove($k)
+                    & $send @{ t = 'ownrm'; k = $k }
+                }
+            }
+            'more' {
+                if ($st.LoadingMore) { return }
+                if ($st.Pending.Count -gt 0) {
+                    $nt0 = @(& $takeTiles 40)
+                    & $send @{ t = 'add'; items = $nt0; more = (& $moreFlag) }
+                    return
+                }
+                if ([bool]$st.MoreDone -or $null -eq $moreProvider) { & $send @{ t = 'add'; items = @(); more = $false }; return }
+                $st.LoadingMore = $true
+                $st.PrevAbort = [bool]$global:editorLoadAbortRequested
+                try {
+                    try { $lbl.Text = (T 'sgdb_chooser_more'); $lbl.Refresh() } catch {}
+                    $page = $null
+                    try { $page = Get-SgdbMorePage $moreProvider } catch { $page = $null }
+                    if (-not $st.Closed) {
+                        if ($null -eq $page) { $st.MoreDone = $true }
+                        else {
+                            & $enqueueItems @($page.Items)
+                            if ([bool]$page.Done) { $st.MoreDone = $true }
+                        }
+                        try { $lbl.Text = (T 'sgdb_chooser_hint') } catch {}
+                    }
+                } finally {
+                    $st.LoadingMore = $false
+                    # Флаг отмены выставлен закрытием окна только ради текущего запроса - возвращаем прежнее значение.
+                    if ($st.Closed) { $global:editorLoadAbortRequested = [bool]$st.PrevAbort }
+                    else {
+                        $nt1 = @(& $takeTiles 40)
+                        & $send @{ t = 'add'; items = $nt1; more = (& $moreFlag) }
+                    }
+                }
+                if (-not $st.Closed -and [bool]$st.MoreDone -and $st.Pending.Count -eq 0 -and [int]$st.ShownCount -eq 0 -and $st.Own.Count -eq 0) { try { $lbl.Text = (T 'custom_empty_hint') } catch {} }
+            }
+            'menu' {
+                if ($st.LoadingMore) { return }
+                $mk = [string]$a.K
+                if ($barBtn.ContainsKey($mk)) { & $showFilterMenu $barBtn[$mk] $mk }
+            }
+            'applysort' {
+                $mode = [string]$a.K
+                if ($mode -eq [string]$st.SortMode -or $st.LoadingMore) { return }
+                $st.LoadingMore = $true
+                $st.PrevAbort = [bool]$global:editorLoadAbortRequested
+                try {
+                    # Для глобальной сортировки нужны все варианты: догружаем оставшиеся страницы.
+                    if ($mode -ne 'pop') { & $loadAllPages }
+                    if (-not $st.Closed) { & $rebuild $mode }
+                } finally {
+                    $st.LoadingMore = $false
+                    if ($st.Closed) { $global:editorLoadAbortRequested = [bool]$st.PrevAbort }
+                    else { try { $wv.Focus() } catch {} }
+                }
+            }
+            'applyfilters' {
+                $st.FilterQueued = $false
+                if ($st.LoadingMore) { return }
+                $st.LoadingMore = $true
+                $st.PrevAbort = [bool]$global:editorLoadAbortRequested
+                try {
+                    # Как фильтр на сайте - по всем обложкам: если фильтр не сброшен, догружаем все страницы.
+                    if (-not (& $isDefaultFilter)) { & $loadAllPages }
+                    if (-not $st.Closed) { & $rebuild ([string]$st.SortMode) }
+                } finally {
+                    $st.LoadingMore = $false
+                    if ($st.Closed) { $global:editorLoadAbortRequested = [bool]$st.PrevAbort }
+                }
+            }
+        }
+    }
+
+    $onMsg = {
+        param($s, $e)
+        try {
+            $m = $null
+            try { $m = ([string]$e.WebMessageAsJson) | ConvertFrom-Json } catch { return }
+            if ($null -eq $m) { return }
+            $mt = [string]$m.t
+            if ($mt -eq 'layout') {
+                # Панель и подпись выравниваются по левому краю плиток и ширине сетки (колонки центрируются страницей).
+                try {
+                    $sc = 1.0
+                    try { $gx = $dlg.CreateGraphics(); try { $sc = [double]$gx.DpiX / 96.0 } finally { $gx.Dispose() } } catch {}
+                    $lx = [int]($wv.Left + [Math]::Round([double]$m.x * $sc))
+                    $lw = [int][Math]::Round([double]$m.w * $sc)
+                    if ($lw -gt 100) {
+                        $bar.Anchor = 'Top,Left'; $lbl.Anchor = 'Top,Left'
+                        $bar.SetBounds($lx, $bar.Top, $lw, $bar.Height)
+                        $lbl.SetBounds($lx, $lbl.Top, $lw, $lbl.Height)
+                    }
+                } catch {}
+                return
+            }
+            if ($mt -eq 'hb') { $st.HbAt = [datetime]::Now; return }
+            if ($mt -eq 'blank') {
+                # Сторож страницы: сетка пустая или плитки не рисуются - отправляем первые плитки заново (не чаще раза в 3 с, до 6 раз).
+                try { Write-SgdbWvLog ('watchdog blank: ' + [string]$m.k) } catch {}
+                if ($null -ne $st.InitObj -and -not $st.Closed -and [int]$st.BlankTries -lt 6 -and ($null -eq $st.BlankAt -or ([datetime]::Now - [datetime]$st.BlankAt).TotalSeconds -gt 3)) {
+                    $st.BlankTries = [int]$st.BlankTries + 1; $st.BlankAt = [datetime]::Now
+                    $st.InitAck = $false; $st.InitTries = 1; $st.InitAt = [datetime]::Now
+                    & $send $st.InitObj
+                }
+                return
+            }
+            if ($mt -eq 'inited') { $st.InitAck = $true; return }
+            if ($mt -eq 'ready') { $st.Ready = $true; $st.HbAt = [datetime]::Now }
+            if ($mt -eq 'jserr') { try { & $status ('ошибка JS: ' + [string]$m.k) } catch {} }
+            if ($mt -ne 'warm') { try { Write-SgdbWvLog ('msg ' + $mt + ' ' + [string]$m.k) } catch {} }
+            $st.Actions.Enqueue(@{ T = $mt; K = [string]$m.k })
+        } catch {}
+    }
+
+    $wv.Add_CoreWebView2InitializationCompleted({
+        param($s, $e)
+        try {
+            try { Write-SgdbWvLog ('init completed ok=' + [string]$e.IsSuccess + ' err=' + [string]$e.InitializationException.Message) } catch {}
+            try { & $status ('инициализация завершена, успех=' + [string]$e.IsSuccess + ' ' + [string]$e.InitializationException.Message) } catch {}
+            if (-not $e.IsSuccess) { $st.InitFailed = $true; return }
+            $core = $s.CoreWebView2
+            try {
+                $core.Settings.AreDefaultContextMenusEnabled = $false
+                $core.Settings.AreDevToolsEnabled = $false
+                $core.Settings.IsStatusBarEnabled = $false
+                $core.Settings.IsZoomControlEnabled = $false
+                $core.Settings.AreBrowserAcceleratorKeysEnabled = $false
+            } catch {}
+            if ($null -ne $customStore) {
+                try {
+                    if (-not (Test-Path -LiteralPath ([string]$customStore.Dir) -PathType Container)) { New-Item -ItemType Directory -Path ([string]$customStore.Dir) -Force | Out-Null }
+                    $core.SetVirtualHostNameToFolderMapping('sc-own.local', [string]$customStore.Dir, [Microsoft.Web.WebView2.Core.CoreWebView2HostResourceAccessKind]::Allow)
+                } catch {}
+            }
+            $core.Add_WebMessageReceived($onMsg)
+            $core.Add_NewWindowRequested({ param($a, $b) try { $b.Handled = $true } catch {} })
+            $core.Add_NavigationCompleted({ param($a, $b) try { Write-SgdbWvLog ('navigation ok=' + [string]$b.IsSuccess + ' status=' + [string]$b.WebErrorStatus); & $status ('страница загружена, успех=' + [string]$b.IsSuccess + ' ' + [string]$b.WebErrorStatus) } catch {} })
+            $core.Add_ProcessFailed({ param($a, $b)
+                try {
+                    $pk = [string]$b.ProcessFailedKind
+                    try { Write-SgdbWvLog ('process failed kind=' + $pk) } catch {}
+                    if ($st.Closed) { return }
+                    if ($pk -eq 'BrowserProcessExited') {
+                        # Процесс браузера завершился: Reload здесь не работает, окно нужно создать заново (см. таймер и Show-SgdbAssetChooser).
+                        $st.Restart = $true
+                    } elseif ([int]$st.Reloads -lt 3) {
+                        $st.Reloads = [int]$st.Reloads + 1
+                        try { Write-SgdbWvLog 'watchdog: reload after process failure' } catch {}
+                        $a.Reload()
+                    }
+                } catch {}
+            })
+            try { Write-SgdbWvLog ('navigate html len=' + [string]$html.Length) } catch {}
+            $core.NavigateToString($html)
+        } catch { try { Write-SgdbWvLog ('init handler failed: ' + $_.Exception.Message + ' @' + [string]$_.InvocationInfo.ScriptLineNumber) } catch {}; $st.InitFailed = $true }
+    })
+
+    # Действия страницы (выбор, окна, догрузка) выполняются из таймера, а не прямо в обработчике сообщения браузера.
+    $timer = New-Object System.Windows.Forms.Timer
+    $timer.Interval = 25
+    $timer.Add_Tick({
+        try {
+            if ($st.Closed) { return }
+            if (-not $st.Ready -and ([datetime]::Now - [datetime]$st.Started).TotalSeconds -gt 25) { $st.InitFailed = $true }
+            if ($st.Restart -and -not $st.Closed) { try { Write-SgdbWvLog 'watchdog: browser process exited, reopening window' } catch {}; $timer.Stop(); $dlg.Close(); return }
+            if ($st.InitFailed) { try { Write-SgdbWvLog ('fallback to old window, ready=' + [string]$st.Ready) } catch {}; $timer.Stop(); $dlg.Close(); return }
+            # Страница перестала присылать сигнал «жива» (зависла): перезагружаем, плитки отправятся заново при её «ready».
+            if ($st.Ready -and $null -ne $st.HbAt -and -not $st.Busy -and -not $st.LoadingMore -and ([datetime]::Now - [datetime]$st.HbAt).TotalSeconds -gt 30 -and [int]$st.Reloads -lt 3) {
+                $st.Reloads = [int]$st.Reloads + 1; $st.HbAt = [datetime]::Now
+                try { Write-SgdbWvLog 'watchdog: no heartbeat, reload' } catch {}
+                try { $wv.CoreWebView2.Reload() } catch {}
+            }
+            if ($null -ne $st.InitObj -and -not [bool]$st.InitAck -and [int]$st.InitTries -lt 6 -and ([datetime]::Now - [datetime]$st.InitAt).TotalSeconds -gt 2.5) {
+                $st.InitTries = [int]$st.InitTries + 1; $st.InitAt = [datetime]::Now
+                try { Write-SgdbWvLog ('init not acknowledged, resend #' + [string]$st.InitTries) } catch {}
+                & $send $st.InitObj
+            }
+            if ($st.Busy -or $st.Actions.Count -eq 0) { return }
+            $act = $st.Actions.Dequeue()
+            $st.Busy = $true
+            try { & $handleAction $act } catch { try { Write-SgdbWvLog ('action ' + [string]$act.T + ' failed: ' + $_.Exception.Message + ' @' + [string]$_.InvocationInfo.ScriptLineNumber) } catch {} } finally { $st.Busy = $false }
+        } catch {}
+    })
+    $dlg.Add_Shown({
+        try { $st.Started = [datetime]::Now; $timer.Start() } catch {}
+        try { & $status 'запуск…' } catch {}
+        # Запуск браузерного ядра явно (не надеемся на неявный запуск при показе окна).
+        try { [void]$wv.EnsureCoreWebView2Async($null) } catch { try { Write-SgdbWvLog ('EnsureCoreWebView2Async failed: ' + $_.Exception.Message) } catch {}; $st.InitFailed = $true }
+        try { $wv.Focus() } catch {}
+    })
+    $dlg.Add_FormClosing({
+        try {
+            $st.Closed = $true
+            if ($st.LoadingMore) { $global:editorLoadAbortRequested = $true }
+        } catch {}
+    })
+    $dlg.Add_FormClosed({
+        $st.Closed = $true
+        try { $timer.Stop(); $timer.Dispose() } catch {}
+        try { foreach ($om in @($st.OldMenus)) { try { $om.Dispose() } catch {} }; if ($null -ne $st.LastMenu) { $st.LastMenu.Dispose() }; $sortMenu.Dispose() } catch {}
+        try { $wv.Dispose() } catch {}
+    })
+    $dlg.KeyPreview = $true
+    $dlg.Add_KeyDown({
+        param($s, $e)
+        try {
+            if ($e.KeyCode -eq [System.Windows.Forms.Keys]::Escape) {
+                $dlg.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+                $dlg.Close()
+            }
+        } catch {}
+    })
+
+    try { Initialize-FormForSmallScreen -Form $dlg -Owner $owner } catch {}
+    try { Enable-SCCascadeClose $dlg $true } catch {}
+    $dlg.ShowDialog($owner) | Out-Null
+    $res.Restart = ([bool]$st.Restart -and $null -eq $st.Result)
+    $res.Shown = (-not [bool]$st.InitFailed -and -not [bool]$res.Restart)
+    $res.Result = $st.Result
+    return $res
+}
+
 function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$thumbHeight, $owner, $customStore = $null, $moreProvider = $null, $platformKeys = @(), $transparency = $null) {
+    # Сетка на WebView2 (этап 1): плитки рисует встроенный браузер, как на сайте. Это окно остаётся запасным вариантом
+    # и открывается, если WebView2 не запустился. Выключатель: $script:SgdbWebGrid = $false
+    if ($script:SgdbWebGrid -ne $false -and (([string]$title -match '^\s*[1-5]\.') -or $null -ne $transparency) -and (@($items).Count -gt 0 -or $null -ne $customStore -or $null -ne $moreProvider)) {
+        $webRes = $null
+        try {
+            if (Initialize-SgdbWebView2) {
+                $webRes = Show-SgdbAssetChooserWeb $title $items $thumbWidth $thumbHeight $owner $customStore $moreProvider $platformKeys $transparency
+                # Процесс браузера упал во время работы окна: открываем окно заново (до 3 раз), иначе - запасное окно.
+                $webTry = 0
+                while ($null -ne $webRes -and [bool]$webRes.Restart -and $webTry -lt 3) {
+                    $webTry++
+                    try { Write-SgdbWvLog ('reopen chooser #' + [string]$webTry) } catch {}
+                    $webRes = Show-SgdbAssetChooserWeb $title $items $thumbWidth $thumbHeight $owner $customStore $moreProvider $platformKeys $transparency
+                }
+            }
+        } catch { try { Write-SgdbTimingLog ('WV2 chooser failed: ' + $_.Exception.Message) } catch {}; try { Write-SgdbWvLog ('chooser FAILED: ' + $_.Exception.Message + ' @' + [string]$_.InvocationInfo.ScriptLineNumber + ' ' + [string]$_.InvocationInfo.Line.Trim()) } catch {} }
+        if ($null -ne $webRes -and [bool]$webRes.Shown) { return $webRes.Result }
+    }
     try { Update-SgdbCurlResolve 600 -Wait } catch {}
     $items=@($items)
     if($items.Count -eq 0 -and $null -eq $customStore -and $null -eq $moreProvider){return $null}
@@ -42636,7 +44699,9 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
         # Миниатюра анимированной обложки бывает в формате, который не читается (WebP): берём сам файл.
         if($thumbUrl -match $script:SgdbUnsupportedUrlRx){$thumbUrl=$url}
         # WebM-миниатюру без ffmpeg не показать: берём полный анимированный WebP (его раскодирует встроенный anim_dump).
-        if(($thumbUrl -match '\.webm(\?|$)') -and ($url -notmatch '\.webm(\?|$)')){$thumbUrl=$url}
+        if(($thumbUrl -match '\.webm(\?|$)') -and ($url -notmatch '\.webm(\?|$)') -and -not (Get-FfmpegExe)){$thumbUrl=$url}
+        # ffmpeg ещё нет: запускаем его фоновую загрузку (в этом окне плитки идут через полный WebP, при следующем открытии - быстро).
+        if(($null -ne $item) -and ($item.PSObject.Properties['thumb']) -and ([string]$item.PSObject.Properties['thumb'].Value -match '\.webm(\?|$)') -and -not (Get-FfmpegExe)){ try { Start-FfmpegDownloadIfNeeded; if($null -ne $script:FfmpegDl){ Ensure-CoverAnimTimer } } catch {} }
 
         $dialogState.CardNo=[int]$dialogState.CardNo+1
         $cardNo=[int]$dialogState.CardNo
@@ -42833,6 +44898,7 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
         }
         # WS_EX_COMPOSITED не всегда стирает место скрытой плитки - принудительно перерисовываем область.
         if($hidAny){ $flow.Invalidate($true) }
+        try { if($null -ne $loadInd -and $loadInd.Visible){ & $placeLoadInd } } catch {}
     }
     # Установка прокрутки с ограничением по границам.
     $setScroll={
@@ -42874,7 +44940,7 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
         $visN=[int]$allCards.Count
         if(-not [bool]$dialogState.Filter.Own){ foreach($oc0 in $allCards){ if($null -ne $oc0.PSObject.Properties['OwnTile']){ $visN-- } } }
         $rows2=[int][Math]::Ceiling($visN/[double]$newCols)
-        $h2=10+($rows2*$cardHeight)+([Math]::Max(0,$rows2-1)*13)+10
+        $h2=10+($rows2*$cardHeight)+([Math]::Max(0,$rows2-1)*13)+10+[int]$dialogState.FooterH
         $dialogState.ContentH=[int]$h2
         $mxs=[Math]::Max(0,[int]$h2-[int]$flow.ClientSize.Height)
         if([int]$dialogState.ScrollY -gt $mxs){ $dialogState.ScrollY=$mxs }
@@ -42999,6 +45065,77 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
         } catch {}
     }
 
+    # Плавающий индикатор «идёт загрузка»: висит у нижнего края списка при любой прокрутке, поэтому
+    # во время догрузки следующей страницы видно, что это именно загрузка, а не конец списка.
+    $dialogState.LoadIndTick=0
+    $dialogState.FooterH=0   # место под последним рядом, пока идёт загрузка: плашка не перекрывает плитки
+    $loadInd=New-Object System.Windows.Forms.Panel
+    $loadInd.Size=New-Object System.Drawing.Size(290,40)
+    $loadInd.BackColor=[System.Drawing.Color]::FromArgb(30,41,54)
+    $loadInd.Visible=$false
+    try { [System.Windows.Forms.Control].GetProperty('DoubleBuffered',[System.Reflection.BindingFlags]'Instance,NonPublic').SetValue($loadInd,$true,$null) } catch {}
+    $loadInd.Add_Paint({
+        param($s,$e)
+        try {
+            $pen=New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(70,102,192,244))
+            $e.Graphics.DrawRectangle($pen,0,0,[int]$s.Width-1,[int]$s.Height-1)
+            $pen.Dispose()
+        } catch {}
+    })
+    $loadIndHost=New-Object System.Windows.Forms.Panel
+    $loadIndHost.Location=New-Object System.Drawing.Point(10,6)   # внутри рамки плашки (1 px)
+    $loadIndHost.Size=New-Object System.Drawing.Size(28,28)
+    $loadIndHost.BackColor=$loadInd.BackColor
+    $loadIndSpin=New-CoverSpinner $loadIndHost ([System.Drawing.Color]::FromArgb(102,192,244)) 26
+    $loadIndHost.Controls.Add($loadIndSpin)
+    $loadInd.Controls.Add($loadIndHost)
+    $loadIndLbl=New-Object System.Windows.Forms.Label
+    $loadIndLbl.Location=New-Object System.Drawing.Point(46,1)
+    $loadIndLbl.Size=New-Object System.Drawing.Size(242,38)
+    $loadIndLbl.TextAlign=[System.Drawing.ContentAlignment]::MiddleLeft
+    $loadIndLbl.ForeColor=[System.Drawing.Color]::FromArgb(220,223,228)
+    $loadIndLbl.BackColor=$loadInd.BackColor
+    $loadIndLbl.Text=(T 'sgdb_chooser_more')
+    $loadInd.Controls.Add($loadIndLbl)
+    $flow.Controls.Add($loadInd)
+    $placeLoadInd={
+        try {
+            $loadInd.Left=[int][Math]::Max(0,([int]$flow.ClientSize.Width-[int]$loadInd.Width)/2)
+            # Сразу под последним рядом плиток; если конец списка ниже видимой области - у нижнего края окна.
+            $below=[int]$dialogState.ContentH-[int]$dialogState.FooterH-[int]$dialogState.ScrollY
+            $maxTop=[int]$flow.ClientSize.Height-[int]$loadInd.Height-8
+            $loadInd.Top=[int][Math]::Max(0,[Math]::Min($below,$maxTop))
+        } catch {}
+    }
+    $flow.Add_SizeChanged({ try { if($loadInd.Visible){ & $placeLoadInd } } catch {} })
+    $showLoadInd={
+        try {
+            if(-not $loadInd.Visible){
+                $oldMax=[Math]::Max(0,[int]$dialogState.ContentH-[int]$flow.ClientSize.Height)
+                $wasBottom=([int]$dialogState.ScrollY -ge ($oldMax-2))
+                $dialogState.FooterH=56
+                & $relayout
+                # Пользователь был у самого низа - показываем и плашку под последним рядом.
+                if($wasBottom){ & $setScroll ([Math]::Max(0,[int]$dialogState.ContentH-[int]$flow.ClientSize.Height)); & $applyPos }
+            }
+            & $placeLoadInd
+            $loadIndLbl.Text=(T 'sgdb_chooser_more')
+            $loadInd.Visible=$true
+            $loadInd.BringToFront()
+            $loadInd.Refresh()
+        } catch {}
+    }
+    $hideLoadInd={
+        try {
+            if($loadInd.Visible){
+                $loadInd.Visible=$false
+                $dialogState.FooterH=0
+                & $relayout
+                $flow.Invalidate($true)
+            }
+        } catch {}
+    }
+
     # Название порядка сортировки.
     $sortName={
         param([string]$m)
@@ -43043,6 +45180,7 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
         $prevNsfwFlag=[bool]$script:SgdbSiteIncludeNsfw
         if([bool]$dialogState.AdultFetched){ $script:SgdbSiteIncludeNsfw=$true }
         try {
+        & $showLoadInd
         while(-not $dialogState.MoreDone -and -not $dialogState.Closed){
             try { $lbl.Text=(T 'sgdb_sort_loading' @([int]$dialogState.AllItems.Count)); $lbl.Refresh() } catch {}
             $allPage=$null
@@ -43053,7 +45191,7 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
             if([bool]$allPage.Done){ $dialogState.MoreDone=$true }
             [System.Windows.Forms.Application]::DoEvents()
         }
-        } finally { $script:SgdbSiteIncludeNsfw=$prevNsfwFlag }
+        } finally { $script:SgdbSiteIncludeNsfw=$prevNsfwFlag; try { & $hideLoadInd } catch {} }
     }
 
     # Плитки SteamGridDB строятся заново из всех полученных вариантов: порядок $mode + текущие фильтры.
@@ -43426,6 +45564,7 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
                 } elseif($null -ne $moreProvider){
                     try { $lbl.Text=(T 'sgdb_chooser_more'); $lbl.Refresh() } catch {}
                     if([int]$dialogState.CardNo -eq 0){ & $showSkeleton }
+                    & $showLoadInd
                     $page=$null
                     try { $page=Get-SgdbMorePage $moreProvider } catch { $page=$null }
                     if($dialogState.Closed){return}
@@ -43438,11 +45577,13 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
                     try { $lbl.Text=(T 'sgdb_chooser_hint') } catch {}
                     if($dialogState.Pending.Count -gt 0 -or $dialogState.MoreDone){ & $clearSkeleton }
                     if($dialogState.Pending.Count -gt 0){ [void](& $renderBatch 20) }
+                    & $hideLoadInd
                     if($dialogState.MoreDone -and [int]$dialogState.CardNo -eq 0 -and $dialogState.Pending.Count -eq 0){
                         try { $lbl.Text=(T 'custom_empty_hint') } catch {}
                     }
                 }
             } finally {
+                try { & $hideLoadInd } catch {}
                 $dialogState.LoadingMore=$false
                 # Флаг отмены выставлен закрытием окна только ради текущего запроса - возвращаем прежнее значение.
                 if($dialogState.Closed){ $global:editorLoadAbortRequested=[bool]$dialogState.PrevAbort }
@@ -43748,7 +45889,7 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
                                     $redirected=$false
                                     $keepSpinner=$false
                                     try { $tfmt=[string](Get-ImageContainerInfo $file).Format; $isWebpThumb=($tfmt -eq 'webp'); $isWebmThumb=($tfmt -eq 'webm') } catch {}
-                                    if($isWebmThumb -and -not [string]::IsNullOrWhiteSpace([string]$client.TargetUrl) -and ([string]$client.TargetUrl -ne [string]$client.RequestedUrl)){
+                                    if($isWebmThumb -and -not (Get-FfmpegExe) -and -not [string]::IsNullOrWhiteSpace([string]$client.TargetUrl) -and ([string]$client.TargetUrl -ne [string]$client.RequestedUrl)){
                                         # Пришла WebM-миниатюра (формат определяется по содержимому, не по URL): ffmpeg не нужен,
                                         # качаем полный анимированный файл и показываем его тем же способом, что в карточке и Library.
                                         $fullUrl=[string]$client.TargetUrl
@@ -43774,7 +45915,13 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
                                         $redirected=$true
                                     } elseif($isWebmThumb){
                                         # WebM-миниатюра анимированной обложки: показать кадр нечем - рисуем заглушку. Полный файл (анимированный WebP) докачивается при выборе.
-                                        $img=New-WebmPlaceholderBitmap ([int]$target.Width) ([int]$target.Height)
+                                        # Тёмная заготовка без значка «WebM»: сверху крутится спиннер, затем появляется первый кадр.
+                                        $bw=[int]$target.Width; $bh=[int]$target.Height
+                                        if($bw -lt 40){$bw=170}; if($bh -lt 40){$bh=230}
+                                        $img=New-Object System.Drawing.Bitmap($bw,$bh)
+                                        $gp=[System.Drawing.Graphics]::FromImage($img)
+                                        try { $gp.Clear([System.Drawing.Color]::FromArgb(13,20,28)) } finally { $gp.Dispose() }
+                                        $keepSpinner=$true   # спиннер крутится, пока ffmpeg не отдаст первый кадр и не заиграет анимация
                                         $ms=New-Object System.IO.MemoryStream(,$bytes)
                                         try { $target.ThumbIsFull=$false } catch {}
                                     } elseif($isWebpThumb){
@@ -43798,6 +45945,8 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
                                     } else {
                                         $ms=New-Object System.IO.MemoryStream(,$bytes)
                                         $img=[System.Drawing.Image]::FromStream($ms)
+                                        # GIF / APNG: спиннер крутится, пока анимация не раскодирована и не заиграла.
+                                        try { if([bool](Get-ImageContainerInfo $file).Animated){ $keepSpinner=$true } } catch {}
                                     }
                                     if(-not $redirected){
                                         if($target.Image){try{ $oldIm=$target.Image; $target.Image=$null; $oldIm.Dispose() }catch{}}
@@ -43891,6 +46040,10 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
     $frameTimer.Interval=16
     $frameTimer.Add_Tick({
         try {
+            # Спиннеры плиток, чья миниатюра ещё скачивается: тот же 16-мс такт, что и у остальных (раньше — 70 мс, ~14 кадров/с).
+            foreach($cl in @($dialogState.Clients)){ if(-not $cl.DoneHandled -and $cl.Started -and $cl.TargetSpinner){ Step-CoverSpinner $cl.TargetSpinner } }
+        } catch {}
+        try {
             if($dialogState.Dirty -and -not $dialogState.Closed){
                 $dialogState.Dirty=$false
                 & $applyPos
@@ -43900,6 +46053,13 @@ function Show-SgdbAssetChooser ($title, [array]$items, [int]$thumbWidth, [int]$t
                 foreach($pbp in @($dialogState.AnimPending)){
                     if($null -eq $pbp -or $pbp.IsDisposed -or $null -ne $pbp.PSObject.Properties['AnimDone']){ [void]$dialogState.AnimPending.Remove($pbp); continue }
                     Step-CoverSpinner $pbp.ChooserSpinner
+                }
+            } catch {}
+            # Вращение дуги в плавающем индикаторе загрузки.
+            try {
+                if($loadInd.Visible -and -not $dialogState.Closed){
+                    $dialogState.LoadIndTick=[int]$dialogState.LoadIndTick+1
+                    if(([int]$dialogState.LoadIndTick % 3) -eq 0){ Step-CoverSpinner $loadIndSpin }
                 }
             } catch {}
             # Вращение дуги на плитках-заглушках (запрос идёт в фоне, окно в это время обрабатывает события).
@@ -48594,7 +50754,7 @@ function Start-EditorLoading($slots, $form) {
         if ($null -ne $form) {
             if ($null -eq $form.Tag -or $null -eq $form.Tag.EditorLoadTimer) {
                 $timer = New-Object System.Windows.Forms.Timer
-                $timer.Interval = 70
+                $timer.Interval = 16
                 $timer.Tag = [PSCustomObject]@{Frame=0;Slots=$slots}
                 $timer.Add_Tick({
                     try {
@@ -52052,7 +54212,11 @@ function Get-SaveHeurWords ([string]$Text) {
     $all = New-Object System.Collections.ArrayList
     foreach ($w in [regex]::Split($Text.ToLowerInvariant(), '[^\p{L}\p{Nd}]+')) { if ($w.Length -gt 0) { [void]$all.Add($w) } }
     $keep = New-Object System.Collections.ArrayList
-    foreach ($w in $all) { if ($script:saveHeurNoise -notcontains $w) { [void]$keep.Add($w) } }
+    if ($null -eq $script:saveHeurNoiseSet) {
+        $script:saveHeurNoiseSet = New-Object 'System.Collections.Generic.HashSet[string]'
+        foreach ($nw in $script:saveHeurNoise) { [void]$script:saveHeurNoiseSet.Add([string]$nw) }
+    }
+    foreach ($w in $all) { if (-not $script:saveHeurNoiseSet.Contains($w)) { [void]$keep.Add($w) } }
     if ($keep.Count -eq 0) { return @($all) }
     return @($keep)
 }
@@ -52079,26 +54243,38 @@ function Get-SaveHeurIndex {
         (Join-Path $pub 'Documents')
     )
     $seenRoot = @{}
+    $keyMemo = @{}
+    $reparseAttr = [System.IO.FileAttributes]::ReparsePoint
     foreach ($root in $roots) {
         if ([string]::IsNullOrWhiteSpace($root) -or -not [System.IO.Directory]::Exists($root)) { continue }
         $rk = $root.TrimEnd('\').ToLowerInvariant()
         if ($seenRoot.ContainsKey($rk)) { continue }
         $seenRoot[$rk] = $true
-        $l1 = @()
-        try { $l1 = @([System.IO.Directory]::GetDirectories($root)) } catch { continue }
-        foreach ($d1 in $l1) {
+        # УСКОРЕНИЕ: подпапки перечисляются через DirectoryInfo (атрибуты - точка повторной обработки - приходят сразу,
+        # без отдельного запроса на каждую папку), а ключ названия считается один раз на каждое повторяющееся имя.
+        $l1 = $null
+        try { $l1 = @((New-Object System.IO.DirectoryInfo($root)).EnumerateDirectories()) } catch { continue }
+        foreach ($di1 in $l1) {
             if ($list.Count -gt 40000) { break }
-            $n1 = [System.IO.Path]::GetFileName($d1)
+            $n1 = [string]$di1.Name
             if ($script:saveHeurSkipDirs.ContainsKey($n1.ToLowerInvariant())) { continue }
-            if (Test-SaveReparse $d1) { continue }
-            [void]$list.Add([PSCustomObject]@{ Path = $d1; Key = (Get-SaveHeurKey $n1); Level = 1 })
-            $l2 = @()
-            try { $l2 = @([System.IO.Directory]::GetDirectories($d1)) } catch { continue }
-            foreach ($d2 in $l2) {
-                $n2 = [System.IO.Path]::GetFileName($d2)
+            $skip1 = $false
+            try { if (($di1.Attributes -band $reparseAttr) -ne 0) { $skip1 = $true } } catch { $skip1 = $true }
+            if ($skip1) { continue }
+            $kk1 = $keyMemo[$n1]
+            if ($null -eq $kk1) { $kk1 = Get-SaveHeurKey $n1; $keyMemo[$n1] = $kk1 }
+            [void]$list.Add([PSCustomObject]@{ Path = [string]$di1.FullName; Key = $kk1; Level = 1 })
+            $l2 = $null
+            try { $l2 = @($di1.EnumerateDirectories()) } catch { continue }
+            foreach ($di2 in $l2) {
+                $n2 = [string]$di2.Name
                 if ($script:saveHeurSkipDirs.ContainsKey($n2.ToLowerInvariant())) { continue }
-                if (Test-SaveReparse $d2) { continue }
-                [void]$list.Add([PSCustomObject]@{ Path = $d2; Key = (Get-SaveHeurKey $n2); Level = 2 })
+                $skip2 = $false
+                try { if (($di2.Attributes -band $reparseAttr) -ne 0) { $skip2 = $true } } catch { $skip2 = $true }
+                if ($skip2) { continue }
+                $kk2 = $keyMemo[$n2]
+                if ($null -eq $kk2) { $kk2 = Get-SaveHeurKey $n2; $keyMemo[$n2] = $kk2 }
+                [void]$list.Add([PSCustomObject]@{ Path = [string]$di2.FullName; Key = $kk2; Level = 2 })
             }
         }
     }
@@ -59704,6 +61880,12 @@ function Show-EditorAlternativeCover($slot, [string]$title) {
             $chooserWidth = 270
             $chooserHeight = 130
         }
+        # Иконки (слот 5) квадратные: окно выбора показывает их в квадратных плитках без пустых полей по бокам,
+        # поэтому в строке помещается больше вариантов. Размер обложки в самой карточке не меняется.
+        if ($title -match '^\s*5\.') {
+            $chooserWidth = 120
+            $chooserHeight = 120
+        }
 
         try {
             $slotFormForSuppress = $slot.Panel.FindForm()
@@ -59875,7 +62057,8 @@ function Show-EditorAlternativeCover($slot, [string]$title) {
             if (-not $downloadedOk) {
                 # Иконки бывают крошечными (пиксель-арт < 512 байт) — для слота иконки порог ниже.
                 $minSz = if ($title -match '^\s*5\.') { 64 } else { 512 }
-                $downloadedOk = [bool](Download-RemoteImage ([string]$chosen) $target $minSz)
+                try { $downloadedOk = [bool](Use-SgdbPrefetch ([string]$chosen) $target $minSz) } catch { $downloadedOk = $false }
+                if (-not $downloadedOk) { $downloadedOk = [bool](Download-RemoteImage ([string]$chosen) $target $minSz) }
             }
             # Полный файл не скачался, но миниатюра из окна выбора уже есть — берём её, а не сбрасываем слот в заглушку.
             if (-not $downloadedOk -and $haveThumb) {
@@ -66481,7 +68664,8 @@ function Get-LibDlssEntryDirUncached ($Entry) {
 
 function Stop-LibDlssScan {
     try { if ($null -ne $script:libDlssState) { $script:libDlssState['Cancel'] = $true } } catch {}
-    try { if ($null -ne $script:libDlssPs) { $script:libDlssPs.Dispose() } } catch {}
+    # Потоков поиска несколько (список PowerShell-объектов в пуле), см. Start-LibDlssScan.
+    try { foreach ($lp in @($script:libDlssPs)) { try { if ($null -ne $lp) { $lp.Dispose() } } catch {} } } catch {}
     try { if ($null -ne $script:libDlssRs) { $script:libDlssRs.Dispose() } } catch {}
     $script:libDlssPs = $null
     $script:libDlssRs = $null
@@ -66511,7 +68695,7 @@ function Start-LibDlssScan ($Entries) {
     $script:libDlssDirCache = @{}
     $script:libDlssLastCount = -1
     # Libs: папка игры -> есть ли в ней хоть одна библиотека апскейлера (DLSS / FSR / XeSS / XeLL). Нужно кнопке «Обновить апскейлеры».
-    $state = [hashtable]::Synchronized(@{ Results = [hashtable]::Synchronized(@{}); Libs = [hashtable]::Synchronized(@{}); Orig = [hashtable]::Synchronized(@{}); LibsDone = $false; Done = $false; Cancel = $false })
+    $state = [hashtable]::Synchronized(@{ Results = [hashtable]::Synchronized(@{}); Libs = [hashtable]::Synchronized(@{}); Orig = [hashtable]::Synchronized(@{}); LibsDone = $false; Done = $false; Cancel = $false; Chg = 0 })
     $libNames = @()
     try { $libNames = @(Get-UpscalerDefs | ForEach-Object { [string]$_.File }) } catch { $libNames = @() }
     if ($libNames.Count -eq 0) { $libNames = @('nvngx_dlss.dll') }
@@ -66526,8 +68710,32 @@ function Start-LibDlssScan ($Entries) {
         $seen[$k] = $true
         [void]$dirs.Add($d)
     }
+    # КЭШ НА ДИСКЕ: версии и наличие библиотек с прошлых запусков кладём в результаты сразу - плитки и фильтр «Только с библиотеками»
+    # работают мгновенно, а фоновый поиск ниже перепроверяет каждую папку и при расхождении заменяет значение (счётчик Chg).
+    try {
+        $dcL = (Get-LibsDiskCache).L
+        foreach ($d0 in $dirs) {
+            $k0 = ([string]$d0).TrimEnd('\').ToUpperInvariant()
+            $e0 = $dcL[$k0]
+            if ($null -eq $e0) { continue }
+            $state['Results'][$k0] = [string]$e0[0]
+            $state['Libs'][$k0] = [bool]$e0[1]
+            $state['Orig'][$k0] = [bool]$e0[2]
+        }
+    } catch {}
+    # УСКОРЕНИЕ: поиск идёт в нескольких потоках (папки игр делятся между ними поровну по очереди), а в каждой папке
+    # вместо десятка проверок File.Exists делается один GetFiles('*.dll') (и один '*.sc_orig' во втором проходе);
+    # подпапки перечисляются через DirectoryInfo, у которого атрибуты (точка повторной обработки) уже известны.
+    # Флаги LibsDone / Done ставит последний из потоков.
     $worker = {
-        param($dirs, $state, $libNames, $altUps)
+        param($dirs, $state, $libNames, $altUps, $wid, $wcnt)
+        $markStage = {
+            param($stage)
+            $state[$stage + '_' + $wid] = $true
+            $all = $true
+            for ($wi = 0; $wi -lt $wcnt; $wi++) { if (-not $state.ContainsKey($stage + '_' + $wi)) { $all = $false; break } }
+            return $all
+        }
         try {
             # Версия файла в виде vA.B.C (хвостовые нули не показываем, но минимум две цифры).
             $fmtVer = {
@@ -66543,6 +68751,12 @@ function Start-LibDlssScan ($Entries) {
                 } catch {}
                 return ''
             }
+            $libSet = New-Object 'System.Collections.Generic.HashSet[string]'
+            $origSet = New-Object 'System.Collections.Generic.HashSet[string]'
+            $altSet = New-Object 'System.Collections.Generic.HashSet[string]'
+            foreach ($ln in $libNames) { [void]$libSet.Add(([string]$ln).ToLowerInvariant()); [void]$origSet.Add(([string]$ln).ToLowerInvariant() + '.sc_orig') }
+            foreach ($au in $altUps) { [void]$altSet.Add(([string]$au[0]).ToLowerInvariant()) }
+            $reparse = [System.IO.FileAttributes]::ReparsePoint
             foreach ($d in $dirs) {
                 if ($state['Cancel']) { break }
                 $ver = ''
@@ -66558,29 +68772,24 @@ function Start-LibDlssScan ($Entries) {
                             $it = $queue.Dequeue()
                             $dir = [string]$it[0]
                             $depth = [int]$it[1]
-                            try {
-                                $cand = [System.IO.Path]::Combine($dir, 'nvngx_dlss.dll')
-                                if ([System.IO.File]::Exists($cand)) { $found = $cand; $anyLib = $true; break }
-                            } catch {}
-                            if (-not $anyLib) {
-                                foreach ($ln in $libNames) {
-                                    try { if ([System.IO.File]::Exists([System.IO.Path]::Combine($dir, [string]$ln))) { $anyLib = $true; break } } catch {}
+                            $dlls = $null
+                            try { $dlls = [System.IO.Directory]::GetFiles($dir, '*.dll') } catch { $dlls = $null }
+                            if ($null -ne $dlls) {
+                                foreach ($fp in $dlls) {
+                                    $fn = [System.IO.Path]::GetFileName($fp).ToLowerInvariant()
+                                    if ($fn -eq 'nvngx_dlss.dll') { $found = $fp; $anyLib = $true; break }
+                                    if ($libSet.Contains($fn)) { $anyLib = $true }
+                                    # Запасные апскейлеры (FSR / XeSS): запоминаем первый найденный файл каждого вида.
+                                    if ($altSet.Contains($fn) -and -not $altFound.ContainsKey($fn)) { $altFound[$fn] = $fp }
                                 }
                             }
-                            # Запасные апскейлеры (FSR / XeSS): запоминаем первый найденный файл каждого вида.
-                            foreach ($au in $altUps) {
-                                if ($altFound.ContainsKey([string]$au[0])) { continue }
-                                try {
-                                    $ac = [System.IO.Path]::Combine($dir, [string]$au[0])
-                                    if ([System.IO.File]::Exists($ac)) { $altFound[[string]$au[0]] = $ac }
-                                } catch {}
-                            }
+                            if ($found) { break }
                             if ($depth -lt 12) {
                                 try {
-                                    foreach ($sd in [System.IO.Directory]::EnumerateDirectories($dir)) {
-                                        $skip = $false
-                                        try { if (([System.IO.File]::GetAttributes($sd) -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) { $skip = $true } } catch { $skip = $true }
-                                        if (-not $skip) { $queue.Enqueue(@([string]$sd, ($depth + 1))) }
+                                    $di = New-Object System.IO.DirectoryInfo($dir)
+                                    foreach ($sd in $di.EnumerateDirectories()) {
+                                        if (($sd.Attributes -band $reparse) -ne 0) { continue }
+                                        $queue.Enqueue(@([string]$sd.FullName, ($depth + 1)))
                                     }
                                 } catch {}
                             }
@@ -66590,21 +68799,25 @@ function Start-LibDlssScan ($Entries) {
                         # в формате "Название|версия" — плитка рисует название слева вместо «DLSS».
                         if ([string]::IsNullOrEmpty($ver)) {
                             foreach ($au in $altUps) {
-                                if (-not $altFound.ContainsKey([string]$au[0])) { continue }
-                                $av = [string](& $fmtVer ([string]$altFound[[string]$au[0]]))
+                                $akey = ([string]$au[0]).ToLowerInvariant()
+                                if (-not $altFound.ContainsKey($akey)) { continue }
+                                $av = [string](& $fmtVer ([string]$altFound[$akey]))
                                 if (-not [string]::IsNullOrEmpty($av)) { $ver = ([string]$au[1] + '|' + $av); break }
                             }
                         }
                     }
                 } catch {}
+                try {
+                    $pk = $d.TrimEnd('\').ToUpperInvariant()
+                    if ($state['Results'].ContainsKey($pk) -and [string]$state['Results'][$pk] -ne [string]$ver) { $state['Chg'] = [int]$state['Chg'] + 1 }
+                } catch {}
                 $state['Libs'][$d.TrimEnd('\').ToUpperInvariant()] = $anyLib
                 $state['Results'][$d.TrimEnd('\').ToUpperInvariant()] = $ver
             }
-            # ИСПРАВЛЕНИЕ: наличие библиотек по всем играм уже известно - фильтр «Только с библиотеками» может
-            # применяться, не дожидаясь долгого второго прохода (поиск .sc_orig).
-            if (-not $state['Cancel']) { $state['LibsDone'] = $true }
+            # Наличие библиотек по всем играм известно, когда первый проход закончили ВСЕ потоки: фильтр «Только с библиотеками»
+            # может применяться, не дожидаясь второго прохода (поиск .sc_orig).
+            if (& $markStage 'P1') { if (-not $state['Cancel']) { $state['LibsDone'] = $true } }
             # Второй проход: есть ли в папке игры бэкапы оригиналов (<dll>.sc_orig) — нужно кнопке «Вернуть бэкапы».
-            # Идёт после версий, поэтому полосы DLSS на плитках не задерживает.
             foreach ($d in $dirs) {
                 if ($state['Cancel']) { break }
                 $hasOrig = $false
@@ -66619,16 +68832,20 @@ function Start-LibDlssScan ($Entries) {
                             $dir = [string]$it[0]
                             $depth = [int]$it[1]
                             $visited++
-                            foreach ($ln in $libNames) {
-                                try { if ([System.IO.File]::Exists([System.IO.Path]::Combine($dir, ([string]$ln + '.sc_orig')))) { $hasOrig = $true; break } } catch {}
+                            $origs = $null
+                            try { $origs = [System.IO.Directory]::GetFiles($dir, '*.sc_orig') } catch { $origs = $null }
+                            if ($null -ne $origs) {
+                                foreach ($fp in $origs) {
+                                    if ($origSet.Contains([System.IO.Path]::GetFileName($fp).ToLowerInvariant())) { $hasOrig = $true; break }
+                                }
                             }
                             if ($hasOrig) { break }
                             if ($depth -lt 12) {
                                 try {
-                                    foreach ($sd in [System.IO.Directory]::EnumerateDirectories($dir)) {
-                                        $skip = $false
-                                        try { if (([System.IO.File]::GetAttributes($sd) -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) { $skip = $true } } catch { $skip = $true }
-                                        if (-not $skip) { $queue.Enqueue(@([string]$sd, ($depth + 1))) }
+                                    $di = New-Object System.IO.DirectoryInfo($dir)
+                                    foreach ($sd in $di.EnumerateDirectories()) {
+                                        if (($sd.Attributes -band $reparse) -ne 0) { continue }
+                                        $queue.Enqueue(@([string]$sd.FullName, ($depth + 1)))
                                     }
                                 } catch {}
                             }
@@ -66638,23 +68855,35 @@ function Start-LibDlssScan ($Entries) {
                 $state['Orig'][$d.TrimEnd('\').ToUpperInvariant()] = $hasOrig
             }
         } catch {}
-        if (-not $state['Cancel']) { $state['LibsDone'] = $true }
-        $state['Done'] = $true
+        # Если поток упал раньше конца этапа — этапы всё равно отмечаем, иначе флаги не встанут никогда.
+        if (& $markStage 'P1') { if (-not $state['Cancel']) { $state['LibsDone'] = $true } }
+        if (& $markStage 'P2') { $state['Done'] = $true }
     }
     try {
-        $rs = [System.Management.Automation.Runspaces.RunspaceFactory]::CreateRunspace()
-        $rs.Open()
-        $ps = [System.Management.Automation.PowerShell]::Create()
-        $ps.Runspace = $rs
-        [void]$ps.AddScript($worker.ToString())
-        [void]$ps.AddArgument($dirs.ToArray())
-        [void]$ps.AddArgument($state)
-        [void]$ps.AddArgument($libNames)
-        [void]$ps.AddArgument($altUps)
-        [void]$ps.BeginInvoke()
+        $wn = [Math]::Min(6, [Math]::Max(2, [int]([Environment]::ProcessorCount / 2)))
+        if ($dirs.Count -lt $wn) { $wn = [Math]::Max(1, $dirs.Count) }
+        $chunks = New-Object System.Collections.Generic.List[object]
+        for ($ci = 0; $ci -lt $wn; $ci++) { [void]$chunks.Add((New-Object System.Collections.Generic.List[string])) }
+        for ($ci = 0; $ci -lt $dirs.Count; $ci++) { [void]$chunks[$ci % $wn].Add([string]$dirs[$ci]) }
+        $pool = [System.Management.Automation.Runspaces.RunspaceFactory]::CreateRunspacePool(1, $wn)
+        $pool.Open()
+        $psList = New-Object System.Collections.ArrayList
         $script:libDlssState = $state
-        $script:libDlssPs = $ps
-        $script:libDlssRs = $rs
+        $script:libDlssRs = $pool
+        for ($wi = 0; $wi -lt $wn; $wi++) {
+            $ps = [System.Management.Automation.PowerShell]::Create()
+            $ps.RunspacePool = $pool
+            [void]$ps.AddScript($worker.ToString())
+            [void]$ps.AddArgument($chunks[$wi].ToArray())
+            [void]$ps.AddArgument($state)
+            [void]$ps.AddArgument($libNames)
+            [void]$ps.AddArgument($altUps)
+            [void]$ps.AddArgument([int]$wi)
+            [void]$ps.AddArgument([int]$wn)
+            [void]$psList.Add($ps)
+            [void]$ps.BeginInvoke()
+        }
+        $script:libDlssPs = $psList
     } catch {
         $state['LibsDone'] = $true
         $state['Done'] = $true
@@ -76208,8 +78437,9 @@ function Show-SteamLibraryBrowser {
             if ($null -eq $st) { $libDlssTimer.Stop(); return }
             # Пока кнопка мыши зажата (тянут ползунок прокрутки) UI-поток не занимаем — обновим на следующем тике.
             if ([System.Windows.Forms.Control]::MouseButtons -ne [System.Windows.Forms.MouseButtons]::None) { return }
-            $cnt = [int]$st['Results'].Count
+            $cnt = [int]$st['Results'].Count + [int]$st['Chg']   # Chg: сколько значений, взятых с диска, перепроверка заменила
             $done = [bool]$st['Done']
+            try { Save-LibDlssDiskCache $st } catch {}
             if ($cnt -ne [int]$script:libDlssLastCount -or $done) {
                 $script:libDlssLastCount = $cnt
                 # Пришли новые результаты поиска — пересчитываем доступность «Обновить апскейлеры».
@@ -90951,6 +93181,25 @@ $form.Add_Shown({
     Write-StartupMark 'form.Shown: paint + splash closed'
     # Окно на экране: сводка запуска (в режиме «окно библиотеки» заставка закроется позже, но главная часть запуска уже позади).
     try { Write-StartupSummary } catch {}
+    # Фоновая докачка недостающих утилит через 3 секунды после запуска (когда окно уже на экране): ffmpeg (~100 МБ, для WebM-миниатюр
+    # SteamGridDB) и libwebp (~2 МБ, для анимированного WebP). Если файлы уже есть, ничего не скачивается.
+    # Выключатель: $script:StartupToolsDownload = $false (в начале скрипта не задан - по умолчанию включено).
+    try {
+        if ($script:StartupToolsDownload -ne $false) {
+            $script:toolsDlTimer = New-Object System.Windows.Forms.Timer
+            $script:toolsDlTimer.Interval = 3000
+            $script:toolsDlTimer.Add_Tick({
+                try {
+                    $script:toolsDlTimer.Stop()
+                    if (Test-UiScrollBusy 450) { $script:toolsDlTimer.Interval = 1500; $script:toolsDlTimer.Start(); return }
+                    # ffmpeg при старте больше не качается: новая сетка показывает WebM сама, старые окна докачают его по требованию.
+                    try { if (-not (Test-WebpToolsDir (Join-Path ([string]$global:appDataDir) 'libwebp'))) { [void](Initialize-WebpSupport) } } catch {}
+                    $script:toolsDlTimer.Dispose()
+                } catch {}
+            })
+            $script:toolsDlTimer.Start()
+        }
+    } catch {}
     try { Optimize-FramesCache -MaxMB 0 -MaxAgeDays 0 -MinMinutes 0 } catch {}   # превью рамок в Frames\cache между запусками не хранятся (остатки после сбоя)
     try { if ($form.WindowState -eq [System.Windows.Forms.FormWindowState]::Minimized) { $form.WindowState = [System.Windows.Forms.FormWindowState]::Normal } } catch {}
     if ($keepFront) {
